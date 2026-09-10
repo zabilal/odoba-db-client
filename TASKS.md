@@ -21,17 +21,17 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    The app runs: window, sidebar explorer, data tabs, menus and ⌘K from one
-           command registry, connection form, appearance (ADR-0011). J1's browse
-           path runs end to end on real PostgreSQL (internal/e2e, tag conformance).
-NEXT TASK: T1.61 run: an app-layer query session over Sessioner/Queryer, results
-           buffered into the grid, ⌘↵ and ⇧⌘↵; a New Query tab (⌘T). Open Data
-           moves to ⌘O, because ⌘↓ belongs to the editor.
+STATUS:    The app runs: sidebar explorer, data tabs, query tabs (editor, ⌘↵,
+           results, Stop), menus and ⌘K from one registry, connection form.
+           J1 runs end to end on real PostgreSQL (internal/e2e, tag conformance).
+NEXT TASK: T1.66 history: open localdb in main, record each statement, a
+           searchable History panel → T1.67 saved queries → T1.68 error
+           positions → a J3 end-to-end test.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — editor widget: drawing only visible lines, input with each
-           platform's chords, gutter, bracket pairs (T1.57–T1.59).
+LAST DONE: 2026-09-10 — query tabs over pinned sessions (ADR-0012); fixed results
+           that stopped streaming when their script finished.
 ```
 
 **Phase 0 findings so far**
@@ -287,10 +287,10 @@ LAST DONE: 2026-09-10 — editor widget: drawing only visible lines, input with 
 - [~] **T1.58** Per-dialect syntax highlighting → FR-5.1 — *SQL dialects drawn in palette colours; MongoDB shell and Redis syntaxes come with those drivers*
 - [x] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11 — *line numbers, current-line highlight, bracket pairs outside strings and comments, auto-indent*
 - [ ] **T1.60** Find/replace with regex → FR-5.11
-- [ ] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3
-- [~] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4
-- [~] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9
-- [ ] **T1.64** Timing, rows affected, server messages pane → FR-5.6
+- [x] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3 — *⌘↵ runs the selection or the statement at the caret; ⇧⌘↵ runs the script (ADR-0012)*
+- [x] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4 — *a result tab per result set, plus Messages*
+- [x] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9 — *Stop (⌘.) cancels the script and its streaming results; the session survives (ADR-0008)*
+- [x] **T1.64** Timing, rows affected, server messages pane → FR-5.6 — *per-statement timing and rows affected, a run summary, server messages*
 - [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
 - [~] **T1.66** Persistent searchable query history → FR-5.8
 - [~] **T1.67** Saved queries with folders → FR-5.9

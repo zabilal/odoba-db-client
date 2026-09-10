@@ -372,3 +372,13 @@ func TestRevisionCountsEditsNotMoves(t *testing.T) {
 		t.Error("an edit did not change the revision")
 	}
 }
+
+func TestOffset(t *testing.T) {
+	d := doc(t, "é|b\ncd")
+	if got := d.Offset(d.Caret()); got != 2 {
+		t.Errorf("offset after é = %d, want 2 bytes", got)
+	}
+	if got := d.Offset(Pos{1, 1}); got != len("éb\nc") {
+		t.Errorf("offset %d", got)
+	}
+}

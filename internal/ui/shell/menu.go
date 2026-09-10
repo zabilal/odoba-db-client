@@ -26,6 +26,10 @@ const (
 	cmdTabClose     = "tab.close"
 	cmdTabNext      = "tab.next"
 	cmdTabPrev      = "tab.previous"
+	cmdQueryNew     = "query.new"
+	cmdQueryRun     = "query.run"
+	cmdQueryRunAll  = "query.runAll"
+	cmdQueryStop    = "query.stop"
 	cmdAppearSystem = "appearance.system"
 	cmdAppearLight  = "appearance.light"
 	cmdAppearDark   = "appearance.dark"
@@ -60,7 +64,7 @@ var menuBar = []struct {
 	title   string
 	entries []menuEntry
 }{
-	{"File", []menuEntry{item(cmdConnNew), separator, item(cmdTabClose)}},
+	{"File", []menuEntry{item(cmdConnNew), item(cmdQueryNew), separator, item(cmdTabClose)}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
 		item(cmdSidebar), item(cmdRefresh), item(cmdReload), separator,
@@ -71,6 +75,7 @@ var menuBar = []struct {
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
 		item(cmdDisconnect),
 	}},
+	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev)}},
 }
 

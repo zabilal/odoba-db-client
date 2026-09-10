@@ -101,6 +101,16 @@ func (d *Document) Highlighter() *Highlighter { return d.hl }
 // Text is the whole document.
 func (d *Document) Text() string { return d.buf.Text() }
 
+// Offset is p's byte offset into Text().
+func (d *Document) Offset(p Pos) int {
+	p = d.clamp(p)
+	n := 0
+	for i := 0; i < p.Line; i++ {
+		n += len(d.buf.Line(i)) + 1
+	}
+	return n + p.Col
+}
+
 // Caret is where the caret is. With a selection, it is the end that moves.
 func (d *Document) Caret() Pos { return d.caret }
 
