@@ -100,6 +100,34 @@ over real drivers. J1 (tag `conformance`) walks the sidebar to a table on
 PostgreSQL, runs Open Data, and waits for the footer's row count. For
 PostgreSQL that count can only come from rows actually fetched.
 
+## 6. Reviewing without a window server
+
+`internal/e2e`'s `TestScreenshots` drives the real shell over a SQLite
+fixture and renders its main states to PNG files, through Fyne's software
+painter and the real theme. Run it with
+`IKIGAI_SCREENSHOTS=dir go test -run TestScreenshots ./internal/e2e/`.
+It is opt-in, so the ordinary run writes nothing.
+
+Its first run found six problems, one of them a crash:
+
+- **The find bar's fields had negative widths.** The bar was laid out while
+  hidden, and showing it re-laid out only the bar, still zero wide, not the
+  container that holds it. The fields were unusable, and the software
+  painter crashed on them. It now re-lays out its parent when shown or
+  hidden, and a test checks both fields get room.
+- **The match count drew clipped** ("4" for "4 matches"), for the same
+  underlying reason: a label that grows does not make its container re-lay
+  out. The count now has a fixed width, which also keeps the buttons still.
+- **The grid showed the window through it** around and between cells; it now
+  has its own content background.
+- **Alternate-row stripes drew as grey blocks,** because a cell can tint only
+  its own width. Rows are plain until stripes can be drawn at full width
+  (T1.50).
+- **The status line read "local —"** when connected; it now says
+  "Connected".
+- **The tree used arrows** for disclosure, and now uses the chevrons the
+  design system asks for (ADR-0006).
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

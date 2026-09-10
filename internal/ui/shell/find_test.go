@@ -104,3 +104,29 @@ func TestEscapeClosesTheFindBar(t *testing.T) {
 		t.Error("Escape should close the find bar")
 	}
 }
+
+func TestTheFindBarGetsRoomWhenShown(t *testing.T) {
+	// Laid out while hidden, the bar kept a zero width, and showing it gave
+	// its fields negative widths. Found by rendering screenshots, where the
+	// software renderer crashed on them.
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	fx.s.run(cmdFindReplace)
+	if w := q.find.find.Size().Width; w < 100 {
+		t.Errorf("the find field is %v wide", w)
+	}
+	if w := q.find.with.Size().Width; w < 100 {
+		t.Errorf("the replace field is %v wide", w)
+	}
+}
+
+func TestTheMatchCountIsNotClipped(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	q.editor.Document().SetText("select 1; select 2; select 3; select 4")
+	fx.s.run(cmdFind)
+	test.Type(q.find.find, "select")
+	if got, need := q.find.status.Size().Width, q.find.status.MinSize().Width; got < need {
+		t.Errorf("%q drawn %v wide but needs %v", q.find.status.Text, got, need)
+	}
+}

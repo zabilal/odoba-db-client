@@ -5,10 +5,14 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor"
 )
+
+// statusWidth holds the longest count the bar shows, "5,000+ matches".
+const statusWidth = 120
 
 // findLimit caps how many matches are counted and outlined. Past a few
 // thousand, "5,000+ matches" says all there is to say, and outlining more
@@ -28,6 +32,11 @@ type findBar struct {
 	word    *widget.Check
 	regex   *widget.Check
 	status  *widget.Label
+	// parent holds the bar and the editor. Only it can re-divide their room
+	// when the bar appears or goes: laid out while hidden, the bar kept a
+	// zero width, and showing it gave its fields negative ones — unusable,
+	// and a crash in the software renderer.
+	parent *fyne.Container
 }
 
 // findEntry hands Return and Escape to the bar, as a find field should.
@@ -58,11 +67,16 @@ func newFindBar(s *Shell, q *queryTab) *findBar {
 	f.word = widget.NewCheck("Whole Words", func(bool) { f.refresh() })
 	f.regex = widget.NewCheck("Regular Expression", func(bool) { f.refresh() })
 	f.status.Importance = widget.LowImportance
+	f.status.Alignment = fyne.TextAlignTrailing
+	// A fixed width for the count: a label that grows does not make its
+	// container re-lay out, so "4 matches" was drawn clipped to "4" — and a
+	// width that followed the text would shift the buttons as it changed.
+	count := container.New(layout.NewGridWrapLayout(fyne.NewSize(statusWidth, f.status.MinSize().Height)), f.status)
 
 	prev := widget.NewButton("Previous", func() { f.next(true) })
 	next := widget.NewButton("Next", func() { f.next(false) })
 	done := widget.NewButton("Done", f.hide)
-	findRow := container.NewBorder(nil, nil, nil, container.NewHBox(f.status, prev, next, done), f.find)
+	findRow := container.NewBorder(nil, nil, nil, container.NewHBox(count, prev, next, done), f.find)
 	f.replace = container.NewBorder(nil, nil, nil, container.NewHBox(
 		widget.NewButton("Replace", f.replaceOne), widget.NewButton("Replace All", func() { f.replaceAll() })), f.with)
 	f.box = container.NewVBox(findRow, f.replace, container.NewHBox(f.match, f.word, f.regex), widget.NewSeparator())
@@ -100,15 +114,24 @@ func (f *findBar) show(replace bool) {
 	if from, to, sel := doc.Selection(); sel && from.Line == to.Line {
 		f.find.SetText(doc.SelectedText())
 	}
-	f.box.Refresh()
+	f.relayout()
 	if c := fyne.CurrentApp().Driver().CanvasForObject(f.find); c != nil {
 		c.Focus(f.find)
 	}
 	f.refresh()
 }
 
+func (f *findBar) relayout() {
+	if f.parent != nil {
+		f.parent.Refresh()
+		return
+	}
+	f.box.Refresh()
+}
+
 func (f *findBar) hide() {
 	f.box.Hide()
+	f.relayout()
 	f.q.editor.SetMatches(nil)
 	f.q.editor.Focus()
 }

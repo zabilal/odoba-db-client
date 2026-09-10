@@ -374,3 +374,14 @@ func TestDescribeAView(t *testing.T) {
 		t.Errorf("%#v", v)
 	}
 }
+
+func TestAnEmptyDatabaseStillShowsItsTablesFolder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.db")
+	db, _ := sql.Open("sqlite", "file:"+path)
+	db.Exec(`PRAGMA user_version = 1`) // writes the header: an SQLite file with no objects
+	db.Close()
+	roots, err := open(t, path, source.Guard{}).Root(context.Background())
+	if err != nil || len(roots) != 1 || roots[0].Label != "Tables" || roots[0].HasChildren {
+		t.Errorf("%+v, %v", roots, err)
+	}
+}

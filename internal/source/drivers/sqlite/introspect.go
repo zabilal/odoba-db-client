@@ -42,7 +42,16 @@ func (s *sqliteSource) Root(ctx context.Context) ([]model.Node, error) {
 		return model.Node{Ref: model.NewRef(model.KindFolder, "main", key), Label: label,
 			HasChildren: n > 0, Badge: &model.Badge{Text: strconv.Itoa(n), Exact: true}}
 	}
-	return []model.Node{folder(folderTables, "Tables", counts["table"]), folder(folderViews, "Views", counts["view"])}, nil
+	// Empty folders are noise, as the other drivers agree; but an empty
+	// database still shows its Tables folder, so the tree does not look broken.
+	var out []model.Node
+	if counts["table"] > 0 || counts["view"] == 0 {
+		out = append(out, folder(folderTables, "Tables", counts["table"]))
+	}
+	if counts["view"] > 0 {
+		out = append(out, folder(folderViews, "Views", counts["view"]))
+	}
+	return out, nil
 }
 
 func (s *sqliteSource) Children(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
