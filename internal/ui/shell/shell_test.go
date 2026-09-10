@@ -1,0 +1,591 @@
+package shell
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/capability"
+	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
+	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
+	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
+)
+
+// pgFake stands in for PostgreSQL: the same ID and URL schemes, so a pasted
+// postgres:// URL resolves to it, but served from memory. The real driver
+// cannot be linked here, because depguard keeps drivers out of internal/ui.
+type pgFake struct{}
+
+// otherFake has different fields, for switching engines in the form.
+type otherFake struct{}
+
+const fakeRows = 250
+
+var itemsNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "items"), Label: "items", Browsable: true}
+
+func init() {
+	source.Register(pgFake{})
+	source.Register(otherFake{})
+}
+
+func (pgFake) Describe() source.Descriptor {
+	return source.Descriptor{
+		ID: "postgres", Name: "PG Fake", Paradigm: model.ParadigmRelational, DefaultPort: 7000,
+		URLSchemes: []string{"postgres", "postgresql"},
+		Fields: []source.Field{
+			{Key: "host", Label: "Host", Kind: source.FieldText, Required: true, Default: "localhost"},
+			{Key: "port", Label: "Port", Kind: source.FieldNumber, Default: "7000"},
+			{Key: "database", Label: "Database", Kind: source.FieldText, Default: "main"},
+			{Key: "user", Label: "User", Kind: source.FieldText},
+			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true},
+			{Key: "compress", Label: "Compress", Kind: source.FieldBool, Default: "true"},
+		},
+	}
+}
+
+func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Source, error) {
+	if cfg.Host == "down" {
+		return nil, &source.ConnectError{Kind: source.ConnectUnreachable,
+			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
+	}
+	return fakeSource{uncounted: cfg.Host == "nocount"}, nil
+}
+
+func (otherFake) Describe() source.Descriptor {
+	return source.Descriptor{
+		ID: "otherfake", Name: "Other Fake", Paradigm: model.ParadigmRelational,
+		Fields: []source.Field{
+			{Key: "host", Label: "Host", Kind: source.FieldText, Required: true},
+			{Key: "path", Label: "File", Kind: source.FieldFile, Required: true},
+		},
+	}
+}
+
+func (otherFake) Open(context.Context, source.ConnectionConfig) (source.Source, error) {
+	return fakeSource{}, nil
+}
+
+// fakeSource serves one database holding one table of fakeRows rows.
+type fakeSource struct{ uncounted bool }
+
+func (fakeSource) Root(context.Context) ([]model.Node, error) {
+	return []model.Node{{Ref: model.NewRef(model.KindDatabase, "main"), Label: "main", HasChildren: true}}, nil
+}
+
+func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
+	if ref.Kind == model.KindDatabase {
+		return []model.Node{itemsNode}, nil
+	}
+	return nil, nil
+}
+
+func (f fakeSource) Capabilities() capability.Capabilities {
+	return capability.Capabilities{Paradigm: model.ParadigmRelational, Data: capability.Data{ExactCount: !f.uncounted}}
+}
+func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
+	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
+}
+func (fakeSource) Ping(context.Context) error { return nil }
+func (fakeSource) Close() error               { return nil }
+func (fakeSource) Describe(context.Context, model.ObjectRef) (any, error) {
+	return nil, nil
+}
+func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
+	return model.Badge{}, false, nil
+}
+func (fakeSource) Count(context.Context, model.ObjectRef, source.BrowseOptions) (int64, error) {
+	return fakeRows, nil
+}
+func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+	end := int64(fakeRows)
+	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
+		end = opt.Offset + opt.Limit
+	}
+	return &sliceStream{next: opt.Offset, end: end}, nil
+}
+
+type sliceStream struct{ next, end int64 }
+
+func (*sliceStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{{Name: "id"}, {Name: "name"}}
+}
+func (s *sliceStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	i := s.next
+	s.next++
+	return model.Row{i, fmt.Sprintf("item %d", i)}, nil
+}
+func (*sliceStream) Close() error { return nil }
+
+type fixture struct {
+	s            *Shell
+	q            *uithread.Queue
+	conns        *app.Connections
+	ws           *app.Workspace
+	settings     *store.SettingsFile
+	settingsPath string
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	a := test.NewTempApp(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	sf, _, err := store.OpenSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
+	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
+	q := &uithread.Queue{}
+	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, Run: q.Run, GOOS: "darwin"})
+	t.Cleanup(s.shutdown)
+	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path}
+}
+
+func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {
+	t.Helper()
+	c, err := fx.conns.Create(store.SavedConnection{Name: host, Driver: "postgres", Host: host}, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func (fx *fixture) onlyTab(t *testing.T) *tab {
+	t.Helper()
+	if len(fx.s.open) != 1 {
+		t.Fatalf("%d tabs open, want 1", len(fx.s.open))
+	}
+	return fx.s.open[0]
+}
+
+// pump runs queued UI work, as the UI goroutine would, until cond holds.
+func pump(t *testing.T, q *uithread.Queue, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition never held")
+		}
+		if q.Flush() == 0 {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+}
+
+func findButton(o fyne.CanvasObject, text string) *widget.Button {
+	switch v := o.(type) {
+	case *widget.Button:
+		if v.Text == text {
+			return v
+		}
+	case *fyne.Container:
+		for _, c := range v.Objects {
+			if b := findButton(c, text); b != nil {
+				return b
+			}
+		}
+	}
+	return nil
+}
+
+func labelText(o fyne.CanvasObject) string {
+	switch v := o.(type) {
+	case *widget.Label:
+		return v.Text
+	case *fyne.Container:
+		var parts []string
+		for _, c := range v.Objects {
+			if s := labelText(c); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+func TestEveryShortcutIsOnTheMenuBar(t *testing.T) {
+	fx := newFixture(t)
+	seen := map[string]string{}
+	for _, c := range fx.s.reg.All() {
+		if c.Shortcut.IsZero() {
+			continue
+		}
+		it, ok := fx.s.menuItems[c.ID]
+		if !ok {
+			t.Errorf("%s has a shortcut but no menu item, so it would not work while a text field has focus", c.ID)
+			continue
+		}
+		name := it.Shortcut.ShortcutName()
+		if other, dup := seen[name]; dup {
+			t.Errorf("%s and %s share %s", c.ID, other, c.Shortcut.Label("darwin"))
+		}
+		seen[name] = c.ID
+	}
+	if len(seen) == 0 {
+		t.Fatal("no shortcuts registered")
+	}
+}
+
+func TestDisabledMenuItemsDoNothingEvenWhenTriggered(t *testing.T) {
+	fx := newFixture(t)
+	// Fyne's shortcut matching calls a menu item's Action whatever Disabled
+	// says, so the action itself must refuse. The real commands' Run bodies are
+	// defensive enough to hide the difference; a probe that always has an
+	// effect does not.
+	ran := false
+	fx.s.reg.MustRegister(commands.Command{ID: "test.probe", Title: "Probe",
+		Enabled: func() bool { return false }, Run: func() { ran = true }})
+	fx.s.menuItemsFor([]menuEntry{item("test.probe")})[0].Action()
+	if ran {
+		t.Fatal("a disabled command ran from its menu item")
+	}
+
+	it := fx.s.menuItems[cmdTabClose]
+	if !it.Disabled {
+		t.Error("Close Tab should be disabled with no tabs open")
+	}
+
+	c := fx.create(t, "db1", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	if it.Disabled {
+		t.Error("Close Tab should be enabled once a tab is open")
+	}
+	it.Action()
+	if len(fx.s.open) != 0 {
+		t.Error("Close Tab did not close the tab")
+	}
+}
+
+func TestOpenObjectShowsRowsAndCount(t *testing.T) {
+	fx := newFixture(t)
+	if !fx.s.empty.Visible() || fx.s.tabs.Visible() {
+		t.Fatal("a new window should show the empty state")
+	}
+	c := fx.create(t, "db1", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	if fx.s.empty.Visible() || !fx.s.tabs.Visible() {
+		t.Error("opening a tab should replace the empty state")
+	}
+	tb := fx.onlyTab(t)
+	if tb.item.Text != "items" {
+		t.Errorf("tab title %q", tb.item.Text)
+	}
+	pump(t, fx.q, func() bool { return tb.footer.Text == "250 rows" })
+
+	tb.grid.Prefetch(0, 100)
+	pump(t, fx.q, func() bool { return tb.model.Resident(99) })
+	row, loaded := tb.model.Row(context.Background(), 3)
+	if !loaded || len(row) != 2 || row[1] != "item 3" {
+		t.Errorf("row 3 = %v (loaded %v)", row, loaded)
+	}
+	fx.s.win.Canvas().Capture() // renders the grid inside the shell
+	fx.q.Flush()
+
+	if got := fx.s.status.Text; !strings.HasPrefix(got, "db1 — ") || strings.Contains(got, "not connected") {
+		t.Errorf("status %q should describe the connection in focus", got)
+	}
+}
+
+func TestOpeningAnOpenObjectSelectsItsTab(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	other := itemsNode
+	other.Ref, other.Label = model.NewRef(model.KindTable, "main", "other"), "other"
+
+	fx.s.OpenObject(c.ID, itemsNode)
+	fx.s.OpenObject(c.ID, other)
+	fx.s.OpenObject(c.ID, itemsNode)
+	if len(fx.s.open) != 2 {
+		t.Fatalf("%d tabs, want 2", len(fx.s.open))
+	}
+	if fx.s.tabs.Selected() != fx.s.open[0].item {
+		t.Error("reopening should bring the existing tab forward")
+	}
+	fx.s.run(cmdTabNext)
+	if fx.s.tabs.Selected() != fx.s.open[1].item {
+		t.Error("Show Next Tab did not move on")
+	}
+}
+
+func TestClosingATabCancelsItsLoading(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	tb := fx.onlyTab(t)
+	fx.s.closeTab(tb.item)
+	if tb.ctx.Err() == nil {
+		t.Error("closing must cancel the tab's work")
+	}
+	if !fx.s.empty.Visible() {
+		t.Error("closing the last tab should bring back the empty state")
+	}
+	time.Sleep(20 * time.Millisecond)
+	fx.q.Flush()
+	if tb.grid != nil {
+		t.Error("a result arriving after the tab closed built a grid anyway")
+	}
+}
+
+func TestUnreachableServerIsExplainedInTheTab(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "down", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	tb := fx.onlyTab(t)
+	pump(t, fx.q, func() bool { return strings.Contains(labelText(tb.body), "could not be reached") })
+}
+
+func TestMissingPasswordOffersToEditTheConnection(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", map[string]string{"password": "pw"})
+	if err := fx.conns.Vault().Delete(c.ID, "password"); err != nil {
+		t.Fatal(err)
+	}
+	fx.s.OpenObject(c.ID, itemsNode)
+	tb := fx.onlyTab(t)
+	var btn *widget.Button
+	pump(t, fx.q, func() bool { btn = findButton(tb.body, "Edit Connection…"); return btn != nil })
+	test.Tap(btn)
+	if fx.s.win.Canvas().Overlays().Top() == nil {
+		t.Error("the button should open the connection form")
+	}
+}
+
+func TestDeletingAConnectionClosesItsTabsAndSession(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	pump(t, fx.q, func() bool { _, open := fx.ws.Get(c.ID); return open })
+	fx.s.deleteConnection(c.ID)
+	if len(fx.s.open) != 0 || len(fx.conns.List()) != 0 {
+		t.Errorf("tabs %d, connections %d; want none", len(fx.s.open), len(fx.conns.List()))
+	}
+	if _, open := fx.ws.Get(c.ID); open {
+		t.Error("the session outlived its connection")
+	}
+}
+
+func TestNewConnectionKeepsThePasswordOutOfTheSettingsFile(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.driver.SetSelected("PG Fake")
+	test.Type(f.inputs["host"].entry, "db1")
+	test.Type(f.inputs["user"].entry, "ann")
+	test.Type(f.inputs["password"].entry, "s3cret")
+	test.Tap(f.saveBtn)
+
+	list := fx.conns.List()
+	if len(list) != 1 {
+		t.Fatalf("%d connections saved, want 1 (form says %q)", len(list), f.result.Text)
+	}
+	c := list[0]
+	if c.Host != "db1" || c.Port != 7000 || c.Database != "main" || c.User != "ann" ||
+		c.Name != "db1/main" || c.Params["compress"] != "true" {
+		t.Errorf("saved %+v; blank fields should take the driver's defaults", c)
+	}
+	if pw, err := fx.conns.Vault().Get(c.ID, "password"); err != nil || pw != "s3cret" {
+		t.Errorf("keychain has %q, %v", pw, err)
+	}
+	raw, err := os.ReadFile(fx.settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("s3cret")) {
+		t.Fatal("the password reached the settings file")
+	}
+	if fx.s.win.Canvas().Overlays().Top() != nil {
+		t.Error("the form should close after saving")
+	}
+}
+
+func TestFormRefusesABadPortAndKeepsTheInput(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.driver.SetSelected("PG Fake")
+	test.Type(f.inputs["port"].entry, "70000")
+	test.Tap(f.saveBtn)
+	if len(fx.conns.List()) != 0 {
+		t.Fatal("saved a connection with an impossible port")
+	}
+	if !strings.Contains(f.result.Text, "1 to 65535") || f.result.Importance != widget.DangerImportance {
+		t.Errorf("message %q (importance %v)", f.result.Text, f.result.Importance)
+	}
+	if f.inputs["port"].entry.Text != "70000" {
+		t.Error("the form must keep what was typed so it can be corrected")
+	}
+}
+
+func TestEditingWithABlankPasswordKeepsTheSavedOne(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", map[string]string{"password": "old"})
+	f := fx.s.showConnectionForm(c.ID)
+	if f.inputs["password"].entry.Text != "" {
+		t.Error("a saved password must never be read back into the form")
+	}
+	var hint string
+	for _, it := range f.form.Items {
+		if it.Text == "Password" {
+			hint = it.HintText
+		}
+	}
+	if !strings.Contains(hint, "Leave blank") {
+		t.Errorf("password hint %q should say a blank keeps the saved one", hint)
+	}
+	f.inputs["user"].entry.SetText("bob")
+	test.Tap(f.saveBtn)
+	got, _ := fx.conns.Get(c.ID)
+	if got.User != "bob" {
+		t.Errorf("user %q, want bob (form says %q)", got.User, f.result.Text)
+	}
+	if pw, _ := fx.conns.Vault().Get(c.ID, "password"); pw != "old" {
+		t.Errorf("saved password became %q", pw)
+	}
+}
+
+func TestPastedURLFillsTheFormAndClearsItself(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.url.SetText("postgres://ann:pw@db.example.com:6543/sales?application_name=ikigai")
+	f.applyURL(f.url.Text)
+
+	for key, want := range map[string]string{
+		"host": "db.example.com", "port": "6543", "database": "sales", "user": "ann", "password": "pw",
+	} {
+		if got := f.inputs[key].entry.Text; got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if f.driver.Selected != "PG Fake" {
+		t.Errorf("driver %q", f.driver.Selected)
+	}
+	if f.url.Text != "" {
+		t.Error("the URL field still shows a password in clear text")
+	}
+	test.Tap(f.saveBtn)
+	list := fx.conns.List()
+	if len(list) != 1 || list[0].Params["application_name"] != "ikigai" {
+		t.Fatalf("saved %+v; parameters the form has no field for must survive", list)
+	}
+	if pw, _ := fx.conns.Vault().Get(list[0].ID, "password"); pw != "pw" {
+		t.Errorf("password from the URL was not saved: %q", pw)
+	}
+}
+
+func TestSwitchingEngineKeepsSharedFields(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.driver.SetSelected("PG Fake")
+	test.Type(f.inputs["host"].entry, "db1")
+	f.driver.SetSelected("Other Fake")
+	if _, ok := f.inputs["port"]; ok {
+		t.Error("Other Fake has no port field")
+	}
+	if f.inputs["path"] == nil || f.inputs["host"].entry.Text != "db1" {
+		t.Error("the host should carry over and the file field appear")
+	}
+	// Name, Type, URL; host, file; encryption, environment, read-only, message.
+	if n := len(f.form.Items); n != 9 {
+		t.Errorf("%d form rows, want 9", n)
+	}
+}
+
+func TestTestConnectionReportsWithoutSaving(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.driver.SetSelected("PG Fake")
+	test.Type(f.inputs["host"].entry, "db1")
+	test.Tap(f.testBtn)
+	pump(t, fx.q, func() bool { return strings.HasPrefix(f.result.Text, "Connected to FakeSQL 1.0") })
+	if len(fx.conns.List()) != 0 {
+		t.Error("testing a connection saved it")
+	}
+
+	f.inputs["host"].entry.SetText("down")
+	test.Tap(f.testBtn)
+	pump(t, fx.q, func() bool { return f.result.Importance == widget.DangerImportance })
+	if !strings.Contains(f.result.Text, "could not be reached") {
+		t.Errorf("failure message %q", f.result.Text)
+	}
+}
+
+func TestAppearanceChoiceIsCheckedAndRemembered(t *testing.T) {
+	fx := newFixture(t)
+	if !fx.s.menuItems[cmdAppearSystem].Checked {
+		t.Error("a new install follows the system")
+	}
+	fx.s.run(cmdAppearDark)
+	if !fx.s.menuItems[cmdAppearDark].Checked || fx.s.menuItems[cmdAppearSystem].Checked {
+		t.Error("the menu should tick the chosen appearance, and only it")
+	}
+	if got := appearanceNamed(fx.settings.Get().Appearance); got != uitheme.AppearanceDark {
+		t.Errorf("the next launch would start as %v", got)
+	}
+}
+
+func TestToggleSidebar(t *testing.T) {
+	fx := newFixture(t)
+	fx.s.run(cmdSidebar)
+	if fx.s.sidebar.Visible() {
+		t.Error("sidebar still visible")
+	}
+	fx.s.run(cmdSidebar)
+	if !fx.s.sidebar.Visible() {
+		t.Error("sidebar did not come back")
+	}
+}
+
+func TestRowCountWording(t *testing.T) {
+	for _, c := range []struct {
+		n     int64
+		known bool
+		want  string
+	}{
+		{0, true, "0 rows"}, {1, true, "1 row"}, {999, true, "999 rows"},
+		{1000, true, "1,000 rows"}, {1234567, true, "1,234,567 rows"},
+		{-1, true, "Row count unknown"}, {5, false, "Row count unknown"},
+	} {
+		if got := rowCount(c.n, c.known); got != c.want {
+			t.Errorf("rowCount(%d, %v) = %q, want %q", c.n, c.known, got, c.want)
+		}
+	}
+}
+
+func TestUncountedTableLoadsAndFindsItsEnd(t *testing.T) {
+	// PostgreSQL reports no exact count, because counting is a full scan. The
+	// tab must still load rows by itself, with nobody calling Prefetch.
+	fx := newFixture(t)
+	c := fx.create(t, "nocount", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	tb := fx.onlyTab(t)
+	want := "250 rows"
+	if grid.PageSize < fakeRows {
+		want = group(grid.PageSize) + "+ rows"
+	}
+	pump(t, fx.q, func() bool {
+		fx.s.win.Canvas().Capture() // drawing the placeholders is what fetches
+		return tb.footer.Text == want
+	})
+	if !tb.model.Resident(0) {
+		t.Error("footer updated but no rows are resident")
+	}
+}

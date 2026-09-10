@@ -21,16 +21,16 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    Core complete: PostgreSQL driver (ADR-0008), local store (ADR-0009),
-           connection management (ADR-0010). Everything below the UI exists.
-NEXT TASK: The UI, wired to internal/app: T1.1 shell → T1.41 explorer → T1.47
-           grid → T1.57 editor. Built headless-testable through Fyne's test
-           driver; visual review needs an attended run.
-[~] tasks: the core half is done; the UI half is still to build.
-OWNER:     unchanged — G0-1 interactive run; push to a remote so CI runs.
-LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K palette,
-           explorer tree model, shared-connection workspace, grid browse adapter.
-           folders, test connection, health monitor, connection-string parsing.
+STATUS:    The app runs: window, sidebar explorer, data tabs, menus and ⌘K from one
+           command registry, connection form, appearance (ADR-0011). J1's browse
+           path runs end to end on real PostgreSQL (internal/e2e, tag conformance).
+NEXT TASK: T1.57 query editor stage 1 (widget over the W2 lexer) → T1.69 CSV/JSON
+           export → T1.35–T1.38 MySQL/MariaDB and SQLite drivers.
+[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
+OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
+           interactive run, and a push to a remote so CI runs.
+LAST DONE: 2026-09-10 — the shell and main wiring; fixed tables without a row count
+           (all of PostgreSQL) opening empty, because the grid never fetched.
 ```
 
 **Phase 0 findings so far**
@@ -58,6 +58,9 @@ LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K
 
 **Phase 1 findings so far**
 
+- **ADR-0011** — the shell. UI work goes through an injected Runner (Fyne's test
+  driver runs `fyne.Do` inline). Shortcuts live only on menu items, because a focused
+  Entry swallows canvas shortcuts. Found by the J1 test: uncounted tables opened empty.
 - **pgx's default cancel destroys the whole connection.** It stops the query by
   tearing down the backend, taking the user's temp tables, SETs and open
   transaction with it. The driver sends a CancelRequest that keeps the session
@@ -205,18 +208,18 @@ LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K
 
 ## 1.A Application shell
 
-- [ ] **T1.1** App entry, window lifecycle, single-instance handling
-- [ ] **T1.2** Native menu bar → FR-15.5
+- [~] **T1.1** App entry, window lifecycle, single-instance handling — *window, lifecycle, startup wiring done; single-instance open*
+- [x] **T1.2** Native menu bar → FR-15.5 — *built from the command registry; native on macOS (ADR-0011)*
 - [ ] **T1.3** Native file dialogs + notifications → FR-15.5
-- [ ] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2
+- [~] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, and reuse an open object's tab; reorder and pin open*
 - [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
-- [~] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
-- [~] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
-- [ ] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11
+- [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
+- [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
+- [~] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; customisable bindings open*
 - [ ] **T1.9** Searchable shortcut reference sheet → FR-15.4
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
-- [ ] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7
-- [ ] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3
+- [~] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; copyable error sheet open*
+- [~] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; accent choice open*
 - [ ] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6
 - [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3
 - [ ] **T1.15** Autosave scratch buffers → NFR-R2
@@ -234,7 +237,7 @@ LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K
 ## 1.C Connection management
 
 - [x] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
-- [~] **T1.24** Per-source connection forms with defaults → FR-1.2
+- [x] **T1.24** Per-source connection forms with defaults → FR-1.2 — *descriptor-driven form, URL paste, test, keychain hints*
 - [x] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
 - [~] **T1.26** Test connection with precise error classification → FR-1.4
 - [~] **T1.27** Connection folders/groups with colour and icon → FR-1.6
@@ -257,10 +260,10 @@ LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K
 
 ## 1.E Object explorer
 
-- [~] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
+- [x] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
 - [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
 - [ ] **T1.43** Fuzzy filter matching on full path → FR-2.3
-- [ ] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4
+- [~] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *open data and refresh via menu and ⌘K; context menu, structure, script-as open*
 - [ ] **T1.45** Lazy cancellable row-count/size badges → FR-2.5
 - [ ] **T1.46** Pinned/favourite objects → FR-2.6
 
