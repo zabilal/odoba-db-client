@@ -25,7 +25,10 @@ internal/source         data-source abstraction, pooling, streaming
 internal/model          canonical model (relational · document · kv · stream)
 internal/diff           schema comparison & sync-script synthesis
 internal/transfer       import/export pipelines (streaming)
-internal/store          settings, history, keychain, session state
+internal/store          paths and the settings file (JSON, atomic, never clobbered)
+  secrets/              OS keychain; no file fallback, ever
+  localdb/              SQLite: history (redacted, searchable), saved queries, session state
+internal/logging        slog JSON, redacted at the handler, rotated by size
 internal/redact         secret removal for logs and errors
 internal/sqllex         SQL tokeniser shared by the editor and the drivers
 ```
