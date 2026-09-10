@@ -533,8 +533,11 @@ Binding design constraints, not sentiment.
    across every tab derived from them.
 9. **One accent colour.** Colour carries meaning (environment, diff state, error), never decoration.
 10. **Zero configuration to first query.** No settings need touching before J1 completes.
-11. **Native feel.** Real menu bar, real dialogs, OS theme, platform-correct shortcuts (⌘ vs Ctrl)
-    and window behaviour.
+11. **Native feel — specifically macOS.** The application follows Apple's Human Interface
+    Guidelines ([ADR-0006](docs/adr/0006-macos-design-system.md)): Apple's system colours used
+    verbatim, macOS's label and background hierarchies, 13pt body text, 6pt control radii, depth
+    through surface tone rather than Material elevation shadows. Real menu bar, real dialogs,
+    platform-correct shortcuts (⌘ vs Ctrl) and window behaviour.
 
 **A pure-Go-specific constraint, added in v0.2:**
 
@@ -543,6 +546,16 @@ Binding design constraints, not sentiment.
     set, corner radii — is a **Phase 0 deliverable**, not a polish task deferred to the end.
     Retrofitting visual identity onto a built application is where this kind of project usually
     fails aesthetically.
+
+13. **Where HIG and accessibility conflict, accessibility wins — and the deviation is recorded.**
+    Several of Apple's neutrals fall below WCAG AA (`secondaryLabelColor` is 3.55:1 on white;
+    `systemBlue` is 4.02:1 as body text). NFR-A2 commits us to AA, so those values are tuned while
+    keeping HIG's hue and hierarchy, and each departure is marked `HIG-DEVIATION` in the tokens.
+
+14. **Colour is never the only channel.** Environment tagging marks `dev` green and `production`
+    red — the exact axis of the most common colour vision deficiency. Every such treatment carries
+    a text label as a second channel. A safety signal that fails for one in twelve men is not a
+    safety signal.
 
 ---
 
