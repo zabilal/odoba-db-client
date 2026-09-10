@@ -21,18 +21,31 @@
 
 ```
 PHASE:     0 — Foundations & Spikes
-STATUS:    0.A tooling and 0.B core contracts COMPLETE. 0.C theme next, then the spikes.
-NEXT TASK: T0.31 (design tokens) — or jump to T0.38 (grid spike) if you want RISK-1
-           answered before investing in the theme. Recommend the theme first: the
-           grid spike needs tokens to render anything representative.
-BLOCKED:   T0.8  — fyne package proof needs the Fyne dependency added (Phase 0.C)
-           T0.10 — CI bench job exists but there are no benchmarks to run yet
-OPEN:      OQ-8 — prototype the raster grid fallback (T0.43) alongside T0.39, or
-           only on failure? Recommended: alongside.
-LAST DONE: 2026-09-10 — core contracts landed. 344→27 tasks closed.
-           Module path placeholder: github.com/ikigai-db/ikigai-db (OQ-1 pending;
-           change with a single `go mod edit -module`).
+STATUS:    0.A tooling, 0.B core contracts, 0.C theme COMPLETE. Spikes next.
+NEXT TASK: T0.38 (seed a 10M-row Postgres table) → the W1 grid spike, RISK-1.
+           Recommend running T0.43 (raster fallback) in parallel per OQ-8.
+BLOCKED:   T0.10 — CI bench job exists but there is nothing to benchmark until
+           the W1 spike produces a grid. Closes with G0-1.
+OPEN:      OQ-8 — still assumed "yes, in parallel". Confirm or overrule.
+LAST DONE: 2026-09-10 — macOS design system landed. 36 tasks closed.
 ```
+
+**Phase 0 findings so far**
+
+- **ADR-0005** — T0.29 changed the driver contract. `Browser` is required, `Queryer`/
+  `Dialect` optional, `StreamConsumer` removed. Proven by compilation in
+  `internal/source/contract_kafka_test.go`. REQ-DRV-2/3 updated.
+- **ADR-0006** — design system is macOS HIG (owner decision, replacing a generic
+  neutral palette). Apple's system colours are pinned by test. Where HIG falls below
+  WCAG AA — `secondaryLabelColor` 3.55:1, `systemBlue` 4.02:1 as text — AA wins and
+  the deviation is marked `HIG-DEVIATION` in tokens.go.
+- **T0.8 closed**: `fyne package` produces a working 16MB arm64 `.app` on macOS, well
+  inside the 60MB budget (NFR-P8). RISK-10 partially retired — Linux/Windows still
+  unproven, and CI has never run (no remote).
+- Coverage: `model` 87.8%, `redact` 78.1%, `ui/theme` 82.7%.
+- Two bugs caught by tests rather than review: the `redact` bearer-token ordering
+  leak, and three palette roles that were never contrast-checked.
+
 
 **Phase 0 findings so far**
 
@@ -64,7 +77,7 @@ LAST DONE: 2026-09-10 — core contracts landed. 344→27 tasks closed.
 - [x] **T0.5** `golangci-lint` config; enable `depguard`
 - [x] **T0.6** **depguard rule: no `fyne.io/**` import below `internal/app`** → ARCH-1 *(the single most important structural guard)*
 - [x] **T0.7** CI: native runners for macOS (arm64+amd64), Linux (amd64+arm64), Windows (amd64) → NFR-D3, RISK-10
-- [!] **T0.8** CI: prove `fyne package` works on all three platforms **now**, not at Phase 4 → RISK-10
+- [x] **T0.8** CI: prove `fyne package` works on all three platforms **now**, not at Phase 4 → RISK-10
 - [x] **T0.9** CI: testcontainers matrix — postgres, mysql, mariadb, mongo, redis, cassandra, kafka+schema-registry → NFR-Q1
 - [~] **T0.10** Benchmark harness + CI budget assertions that fail the build on regression → NFR-Q3
 - [x] **T0.11** `docs/adr/` decision-record folder; ADR-0001 records the Fyne decision and its rationale
@@ -93,13 +106,13 @@ LAST DONE: 2026-09-10 — core contracts landed. 344→27 tasks closed.
 
 ## 0.C Theme — Phase 0 deliverable, not end-stage polish
 
-- [ ] **T0.31** Design tokens: palette (light + dark), typography scale, spacing scale, corner radii → UX-12
-- [ ] **T0.32** Implement custom `fyne.Theme` → RISK-6
-- [ ] **T0.33** Icon set (object classes, actions, source types)
-- [ ] **T0.34** Environment colour treatment (local/dev/staging/production) → FR-1.7, UX-8
-- [ ] **T0.35** Semantic colours: diff states, NULL, error, changeset add/modify/delete → UX-7, UX-9
-- [ ] **T0.36** Theme gallery harness app for visual review of every token
-- [ ] **T0.37** WCAG 2.1 AA contrast check on both themes → NFR-A2
+- [x] **T0.31** Design tokens: palette (light + dark), typography scale, spacing scale, corner radii → UX-12
+- [x] **T0.32** Implement custom `fyne.Theme` → RISK-6
+- [x] **T0.33** Icon set (object classes, actions, source types)
+- [x] **T0.34** Environment colour treatment (local/dev/staging/production) → FR-1.7, UX-8
+- [x] **T0.35** Semantic colours: diff states, NULL, error, changeset add/modify/delete → UX-7, UX-9
+- [x] **T0.36** Theme gallery harness app for visual review of every token
+- [x] **T0.37** WCAG 2.1 AA contrast check on both themes → NFR-A2
 
 ## 0.D SPIKE W1 — Data grid → RISK-1 *(existential)*
 

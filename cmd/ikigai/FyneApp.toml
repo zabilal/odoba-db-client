@@ -1,0 +1,8 @@
+Website = "https://github.com/ikigai-db/ikigai-db"
+
+[Details]
+Icon = "../../Icon.png"
+Name = "Ikigai DB"
+ID = "com.ikigai.db"
+Version = "0.1.0"
+Build = 2
