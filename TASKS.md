@@ -220,7 +220,7 @@ LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on 
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
 - [~] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; copyable error sheet open*
 - [~] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; accent choice open*
-- [ ] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6
+- [x] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6 — *uithread.Runner: UI work goes through an injected runner, tests drain a queue (ADR-0011)*
 - [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3
 - [ ] **T1.15** Autosave scratch buffers → NFR-R2
 - [ ] **T1.16** Per-connection panic isolation and recovery → NFR-R1
@@ -239,11 +239,11 @@ LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on 
 - [x] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
 - [x] **T1.24** Per-source connection forms with defaults → FR-1.2 — *descriptor-driven form, URL paste, test, keychain hints*
 - [x] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
-- [~] **T1.26** Test connection with precise error classification → FR-1.4
+- [x] **T1.26** Test connection with precise error classification → FR-1.4 — *every driver classifies connect failures (auth, no database, refused, unreachable, TLS) with a hint the form shows*
 - [~] **T1.27** Connection folders/groups with colour and icon → FR-1.6
 - [~] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8
-- [~] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4
-- [~] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3
+- [x] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4 — *twice on every engine: guard classification, and the server or file opened read-only (ADR-0014, ADR-0015)*
+- [x] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3 — *internal/source/tlsconf, shared by the network drivers; verify-full by default*
 - [~] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
 
 ## 1.D Drivers — relational core
@@ -269,7 +269,7 @@ LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on 
 
 ## 1.F Data grid — read path (productionise W1)
 
-- [~] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11
+- [x] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11 — *paged LRU model with MaxResidentPages; tables without a count grow as they are read (ADR-0011)*
 - [ ] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2
 - [ ] **T1.49** Server-side multi-column sort → FR-3.3
 - [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7
@@ -305,8 +305,8 @@ LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on 
 ## 1.I Quality
 
 - [ ] **T1.73** Benchmarks asserting NFR-P1…P6 in CI → NFR-Q3
-- [ ] **T1.74** E2E test: **J1** (zero to first result)
-- [ ] **T1.75** E2E test: **J3** (write and iterate on a query)
+- [x] **T1.74** E2E test: **J1** (zero to first result) — *internal/e2e: J1 on PostgreSQL, MySQL, MariaDB and SQLite*
+- [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
 
 ### ✅ Phase 1 exit: J1 and J3 complete end to end on all three platforms
