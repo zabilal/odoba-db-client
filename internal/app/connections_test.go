@@ -275,3 +275,22 @@ func TestSessionOnlyVaultAsksAgainAfterRestart(t *testing.T) {
 	}
 	live.Close()
 }
+
+func TestSavedConnectionWithoutPasswordOpens(t *testing.T) {
+	// Trust or peer authentication: no password exists. The driver still asks
+	// for one, and "none saved" must mean empty, not a keychain failure. Every
+	// earlier test saved a password, which is how this was missed.
+	f := setup(t)
+	conn, err := f.c.Create(draft("Local"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := f.c.Open(context.Background(), conn.ID, fast)
+	if err != nil {
+		t.Fatalf("a connection with no password failed to open: %v", err)
+	}
+	live.Close()
+	if lastPassword.Load() != "" {
+		t.Errorf("driver received %q, want an empty password", lastPassword.Load())
+	}
+}
