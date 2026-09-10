@@ -17,3 +17,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0010](0010-connection-management.md) | Connection management | Accepted |
 | [0011](0011-shell-and-ui-threads.md) | The shell, where UI work runs, and tables without a row count | Accepted |
 | [0012](0012-running-queries.md) | Running queries | Accepted |
+| [0013](0013-export.md) | Export | Accepted |
