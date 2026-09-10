@@ -2,6 +2,7 @@ package sqlscript
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
@@ -51,4 +52,38 @@ func TestOffsetsAreCharactersAndCommentsAreDropped(t *testing.T) {
 	if len(stmts) != 2 || stmts[1].Text != "SELECT 2" || stmts[1].Offset != len([]rune("SELECT 'é';\n-- only a comment;\n")) {
 		t.Errorf("%+v", stmts)
 	}
+}
+
+func TestDelimiterDirectivesKeepRoutineBodiesWhole(t *testing.T) {
+	script := "CREATE TABLE t (a INT);\nDELIMITER $$\nCREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT '$$';\nEND $$\nDELIMITER ;\nCALL p();"
+	got := SplitDelimited(sqllex.MySQL, script)
+	var texts []string
+	for _, s := range got {
+		texts = append(texts, s.Text)
+	}
+	want := []string{"CREATE TABLE t (a INT)", "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT '$$';\nEND", "CALL p()"}
+	if !reflect.DeepEqual(texts, want) {
+		t.Fatalf("%q", texts)
+	}
+	if !strings.HasPrefix(script[runeToByte(script, got[1].Offset):], "CREATE PROCEDURE") ||
+		!strings.HasPrefix(script[runeToByte(script, got[2].Offset):], "CALL") {
+		t.Errorf("offsets %d, %d do not point at their statements", got[1].Offset, got[2].Offset)
+	}
+}
+
+func TestADelimiterLineInsideACommentIsText(t *testing.T) {
+	got := SplitDelimited(sqllex.MySQL, "/* note:\nDELIMITER $$\n*/ SELECT 1; SELECT 2")
+	if len(got) != 2 {
+		t.Errorf("%+v", got)
+	}
+}
+
+func runeToByte(s string, runes int) int {
+	for i := range s {
+		if runes == 0 {
+			return i
+		}
+		runes--
+	}
+	return len(s)
 }
