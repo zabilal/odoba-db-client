@@ -18,3 +18,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0011](0011-shell-and-ui-threads.md) | The shell, where UI work runs, and tables without a row count | Accepted |
 | [0012](0012-running-queries.md) | Running queries | Accepted |
 | [0013](0013-export.md) | Export | Accepted |
+| [0014](0014-sqlite-driver.md) | The SQLite driver | Accepted |
