@@ -35,6 +35,10 @@ const (
 	cmdQuerySaveAs  = "query.saveAs"
 	cmdOpenSaved    = "query.openSaved"
 	cmdExport       = "data.export"
+	cmdFind         = "edit.find"
+	cmdFindReplace  = "edit.findReplace"
+	cmdFindNext     = "edit.findNext"
+	cmdFindPrev     = "edit.findPrevious"
 	cmdAppearSystem = "appearance.system"
 	cmdAppearLight  = "appearance.light"
 	cmdAppearDark   = "appearance.dark"
@@ -74,6 +78,9 @@ var menuBar = []struct {
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
 		item(cmdExport), separator,
 		item(cmdTabClose),
+	}},
+	{"Edit", []menuEntry{
+		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev),
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,

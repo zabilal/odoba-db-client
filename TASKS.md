@@ -21,16 +21,16 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    J1 and J3 run end to end on real PostgreSQL (internal/e2e, tag
-           conformance). Phase 1 is not done: MySQL/MariaDB and SQLite drivers,
-           export, and find/replace in the editor remain.
-NEXT TASK: T1.60 find/replace (model, then the find bar in query tabs) →
-           T1.35–T1.38 SQLite (modernc, already a dependency) and MySQL/MariaDB drivers.
+STATUS:    J1 and J3 run end to end on real PostgreSQL. The query editor has
+           find/replace; export streams CSV, TSV, JSON, NDJSON. Phase 1 still
+           needs the MySQL/MariaDB and SQLite drivers.
+NEXT TASK: T1.35–T1.38 drivers: SQLite first (modernc, already a dependency,
+           file-based, so conformance needs no server), then MySQL/MariaDB
+           (go-sql-driver/mysql v1.10.1).
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — the export UI: Export… (⇧⌘E), format sheet, save dialog,
-           progress with a working Cancel (T1.71–T1.72).
+LAST DONE: 2026-09-10 — find and replace in the query editor (T1.60).
 ```
 
 **Phase 0 findings so far**
@@ -285,7 +285,7 @@ LAST DONE: 2026-09-10 — the export UI: Export… (⇧⌘E), format sheet, save
 - [x] **T1.57** Editor widget: caret, selection, scroll, undo/redo — *virtualised drawing, caret, selection, scroll-follow, undo/redo, clipboard, platform chords; headless-tested, not yet seen in a real window*
 - [~] **T1.58** Per-dialect syntax highlighting → FR-5.1 — *SQL dialects drawn in palette colours; MongoDB shell and Redis syntaxes come with those drivers*
 - [x] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11 — *line numbers, current-line highlight, bracket pairs outside strings and comments, auto-indent*
-- [ ] **T1.60** Find/replace with regex → FR-5.11
+- [x] **T1.60** Find/replace with regex → FR-5.11 — *find bar in query tabs: literal or regex, case, whole words, "3 of 12", matches outlined, replace one or all in one undo; ⌘F ⌥⌘F ⌘G ⇧⌘G*
 - [x] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3 — *⌘↵ runs the selection or the statement at the caret; ⇧⌘↵ runs the script (ADR-0012)*
 - [x] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4 — *a result tab per result set, plus Messages*
 - [x] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9 — *Stop (⌘.) cancels the script and its streaming results; the session survives (ADR-0008)*
