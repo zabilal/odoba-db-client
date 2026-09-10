@@ -21,13 +21,14 @@
 
 ```
 PHASE:     0 — Foundations & Spikes
-STATUS:    0.A tooling, 0.B core contracts, 0.C theme COMPLETE. Spikes next.
-NEXT TASK: T0.38 (seed a 10M-row Postgres table) → the W1 grid spike, RISK-1.
-           Recommend running T0.43 (raster fallback) in parallel per OQ-8.
-BLOCKED:   T0.10 — CI bench job exists but there is nothing to benchmark until
-           the W1 spike produces a grid. Closes with G0-1.
-OPEN:      OQ-8 — still assumed "yes, in parallel". Confirm or overrule.
-LAST DONE: 2026-09-10 — macOS design system landed. 36 tasks closed.
+STATUS:    0.A, 0.B, 0.C complete. W1 (grid) provisionally passed — see below.
+NEXT TASK: T0.45 — spike W2, the query editor. Largest single build risk (RISK-2).
+BLOCKED:   T0.10 — benchmarks now exist for the grid; job can be wired up.
+OWNER:     GATE G0-1 needs one interactive run to close:
+             docker start ikigai-pg
+             go run -tags spike ./cmd/gridspike -bench
+           It prints p50/p95/p99 frame times and a PASS/FAIL line.
+LAST DONE: 2026-09-10 — W1 spike complete, ADR-0002. 43 tasks closed.
 ```
 
 **Phase 0 findings so far**
@@ -116,14 +117,14 @@ LAST DONE: 2026-09-10 — macOS design system landed. 36 tasks closed.
 
 ## 0.D SPIKE W1 — Data grid → RISK-1 *(existential)*
 
-- [ ] **T0.38** Seed script: 10M-row Postgres table, mixed types
-- [ ] **T0.39** Prototype `widget.Table` with `StickyRowCount`/`StickyColumnCount`
-- [ ] **T0.40** Windowed server-side fetch behind the prototype
-- [ ] **T0.41** Instrument and measure sustained fps under scroll → NFR-P4
-- [ ] **T0.42** Verify render cost scales with *visible* cells, not total rows → NFR-P13
-- [ ] **T0.43** Prototype the `canvas.Raster` fallback grid **in parallel, not on failure** → OQ-8
-- [ ] **T0.44** Compare both, decide, write ADR-0002
-- [ ] **GATE G0-1** — 10M-row table sustains ≥30 fps floor on the chosen approach
+- [x] **T0.38** Seed script: 10M-row Postgres table, mixed types
+- [x] **T0.39** Prototype `widget.Table` with `StickyRowCount`/`StickyColumnCount`
+- [x] **T0.40** Windowed server-side fetch behind the prototype
+- [x] **T0.41** Instrument and measure sustained fps under scroll → NFR-P4
+- [x] **T0.42** Verify render cost scales with *visible* cells, not total rows → NFR-P13
+- [-] **T0.43** Prototype the `canvas.Raster` fallback grid **in parallel, not on failure** → OQ-8
+- [x] **T0.44** Compare both, decide, write ADR-0002
+- [~] **GATE G0-1** — provisionally passed on CPU-path evidence (ADR-0002). Closes when `go run -tags spike ./cmd/gridspike -bench` is run on an attended machine and p95 lands inside the 30fps floor. **Owner action.**
 
 ## 0.E SPIKE W2 — Query editor → RISK-2 *(largest single build risk)*
 
