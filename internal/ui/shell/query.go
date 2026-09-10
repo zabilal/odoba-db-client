@@ -45,6 +45,8 @@ type queryTab struct {
 	saved localdb.SavedQuery
 	title string // the tab's name, before any unsaved-edits mark
 	dirty bool   // edited since opened or last saved
+
+	find *findBar
 }
 
 // OpenQuery opens a query tab on a connection. Typing can start at once; the
@@ -67,7 +69,8 @@ func (s *Shell) OpenQuery(connID string) *tab {
 	t := &tab{key: fmt.Sprintf("query:%d", s.queries), connID: connID, ctx: ctx, cancel: cancel,
 		footer: widget.NewLabel("Connecting…"), query: q}
 	t.footer.Importance = widget.LowImportance
-	split := container.NewVSplit(q.editor, q.results)
+	q.find = newFindBar(s, q)
+	split := container.NewVSplit(container.NewBorder(q.find.box, nil, nil, nil, q.editor), q.results)
 	split.Offset = 0.55
 	t.body = container.NewStack(split)
 	q.title = fmt.Sprintf("Query %d", s.queries)
@@ -76,6 +79,9 @@ func (s *Shell) OpenQuery(connID string) *tab {
 		if !q.dirty {
 			q.dirty = true
 			s.retitle(t)
+		}
+		if q.find.visible() {
+			q.find.refresh() // the matches moved with the text
 		}
 	}
 	s.open = append(s.open, t)

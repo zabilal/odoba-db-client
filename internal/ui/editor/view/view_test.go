@@ -259,3 +259,25 @@ func TestMarkErrorUnderlinesUntilTheNextEdit(t *testing.T) {
 		t.Error("the mark outlived an edit that may have moved what it pointed at")
 	}
 }
+
+func TestMatchesAreOutlinedUntilTheTextChanges(t *testing.T) {
+	e, _ := setup(t, "a b a")
+	ms, _ := e.Document().FindAll(editor.Search{Text: "a"}, 0)
+	e.SetMatches(ms)
+	outlined := func() int {
+		n := 0
+		for _, o := range surfaceObjects(t, e) {
+			if r, ok := o.(*canvas.Rectangle); ok && r.StrokeColor == uitheme.Light.ControlAccent {
+				n++
+			}
+		}
+		return n
+	}
+	if n := outlined(); n != 2 {
+		t.Fatalf("%d matches outlined, want 2", n)
+	}
+	test.Type(e.surface, "x")
+	if outlined() != 0 {
+		t.Error("outlines outlived an edit that moved what they marked")
+	}
+}

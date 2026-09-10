@@ -12,6 +12,7 @@ import (
 	"image/color"
 	"math"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -46,7 +47,21 @@ type Editor struct {
 	OnChanged func()
 
 	mark *errorMark
+
+	matches    []editor.Match // outlined search matches, sorted
+	matchesRev uint64         // the revision they were found at
 }
+
+// SetMatches outlines search matches until the text next changes; the find
+// bar finds them again then. Nil clears them.
+func (e *Editor) SetMatches(ms []editor.Match) {
+	e.matches, e.matchesRev = ms, e.doc.Revision()
+	e.redraw()
+}
+
+// Reveal scrolls the caret into view, after a change made to the document
+// directly rather than through the editor's own input.
+func (e *Editor) Reveal() { e.surface.changed() }
 
 // errorMark underlines the word a server rejected, until the text changes.
 type errorMark struct {
@@ -498,6 +513,7 @@ type surfaceRenderer struct {
 	caret    *canvas.Rectangle
 	errLine  *canvas.Rectangle
 	brackets [2]*canvas.Rectangle
+	found    []*canvas.Rectangle
 	sel      []*canvas.Rectangle
 	texts    []*canvas.Text
 	objects  []fyne.CanvasObject
@@ -574,6 +590,29 @@ func (r *surfaceRenderer) draw() {
 			rect.FillColor = pal.RangeSelection
 			rect.Move(at(c0, l))
 			rect.Resize(fyne.NewSize(float32(c1-c0)*m.cw, m.lh))
+			objs = append(objs, rect)
+		}
+	}
+
+	// Search matches: outlined, so text over them keeps the contrast it was
+	// checked at. The current match is the selection.
+	if e.matches != nil && e.matchesRev == doc.Revision() {
+		n := 0
+		i := sort.Search(len(e.matches), func(i int) bool { return e.matches[i].From.Line >= first })
+		for ; i < len(e.matches) && e.matches[i].From.Line <= last; i++ {
+			mt := e.matches[i]
+			c0, c1 := doc.Column(mt.From), doc.Column(mt.To)
+			if mt.To.Line != mt.From.Line {
+				c1 = doc.Column(editor.Pos{Line: mt.From.Line, Col: len(buf.Line(mt.From.Line))}) + 1
+			}
+			if n == len(r.found) {
+				r.found = append(r.found, canvas.NewRectangle(color.Transparent))
+			}
+			rect := r.found[n]
+			n++
+			rect.FillColor, rect.StrokeColor, rect.StrokeWidth = color.Transparent, pal.ControlAccent, 1
+			rect.Move(at(c0, mt.From.Line))
+			rect.Resize(fyne.NewSize(float32(max(c1-c0, 1))*m.cw, m.lh))
 			objs = append(objs, rect)
 		}
 	}
