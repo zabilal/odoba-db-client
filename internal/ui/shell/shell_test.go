@@ -21,6 +21,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -146,11 +147,18 @@ type fixture struct {
 	ws           *app.Workspace
 	settings     *store.SettingsFile
 	settingsPath string
+	hist         *localdb.DB
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	a := test.NewTempApp(t)
+	// Opened first so it closes last: history writes finish in the background.
+	hist, err := localdb.Open(context.Background(), filepath.Join(t.TempDir(), "ikigai.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { hist.Close() })
 	path := filepath.Join(t.TempDir(), "settings.json")
 	sf, _, err := store.OpenSettings(path)
 	if err != nil {
@@ -159,9 +167,9 @@ func newFixture(t *testing.T) *fixture {
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
-	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, Run: q.Run, GOOS: "darwin"})
+	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Run: q.Run, GOOS: "darwin"})
 	t.Cleanup(s.shutdown)
-	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path}
+	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist}
 }
 
 func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {

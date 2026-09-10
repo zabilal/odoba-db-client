@@ -24,14 +24,13 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    The app runs: sidebar explorer, data tabs, query tabs (editor, ⌘↵,
            results, Stop), menus and ⌘K from one registry, connection form.
            J1 runs end to end on real PostgreSQL (internal/e2e, tag conformance).
-NEXT TASK: T1.66 history: open localdb in main, record each statement, a
-           searchable History panel → T1.67 saved queries → T1.68 error
-           positions → a J3 end-to-end test.
+NEXT TASK: T1.67 saved queries (localdb.SaveQuery exists) → T1.68 error positions
+           in the editor → a J3 end-to-end test on real PostgreSQL.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — query tabs over pinned sessions (ADR-0012); fixed results
-           that stopped streaming when their script finished.
+LAST DONE: 2026-09-10 — query history: recorded from app.QuerySession, opened by
+           main, searched and reopened from ⇧⌘H (T1.66).
 ```
 
 **Phase 0 findings so far**
@@ -292,7 +291,7 @@ LAST DONE: 2026-09-10 — query tabs over pinned sessions (ADR-0012); fixed resu
 - [x] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9 — *Stop (⌘.) cancels the script and its streaming results; the session survives (ADR-0008)*
 - [x] **T1.64** Timing, rows affected, server messages pane → FR-5.6 — *per-statement timing and rows affected, a run summary, server messages*
 - [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
-- [~] **T1.66** Persistent searchable query history → FR-5.8
+- [x] **T1.66** Persistent searchable query history → FR-5.8 — *every statement recorded, redacted, with its outcome and row count; ⇧⌘H searches as you type and reopens it*
 - [~] **T1.67** Saved queries with folders → FR-5.9
 - [~] **T1.68** Map server errors back to editor position → FR-5.10
 

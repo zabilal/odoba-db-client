@@ -21,20 +21,6 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
-// lexers maps a driver to the dialect its editor highlights with. A driver
-// not listed gets PostgreSQL's, the nearest to standard SQL of those there are.
-var lexers = map[string]*sqllex.Dialect{
-	"postgres": sqllex.PostgreSQL, "mysql": sqllex.MySQL, "mariadb": sqllex.MySQL,
-	"sqlite": sqllex.SQLite, "sqlserver": sqllex.SQLServer, "cassandra": sqllex.CQL,
-}
-
-func lexerFor(driver string) *sqllex.Dialect {
-	if d, ok := lexers[driver]; ok {
-		return d
-	}
-	return sqllex.PostgreSQL
-}
-
 // queryTab is what a query tab has beyond any tab (T1.61–T1.64): an editor
 // above its results.
 type queryTab struct {
@@ -53,16 +39,16 @@ type queryTab struct {
 }
 
 // OpenQuery opens a query tab on a connection. Typing can start at once; the
-// session connects in the background.
-func (s *Shell) OpenQuery(connID string) {
-	c, ok := s.d.Conns.Get(connID)
-	if !ok {
-		return
+// session connects in the background, and the editor takes the source's
+// dialect once it has.
+func (s *Shell) OpenQuery(connID string) *tab {
+	if _, ok := s.d.Conns.Get(connID); !ok {
+		return nil
 	}
 	s.queries++
 	ctx, cancel := context.WithCancel(s.ctx)
 	q := &queryTab{
-		editor:   view.New(editor.NewDocument("", lexerFor(c.Driver)), s.colours()),
+		editor:   view.New(editor.NewDocument("", sqllex.DialectFor("")), s.colours()),
 		messages: widget.NewLabel(""),
 	}
 	q.messages.Wrapping = fyne.TextWrapWord
@@ -83,7 +69,7 @@ func (s *Shell) OpenQuery(connID string) {
 	s.sync()
 
 	go func() {
-		qs, err := s.querySession(ctx, connID)
+		qs, lang, err := s.querySession(ctx, connID)
 		s.d.Run(func() {
 			if ctx.Err() != nil {
 				if qs != nil {
@@ -97,18 +83,25 @@ func (s *Shell) OpenQuery(connID string) {
 				return
 			}
 			q.session = qs
+			q.editor.Document().Highlighter().SetDialect(sqllex.DialectFor(lang))
+			q.editor.Refresh()
 			t.footer.SetText("Ready")
 			s.sync()
 		})
 	}()
+	return t
 }
 
-func (s *Shell) querySession(ctx context.Context, connID string) (*app.QuerySession, error) {
+// querySession connects a query tab. lang is the source's query language, for
+// the editor's highlighting (capability.Query.Language).
+func (s *Shell) querySession(ctx context.Context, connID string) (*app.QuerySession, string, error) {
 	live, err := s.d.WS.Connect(ctx, connID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return app.NewQuerySession(ctx, live)
+	c, _ := s.d.Conns.Get(connID)
+	qs, err := app.NewQuerySession(ctx, live, app.QueryOptions{History: s.d.History, Database: c.Database})
+	return qs, live.Source.Capabilities().Query.Language, err
 }
 
 func (s *Shell) activeQuery() (*tab, *queryTab) {

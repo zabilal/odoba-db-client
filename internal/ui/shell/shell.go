@@ -43,6 +43,8 @@ type Deps struct {
 	Settings *store.SettingsFile
 	Theme    *uitheme.Theme
 	Log      *slog.Logger
+	// History records what is run and finds it again. Nil turns history off.
+	History app.HistoryStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -228,6 +230,9 @@ func (s *Shell) registerCommands() {
 			Shortcut: sc("Return", commands.ModShortcut|commands.ModShift), Enabled: s.canRun, Run: func() { s.runQuery(true) }},
 		{ID: cmdQueryStop, Category: "Query", Title: "Stop", Keywords: []string{"cancel", "abort"},
 			Shortcut: sc(".", commands.ModShortcut), Enabled: s.running, Run: s.stopQuery},
+		{ID: cmdHistory, Category: "Query", Title: "Query History…", Keywords: []string{"recent", "past", "find", "search"},
+			Shortcut: sc("H", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.History != nil },
+			Run: func() { s.showHistory() }},
 		{ID: cmdAppearSystem, Category: "Appearance", Title: "Follow System", Keywords: []string{"theme", "auto"},
 			Run: func() { s.setAppearance(uitheme.AppearanceSystem) }},
 		{ID: cmdAppearLight, Category: "Appearance", Title: "Light", Keywords: []string{"theme"},
