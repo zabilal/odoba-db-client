@@ -72,7 +72,23 @@ type fakeSession struct {
 }
 
 func (fs *fakeSession) Handle() string { return "1" }
-func (fs *fakeSession) Close() error   { fs.closed.Store(true); return nil }
+func (fs *fakeSession) Close() error {
+	fs.closed.Store(true)
+	logClose("session")
+	return nil
+}
+
+// closeLog records the order sessions and sources close in.
+var closeLog struct {
+	sync.Mutex
+	events []string
+}
+
+func logClose(what string) {
+	closeLog.Lock()
+	closeLog.events = append(closeLog.events, what)
+	closeLog.Unlock()
+}
 func (fs *fakeSession) Query(context.Context, source.Statement) (*source.Result, error) {
 	return nil, fmt.Errorf("not in this test")
 }
@@ -334,5 +350,32 @@ func TestAServerErrorPointsAtItsToken(t *testing.T) {
 	}
 	if !strings.Contains(q.messages.Text, "failed at line 2, column 11") {
 		t.Errorf("messages %q", q.messages.Text)
+	}
+}
+
+func TestQuittingClosesQuerySessionsBeforeTheirConnections(t *testing.T) {
+	// A pool will not close while a pinned session holds one of its
+	// connections. PostgreSQL's pool waited forever, so quitting with a
+	// query tab open hung. The fake has no pool, so the order is the test.
+	fx := newFixture(t)
+	openQuery(t, fx, "")
+	closeLog.Lock()
+	closeLog.events = nil
+	closeLog.Unlock()
+	fx.s.shutdown()
+	closeLog.Lock()
+	events := append([]string(nil), closeLog.events...)
+	closeLog.Unlock()
+	session, source := -1, -1
+	for i, e := range events {
+		if e == "session" && session < 0 {
+			session = i
+		}
+		if e == "source" && source < 0 {
+			source = i
+		}
+	}
+	if session < 0 || source < 0 || session > source {
+		t.Errorf("close order %v; the session must close before its connection", events)
 	}
 }

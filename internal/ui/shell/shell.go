@@ -605,6 +605,7 @@ func (s *Shell) deleteConnection(id string) {
 // disconnect closes a connection and every tab using it, and collapses its
 // tree node so that nothing reconnects until the user expands it again.
 func (s *Shell) disconnect(id string) {
+	s.closeSessions(func(t *tab) bool { return t.connID == id }) // before the pool: see shutdown
 	s.closeTabsOf(id)
 	if _, open := s.d.WS.Get(id); open {
 		if err := s.d.WS.Disconnect(id); err != nil {
@@ -676,10 +677,38 @@ func (s *Shell) recolour() {
 	}
 }
 
+// shutdownWait bounds how long quitting waits for connections to close. The
+// window has already gone, and a server that has vanished can hold a close
+// for its whole timeout: better to exit than to hang.
+const shutdownWait = 3 * time.Second
+
 func (s *Shell) shutdown() {
 	s.cancel()
-	if err := s.d.WS.CloseAll(); err != nil {
-		s.d.Log.Warn("closing connections", "err", err)
+	// Query sessions first. Each holds a pooled connection, and a pool will
+	// not close while any are out: closing connections first hung quitting
+	// whenever a query tab was open (found by the J3 journey test).
+	s.closeSessions(func(*tab) bool { return true })
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := s.d.WS.CloseAll(); err != nil {
+			s.d.Log.Warn("closing connections", "err", err)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(shutdownWait):
+		s.d.Log.Warn("connections still closing at exit")
+	}
+}
+
+// closeSessions closes the query sessions of the tabs that match,
+// synchronously, so that the pools they draw from can close after.
+func (s *Shell) closeSessions(match func(*tab) bool) {
+	for _, t := range s.open {
+		if q := t.query; q != nil && q.session != nil && match(t) {
+			q.session.Close()
+		}
 	}
 }
 

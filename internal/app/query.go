@@ -216,12 +216,22 @@ func byteOffset(s string, chars int) int {
 	return len(s)
 }
 
-// Close ends the session and releases every result.
+// Close ends the session and releases every result. Closing twice is
+// harmless, and must be: closing a tab and quitting can both reach it, and
+// releasing a pooled connection twice is not.
 func (qs *QuerySession) Close() error {
-	qs.closeResults()
 	qs.mu.Lock()
+	if qs.closed {
+		qs.mu.Unlock()
+		return nil
+	}
 	qs.closed = true
+	old := qs.results
+	qs.results = nil
 	qs.mu.Unlock()
+	for _, rs := range old {
+		rs.Close()
+	}
 	if qs.session != nil {
 		return qs.session.Close()
 	}

@@ -119,6 +119,7 @@ func TestJ1BrowseATable(t *testing.T) {
 	q := &uithread.Queue{}
 	s := shell.New(a, shell.Deps{Conns: conns, WS: ws, Run: q.Run})
 	w := s.Window()
+	t.Cleanup(w.Close) // quit as a user does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
 
 	// Walk the sidebar the way a user expands it: connection, database,
