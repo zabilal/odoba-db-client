@@ -62,6 +62,7 @@ func (s *Shell) OpenQuery(connID string) *tab {
 	}
 	q.messages.Wrapping = fyne.TextWrapWord
 	q.results = container.NewAppTabs(container.NewTabItem("Messages", container.NewVScroll(q.messages)))
+	q.results.OnSelected = func(*container.TabItem) { s.sync() } // Export follows the result on show
 
 	t := &tab{key: fmt.Sprintf("query:%d", s.queries), connID: connID, ctx: ctx, cancel: cancel,
 		footer: widget.NewLabel("Connecting…"), query: q}

@@ -34,6 +34,7 @@ const (
 	cmdQuerySave    = "query.save"
 	cmdQuerySaveAs  = "query.saveAs"
 	cmdOpenSaved    = "query.openSaved"
+	cmdExport       = "data.export"
 	cmdAppearSystem = "appearance.system"
 	cmdAppearLight  = "appearance.light"
 	cmdAppearDark   = "appearance.dark"
@@ -71,6 +72,7 @@ var menuBar = []struct {
 	{"File", []menuEntry{
 		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
+		item(cmdExport), separator,
 		item(cmdTabClose),
 	}},
 	{"View", []menuEntry{

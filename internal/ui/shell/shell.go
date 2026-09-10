@@ -94,6 +94,7 @@ type tab struct {
 	cancel context.CancelFunc
 	model  *grid.Model // nil until the object opens
 	grid   *grid.TableGrid
+	browse *app.BrowseSource
 	query  *queryTab // set only on query tabs
 }
 
@@ -246,6 +247,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdOpenSaved, Category: "Query", Title: "Open Saved Query…", Keywords: []string{"saved", "library", "load"},
 			Shortcut: sc("O", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.Saved != nil },
 			Run: func() { s.showSaved() }},
+		{ID: cmdExport, Category: "Data", Title: "Export…", Keywords: []string{"csv", "json", "ndjson", "tsv", "save", "download"},
+			Shortcut: sc("E", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.exportSource() != nil },
+			Run: s.showExport},
 		{ID: cmdAppearSystem, Category: "Appearance", Title: "Follow System", Keywords: []string{"theme", "auto"},
 			Run: func() { s.setAppearance(uitheme.AppearanceSystem) }},
 		{ID: cmdAppearLight, Category: "Appearance", Title: "Light", Keywords: []string{"theme"},
@@ -408,7 +412,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	m.OnError = func(err error) {
 		s.d.Run(func() { t.footer.SetText("Could not load rows: " + err.Error()) })
 	}
-	t.model, t.grid = m, g
+	t.model, t.grid, t.browse = m, g, bs
 	t.body.Objects = []fyne.CanvasObject{g.Table}
 	t.body.Refresh()
 	s.count(t)

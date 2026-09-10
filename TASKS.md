@@ -24,14 +24,13 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    J1 and J3 run end to end on real PostgreSQL (internal/e2e, tag
            conformance). Phase 1 is not done: MySQL/MariaDB and SQLite drivers,
            export, and find/replace in the editor remain.
-NEXT TASK: the export UI (T1.71–T1.72): Export… (⇧⌘E) from a data or result tab,
-           format sheet, save dialog, progress with rows/s, ETA and Cancel →
-           T1.60 find/replace → T1.35–T1.38 MySQL/MariaDB and SQLite drivers.
+NEXT TASK: T1.60 find/replace (model, then the find bar in query tabs) →
+           T1.35–T1.38 SQLite (modernc, already a dependency) and MySQL/MariaDB drivers.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — streaming export engine and the rows it reads (T1.69–T1.70,
-           ADR-0013).
+LAST DONE: 2026-09-10 — the export UI: Export… (⇧⌘E), format sheet, save dialog,
+           progress with a working Cancel (T1.71–T1.72).
 ```
 
 **Phase 0 findings so far**
@@ -301,7 +300,7 @@ LAST DONE: 2026-09-10 — streaming export engine and the rows it reads (T1.69�
 - [x] **T1.69** Streaming export engine (memory flat) → FR-10.3, NFR-P11 — *export.Copy streams a RowStream; 2M rows stay under 16 MB of heap (ADR-0013)*
 - [x] **T1.70** CSV, TSV, JSON, NDJSON writers → FR-10.1 — *CSV, TSV, JSON, NDJSON; exact decimals, NaN as text, bytes hex/base64, times by column type*
 - [~] **T1.71** Export scope: selection / filtered result / whole table → FR-10.2 — *whole table or filtered browse, and query results, stream page by page; selection needs grid selection (FR-3.7)*
-- [ ] **T1.72** Progress, rows/sec, ETA, working cancel → FR-10.7
+- [x] **T1.72** Progress, rows/sec, ETA, working cancel → FR-10.7 — *progress sheet with rows, rows/s, a bar and time left when the total is known; Cancel (or closing the tab) stops and removes the partial file*
 
 ## 1.I Quality
 
