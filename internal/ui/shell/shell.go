@@ -96,7 +96,11 @@ type tab struct {
 	model  *grid.Model // nil until the object opens
 	grid   *grid.TableGrid
 	browse *app.BrowseSource
-	query  *queryTab // set only on query tabs
+	// sortSeq numbers sort requests, so only the latest is applied; applied
+	// is the sort the rows are in, for putting the header back on failure.
+	sortSeq int
+	applied []grid.SortKey
+	query   *queryTab // set only on query tabs
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -430,10 +434,46 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		s.d.Run(func() { t.footer.SetText("Could not load rows: " + err.Error()) })
 	}
 	t.model, t.grid, t.browse = m, g, bs
+	g.Sortable = bs.CanSort()
+	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
 	s.sync()
+}
+
+// resort browses the tab's object in a new order. The server sorts: the grid
+// holds only a window of the rows, so sorting what is loaded would sort a
+// fragment (FR-3.3). A quick second click supersedes the first.
+func (s *Shell) resort(t *tab, keys []grid.SortKey) {
+	cols := t.model.Columns()
+	opt := t.browse.Options()
+	opt.Sorts = nil
+	for _, k := range keys {
+		if k.Column >= 0 && k.Column < len(cols) {
+			opt.Sorts = append(opt.Sorts, source.Sort{Column: cols[k.Column].Name, Descending: k.Descending})
+		}
+	}
+	t.sortSeq++
+	seq, prev, bs := t.sortSeq, t.applied, t.browse
+	t.footer.SetText("Sorting…")
+	go func() {
+		next, err := bs.With(t.ctx, opt)
+		s.d.Run(func() {
+			if t.ctx.Err() != nil || seq != t.sortSeq {
+				return
+			}
+			if err != nil {
+				t.grid.SetSorts(prev)
+				t.footer.SetText("Could not sort: " + err.Error())
+				return
+			}
+			t.browse, t.applied = next, keys
+			t.model.SetFetcher(next)
+			t.grid.ScheduleRefresh()
+			s.count(t)
+		})
+	}()
 }
 
 // count fetches the row count in the background. Rows show before it

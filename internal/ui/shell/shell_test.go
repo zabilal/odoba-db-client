@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,7 +115,8 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 }
 
 func (f fakeSource) Capabilities() capability.Capabilities {
-	return capability.Capabilities{Paradigm: model.ParadigmRelational, Data: capability.Data{ExactCount: !f.uncounted}}
+	return capability.Capabilities{Paradigm: model.ParadigmRelational,
+		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true}}
 }
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
@@ -130,7 +132,17 @@ func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, er
 func (fakeSource) Count(context.Context, model.ObjectRef, source.BrowseOptions) (int64, error) {
 	return fakeRows, nil
 }
+
+// browses records every Browse, for tests that check what was asked for.
+var browses struct {
+	sync.Mutex
+	opts []source.BrowseOptions
+}
+
 func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+	browses.Lock()
+	browses.opts = append(browses.opts, opt)
+	browses.Unlock()
 	end := int64(fakeRows)
 	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
 		end = opt.Offset + opt.Limit
@@ -642,4 +654,36 @@ func TestAFileDatabaseHasNoEncryptionSetting(t *testing.T) {
 	if len(list) != 1 || list[0].TLS.Mode != "" || list[0].Database != "/data/app.db" {
 		t.Errorf("saved %+v", list)
 	}
+}
+
+func TestSortingAColumnBrowsesAgainOnTheServer(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	tb := fx.onlyTab(t)
+	pump(t, fx.q, func() bool { return tb.browse != nil })
+	if !tb.grid.Sortable {
+		t.Fatal("a table the server can sort should have sortable headers")
+	}
+	tb.grid.ToggleSort(1, false)
+	pump(t, fx.q, func() bool { return len(tb.browse.Options().Sorts) == 1 })
+	if got := tb.browse.Options().Sorts[0]; got.Column != "name" || got.Descending {
+		t.Errorf("sort %+v, want name ascending", got)
+	}
+	browses.Lock()
+	browses.opts = nil
+	browses.Unlock()
+	tb.grid.Prefetch(0, 10)
+	pump(t, fx.q, func() bool {
+		browses.Lock()
+		defer browses.Unlock()
+		for _, o := range browses.opts {
+			if o.Limit > 1 && len(o.Sorts) == 1 && o.Sorts[0].Column == "name" {
+				return true
+			}
+		}
+		return false
+	})
+	tb.grid.ToggleSort(1, false)
+	pump(t, fx.q, func() bool { s := tb.browse.Options().Sorts; return len(s) == 1 && s[0].Descending })
 }
