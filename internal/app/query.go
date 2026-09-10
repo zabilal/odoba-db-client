@@ -95,6 +95,17 @@ type StatementResult struct {
 	Err       error
 }
 
+// ErrorOffset is where in the script a failed statement's error points, as a
+// byte offset, when the server said (FR-5.10). Servers give a 1-based
+// character position within the statement.
+func (r StatementResult) ErrorOffset() (int, bool) {
+	var se *source.StatementError
+	if !errors.As(r.Err, &se) || se.Message.Position <= 0 {
+		return 0, false
+	}
+	return r.Offset + byteOffset(r.Statement, se.Message.Position-1), true
+}
+
 // Run executes a script, delivering each statement's result as it completes;
 // the channel closes when the script ends. It first closes the previous run's
 // results: a session holds one open result at a time.

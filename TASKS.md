@@ -24,13 +24,13 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    The app runs: sidebar explorer, data tabs, query tabs (editor, ⌘↵,
            results, Stop), menus and ⌘K from one registry, connection form.
            J1 runs end to end on real PostgreSQL (internal/e2e, tag conformance).
-NEXT TASK: T1.67 saved queries (localdb.SaveQuery exists) → T1.68 error positions
-           in the editor → a J3 end-to-end test on real PostgreSQL.
+NEXT TASK: T1.67 saved queries (⌘S, ⇧⌘O; localdb.SaveQuery exists) → a J3
+           end-to-end test on real PostgreSQL.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — query history: recorded from app.QuerySession, opened by
-           main, searched and reopened from ⇧⌘H (T1.66).
+LAST DONE: 2026-09-10 — server error positions in the editor (T1.68); conformance
+           now refuses a query language the lexer does not know.
 ```
 
 **Phase 0 findings so far**
@@ -293,7 +293,7 @@ LAST DONE: 2026-09-10 — query history: recorded from app.QuerySession, opened 
 - [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
 - [x] **T1.66** Persistent searchable query history → FR-5.8 — *every statement recorded, redacted, with its outcome and row count; ⇧⌘H searches as you type and reopens it*
 - [~] **T1.67** Saved queries with folders → FR-5.9
-- [~] **T1.68** Map server errors back to editor position → FR-5.10
+- [x] **T1.68** Map server errors back to editor position → FR-5.10 — *the rejected token is underlined and the caret moved to it; the message gives line and column; skipped if the text changed during the run*
 
 ## 1.H Export
 

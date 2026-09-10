@@ -36,6 +36,9 @@ type queryTab struct {
 	// until Stop, the next run or closing the tab (ADR-0012).
 	executing bool
 	run       context.CancelFunc
+	// runRev is the document's revision when the latest run began. Error
+	// positions map onto the text only if it has not changed since.
+	runRev uint64
 }
 
 // OpenQuery opens a query tab on a connection. Typing can start at once; the
@@ -180,6 +183,7 @@ func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
 	}
 	ctx, cancel := context.WithCancel(t.ctx)
 	q.run, q.executing = cancel, true
+	q.runRev = q.editor.Document().Revision()
 	s.clearResults(q)
 	t.footer.SetText("Running…")
 	s.sync()
@@ -203,7 +207,7 @@ func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
 			failed = failed || r.Err != nil
 			s.d.Run(func() {
 				if t.ctx.Err() == nil {
-					s.showResult(t, r)
+					s.showResult(t, r, base)
 				}
 			})
 		}
@@ -248,11 +252,20 @@ func (s *Shell) runRefused(t *tab, script string, base int, err error) {
 	}
 }
 
-func (s *Shell) showResult(t *tab, r app.StatementResult) {
+// showResult shows one statement's outcome. base is where the script that
+// ran starts in the editor's text, for pointing at an error (FR-5.10).
+func (s *Shell) showResult(t *tab, r app.StatementResult, base int) {
 	q, n := t.query, r.Index+1
 	switch {
 	case r.Err != nil:
-		s.note(q, fmt.Sprintf("Statement %d failed: %v", n, r.Err))
+		msg := fmt.Sprintf("Statement %d failed: %v", n, r.Err)
+		doc := q.editor.Document()
+		if off, ok := r.ErrorOffset(); ok && doc.Revision() == q.runRev {
+			p := doc.PosAt(base + off)
+			msg = fmt.Sprintf("Statement %d failed at line %d, column %d: %v", n, p.Line+1, doc.Column(p)+1, r.Err)
+			q.editor.MarkError(p)
+		}
+		s.note(q, msg)
 		q.results.SelectIndex(0)
 	case r.Rows != nil:
 		s.addResult(t, n, r.Rows)

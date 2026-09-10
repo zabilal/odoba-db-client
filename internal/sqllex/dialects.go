@@ -139,6 +139,16 @@ var dialects = map[string]*Dialect{
 	"cassandra":   CQL,
 }
 
+// Known reports whether a language name resolves to a dialect of its own
+// rather than DialectFor's PostgreSQL fallback. The conformance suite checks
+// every driver's capability.Query.Language against it: a misspelt name would
+// otherwise highlight, and redact history, by the wrong rules without any
+// sign of it.
+func Known(language string) bool {
+	_, ok := dialects[strings.ToLower(language)]
+	return ok
+}
+
 // DialectFor resolves a language name to a dialect, falling back to PostgreSQL.
 //
 // Falling back rather than failing is deliberate: an unknown dialect should

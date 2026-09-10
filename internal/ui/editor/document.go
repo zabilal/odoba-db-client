@@ -111,6 +111,18 @@ func (d *Document) Offset(p Pos) int {
 	return n + p.Col
 }
 
+// PosAt is the position of a byte offset into Text(): the inverse of Offset.
+func (d *Document) PosAt(offset int) Pos {
+	for line := 0; line < d.buf.LineCount(); line++ {
+		n := len(d.buf.Line(line))
+		if offset <= n {
+			return d.clamp(Pos{line, max(offset, 0)})
+		}
+		offset -= n + 1
+	}
+	return d.end()
+}
+
 // Caret is where the caret is. With a selection, it is the end that moves.
 func (d *Document) Caret() Pos { return d.caret }
 
@@ -155,11 +167,17 @@ func (d *Document) SelectAll() {
 // SelectWord selects what a double-click at p selects: the word there, a run
 // of spaces, or a single punctuation character.
 func (d *Document) SelectWord(p Pos) {
+	d.anchor, d.caret = d.WordAt(p)
+	d.goal = -1
+	d.sealed = true
+}
+
+// WordAt is the range SelectWord would select at p, within p's line.
+func (d *Document) WordAt(p Pos) (from, to Pos) {
 	p = d.clamp(p)
 	l := d.buf.Line(p.Line)
 	if l == "" {
-		d.SetCaret(p, false)
-		return
+		return p, p
 	}
 	at := p.Col
 	if at == len(l) {
@@ -184,9 +202,7 @@ func (d *Document) SelectWord(p Pos) {
 			end += n
 		}
 	}
-	d.anchor, d.caret = Pos{p.Line, start}, Pos{p.Line, end}
-	d.goal = -1
-	d.sealed = true
+	return Pos{p.Line, start}, Pos{p.Line, end}
 }
 
 // Move moves the caret. With extend it drags the selection along; without,
