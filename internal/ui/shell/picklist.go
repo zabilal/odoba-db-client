@@ -8,18 +8,22 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
 // picklistLimit is how many of a column's values a picklist offers: the
 // most frequent, when there are more.
 var picklistLimit = 1000
+
+// closedPoll is how often a running count checks that its list is still
+// open. See load.
+var closedPoll = 250 * time.Millisecond
 
 // pick is a column's filter chosen from its picklist. The values are typed
 // as the source listed them, so they filter exactly the rows they were
@@ -32,13 +36,14 @@ type pick struct {
 }
 
 // picklist is a column's values with their counts, to filter the column by
-// ticking them (FR-3.4, ADR-0016).
+// ticking them (FR-3.4, ADR-0016). It is a popover, not a dialog, so the data
+// stays in view (UX principle 4).
 type picklist struct {
 	s      *Shell
 	t      *tab
 	col    int
 	column model.ColumnDef
-	search *widget.Entry
+	search *pickEntry
 	list   *widget.List
 	status *widget.Label
 	apply  *widget.Button
@@ -50,7 +55,31 @@ type picklist struct {
 	loaded bool
 	ctx    context.Context
 	cancel context.CancelFunc
-	dlg    *dialog.CustomDialog
+	pop    *widget.PopUp
+}
+
+// pickEntry is the picklist's search field: Return filters, Escape closes.
+type pickEntry struct {
+	widget.Entry
+	p *picklist
+}
+
+func (e *pickEntry) TypedKey(k *fyne.KeyEvent) {
+	switch k.Name {
+	case fyne.KeyEscape:
+		e.p.close()
+	case fyne.KeyReturn, fyne.KeyEnter:
+		e.p.confirm()
+	default:
+		e.Entry.TypedKey(k)
+	}
+}
+
+// underHeader is where Filter by Values opens its list when no click says
+// where: at the top of the grid, under its header.
+func (s *Shell) underHeader(t *tab) fyne.Position {
+	at := fyne.CurrentApp().Driver().AbsolutePositionForObject(t.grid.View())
+	return at.Add(fyne.NewPos(uitheme.SpaceLG, 2*uitheme.RowHeight))
 }
 
 // canPickValues reports whether Filter by Values has a column to list: the
@@ -61,8 +90,9 @@ func (s *Shell) canPickValues() bool {
 }
 
 // showPicklist lists a column's values among the rows the other columns'
-// filters leave, to filter the column by ticking them.
-func (s *Shell) showPicklist(t *tab, col int) *picklist {
+// filters leave, to filter the column by ticking them. The list opens at a
+// point on screen.
+func (s *Shell) showPicklist(t *tab, col int, at fyne.Position) *picklist {
 	if t.browse == nil || t.model == nil || !t.browse.CanListValues() {
 		return nil
 	}
@@ -70,26 +100,27 @@ func (s *Shell) showPicklist(t *tab, col int) *picklist {
 	if col < 0 || col >= len(cols) {
 		return nil
 	}
-	p := &picklist{s: s, t: t, col: col, column: cols[col], search: widget.NewEntry(),
-		status: widget.NewLabel("Counting values…")}
+	p := &picklist{s: s, t: t, col: col, column: cols[col], status: widget.NewLabel("Counting values…")}
+	p.search = &pickEntry{p: p}
+	p.search.ExtendBaseWidget(p.search)
 	p.ctx, p.cancel = context.WithCancel(t.ctx)
 	p.search.SetPlaceHolder("Search values")
 	p.search.OnChanged = func(string) { p.narrow() }
-	p.search.OnSubmitted = func(string) { p.confirm() }
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(func() int { return len(p.shown) }, p.newRow, p.updateRow)
 	p.apply = widget.NewButton("Filter", p.confirm)
 	p.apply.Importance = widget.HighImportance
 	p.apply.Disable()
-	top := container.NewBorder(nil, nil, nil, container.NewHBox(
-		widget.NewButton("Select All", func() { p.setShown(true) }),
-		widget.NewButton("Deselect All", func() { p.setShown(false) })), p.search)
+	all := widget.NewButton("Select All", func() { p.setShown(true) })
+	none := widget.NewButton("Deselect All", func() { p.setShown(false) })
+	all.Importance, none.Importance = widget.LowImportance, widget.LowImportance
+	title := widget.NewLabelWithStyle(fmt.Sprintf("Filter “%s” by Values", p.column.Name),
+		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	top := container.NewVBox(title, p.search, container.NewHBox(all, none))
 	bottom := container.NewBorder(nil, nil, p.status, container.NewHBox(widget.NewButton("Cancel", p.close), p.apply))
-	p.dlg = dialog.NewCustomWithoutButtons(fmt.Sprintf("Filter “%s” by Values", p.column.Name),
-		container.NewBorder(top, bottom, nil, nil, p.list), s.win)
-	p.dlg.SetOnClosed(p.cancel) // closing stops a count still running
-	p.dlg.Resize(fyne.NewSize(460, 480))
-	p.dlg.Show()
+	p.pop = widget.NewPopUp(container.NewBorder(top, bottom, nil, nil, p.list), s.win.Canvas())
+	p.pop.Resize(fyne.NewSize(400, 460))
+	p.pop.ShowAtPosition(at)
 	s.win.Canvas().Focus(p.search)
 	p.load()
 	return p
@@ -120,12 +151,19 @@ func (p *picklist) updateRow(i widget.ListItemID, o fyne.CanvasObject) {
 
 // load counts the column's values away from the UI goroutine. Values the
 // column is already filtered by start ticked; with no pick, all do.
+//
+// A click outside hides a popover without telling anyone, and a count over
+// a large table can run a while. So while it runs, it looks now and then
+// whether the list is still open, and stops if not.
 func (p *picklist) load() {
 	bs, name, ctx := p.t.browse, p.column.Name, p.ctx
+	landed := make(chan struct{})
 	go func() {
 		vals, err := bs.Distinct(ctx, name, picklistLimit)
+		close(landed)
 		p.s.d.Run(func() {
-			if ctx.Err() != nil {
+			defer p.cancel() // the count is over; there is nothing left to stop
+			if ctx.Err() != nil || !p.pop.Visible() {
 				return
 			}
 			if err != nil {
@@ -141,6 +179,24 @@ func (p *picklist) load() {
 			}
 			p.narrow()
 		})
+	}()
+	go func() {
+		tick := time.NewTicker(closedPoll)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-landed:
+				return
+			case <-tick.C:
+				p.s.d.Run(func() {
+					if !p.pop.Visible() {
+						p.cancel()
+					}
+				})
+			}
+		}
 	}()
 }
 
@@ -238,7 +294,7 @@ func (p *picklist) confirm() {
 
 func (p *picklist) close() {
 	p.cancel()
-	p.dlg.Hide()
+	p.pop.Hide()
 }
 
 // listed reports whether v is among vals, as the source typed them.

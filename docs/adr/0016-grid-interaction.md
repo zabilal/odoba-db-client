@@ -117,6 +117,9 @@ the filtered rows, so it runs only when asked for.
 **Picking from the list filters by the values themselves.** Right-clicking
 a column's title, or View › Filter by Values… on the selected cell's column,
 lists the column's values with their counts: searchable, each with a tick.
+It opens as a popover at the click, not as a dialog, so the data stays in
+view (UX principle 4); the first version was a modal dialog, which that
+principle rules out.
 Ticking everything removes the column's filter. Otherwise the shorter side
 is sent: a few ticked become IN, all but a few become NOT IN. Both select
 the same rows when every value is listed. When the list stops at its limit
@@ -125,8 +128,10 @@ keeps the values not listed. The filter row shows the choice in its own
 notation (`a,"b,c",NULL`, `!NULL`), but the filter sent carries the values
 as the source typed them, so a date or a decimal filters exactly the rows it
 was counted from. Edit that text and the text is the filter again.
-Reopening the list shows what is picked, and closing it stops a count still
-running.
+Reopening the list shows what is picked. Closing it stops a count still
+running, however it closes: a click outside hides a popover without telling
+anyone, so a running count looks every 250 ms whether its list is still
+open.
 
 ## Not decided here
 

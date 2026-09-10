@@ -59,9 +59,10 @@ type TableGrid struct {
 	// OnFilter hears every column's filter text when one is submitted, on a
 	// grid with a filter row (SetFilterable).
 	OnFilter func(texts []string)
-	// OnPickValues opens a column's list of values (FR-3.4); a right-click
-	// on the column's title asks for it. Nil where the source cannot list.
-	OnPickValues func(col int)
+	// OnPickValues opens a column's list of values (FR-3.4) at a point on
+	// screen; a right-click on the column's title asks for it there. Nil
+	// where the source cannot list.
+	OnPickValues func(col int, at fyne.Position)
 	// OnSelectCell hears that the selected cell changed.
 	OnSelectCell func()
 	filterable   bool

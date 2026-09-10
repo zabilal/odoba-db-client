@@ -43,8 +43,8 @@ func (h *headerCell) Cursor() desktop.Cursor {
 
 // TappedSecondary asks for the column's list of values, where the grid
 // offers one (OnPickValues).
-func (h *headerCell) TappedSecondary(*fyne.PointEvent) {
+func (h *headerCell) TappedSecondary(ev *fyne.PointEvent) {
 	if h.g.OnPickValues != nil && h.col >= 0 {
-		h.g.OnPickValues(h.col)
+		h.g.OnPickValues(h.col, ev.AbsolutePosition)
 	}
 }

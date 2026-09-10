@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
@@ -13,7 +14,7 @@ import (
 
 func openPicklist(t *testing.T, fx *fixture, tb *tab, col int) *picklist {
 	t.Helper()
-	p := fx.s.showPicklist(tb, col)
+	p := fx.s.showPicklist(tb, col, fyne.NewPos(20, 20))
 	if p == nil {
 		t.Fatal("no picklist")
 	}
@@ -146,5 +147,26 @@ func TestAPickFiltersByTheValuesAsTyped(t *testing.T) {
 	pump(t, fx.q, func() bool { return len(tb.browse.Options().Filters) == 1 })
 	if got := tb.browse.Options().Filters[0].Values[0]; got != day {
 		t.Errorf("sent %#v; the text reads back as %q, not the time that was listed", got, text)
+	}
+}
+
+// An outside click hides the popover without a word; the count must stop.
+func TestClickingAwayFromTheListStopsItsCount(t *testing.T) {
+	fx, tb := openItems(t)
+	closedPoll = time.Millisecond
+	distinctGate = make(chan struct{})
+	distinctStopped.Store(false)
+	t.Cleanup(func() { closedPoll, distinctGate = 250*time.Millisecond, nil })
+	p := fx.s.showPicklist(tb, 1, fyne.NewPos(20, 20))
+	p.pop.Hide() // what the overlay does with a click outside
+	pump(t, fx.q, func() bool { return distinctStopped.Load() })
+}
+
+func TestEscapeClosesTheList(t *testing.T) {
+	fx, tb := openItems(t)
+	p := openPicklist(t, fx, tb, 1)
+	p.search.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
+	if p.pop.Visible() {
+		t.Error("Escape should close the list")
 	}
 }
