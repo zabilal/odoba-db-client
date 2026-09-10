@@ -403,7 +403,22 @@ func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (*
 	if err != nil {
 		return nil, fmt.Errorf("app: %w", err)
 	}
-	src, err := drv.Open(ctx, conn.ConnectionConfig(c.vault.Get))
+	// Only the secrets the connection lists are looked up. Anything else the
+	// driver asks for is legitimately absent: a trust- or peer-authenticated
+	// local database has no password at all, and "none saved" must reach the
+	// driver as empty, not as a keychain error. A listed secret that is missing
+	// was already caught above.
+	listed := make(map[string]bool, len(conn.Secrets))
+	for _, k := range conn.Secrets {
+		listed[k] = true
+	}
+	lookup := func(id, key string) (string, error) {
+		if !listed[key] {
+			return "", nil
+		}
+		return c.vault.Get(id, key)
+	}
+	src, err := drv.Open(ctx, conn.ConnectionConfig(lookup))
 	if err != nil {
 		return nil, err
 	}

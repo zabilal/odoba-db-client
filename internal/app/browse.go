@@ -1,0 +1,103 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
+)
+
+// BrowseSource feeds the data grid from a live connection: it has exactly the
+// Columns / Fetch / Count shape the grid's Fetcher interface asks for.
+//
+// It lives here, not in the grid, because the grid must not talk to drivers
+// (ARCH-2). Go's structural typing means this package satisfies the grid's
+// interface without importing it, so the dependency still points downward.
+type BrowseSource struct {
+	src      source.Source
+	ref      model.ObjectRef
+	opt      source.BrowseOptions
+	cols     []model.ColumnDef
+	identity model.RowIdentity
+}
+
+// NewBrowseSource opens an object for browsing. It reads one row up front,
+// because the grid needs the column shape before it fetches anything, and the
+// browse itself is the authority on what shape rows will have.
+func NewBrowseSource(ctx context.Context, src source.Source, ref model.ObjectRef, opt source.BrowseOptions) (*BrowseSource, error) {
+	probe := opt
+	probe.Offset, probe.Limit = 0, 1
+	rs, err := src.Browse(ctx, ref, probe)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	b := &BrowseSource{src: src, ref: ref, opt: opt, cols: rs.Columns(),
+		identity: model.RowIdentity{Kind: model.IdentityNone}}
+	if id, ok := rs.(model.Identified); ok {
+		b.identity = id.Identity()
+	}
+	return b, nil
+}
+
+// Columns describes every row.
+func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
+
+// Identity reports whether browsed rows can be addressed for editing.
+func (b *BrowseSource) Identity() model.RowIdentity { return b.identity }
+
+// Ref is the object being browsed.
+func (b *BrowseSource) Ref() model.ObjectRef { return b.ref }
+
+// Fetch reads one window of rows. The stream is always closed, whatever
+// happens, because each open stream holds a server connection.
+func (b *BrowseSource) Fetch(ctx context.Context, offset, limit int64) ([]model.Row, error) {
+	opt := b.opt
+	opt.Offset, opt.Limit = offset, limit
+	rs, err := b.src.Browse(ctx, b.ref, opt)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	out := make([]model.Row, 0, limit)
+	for {
+		row, err := rs.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(out)) >= limit {
+			// A source that ignores Limit must not grow this page without
+			// bound (NFR-P11). Stop, and say so rather than truncate quietly.
+			return nil, fmt.Errorf("app: %s returned more than the %d rows asked for", b.ref, limit)
+		}
+		out = append(out, row)
+	}
+}
+
+// Count returns the total, or -1 when counting would cost a full scan. On a
+// ten-million-row table COUNT(*) is exactly that, and the grid pages
+// perfectly well without it; it just cannot draw a proportional scrollbar.
+func (b *BrowseSource) Count(ctx context.Context) (int64, error) {
+	c, ok := b.src.(source.Countable)
+	if !ok || !b.src.Capabilities().Data.ExactCount {
+		return -1, nil
+	}
+	return c.Count(ctx, b.ref, b.opt)
+}
+
+// Statement returns the SQL behind this browse, for the grid to show
+// (UX principle 6, FR-3.6). False for sources with no statement language.
+func (b *BrowseSource) Statement() (source.Statement, bool) {
+	d, ok := b.src.(source.Dialect)
+	if !ok {
+		return source.Statement{}, false
+	}
+	st, err := d.BuildBrowse(b.ref, b.opt)
+	return st, err == nil
+}

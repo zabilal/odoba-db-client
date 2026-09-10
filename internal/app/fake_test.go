@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -15,6 +16,8 @@ import (
 type fakeDriver struct{}
 
 var lastPassword atomic.Value // the password the fake last saw
+
+var fakeOpens atomic.Int64 // how many times the fake driver dialled
 
 func init() { source.Register(fakeDriver{}) }
 
@@ -31,7 +34,14 @@ func (fakeDriver) Open(ctx context.Context, cfg source.ConnectionConfig) (source
 		}
 	}
 	lastPassword.Store(pw)
+	fakeOpens.Add(1)
 	switch cfg.Host {
+	case "slowish":
+		select {
+		case <-time.After(60 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	case "unreachable":
 		return nil, &source.ConnectError{Kind: source.ConnectUnreachable, Hint: "the server could not be reached",
 			Err: errors.New("dial tcp: connection refused")}

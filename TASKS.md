@@ -28,7 +28,8 @@ NEXT TASK: The UI, wired to internal/app: T1.1 shell → T1.41 explorer → T1.4
            driver; visual review needs an attended run.
 [~] tasks: the core half is done; the UI half is still to build.
 OWNER:     unchanged — G0-1 interactive run; push to a remote so CI runs.
-LAST DONE: 2026-09-10 — T1.23–T1.31 app layer: CRUD with keychain rollback,
+LAST DONE: 2026-09-10 — UI foundations: command registry + fuzzy matcher, ⌘K palette,
+           explorer tree model, shared-connection workspace, grid browse adapter.
            folders, test connection, health monitor, connection-string parsing.
 ```
 
@@ -209,8 +210,8 @@ LAST DONE: 2026-09-10 — T1.23–T1.31 app layer: CRUD with keychain rollback,
 - [ ] **T1.3** Native file dialogs + notifications → FR-15.5
 - [ ] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2
 - [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
-- [ ] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
-- [ ] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
+- [~] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
+- [~] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
 - [ ] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11
 - [ ] **T1.9** Searchable shortcut reference sheet → FR-15.4
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
@@ -256,7 +257,7 @@ LAST DONE: 2026-09-10 — T1.23–T1.31 app layer: CRUD with keychain rollback,
 
 ## 1.E Object explorer
 
-- [ ] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
+- [~] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
 - [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
 - [ ] **T1.43** Fuzzy filter matching on full path → FR-2.3
 - [ ] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4
@@ -265,7 +266,7 @@ LAST DONE: 2026-09-10 — T1.23–T1.31 app layer: CRUD with keychain rollback,
 
 ## 1.F Data grid — read path (productionise W1)
 
-- [ ] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11
+- [~] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11
 - [ ] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2
 - [ ] **T1.49** Server-side multi-column sort → FR-3.3
 - [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7
