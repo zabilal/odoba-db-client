@@ -21,13 +21,12 @@
 
 ```
 PHASE:     0 — Foundations & Spikes
-STATUS:    0.A/0.B/0.C done. W1 provisional pass, W2 PASSED. W3/W4 remain.
-NEXT TASK: T0.50 — spike W3, the node canvas (ER diagram + query designer).
+STATUS:    0.A/0.B/0.C done. W1 provisional, W2 PASSED, W3 PASSED. W4 remains.
+NEXT TASK: T0.55 — spike W4, charts. Last gate before Phase 1.
 BLOCKED:   none
-OWNER:     GATE G0-1 still needs one interactive run to close:
-             docker start ikigai-pg
-             go run -tags spike ./cmd/gridspike -bench
-LAST DONE: 2026-09-10 — W2 spike complete, ADR-0003. 48 tasks closed.
+OWNER:     GATE G0-1 needs one interactive run to close:
+             docker start ikigai-pg && go run -tags spike ./cmd/gridspike -bench
+LAST DONE: 2026-09-10 — W3 spike complete, ADR-0007. 53 tasks closed.
 ```
 
 **Phase 0 findings so far**
@@ -136,12 +135,12 @@ LAST DONE: 2026-09-10 — W2 spike complete, ADR-0003. 48 tasks closed.
 
 ## 0.F SPIKE W3 — Node canvas (ER + designer)
 
-- [ ] **T0.50** Pan/zoom container with a custom `fyne.Layout`
-- [ ] **T0.51** Draggable nodes with persisted positions
-- [ ] **T0.52** Edge routing (orthogonal preferred)
-- [ ] **T0.53** Auto-layout via `gonum/graph` or `dominikbraun/graph`
-- [ ] **T0.54** 200-table schema: layout time and pan smoothness
-- [ ] **GATE G0-3** — 200-table schema lays out and pans smoothly
+- [x] **T0.50** Pan/zoom container with a custom `fyne.Layout`
+- [x] **T0.51** Draggable nodes with persisted positions
+- [x] **T0.52** Edge routing (orthogonal preferred)
+- [x] **T0.53** Auto-layout via `gonum/graph` or `dominikbraun/graph`
+- [x] **T0.54** 200-table schema: layout time and pan smoothness
+- [x] **GATE G0-3** — PASSED. 200 tables lay out in 15-28ms; panning costs 24us/frame at overview zoom with 183 nodes visible. Visible count saturates at ~52 from 50 to 800 tables. ADR-0007.
 
 ## 0.G SPIKE W4 — Charts
 
