@@ -104,6 +104,26 @@ the implementation's assumptions proves nothing.**
 again by the nesting check, so `/* outer /* inner` reached depth 3 instead of 2
 and comments never closed correctly.
 
+## Two more, found when the editor model arrived (Phase 1)
+
+The editor's random-edit test uses a fresh lex as its oracle and checks after
+every edit. It found two more cache bugs, both in paths W2's tests never took,
+because those tests only inserted single lines.
+
+**A multi-line deletion shifted the deleted lines too.** Every cached line from
+the edit onward moved by the line delta, including the lines just deleted. So a
+deleted line's tokens and start state landed on the lines *above* the deletion.
+Now only lines after the removed block move.
+
+**A multi-line paste brought back the zero-state early stop.** Inserting k lines
+leaves k−1 new start states zero-filled, and a zero `State` reads as
+`StateNormal`. The cascade could therefore stop by agreeing with a state nobody
+had computed: the first bug above, by another route. The early stop now trusts
+cached states only from the end of the inserted block.
+
+How often the test checked mattered. Checking every 500 edits, it passed,
+because the second divergence had healed itself before the next checkpoint.
+
 ## Follow-ups
 
 - Autocomplete (FR-5.2) is a separate build and remains the editor's larger

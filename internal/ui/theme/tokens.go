@@ -128,6 +128,17 @@ type Palette struct {
 	// must be able to read, so it is held to the text bar (UX principle 7).
 	Null color.NRGBA
 
+	// Syntax colours for the query editor (FR-5.1), after Xcode's default
+	// themes. Identifiers, operators and punctuation stay Label: colouring
+	// everything is noise, and the eye should land on keywords and literals.
+	SyntaxKeyword   color.NRGBA
+	SyntaxType      color.NRGBA
+	SyntaxFunction  color.NRGBA
+	SyntaxString    color.NRGBA
+	SyntaxNumber    color.NRGBA
+	SyntaxComment   color.NRGBA
+	SyntaxParameter color.NRGBA
+
 	// Changeset states (FR-4.3). Green/amber/red follow the system palette;
 	// the tints are pulled apart far enough to be told apart at a glance,
 	// because that judgement happens at the moment before a commit.
@@ -197,6 +208,14 @@ var Light = Palette{
 
 	Null: rgb(0x5E, 0x5E, 0x63),
 
+	SyntaxKeyword:   rgb(0x9B, 0x23, 0x93),
+	SyntaxType:      rgb(0x0B, 0x4F, 0x79),
+	SyntaxFunction:  rgb(0x32, 0x6D, 0x74),
+	SyntaxString:    rgb(0xC4, 0x1A, 0x16),
+	SyntaxNumber:    rgb(0x1C, 0x00, 0xCF),
+	SyntaxComment:   rgb(0x55, 0x61, 0x6D),
+	SyntaxParameter: rgb(0x64, 0x38, 0x20),
+
 	AddedFg:    rgb(0x17, 0x70, 0x2A),
 	AddedBg:    rgb(0xE3, 0xF7, 0xE8),
 	ModifiedFg: rgb(0x8A, 0x51, 0x00),
@@ -256,6 +275,14 @@ var Dark = Palette{
 	SuccessSubtle: rgb(0x16, 0x32, 0x1F),
 
 	Null: rgb(0xAE, 0xAE, 0xB2),
+
+	SyntaxKeyword:   rgb(0xFF, 0x7A, 0xB2),
+	SyntaxType:      rgb(0x5D, 0xD8, 0xFF),
+	SyntaxFunction:  rgb(0x67, 0xB7, 0xA4),
+	SyntaxString:    rgb(0xFF, 0x81, 0x70),
+	SyntaxNumber:    rgb(0xD9, 0xC9, 0x7C),
+	SyntaxComment:   rgb(0x98, 0xA4, 0xB0),
+	SyntaxParameter: rgb(0xFD, 0x8F, 0x3F),
 
 	AddedFg:    rgb(0x4C, 0xD9, 0x64),
 	AddedBg:    rgb(0x16, 0x32, 0x1F),

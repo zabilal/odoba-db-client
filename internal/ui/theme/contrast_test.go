@@ -108,6 +108,29 @@ var textPairs = []pair{
 	{"Label/AddedBg", fLabel, fAddedBg, aaText},
 	{"Label/ModifiedBg", fLabel, fModifiedBg, aaText},
 	{"Label/DeletedBg", fLabel, fDeletedBg, aaText},
+	// Editor syntax (FR-5.1) on the editor, its current-line tint and its
+	// selection. Code is read as closely as data, so it gets the text bar.
+	{"SyntaxKeyword/Content", fSynKeyword, fContent, aaText},
+	{"SyntaxKeyword/AlternateRow", fSynKeyword, fAltRow, aaText},
+	{"SyntaxKeyword/RangeSelection", fSynKeyword, fRangeSel, aaText},
+	{"SyntaxType/Content", fSynType, fContent, aaText},
+	{"SyntaxType/AlternateRow", fSynType, fAltRow, aaText},
+	{"SyntaxType/RangeSelection", fSynType, fRangeSel, aaText},
+	{"SyntaxFunction/Content", fSynFunction, fContent, aaText},
+	{"SyntaxFunction/AlternateRow", fSynFunction, fAltRow, aaText},
+	{"SyntaxFunction/RangeSelection", fSynFunction, fRangeSel, aaText},
+	{"SyntaxString/Content", fSynString, fContent, aaText},
+	{"SyntaxString/AlternateRow", fSynString, fAltRow, aaText},
+	{"SyntaxString/RangeSelection", fSynString, fRangeSel, aaText},
+	{"SyntaxNumber/Content", fSynNumber, fContent, aaText},
+	{"SyntaxNumber/AlternateRow", fSynNumber, fAltRow, aaText},
+	{"SyntaxNumber/RangeSelection", fSynNumber, fRangeSel, aaText},
+	{"SyntaxComment/Content", fSynComment, fContent, aaText},
+	{"SyntaxComment/AlternateRow", fSynComment, fAltRow, aaText},
+	{"SyntaxComment/RangeSelection", fSynComment, fRangeSel, aaText},
+	{"SyntaxParameter/Content", fSynParameter, fContent, aaText},
+	{"SyntaxParameter/AlternateRow", fSynParameter, fAltRow, aaText},
+	{"SyntaxParameter/RangeSelection", fSynParameter, fRangeSel, aaText},
 }
 
 // componentPairs are UI boundaries, held to the 3:1 bar of WCAG 1.4.11.
@@ -348,3 +371,11 @@ func fModifiedBg(p Palette) color.NRGBA    { return p.ModifiedBg }
 func fDeletedFg(p Palette) color.NRGBA     { return p.DeletedFg }
 func fDeletedBg(p Palette) color.NRGBA     { return p.DeletedBg }
 func fControlBorder(p Palette) color.NRGBA { return p.ControlBorder }
+
+func fSynKeyword(p Palette) color.NRGBA   { return p.SyntaxKeyword }
+func fSynType(p Palette) color.NRGBA      { return p.SyntaxType }
+func fSynFunction(p Palette) color.NRGBA  { return p.SyntaxFunction }
+func fSynString(p Palette) color.NRGBA    { return p.SyntaxString }
+func fSynNumber(p Palette) color.NRGBA    { return p.SyntaxNumber }
+func fSynComment(p Palette) color.NRGBA   { return p.SyntaxComment }
+func fSynParameter(p Palette) color.NRGBA { return p.SyntaxParameter }

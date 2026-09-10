@@ -2,6 +2,7 @@ package editor
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -271,5 +272,43 @@ func TestGateG0_2(t *testing.T) {
 
 	if cascade > 16*time.Millisecond {
 		t.Errorf("G0-2: worst-case cascade %v exceeds the 16ms keystroke budget", cascade)
+	}
+}
+
+func TestMultiLineDeleteLeavesLinesAboveIntact(t *testing.T) {
+	// A string opens on line 0 and closes on line 2. Deleting lines 4-6 used
+	// to move their cached tokens and states onto lines 2-3, so line 2 drew
+	// as ordinary text although it is still inside the string.
+	buf := NewBuffer("SELECT '\na\nx'\n;\n  y\n  z\n  w\nSELECT 1")
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
+	for i := 0; i < buf.LineCount(); i++ {
+		h.Tokens(i) // cache every line, as a drawn editor would
+	}
+	h.Apply(buf.DeleteRange(3, 1, 6, 3)) // lines 3-6 become one: ";"
+	fresh := NewHighlighter(NewBuffer(buf.Text()), sqllex.PostgreSQL)
+	for i := 0; i < buf.LineCount(); i++ {
+		if got, want := h.Tokens(i), fresh.Tokens(i); !reflect.DeepEqual(got, want) {
+			t.Errorf("line %d %q: tokens %v, fresh lex %v", i, buf.Line(i), got, want)
+		}
+	}
+}
+
+func TestPastedLinesOpeningACommentColourWhatFollows(t *testing.T) {
+	// Pasting four lines whose third opens a block comment. Everything after
+	// it is inside the comment. The early-stop used to compare the pasted
+	// "  " line's end state with a new line's zero-filled state, agree, and
+	// stop: the rest of the file kept its old colours.
+	buf := NewBuffer("SELECT 1;\nSELECT 2;\nSELECT 3;")
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
+	for i := 0; i < buf.LineCount(); i++ {
+		h.Tokens(i)
+	}
+	_, _, e := buf.Insert(0, 9, "\n  \n/* open\n still")
+	h.Apply(e)
+	fresh := NewHighlighter(NewBuffer(buf.Text()), sqllex.PostgreSQL)
+	for i := 0; i < buf.LineCount(); i++ {
+		if got, want := h.Tokens(i), fresh.Tokens(i); !reflect.DeepEqual(got, want) {
+			t.Errorf("line %d %q: tokens %v, fresh lex %v", i, buf.Line(i), got, want)
+		}
 	}
 }
