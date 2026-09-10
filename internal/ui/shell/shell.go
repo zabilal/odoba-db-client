@@ -45,6 +45,8 @@ type Deps struct {
 	Log      *slog.Logger
 	// History records what is run and finds it again. Nil turns history off.
 	History app.HistoryStore
+	// Saved keeps named queries. Nil turns saving off.
+	Saved app.SavedQueryStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -127,7 +129,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.Explorer.OnSelect = func(string) { s.sync() }
 
 	s.tabs = container.NewDocTabs()
-	s.tabs.CloseIntercept = s.closeTab
+	s.tabs.CloseIntercept = s.requestClose
 	s.tabs.OnSelected = func(*container.TabItem) { s.sync() }
 	s.tabs.Hide()
 	s.empty = s.emptyState()
@@ -211,7 +213,7 @@ func (s *Shell) registerCommands() {
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
 			Enabled: func() bool { return len(s.open) > 0 }, Run: func() {
 				if it := s.tabs.Selected(); it != nil {
-					s.closeTab(it)
+					s.requestClose(it)
 				}
 			}},
 		{ID: cmdTabNext, Category: "Tab", Title: "Show Next Tab", Shortcut: sc("]", commands.ModShortcut|commands.ModShift),
@@ -233,6 +235,17 @@ func (s *Shell) registerCommands() {
 		{ID: cmdHistory, Category: "Query", Title: "Query History…", Keywords: []string{"recent", "past", "find", "search"},
 			Shortcut: sc("H", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.History != nil },
 			Run: func() { s.showHistory() }},
+		{ID: cmdQuerySave, Category: "Query", Title: "Save Query", Keywords: []string{"keep", "store"},
+			Shortcut: sc("S", commands.ModShortcut), Enabled: s.canSave, Run: s.saveQuery},
+		{ID: cmdQuerySaveAs, Category: "Query", Title: "Save Query As…", Keywords: []string{"copy", "duplicate"},
+			Shortcut: sc("S", commands.ModShortcut|commands.ModShift), Enabled: s.canSave, Run: func() {
+				if t, _ := s.activeQuery(); t != nil {
+					s.promptSave(t, true)
+				}
+			}},
+		{ID: cmdOpenSaved, Category: "Query", Title: "Open Saved Query…", Keywords: []string{"saved", "library", "load"},
+			Shortcut: sc("O", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.Saved != nil },
+			Run: func() { s.showSaved() }},
 		{ID: cmdAppearSystem, Category: "Appearance", Title: "Follow System", Keywords: []string{"theme", "auto"},
 			Run: func() { s.setAppearance(uitheme.AppearanceSystem) }},
 		{ID: cmdAppearLight, Category: "Appearance", Title: "Light", Keywords: []string{"theme"},

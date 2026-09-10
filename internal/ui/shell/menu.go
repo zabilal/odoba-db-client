@@ -31,6 +31,9 @@ const (
 	cmdQueryRunAll  = "query.runAll"
 	cmdQueryStop    = "query.stop"
 	cmdHistory      = "query.history"
+	cmdQuerySave    = "query.save"
+	cmdQuerySaveAs  = "query.saveAs"
+	cmdOpenSaved    = "query.openSaved"
 	cmdAppearSystem = "appearance.system"
 	cmdAppearLight  = "appearance.light"
 	cmdAppearDark   = "appearance.dark"
@@ -65,7 +68,11 @@ var menuBar = []struct {
 	title   string
 	entries []menuEntry
 }{
-	{"File", []menuEntry{item(cmdConnNew), item(cmdQueryNew), separator, item(cmdTabClose)}},
+	{"File", []menuEntry{
+		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
+		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
+		item(cmdTabClose),
+	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
 		item(cmdSidebar), item(cmdRefresh), item(cmdReload), separator,
