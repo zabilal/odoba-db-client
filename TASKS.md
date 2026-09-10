@@ -23,14 +23,15 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: close out Phase 1's partial tasks (see the [~] lines), add the MySQL
-           and MariaDB services to CI, then Phase 2.
+NEXT TASK: the grid (T1.48–T1.56): sort by header, the filter row, selection and
+           copy, the cell viewer, column resize and hide; then Phase 1's other [~].
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on all
-           four engines.
+LAST DONE: 2026-09-10 — first visual review, from rendered screenshots
+           (IKIGAI_SCREENSHOTS=dir go test -run TestScreenshots ./internal/e2e/):
+           fixed the find bar's negative-width layout (a crash) and five smaller things.
 ```
 
 **Phase 0 findings so far**
@@ -272,7 +273,7 @@ LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on 
 - [x] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11 — *paged LRU model with MaxResidentPages; tables without a count grow as they are read (ADR-0011)*
 - [ ] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2
 - [ ] **T1.49** Server-side multi-column sort → FR-3.3
-- [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7
+- [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7 — *rows are plain for now: cell-width stripes read as blocks; full-width stripes need a scroll-synced background (ADR-0011 §6)*
 - [ ] **T1.51** Cell/range/row/column selection → FR-3.7
 - [ ] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7
 - [ ] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9

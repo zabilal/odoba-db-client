@@ -70,7 +70,9 @@ func (s *Shell) OpenQuery(connID string) *tab {
 		footer: widget.NewLabel("Connecting…"), query: q}
 	t.footer.Importance = widget.LowImportance
 	q.find = newFindBar(s, q)
-	split := container.NewVSplit(container.NewBorder(q.find.box, nil, nil, nil, q.editor), q.results)
+	top := container.NewBorder(q.find.box, nil, nil, nil, q.editor)
+	q.find.parent = top
+	split := container.NewVSplit(top, q.results)
 	split.Offset = 0.55
 	t.body = container.NewStack(split)
 	q.title = fmt.Sprintf("Query %d", s.queries)
@@ -317,7 +319,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	m.OnError = func(err error) {
 		s.d.Run(func() { count.SetText("Could not load rows: " + err.Error()) })
 	}
-	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, count, nil, nil, g.Table))
+	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, count, nil, nil, g.View()))
 	q.results.Append(item)
 	if len(q.sets) == 0 {
 		q.results.Select(item)

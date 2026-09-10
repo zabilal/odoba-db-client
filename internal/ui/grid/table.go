@@ -2,6 +2,8 @@ package grid
 
 import (
 	"context"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"image/color"
 	"time"
 
@@ -41,7 +43,15 @@ type TableGrid struct {
 
 	// refresh is the coalesced refresh trigger. See ScheduleRefresh.
 	refresh func()
+
+	bg   *canvas.Rectangle
+	view *fyne.Container
 }
+
+// View is what to put on screen: the table over the content background, so
+// the space around and between cells belongs to the grid rather than showing
+// the window through it.
+func (g *TableGrid) View() fyne.CanvasObject { return g.view }
 
 // ScheduleRefresh requests a table refresh, coalescing bursts into one.
 //
@@ -64,6 +74,8 @@ func (g *TableGrid) ScheduleRefresh() { g.refresh() }
 // SetPalette recolours the grid, for an appearance change. UI goroutine only.
 func (g *TableGrid) SetPalette(p theme.Palette) {
 	g.palette = p
+	g.bg.FillColor = p.ContentBackground
+	g.bg.Refresh()
 	if g.Table != nil {
 		g.Table.Refresh()
 	}
@@ -111,6 +123,8 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 	}
 
 	g.Table = t
+	g.bg = canvas.NewRectangle(pal.ContentBackground)
+	g.view = container.NewStack(g.bg, t)
 	g.refresh = uithread.Coalesce(run, delay, func() {
 		if g.Table != nil {
 			g.Table.Refresh()
@@ -197,6 +211,10 @@ func (g *TableGrid) foreground(k CellKind) color.Color {
 	}
 }
 
+// background is a cell's fill. Rows are not striped: a cell can only tint its
+// own width, and with the grid's background showing past the last column the
+// stripes read as grey blocks rather than rows. Full-width stripes need a
+// background drawn in step with scrolling (T1.50).
 func (g *TableGrid) background(id widget.TableCellID) color.Color {
 	if id.Row == g.selRow {
 		return g.palette.SelectedUnemphasized
@@ -205,10 +223,6 @@ func (g *TableGrid) background(id widget.TableCellID) color.Color {
 		switch g.RowStates(int64(id.Row)) {
 		case CellKind(200): // placeholder; real changeset states land in Phase 1
 		}
-	}
-	// macOS alternating table rows aid row tracking across wide tables.
-	if id.Row%2 == 1 {
-		return g.palette.AlternateRow
 	}
 	return g.palette.ContentBackground
 }

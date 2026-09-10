@@ -1,6 +1,9 @@
 package theme
 
-import "fyne.io/fyne/v2"
+import (
+	"fyne.io/fyne/v2"
+	ftheme "fyne.io/fyne/v2/theme"
+)
 
 // Object-kind icons for the explorer tree.
 //
@@ -43,6 +46,11 @@ func svgIcon(name, body string) fyne.Resource {
 }
 
 var customIcons = map[fyne.ThemeIconName]fyne.Resource{
+	// Disclosure chevrons, as macOS draws them, rather than arrows
+	// (ADR-0006). Fyne's tree asks the theme for these two.
+	ftheme.IconNameNavigateNext: svgIcon("chevron-right.svg", `<path d="M6.2 3.4 10.8 8l-4.6 4.6"/>`),
+	ftheme.IconNameMoveDown:     svgIcon("chevron-down.svg", `<path d="M3.4 6.2 8 10.8l4.6-4.6"/>`),
+
 	// A cylinder, the universal database mark.
 	IconNameDatabase: svgIcon("database.svg",
 		`<ellipse cx="8" cy="3.8" rx="5" ry="2.1"/>`+

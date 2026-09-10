@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -328,7 +329,15 @@ func (s *Shell) statusText() string {
 	if !open {
 		return c.Name + " — not connected"
 	}
-	return c.Name + " — " + live.Status().Message()
+	switch st := live.Status(); {
+	case st.Err != nil:
+		return c.Name + " — " + st.Message()
+	case st.State == app.StateConnected:
+		return c.Name + " — Connected"
+	default:
+		name := st.State.String()
+		return c.Name + " — " + strings.ToUpper(name[:1]) + name[1:]
+	}
 }
 
 // selectedConn is the connection in focus: the one the explorer selection
@@ -421,7 +430,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		s.d.Run(func() { t.footer.SetText("Could not load rows: " + err.Error()) })
 	}
 	t.model, t.grid, t.browse = m, g, bs
-	t.body.Objects = []fyne.CanvasObject{g.Table}
+	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
 	s.sync()
