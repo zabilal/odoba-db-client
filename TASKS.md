@@ -21,15 +21,16 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    J1 and J3 run end to end on PostgreSQL and SQLite (internal/e2e; SQLite's
-           in every test run, no server). Phase 1 needs MySQL/MariaDB still.
-NEXT TASK: T1.35–T1.37 MySQL and MariaDB (go-sql-driver/mysql v1.10.1), with a
-           test server in Docker, conformance, and the journeys on both.
+STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
+           MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
+NEXT TASK: close out Phase 1's partial tasks (see the [~] lines), add the MySQL
+           and MariaDB services to CI, then Phase 2.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
-           interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — the SQLite driver (ADR-0014), and the journeys made
-           engine-independent.
+           interactive run, and a push to a remote so CI runs. Test servers:
+           ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
+LAST DONE: 2026-09-10 — the MySQL and MariaDB driver (ADR-0015); J1 and J3 on all
+           four engines.
 ```
 
 **Phase 0 findings so far**
@@ -250,12 +251,12 @@ LAST DONE: 2026-09-10 — the SQLite driver (ADR-0014), and the journeys made
 - [x] **T1.32** PostgreSQL driver (`jackc/pgx/v5`) — reference implementation
 - [x] **T1.33** PostgreSQL introspection → canonical model
 - [x] **T1.34** PostgreSQL dialect + quoter + paging
-- [ ] **T1.35** MySQL driver (`go-sql-driver/mysql`)
-- [ ] **T1.36** MySQL introspection + dialect
-- [ ] **T1.37** MariaDB feature-probe divergence from MySQL → REQ-DB-2
+- [x] **T1.35** MySQL driver (`go-sql-driver/mysql`) — *go-sql-driver/mysql; cancel by KILL QUERY keeps the session (ADR-0015)*
+- [x] **T1.36** MySQL introspection + dialect — *information_schema tree, Describe with keys, indexes and foreign keys; DELIMITER-aware splitting*
+- [x] **T1.37** MariaDB feature-probe divergence from MySQL → REQ-DB-2 — *flavour probed from VERSION(); read-only variable, JSON and STATISTICS divergences handled and tested*
 - [x] **T1.38** SQLite driver (`modernc.org/sqlite`) + introspection + dialect — *modernc; no file is ever created by opening; read-only refused by guard and engine; trigger-aware splitting; genuine cancel (ADR-0014)*
-- [~] **T1.39** Capability descriptors for all four → REQ-DB-2 — *PostgreSQL and SQLite; MySQL/MariaDB to come*
-- [~] **T1.40** Conformance suite green for all four → REQ-DRV-1 — *PostgreSQL (tagged) and SQLite (every run) green; MySQL/MariaDB to come*
+- [x] **T1.39** Capability descriptors for all four → REQ-DB-2 — *PostgreSQL, SQLite, MySQL, MariaDB*
+- [x] **T1.40** Conformance suite green for all four → REQ-DRV-1 — *green on all four; SQLite every run, the servers under -tags conformance*
 
 ## 1.E Object explorer
 

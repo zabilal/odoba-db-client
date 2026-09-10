@@ -5,12 +5,14 @@ go 1.26.6
 require (
 	fyne.io/fyne/v2 v2.8.1
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/zalando/go-keyring v0.2.8
 	modernc.org/sqlite v1.58.0
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
@@ -38,7 +40,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
