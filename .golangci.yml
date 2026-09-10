@@ -32,6 +32,7 @@ linters:
             - "**/internal/transfer/**"
             - "**/internal/store/**"
             - "**/internal/redact/**"
+            - "**/internal/sqllex/**"
           deny:
             - pkg: fyne.io
               desc: "ARCH-1: core packages must not import Fyne. UI code belongs in internal/ui."

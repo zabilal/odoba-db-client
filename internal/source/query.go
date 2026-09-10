@@ -25,7 +25,40 @@ type Queryer interface {
 	// Results arrive on the returned channel, which is closed when the script
 	// finishes or ctx is cancelled. Streaming them rather than collecting them
 	// lets the UI show the first result while later statements still run.
-	QueryMulti(ctx context.Context, script string) (<-chan ScriptResult, error)
+	//
+	// confirmed carries explicit consent for a mutating script on a
+	// production connection (FR-4.9). Without it such a script could never be
+	// confirmed, and so never run at all.
+	//
+	// Every statement is checked against the Guard before any of them runs.
+	// Refusing the fourth statement after the first three have executed would
+	// leave the user in a state they did not choose.
+	QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan ScriptResult, error)
+}
+
+// Sessioner is an optional Queryer refinement for sources whose statements
+// depend on session state.
+//
+// SET, temporary tables, prepared statements and open transactions all live
+// on one server connection. An editor tab that runs each statement on
+// whichever pooled connection is free loses them between runs: CREATE TEMP
+// TABLE succeeds and the next SELECT from it fails. A Session pins one
+// connection for as long as the tab is open.
+type Sessioner interface {
+	Session(ctx context.Context) (Session, error)
+}
+
+// Session is a pinned connection that runs statements in order.
+//
+// A connection can hold one open result at a time, so starting a new
+// statement closes the previous statement's result stream.
+type Session interface {
+	Queryer
+
+	// Handle identifies the server-side session, for Killer.KillQuery.
+	Handle() string
+
+	Close() error
 }
 
 // Statement is one statement plus its bound parameters.

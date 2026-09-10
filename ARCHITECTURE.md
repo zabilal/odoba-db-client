@@ -27,6 +27,7 @@ internal/diff           schema comparison & sync-script synthesis
 internal/transfer       import/export pipelines (streaming)
 internal/store          settings, history, keychain, session state
 internal/redact         secret removal for logs and errors
+internal/sqllex         SQL tokeniser shared by the editor and the drivers
 ```
 
 ## The four rules that matter
@@ -66,7 +67,7 @@ No UI file changes (REQ-DB-1).
 
 **Optional, discovered by type assertion**
 
-`Queryer` · `Dialect` · `Writer` · `Explainer` · `Transactor` · `Killer` ·
+`Queryer` · `Sessioner` · `Dialect` · `Writer` · `Explainer` · `Transactor` · `Killer` ·
 `Snapshotter` · `Searcher` · `Countable` · `DistinctLister` · `BulkLoader` ·
 `Scriptable` · `Completer` · `StreamAdmin` · `StreamProducer` · `SchemaRegistry`
 

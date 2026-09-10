@@ -10,6 +10,10 @@ import (
 	"os"
 
 	"github.com/ikigai-db/ikigai-db/internal/source"
+
+	// Drivers register themselves on import (REQ-DB-1). Adding a source to the
+	// application is a blank import here, and nothing else.
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 )
 
 // version is set at build time via -ldflags.
@@ -20,7 +24,7 @@ func main() {
 
 	drivers := source.Drivers()
 	if len(drivers) == 0 {
-		fmt.Fprintln(os.Stderr, "no drivers registered yet (Phase 1: T1.32)")
+		fmt.Fprintln(os.Stderr, "no drivers registered")
 		return
 	}
 	for _, d := range drivers {

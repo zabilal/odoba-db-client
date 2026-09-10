@@ -713,7 +713,7 @@ A new source is added by implementing:
 - `Browser` — open an object as a `RowStream`; the paradigm-neutral data path
 - `Capabilities` — declarative feature descriptor consumed by the UI
 
-**Optional, discovered by type assertion:** `Queryer`, `Dialect`, `Writer`, `Explainer`,
+**Optional, discovered by type assertion:** `Queryer`, `Sessioner`, `Dialect`, `Writer`, `Explainer`,
 `Transactor`, `Killer`, `Snapshotter`, `Searcher`, `Countable`, `DistinctLister`, `BulkLoader`,
 `Scriptable`, `Completer`, `StreamAdmin`, `StreamProducer`, `SchemaRegistry`.
 
