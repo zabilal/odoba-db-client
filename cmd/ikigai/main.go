@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/logging"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -57,12 +59,22 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// History is an aid, not a requirement: if its database cannot open, the
+	// app runs without it rather than not at all.
+	var history app.HistoryStore
+	if db, err := localdb.Open(context.Background(), paths.DatabaseFile()); err != nil {
+		log.Warn("history unavailable", "err", err)
+	} else {
+		defer db.Close()
+		history = db
+	}
+
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
 	conns := app.NewConnections(settings, vault, log)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 
 	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
-		Conns: conns, WS: ws, Settings: settings, Theme: uitheme.New(), Log: log,
+		Conns: conns, WS: ws, Settings: settings, History: history, Theme: uitheme.New(), Log: log,
 	})
 	s.ShowNotice(notice)
 	s.Window().ShowAndRun()

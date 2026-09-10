@@ -16,6 +16,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
 // scriptSource runs scripts of ";"-separated statements:
@@ -171,7 +172,7 @@ func collect(t *testing.T, ch <-chan StatementResult) []StatementResult {
 
 func TestRunDeliversEachStatementInOrder(t *testing.T) {
 	src := &scriptSource{}
-	qs, err := newQuerySession(context.Background(), src)
+	qs, err := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +198,7 @@ func TestRunDeliversEachStatementInOrder(t *testing.T) {
 
 func TestFetchWaitsForRowsAndShortMeansTheEnd(t *testing.T) {
 	src := &scriptSource{}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	ch, _ := qs.Run(context.Background(), "slow 300", false)
 	rs := collect(t, ch)[0].Rows
 	if n, _ := rs.Count(context.Background()); n != -1 {
@@ -227,7 +228,7 @@ func TestResultsStopAtTheCap(t *testing.T) {
 
 func TestANewRunReleasesThePreviousResults(t *testing.T) {
 	src := &scriptSource{}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	ch, _ := qs.Run(context.Background(), "slow 100000", false)
 	collect(t, ch)
 	ch, _ = qs.Run(context.Background(), "rows 1", false)
@@ -246,7 +247,7 @@ func TestANewRunReleasesThePreviousResults(t *testing.T) {
 
 func TestProductionWritesNeedConfirmationBeforeAnythingRuns(t *testing.T) {
 	src := &scriptSource{guard: source.Guard{Environment: source.EnvProduction}}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	if _, err := qs.Run(context.Background(), "rows 1; update t", false); !errors.Is(err, source.ErrConfirmationRequired) {
 		t.Fatalf("err %v", err)
 	}
@@ -264,7 +265,7 @@ func TestProductionWritesNeedConfirmationBeforeAnythingRuns(t *testing.T) {
 
 func TestCloseEndsTheSession(t *testing.T) {
 	src := &scriptSource{}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	ch, _ := qs.Run(context.Background(), "slow 100000", false)
 	rs := collect(t, ch)[0].Rows
 	qs.Close()
@@ -278,7 +279,7 @@ func TestCloseEndsTheSession(t *testing.T) {
 
 func TestStatementAt(t *testing.T) {
 	src := &scriptSource{}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	script := "rows 1;\nrows 2;\n\nrows 3;"
 	for _, c := range []struct {
 		offset int
@@ -308,7 +309,7 @@ func (p *plainSource) Query(context.Context, source.Statement) (*source.Result, 
 }
 
 func TestSourcesWithoutSessionsStillRun(t *testing.T) {
-	qs, err := newQuerySession(context.Background(), &plainSource{})
+	qs, err := newQuerySession(context.Background(), &plainSource{}, "c1", QueryOptions{})
 	if err != nil || qs.session != nil {
 		t.Fatalf("session %v, %v", qs.session, err)
 	}
@@ -319,7 +320,7 @@ func TestSourcesWithoutSessionsStillRun(t *testing.T) {
 }
 
 func TestNoQueryLanguage(t *testing.T) {
-	if _, err := newQuerySession(context.Background(), browseOnly{}); !errors.Is(err, ErrNoQueryLanguage) {
+	if _, err := newQuerySession(context.Background(), browseOnly{}, "c1", QueryOptions{}); !errors.Is(err, ErrNoQueryLanguage) {
 		t.Errorf("err %v", err)
 	}
 }
@@ -331,7 +332,7 @@ func TestOffsetsAreBytesEvenAfterNonASCIIText(t *testing.T) {
 	// "é" is one character and two bytes, and bytes always outnumber
 	// characters, so an unconverted offset overshoots into the next statement.
 	src := &scriptSource{}
-	qs, _ := newQuerySession(context.Background(), src)
+	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	script := "rows 1 éé;\nrows 2;"
 	semi := strings.Index(script, ";")        // byte 11, character 9
 	second := strings.Index(script, "rows 2") // byte 13, character 11
@@ -344,5 +345,72 @@ func TestOffsetsAreBytesEvenAfterNonASCIIText(t *testing.T) {
 	ch, _ := qs.Run(context.Background(), script, false)
 	if res := collect(t, ch); len(res) != 2 || res[1].Offset != second {
 		t.Errorf("second result's offset is not byte %d: %+v", second, res)
+	}
+}
+
+// memHistory is a HistoryStore that remembers in memory.
+type memHistory struct {
+	mu      sync.Mutex
+	entries []localdb.HistoryEntry
+}
+
+func (m *memHistory) AddHistory(_ context.Context, e localdb.HistoryEntry) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries = append(m.entries, e)
+	return int64(len(m.entries)), nil
+}
+
+func (m *memHistory) SearchHistory(context.Context, localdb.HistoryQuery) ([]localdb.HistoryEntry, error) {
+	return nil, nil
+}
+
+func (m *memHistory) wait(t *testing.T, n int) map[string]localdb.HistoryEntry {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		m.mu.Lock()
+		got := append([]localdb.HistoryEntry(nil), m.entries...)
+		m.mu.Unlock()
+		if len(got) >= n {
+			out := map[string]localdb.HistoryEntry{}
+			for _, e := range got {
+				out[e.Statement] = e
+			}
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d history entries, want %d", len(got), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestEveryStatementIsRecordedWithItsOutcome(t *testing.T) {
+	h := &memHistory{}
+	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{History: h, Database: "sales"})
+	ch, _ := qs.Run(context.Background(), "rows 3; update t; fail", false)
+	collect(t, ch)
+	got := h.wait(t, 3)
+	if e := got["rows 3;"]; e.Rows != 3 || e.ConnectionID != "c1" || e.Database != "sales" || e.Error != "" {
+		t.Errorf("query entry %+v", e)
+	}
+	if e := got["update t;"]; e.Rows != 3 {
+		t.Errorf("write entry %+v; rows affected is its row count", e)
+	}
+	if e := got["fail"]; e.Error == "" {
+		t.Errorf("failure entry %+v has no error", e)
+	}
+}
+
+func TestAStoppedQueryIsStillRecordedWithoutAnError(t *testing.T) {
+	h := &memHistory{}
+	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{History: h})
+	ch, _ := qs.Run(context.Background(), "slow 100000", false)
+	collect(t, ch)
+	qs.Close()
+	e := h.wait(t, 1)["slow 100000"]
+	if e.Rows >= 100000 || e.Error != "" {
+		t.Errorf("entry %+v; a stop is the user's choice, not a failure", e)
 	}
 }

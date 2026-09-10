@@ -11,6 +11,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
 // ErrNoQueryLanguage is returned for a source that cannot run text queries,
@@ -22,6 +23,23 @@ var ErrNoQueryLanguage = errors.New("this connection has no query language")
 // browsing the table, which pages, is how to see the rest.
 const MaxResultRows = 100_000
 
+// HistoryStore keeps what has been run (FR-5.8). *localdb.DB is one.
+type HistoryStore interface {
+	AddHistory(ctx context.Context, e localdb.HistoryEntry) (int64, error)
+	SearchHistory(ctx context.Context, q localdb.HistoryQuery) ([]localdb.HistoryEntry, error)
+}
+
+// historyTimeout bounds one history write. It runs off the UI goroutine and
+// never under the run's context: stopping a query must not stop it being
+// remembered.
+const historyTimeout = 5 * time.Second
+
+// QueryOptions configures a query session. The zero value records nothing.
+type QueryOptions struct {
+	History  HistoryStore
+	Database string // recorded with each statement
+}
+
 // QuerySession runs scripts for one editor tab (FR-5.3–FR-5.6). Where the
 // source has sessions it pins one, so SET, temporary tables and an open
 // transaction survive from one run to the next (source.Sessioner).
@@ -29,6 +47,8 @@ type QuerySession struct {
 	q       source.Queryer
 	session source.Session // nil when the source has no sessions
 	dialect source.Dialect // nil when the source cannot split scripts
+	hist    HistoryStore
+	entry   localdb.HistoryEntry // what every history entry shares
 
 	mu      sync.Mutex
 	results []*ResultSet // the current run's, closed when the next starts
@@ -36,26 +56,29 @@ type QuerySession struct {
 }
 
 // NewQuerySession prepares a live connection for running scripts.
-func NewQuerySession(ctx context.Context, live *Live) (*QuerySession, error) {
-	return newQuerySession(ctx, live.Source)
+func NewQuerySession(ctx context.Context, live *Live, opt QueryOptions) (*QuerySession, error) {
+	return newQuerySession(ctx, live.Source, live.ID, opt)
 }
 
-func newQuerySession(ctx context.Context, src source.Source) (*QuerySession, error) {
+func newQuerySession(ctx context.Context, src source.Source, connID string, opt QueryOptions) (*QuerySession, error) {
 	qs := &QuerySession{}
-	qs.dialect, _ = src.(source.Dialect)
-	if s, ok := src.(source.Sessioner); ok {
+	switch s := src.(type) {
+	case source.Sessioner:
 		sess, err := s.Session(ctx)
 		if err != nil {
 			return nil, err
 		}
 		qs.session, qs.q = sess, sess
-		return qs, nil
+	case source.Queryer:
+		qs.q = s
+	default:
+		return nil, ErrNoQueryLanguage
 	}
-	if q, ok := src.(source.Queryer); ok {
-		qs.q = q
-		return qs, nil
-	}
-	return nil, ErrNoQueryLanguage
+	qs.dialect, _ = src.(source.Dialect)
+	qs.hist = opt.History
+	qs.entry = localdb.HistoryEntry{ConnectionID: connID, Database: opt.Database,
+		Language: src.Capabilities().Query.Language}
+	return qs, nil
 }
 
 // StatementResult is the outcome of one statement of a script.
@@ -92,6 +115,7 @@ func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) 
 	go func() {
 		defer close(out)
 		for r := range in {
+			arrived := time.Now()
 			sr := StatementResult{Index: r.Index, Offset: byteOffset(script, r.Offset),
 				Statement: r.Statement, Err: r.Err, Affected: -1}
 			if res := r.Result; res != nil {
@@ -101,6 +125,7 @@ func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) 
 					qs.track(sr.Rows)
 				}
 			}
+			qs.record(sr, arrived)
 			select {
 			case out <- sr:
 			case <-ctx.Done():
@@ -113,6 +138,36 @@ func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) 
 		}
 	}()
 	return out, nil
+}
+
+// record writes a statement to history once its outcome is known: at once
+// for a failure or a write, and for a query once its rows are in, so the
+// entry carries the real row count. Best effort: a history line that fails to
+// save must not disturb the run.
+func (qs *QuerySession) record(sr StatementResult, arrived time.Time) {
+	if qs.hist == nil {
+		return
+	}
+	e := qs.entry
+	e.Statement, e.Duration, e.Rows = sr.Statement, sr.Duration, sr.Affected
+	e.StartedAt = arrived.Add(-sr.Duration)
+	if sr.Err != nil {
+		e.Error = sr.Err.Error()
+	}
+	rs := sr.Rows
+	go func() {
+		if rs != nil {
+			<-rs.Done()
+			n, _ := rs.Progress()
+			e.Rows = int64(n)
+			if err := rs.Err(); err != nil && !errors.Is(err, context.Canceled) {
+				e.Error = err.Error() // stopping is the user's choice, not a failure
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), historyTimeout)
+		defer cancel()
+		_, _ = qs.hist.AddHistory(ctx, e)
+	}()
 }
 
 // StatementAt is the statement of a script that contains a byte offset: what

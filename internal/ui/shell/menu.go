@@ -30,6 +30,7 @@ const (
 	cmdQueryRun     = "query.run"
 	cmdQueryRunAll  = "query.runAll"
 	cmdQueryStop    = "query.stop"
+	cmdHistory      = "query.history"
 	cmdAppearSystem = "appearance.system"
 	cmdAppearLight  = "appearance.light"
 	cmdAppearDark   = "appearance.dark"
@@ -75,7 +76,7 @@ var menuBar = []struct {
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
 		item(cmdDisconnect),
 	}},
-	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop)}},
+	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev)}},
 }
 
