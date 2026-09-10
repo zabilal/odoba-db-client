@@ -48,7 +48,7 @@ func NewHighlighter(buf *Buffer, d *sqllex.Dialect) *Highlighter {
 		tokens: make(map[int][]sqllex.Token),
 		valid:  make(map[int]bool),
 	}
-	h.rebuildStates(0)
+	h.rebuildStates(0, 0)
 	return h
 }
 
@@ -58,12 +58,19 @@ func (h *Highlighter) SetDialect(d *sqllex.Dialect) {
 	h.tokens = make(map[int][]sqllex.Token)
 	h.valid = make(map[int]bool)
 	h.statesValid = 0
-	h.rebuildStates(0)
+	h.rebuildStates(0, 0)
 }
 
 // rebuildStates recomputes the state chain from line `from` to the end,
 // stopping early once a recomputed state matches what was already cached.
-func (h *Highlighter) rebuildStates(from int) {
+//
+// trust is the first index whose cached state may be compared against. An
+// edit that inserts k lines leaves the states of the new lines zero-filled by
+// shiftCaches, and a zero State reads as StateNormal: stopping on one of those
+// is the statesValid bug again, arriving through a paste. Pasting lines where
+// a later one opens a comment then left everything below coloured as code.
+// TestPastedLinesOpeningACommentColourWhatFollows pins it.
+func (h *Highlighter) rebuildStates(from, trust int) {
 	n := h.buf.LineCount()
 	if cap(h.states) < n+1 {
 		grown := make([]sqllex.State, n+1, (n+1)*2)
@@ -93,7 +100,7 @@ func (h *Highlighter) rebuildStates(from int) {
 
 		// Stop only when the state we are comparing against was genuinely
 		// computed (i+1 < statesValid), not merely zero-valued.
-		if i > from && i+1 < h.statesValid && h.states[i+1].Equal(end) {
+		if i > from && i+1 >= trust && i+1 < h.statesValid && h.states[i+1].Equal(end) {
 			// The chain below is already correct. This is what keeps an
 			// ordinary keystroke O(1) instead of O(lines).
 			return
@@ -109,47 +116,50 @@ func (h *Highlighter) Apply(e Edit) {
 	// discarding them, so inserting a line near the top does not invalidate
 	// the rest of the file.
 	if e.LinesInserted != e.LinesRemoved {
-		delta := e.LinesInserted - e.LinesRemoved
-		h.shiftCaches(e.Line, delta)
+		h.shiftCaches(e.Line, e.LinesRemoved, e.LinesInserted-e.LinesRemoved)
 	}
 	for i := e.Line; i < e.Line+e.LinesInserted; i++ {
 		delete(h.valid, i)
 		delete(h.tokens, i)
 	}
-	h.rebuildStates(e.Line)
+	h.rebuildStates(e.Line, e.Line+e.LinesInserted)
 }
 
-func (h *Highlighter) shiftCaches(from, delta int) {
-	// Shift the state chain alongside the token caches. Discarding it instead
-	// would make every newline an O(lines) rebuild.
+// shiftCaches moves cached lines to their new indexes after an edit at line
+// from that replaced `removed` lines. Only lines after the removed block
+// move. The removed lines are dropped, never shifted: moving them too put a
+// deleted line's tokens and start state onto the lines ABOVE a multi-line
+// deletion, which then drew with the wrong colours until edited.
+// TestMultiLineDeleteLeavesLinesAboveIntact pins it.
+func (h *Highlighter) shiftCaches(from, removed, delta int) {
+	after := from + removed // first line whose content survives unchanged
+
+	// States: states[i] is the state at the start of line i. The edited
+	// line's own start state (index from) is unaffected; states for removed
+	// lines are dropped; states from `after` on move by delta. Shifting
+	// rather than discarding keeps a newline O(1) instead of O(lines).
 	if len(h.states) > from+1 {
 		shifted := make([]sqllex.State, len(h.states)+delta)
 		copy(shifted, h.states[:from+1])
-		for i := from + 1; i < len(h.states); i++ {
-			if j := i + delta; j >= 0 && j < len(shifted) {
+		for i := after; i < len(h.states); i++ {
+			if j := i + delta; j > from && j < len(shifted) {
 				shifted[j] = h.states[i]
 			}
 		}
 		h.states = shifted
 	}
 	if h.statesValid > from {
-		h.statesValid += delta
+		h.statesValid = max(from+1, h.statesValid+delta)
 	}
 
 	nt := make(map[int][]sqllex.Token, len(h.tokens))
 	nv := make(map[int]bool, len(h.valid))
-	for i, t := range h.tokens {
-		if i < from {
-			nt[i] = t
-		} else if h.valid[i] {
-			nt[i+delta] = t
-		}
-	}
 	for i := range h.valid {
-		if i < from {
-			nv[i] = true
-		} else {
-			nv[i+delta] = true
+		switch {
+		case i < from:
+			nt[i], nv[i] = h.tokens[i], true
+		case i >= after:
+			nt[i+delta], nv[i+delta] = h.tokens[i], true
 		}
 	}
 	h.tokens, h.valid = nt, nv
