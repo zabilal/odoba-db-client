@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  # NFR-D3: Fyne requires CGO, so cross-compiling from one host is not a
+  # supported workflow. Every platform builds on its own runner, and it does so
+  # from Phase 0 rather than being discovered at release time (RISK-10).
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  coverage:
+    name: Core coverage (NFR-Q2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Measure
+        run: |
+          go test -coverprofile=coverage.out \
+            ./internal/source/... ./internal/model/... ./internal/diff/... \
+            ./internal/redact/...
+          go tool cover -func=coverage.out | tail -1
+
+  # NFR-Q3: budget assertions fail the build on regression. Benchmarks run on
+  # a fixed runner class so numbers stay comparable across commits.
+  bench:
+    name: Performance budgets (NFR-Q3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+      - name: Run benchmarks
+        run: go test -run '^$' -bench . -benchmem ./... | tee bench.txt

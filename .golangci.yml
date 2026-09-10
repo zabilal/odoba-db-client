@@ -1,0 +1,61 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - misspell
+    - revive
+
+  settings:
+    depguard:
+      rules:
+        # ARCH-1: the core must remain usable as a library with no UI dependency.
+        # This is the single most important structural guard in the project — it is
+        # what keeps the valuable core portable if the toolkit decision is revisited.
+        core-must-not-import-ui:
+          list-mode: lax
+          files:
+            - "**/internal/model/**"
+            - "**/internal/source/**"
+            - "**/internal/diff/**"
+            - "**/internal/transfer/**"
+            - "**/internal/store/**"
+            - "**/internal/redact/**"
+          deny:
+            - pkg: fyne.io
+              desc: "ARCH-1: core packages must not import Fyne. UI code belongs in internal/ui."
+            - pkg: github.com/ikigai-db/ikigai-db/internal/ui
+              desc: "ARCH-1: core packages must not import internal/ui."
+            - pkg: github.com/ikigai-db/ikigai-db/internal/app
+              desc: "ARCH-1: core packages must not import internal/app (dependencies point downward only)."
+
+        # ARCH-2: the UI never constructs SQL.
+        ui-must-not-generate-sql:
+          list-mode: lax
+          files:
+            - "**/internal/ui/**"
+          deny:
+            - pkg: github.com/ikigai-db/ikigai-db/internal/source/drivers
+              desc: "ARCH-2/ARCH-1: UI talks to internal/app, never directly to drivers."
+
+    contextcheck:
+      # ARCH-4 / NFR-P12: every data-source call must carry a context.
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

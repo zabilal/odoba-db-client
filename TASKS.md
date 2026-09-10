@@ -1,0 +1,579 @@
+# Ikigai DB — Master Task List
+
+**Companion to:** [REQUIREMENTS.md](REQUIREMENTS.md) v0.2
+**Created:** 2026-09-09
+**Covers:** Phase 0 → Phase 5 (whole project)
+
+---
+
+## How to use this file
+
+- Task IDs are stable. Never renumber; append with a letter suffix (`T1.12a`) if inserting.
+- `→` traces a task to the requirement, risk, or NFR it satisfies.
+- **GATE** rows are hard stops. Do not start dependent work until the gate passes.
+- Update **Current Position** below on every session. That block is the resume point.
+
+**Status legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked · `[-]` dropped/deferred
+
+---
+
+## Current Position
+
+```
+PHASE:     0 — Foundations & Spikes
+STATUS:    0.A tooling and 0.B core contracts COMPLETE. 0.C theme next, then the spikes.
+NEXT TASK: T0.31 (design tokens) — or jump to T0.38 (grid spike) if you want RISK-1
+           answered before investing in the theme. Recommend the theme first: the
+           grid spike needs tokens to render anything representative.
+BLOCKED:   T0.8  — fyne package proof needs the Fyne dependency added (Phase 0.C)
+           T0.10 — CI bench job exists but there are no benchmarks to run yet
+OPEN:      OQ-8 — prototype the raster grid fallback (T0.43) alongside T0.39, or
+           only on failure? Recommended: alongside.
+LAST DONE: 2026-09-10 — core contracts landed. 344→27 tasks closed.
+           Module path placeholder: github.com/ikigai-db/ikigai-db (OQ-1 pending;
+           change with a single `go mod edit -module`).
+```
+
+**Phase 0 findings so far**
+
+- **ADR-0005** — T0.29 changed the driver contract. `Browser` is now required and
+  `Queryer`/`Dialect` are optional; `StreamConsumer` was removed entirely. Proven by
+  compilation in `internal/source/contract_kafka_test.go`. REQ-DRV-2/3 updated.
+- Coverage: `model` 87.8%, `redact` 78.1% — both clear NFR-Q2. `capability` and
+  `conformance` are 0% by design (data declarations, and a harness that only runs
+  against real servers).
+- `redact` bearer-token ordering bug was caught by its own test, not by review.
+
+**Locked decisions — do not re-open without explicit instruction:**
+1. UI toolkit: **Fyne**, pure Go. Owner overrode a Wails/webview recommendation. Pure Go end to end is a goal in itself.
+2. Phase 1–2 sources: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, Redis, Cassandra, **Kafka**.
+3. Licence: **deferred**. Permissive working assumption. Clean-room vs DBGate's GPL-3.0 is mandatory.
+
+---
+
+# PHASE 0 — Foundations & Spikes
+
+> Exit: all four spike gates pass (or documented fallbacks chosen). **No Phase 1 UI work starts until then.**
+
+## 0.A Repository & tooling
+
+- [x] **T0.1** `go mod init` — module path (placeholder until OQ-1 settles)
+- [x] **T0.2** `git init`, `.gitignore` (binaries, `.DS_Store`, `dist/`, `fyne-cross/`), initial commit
+- [x] **T0.3** Create directory skeleton per REQUIREMENTS §10.1 with package doc comments → ARCH-1
+- [x] **T0.4** `Makefile`: `build` `test` `lint` `bench` `package` `conformance` targets
+- [x] **T0.5** `golangci-lint` config; enable `depguard`
+- [x] **T0.6** **depguard rule: no `fyne.io/**` import below `internal/app`** → ARCH-1 *(the single most important structural guard)*
+- [x] **T0.7** CI: native runners for macOS (arm64+amd64), Linux (amd64+arm64), Windows (amd64) → NFR-D3, RISK-10
+- [!] **T0.8** CI: prove `fyne package` works on all three platforms **now**, not at Phase 4 → RISK-10
+- [x] **T0.9** CI: testcontainers matrix — postgres, mysql, mariadb, mongo, redis, cassandra, kafka+schema-registry → NFR-Q1
+- [~] **T0.10** Benchmark harness + CI budget assertions that fail the build on regression → NFR-Q3
+- [x] **T0.11** `docs/adr/` decision-record folder; ADR-0001 records the Fyne decision and its rationale
+- [x] **T0.12** `LICENSE` placeholder + `CLEANROOM.md` stating the no-DBGate-source rule → RISK-5
+- [x] **T0.13** `ARCHITECTURE.md` summarising §10 layering for future contributors
+
+## 0.B Core contracts — no UI, no Fyne
+
+- [x] **T0.14** Canonical model: **relational** (database, schema, table, column, index, constraint, FK, view, routine, sequence, type)
+- [x] **T0.15** Canonical model: **document** (collection, inferred shape, index)
+- [x] **T0.16** Canonical model: **key-value** (keyspace, key, type, TTL)
+- [x] **T0.17** Canonical model: **stream/log** (topic, partition, offset, consumer group, registry subject) → REQ-DB-3
+- [x] **T0.18** Unify the four into one source-agnostic model surface → ARCH-3, REQ-DB-3
+- [x] **T0.19** `Capabilities` descriptor type + registry → REQ-DB-2
+- [x] **T0.20** `Connector` interface (dial, auth, tunnel, health, close)
+- [x] **T0.21** `Introspector` interface
+- [x] **T0.22** `Queryer` interface + **cursor/stream abstraction** (never a slice) → ARCH-5, NFR-P11
+- [x] **T0.23** `Dialect` interface + per-dialect identifier quoter → ARCH-2, NFR-S6
+- [x] **T0.24** `StreamConsumer` / `StreamProducer` interfaces → REQ-DRV-2
+- [x] **T0.25** Optional interfaces: `Diffable`, `BulkLoader`, `PlanExplainer`, `Scriptable`
+- [x] **T0.26** `context.Context` + cancellation contract on every call → ARCH-4, NFR-P12
+- [x] **T0.27** Statement classifier (read vs write) for read-only enforcement → NFR-S4
+- [x] **T0.28** Driver conformance suite skeleton; optional interfaces report *skipped*, not failed → REQ-DRV-1
+- [x] **T0.29** **Paper-validate the contract against Kafka before any driver is written.** Kafka must work without `Queryer` or `Dialect`. If it cannot, redesign the contract → REQ-DRV-2, RISK-4
+- [x] **T0.30** Secret-redaction helper used by all logging and error paths → NFR-S2
+
+## 0.C Theme — Phase 0 deliverable, not end-stage polish
+
+- [ ] **T0.31** Design tokens: palette (light + dark), typography scale, spacing scale, corner radii → UX-12
+- [ ] **T0.32** Implement custom `fyne.Theme` → RISK-6
+- [ ] **T0.33** Icon set (object classes, actions, source types)
+- [ ] **T0.34** Environment colour treatment (local/dev/staging/production) → FR-1.7, UX-8
+- [ ] **T0.35** Semantic colours: diff states, NULL, error, changeset add/modify/delete → UX-7, UX-9
+- [ ] **T0.36** Theme gallery harness app for visual review of every token
+- [ ] **T0.37** WCAG 2.1 AA contrast check on both themes → NFR-A2
+
+## 0.D SPIKE W1 — Data grid → RISK-1 *(existential)*
+
+- [ ] **T0.38** Seed script: 10M-row Postgres table, mixed types
+- [ ] **T0.39** Prototype `widget.Table` with `StickyRowCount`/`StickyColumnCount`
+- [ ] **T0.40** Windowed server-side fetch behind the prototype
+- [ ] **T0.41** Instrument and measure sustained fps under scroll → NFR-P4
+- [ ] **T0.42** Verify render cost scales with *visible* cells, not total rows → NFR-P13
+- [ ] **T0.43** Prototype the `canvas.Raster` fallback grid **in parallel, not on failure** → OQ-8
+- [ ] **T0.44** Compare both, decide, write ADR-0002
+- [ ] **GATE G0-1** — 10M-row table sustains ≥30 fps floor on the chosen approach
+
+## 0.E SPIKE W2 — Query editor → RISK-2 *(largest single build risk)*
+
+- [ ] **T0.45** `alecthomas/chroma` lexing → styled output prototype (SQL + CQL lexers)
+- [ ] **T0.46** Caret, selection, and scroll model
+- [ ] **T0.47** Incremental re-highlight on edit (do not re-lex the whole buffer per keystroke)
+- [ ] **T0.48** 5 000-line SQL file: measure keystroke-to-glyph with highlighting live → NFR-P5
+- [ ] **T0.49** Decide `widget.RichText` vs direct canvas text drawing; ADR-0003
+- [ ] **GATE G0-2** — 16 ms keystroke budget met on a 5 000-line file
+
+## 0.F SPIKE W3 — Node canvas (ER + designer)
+
+- [ ] **T0.50** Pan/zoom container with a custom `fyne.Layout`
+- [ ] **T0.51** Draggable nodes with persisted positions
+- [ ] **T0.52** Edge routing (orthogonal preferred)
+- [ ] **T0.53** Auto-layout via `gonum/graph` or `dominikbraun/graph`
+- [ ] **T0.54** 200-table schema: layout time and pan smoothness
+- [ ] **GATE G0-3** — 200-table schema lays out and pans smoothly
+
+## 0.G SPIKE W4 — Charts
+
+- [ ] **T0.55** Render `gonum/plot` or `wcharczuk/go-chart` into `canvas.Image`
+- [ ] **T0.56** Hit-test overlay for hover tooltips
+- [ ] **T0.57** Accuracy test at 100k points → FR-11.4
+- [ ] **T0.58** Decide image-render vs native canvas drawing; ADR-0004
+- [ ] **GATE G0-4** — tooltip hit-testing accurate at 100k points
+
+### ✅ Phase 0 exit criteria
+- [ ] G0-1, G0-2, G0-3, G0-4 all pass or have documented fallbacks
+- [ ] Custom theme renders in the gallery harness
+- [ ] Conformance suite runs (empty is fine) on all CI platforms
+- [ ] `fyne package` produces an artifact on all three platforms
+
+---
+
+# PHASE 1 — Walking Skeleton → J1, J3
+
+## 1.A Application shell
+
+- [ ] **T1.1** App entry, window lifecycle, single-instance handling
+- [ ] **T1.2** Native menu bar → FR-15.5
+- [ ] **T1.3** Native file dialogs + notifications → FR-15.5
+- [ ] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2
+- [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
+- [ ] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
+- [ ] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
+- [ ] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11
+- [ ] **T1.9** Searchable shortcut reference sheet → FR-15.4
+- [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
+- [ ] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7
+- [ ] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3
+- [ ] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6
+- [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3
+- [ ] **T1.15** Autosave scratch buffers → NFR-R2
+- [ ] **T1.16** Per-connection panic isolation and recovery → NFR-R1
+
+## 1.B Persistence & store
+
+- [ ] **T1.17** OS-convention config directories → FR-17.1
+- [ ] **T1.18** Settings file (JSON/TOML), human-readable → FR-17.2
+- [ ] **T1.19** **OS keychain integration** (Keychain / DPAPI / libsecret) → FR-1.5, NFR-S1
+- [ ] **T1.20** Local SQLite store: history, saved queries, session state → FR-17.3
+- [ ] **T1.21** Store schema versioning + migration on upgrade → FR-17.4
+- [ ] **T1.22** Structured logging with rotation and redaction → NFR-R4, NFR-S2
+
+## 1.C Connection management
+
+- [ ] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
+- [ ] **T1.24** Per-source connection forms with defaults → FR-1.2
+- [ ] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
+- [ ] **T1.26** Test connection with precise error classification → FR-1.4
+- [ ] **T1.27** Connection folders/groups with colour and icon → FR-1.6
+- [ ] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8
+- [ ] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4
+- [ ] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3
+- [ ] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
+
+## 1.D Drivers — relational core
+
+- [ ] **T1.32** PostgreSQL driver (`jackc/pgx/v5`) — reference implementation
+- [ ] **T1.33** PostgreSQL introspection → canonical model
+- [ ] **T1.34** PostgreSQL dialect + quoter + paging
+- [ ] **T1.35** MySQL driver (`go-sql-driver/mysql`)
+- [ ] **T1.36** MySQL introspection + dialect
+- [ ] **T1.37** MariaDB feature-probe divergence from MySQL → REQ-DB-2
+- [ ] **T1.38** SQLite driver (`modernc.org/sqlite`) + introspection + dialect
+- [ ] **T1.39** Capability descriptors for all four → REQ-DB-2
+- [ ] **T1.40** Conformance suite green for all four → REQ-DRV-1
+
+## 1.E Object explorer
+
+- [ ] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
+- [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
+- [ ] **T1.43** Fuzzy filter matching on full path → FR-2.3
+- [ ] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4
+- [ ] **T1.45** Lazy cancellable row-count/size badges → FR-2.5
+- [ ] **T1.46** Pinned/favourite objects → FR-2.6
+
+## 1.F Data grid — read path (productionise W1)
+
+- [ ] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11
+- [ ] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2
+- [ ] **T1.49** Server-side multi-column sort → FR-3.3
+- [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7
+- [ ] **T1.51** Cell/range/row/column selection → FR-3.7
+- [ ] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7
+- [ ] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9
+- [ ] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4
+- [ ] **T1.55** Compact filter-row DSL (`>100`, `!=x`, `a,b,c`, `~regex`, `NULL`) → FR-3.5
+- [ ] **T1.56** Global WHERE editor showing the generated SQL → FR-3.6, UX-6
+
+## 1.G Query editor — stage 1 (productionise W2)
+
+- [ ] **T1.57** Editor widget: caret, selection, scroll, undo/redo
+- [ ] **T1.58** Per-dialect syntax highlighting → FR-5.1
+- [ ] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11
+- [ ] **T1.60** Find/replace with regex → FR-5.11
+- [ ] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3
+- [ ] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4
+- [ ] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9
+- [ ] **T1.64** Timing, rows affected, server messages pane → FR-5.6
+- [ ] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
+- [ ] **T1.66** Persistent searchable query history → FR-5.8
+- [ ] **T1.67** Saved queries with folders → FR-5.9
+- [ ] **T1.68** Map server errors back to editor position → FR-5.10
+
+## 1.H Export
+
+- [ ] **T1.69** Streaming export engine (memory flat) → FR-10.3, NFR-P11
+- [ ] **T1.70** CSV, TSV, JSON, NDJSON writers → FR-10.1
+- [ ] **T1.71** Export scope: selection / filtered result / whole table → FR-10.2
+- [ ] **T1.72** Progress, rows/sec, ETA, working cancel → FR-10.7
+
+## 1.I Quality
+
+- [ ] **T1.73** Benchmarks asserting NFR-P1…P6 in CI → NFR-Q3
+- [ ] **T1.74** E2E test: **J1** (zero to first result)
+- [ ] **T1.75** E2E test: **J3** (write and iterate on a query)
+- [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
+
+### ✅ Phase 1 exit: J1 and J3 complete end to end on all three platforms
+
+---
+
+# PHASE 2 — Editing, NoSQL & Streaming → J2, J5, J7, J8
+
+## 2.A Changeset editing
+
+- [ ] **T2.1** Pending-changeset model with add/modify/delete states → FR-4.3
+- [ ] **T2.2** Visual marking of changed cells/rows → FR-4.3, UX-9
+- [ ] **T2.3** In-place editors per type (text, number, date, bool, enum, JSON) → FR-4.1
+- [ ] **T2.4** Insert / delete / duplicate row → FR-4.2
+- [ ] **T2.5** **Statement preview before commit, always** → FR-4.4, UX-6
+- [ ] **T2.6** Transactional commit; full rollback + offending row on failure → FR-4.5
+- [ ] **T2.7** Revert cell / row / entire changeset → FR-4.6
+- [ ] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7
+- [ ] **T2.9** Editable query results when mapping to one updatable table → FR-4.8
+- [ ] **T2.10** Paste TSV/CSV block into the grid → FR-4.10
+- [ ] **T2.11** Bulk set-column-value across selection → FR-4.11
+
+## 2.B Form view & navigation
+
+- [ ] **T2.12** Form view — one record laid out vertically → FR-3.10
+- [ ] **T2.13** FK navigation: jump to referenced row → FR-3.11
+- [ ] **T2.14** Reverse FK navigation: "what points at this?" → FR-3.11
+- [ ] **T2.15** FK lookup labels rendered inline → FR-3.12
+- [ ] **T2.16** Master-detail nested grid → FR-3.13
+
+## 2.C Import
+
+- [ ] **T2.17** Import readers: CSV/TSV/JSON/NDJSON/Excel → FR-10.4
+- [ ] **T2.18** Delimiter/encoding/header auto-detection → FR-10.4
+- [ ] **T2.19** Column mapping UI with type coercion → FR-10.5
+- [ ] **T2.20** **Dry-run preview listing error rows** → FR-10.5
+- [ ] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6
+- [ ] **T2.22** Batch size + error policy → FR-10.6
+- [ ] **T2.23** Excel (xlsx) export writer → FR-10.1
+- [ ] **T2.24** SQL INSERT, Markdown, HTML, XML writers → FR-10.1
+
+## 2.D Query editor — stage 2
+
+- [ ] **T2.25** Completion engine: keywords, schemas, tables, functions → FR-5.2
+- [ ] **T2.26** **Alias-resolved column completion** → FR-5.2
+- [ ] **T2.27** Completion popup widget with keyboard navigation → FR-5.2
+- [ ] **T2.28** Snippets → FR-5.2
+- [ ] **T2.29** Schema cache feeding completion, invalidated on DDL → FR-5.2
+
+## 2.E MongoDB
+
+- [ ] **T2.30** Driver + connection (incl. `mongodb+srv://`) → FR-1.3
+- [ ] **T2.31** Introspection: databases, collections, indexes
+- [ ] **T2.32** Document shape inference over a sample → FR-12.4
+- [ ] **T2.33** Table view + JSON view toggle → FR-12.1
+- [ ] **T2.34** Schema-aware JSON document editor → FR-12.1
+- [ ] **T2.35** Aggregation-pipeline editor → FR-12.1
+- [ ] **T2.36** Index management → FR-12.1
+- [ ] **T2.37** `mongosh`-compatible command console → FR-12.1
+- [ ] **T2.38** Conformance green
+
+## 2.F Redis
+
+- [ ] **T2.39** Driver + connection (standalone, sentinel, cluster)
+- [ ] **T2.40** Key browser with pattern SCAN + type filter → FR-12.2
+- [ ] **T2.41** Editors: string, hash, list, set, sorted set → FR-12.2
+- [ ] **T2.42** Editors: JSON, stream → FR-12.2
+- [ ] **T2.43** TTL display and edit → FR-12.2
+- [ ] **T2.44** Raw command console → FR-12.2
+- [ ] **T2.45** Memory / keyspace info panel → FR-12.2
+- [ ] **T2.46** Conformance green
+
+## 2.G Cassandra
+
+- [ ] **T2.47** Driver (`gocql/gocql`) + connection
+- [ ] **T2.48** Keyspace/table introspection, replication strategy display → FR-12.3
+- [ ] **T2.49** CQL dialect + quoter
+- [ ] **T2.50** CQL editor with highlighting and completion → FR-5.1, FR-5.2
+- [ ] **T2.51** **Partition-key-aware paging** → FR-12.3
+- [ ] **T2.52** Consistency-level selector → FR-12.3
+- [ ] **T2.53** Conformance green
+
+## 2.H Kafka → J8 *(largest Phase 2 block)*
+
+### Connect & auth
+- [ ] **T2.54** `twmb/franz-go` driver + bootstrap-server connection
+- [ ] **T2.55** SASL: PLAIN, SCRAM-SHA-256/512 → FR-1.11
+- [ ] **T2.56** SASL: OAUTHBEARER, GSSAPI/Kerberos → FR-1.11
+- [ ] **T2.57** AWS MSK IAM auth → FR-1.11
+- [ ] **T2.58** mTLS → FR-1.10
+
+### Browse
+- [ ] **T2.59** Cluster overview: brokers, controller, cluster id, API versions → FR-13.1
+- [ ] **T2.60** Topic list with partitions, RF, message count, size; internal-topic filter → FR-13.2
+- [ ] **T2.61** Topic detail: leader, replicas, ISR, earliest/latest offset, lag → FR-13.3
+- [ ] **T2.62** Object-explorer integration: topics, partitions, groups, schemas → FR-2.2
+
+### Messages
+- [ ] **T2.63** Message browser rendering into the **standard data grid** (partition, offset, timestamp, key, value, headers) → FR-13.4
+- [ ] **T2.64** Seek modes: beginning, end/last-N, specific offset, **timestamp** → FR-13.5
+- [ ] **T2.65** **Live tail with pause/resume and a bounded ring buffer** → FR-13.6, NFR-P10
+- [ ] **T2.66** Message detail view: decoded value, headers table, raw hex, copy → FR-13.8
+- [ ] **T2.67** Client-side filtering by key, header, or decoded-JSON predicate → FR-13.9
+
+### Deserialisation
+- [ ] **T2.68** Decoders: raw bytes/hex, UTF-8, JSON → FR-13.7
+- [ ] **T2.69** Confluent Schema Registry client (`franz-go/pkg/sr`) → FR-13.7
+- [ ] **T2.70** Avro decoding → FR-13.7
+- [ ] **T2.71** Protobuf decoding → FR-13.7
+- [ ] **T2.72** JSON Schema decoding → FR-13.7
+- [ ] **T2.73** Per-topic key/value decoder selection, remembered → FR-13.7
+- [ ] **T2.74** Schema Registry browser: subjects, versions, compatibility, version diff → FR-13.14
+
+### Groups, produce, admin
+- [ ] **T2.75** Consumer groups: list, state, members → FR-13.10
+- [ ] **T2.76** Per-partition current offset / end offset / **lag** → FR-13.10
+- [ ] **T2.77** Produce a message: key, value, headers, partition, schema validation → FR-13.11
+- [ ] **T2.78** Topic admin: create, delete, add partitions → FR-13.12
+- [ ] **T2.79** Topic config view/alter, defaults distinguished from overrides → FR-13.12
+- [ ] **T2.80** Consumer-group offset reset (earliest/latest/timestamp/specific) → FR-13.13
+
+### Safety — non-negotiable
+- [ ] **T2.81** **Browsing never joins a consumer group or commits offsets** — explicit partition assignment only → FR-13.19
+- [ ] **T2.82** Every consume bounded (max messages / bytes / time) and cancellable → FR-13.20
+- [ ] **T2.83** Produce and offset-reset inherit read-only mode + production guardrails → FR-13.21
+- [ ] **T2.84** Conformance green against kafka + schema-registry testcontainers
+
+## 2.I Auth & tunnelling
+
+- [ ] **T2.85** SSH tunnel: password, private key, key+passphrase → FR-1.9
+- [ ] **T2.86** SSH tunnel: `ssh-agent`, jump host → FR-1.9
+- [ ] **T2.87** Cloud auth: AWS IAM/RDS token, GCP ADC, Azure AD/Entra → FR-1.14
+- [ ] **T2.88** Import connections from DBeaver, DBGate, TablePlus, DataGrip → FR-1.12
+- [ ] **T2.89** Export/import connection set as JSON, secrets excluded → FR-1.13
+
+## 2.J Production guardrails → J7
+
+- [ ] **T2.90** Typed confirmation for writes on `production` connections → FR-4.9
+- [ ] **T2.91** Always confirm `DELETE`/`UPDATE` with no WHERE → FR-4.9
+- [ ] **T2.92** Verify read-only blocks every write path incl. Kafka produce → NFR-S4
+
+## 2.K Quality
+
+- [ ] **T2.93** E2E: **J2** (find a row and fix it)
+- [ ] **T2.94** E2E: **J5** (move data)
+- [ ] **T2.95** E2E: **J7** (work safely in production)
+- [ ] **T2.96** E2E: **J8** (debug a stream)
+- [ ] **T2.97** NFR-P10 benchmark: 10k msg/s tail stays responsive, memory bounded
+
+### ✅ Phase 2 exit: J2, J5, J7, J8 complete
+
+---
+
+# PHASE 3 — Modelling → J4, J6
+
+## 3.A DDL / table designer
+
+- [ ] **T3.1** Column editor (name, type, length/precision, nullable, default, identity, comment) → FR-6.1
+- [ ] **T3.2** PK, unique, FK (ON DELETE/UPDATE), check constraints → FR-6.2
+- [ ] **T3.3** Index editor (columns, order, uniqueness, method, partial, include) → FR-6.3
+- [ ] **T3.4** **DDL preview before execution** → FR-6.4, UX-6
+- [ ] **T3.5** Source editors for views, procedures, functions, triggers, sequences → FR-6.5
+- [ ] **T3.6** Rename with dependency awareness → FR-6.6
+- [ ] **T3.7** Generate full DDL for object or schema → FR-6.7
+
+## 3.B Schema compare & sync → J6
+
+- [ ] **T3.8** Diff engine over the canonical model → `internal/diff`
+- [ ] **T3.9** Compare two live databases → FR-7.1
+- [ ] **T3.10** Compare live database against a saved model → FR-7.1
+- [ ] **T3.11** Side-by-side diff tree (added/removed/changed/identical) → FR-7.2
+- [ ] **T3.12** Sync-script generation with per-difference selection → FR-7.3
+- [ ] **T3.13** Apply script or save to file → FR-7.4
+- [ ] **T3.14** Ignore rules (schemas, patterns, whitespace, collation, comments) → FR-7.5
+- [ ] **T3.15** **Heavy test coverage of `internal/diff`** → RISK-8
+
+## 3.C ER diagram → J4 (productionise W3)
+
+- [ ] **T3.16** Auto-generate from schema or table subset → FR-8.1
+- [ ] **T3.17** Pan, zoom, drag with persisted layout → FR-8.2
+- [ ] **T3.18** Render columns, keys, cardinality → FR-8.3
+- [ ] **T3.19** Export PNG / SVG → FR-8.4
+- [ ] **T3.20** Filter to N-degree neighbours → FR-8.5
+
+## 3.D Charts (productionise W4)
+
+- [ ] **T3.21** Chart types: line, bar, stacked bar, area, pie, scatter, histogram → FR-11.1
+- [ ] **T3.22** Column-role assignment with auto-detection → FR-11.2
+- [ ] **T3.23** Export PNG / SVG → FR-11.3
+- [ ] **T3.24** Hover tooltips and click-to-filter → FR-11.4
+
+## 3.E Query analysis
+
+- [ ] **T3.25** `EXPLAIN` / `EXPLAIN ANALYZE` plan tree with cost heat → FR-5.13
+- [ ] **T3.26** Transaction control with persistent open-transaction indicator → FR-5.14
+- [ ] **T3.27** SQL formatter per dialect → FR-5.12
+- [ ] **T3.28** Column statistics panel → FR-3.14
+- [ ] **T3.29** Aggregate footer per column → FR-3.15
+
+## 3.F Drivers — Tier 1/2 expansion
+
+- [ ] **T3.30** SQL Server (`microsoft/go-mssqldb`) + introspection + dialect
+- [ ] **T3.31** ClickHouse (`clickhouse-go/v2`)
+- [ ] **T3.32** Oracle (`sijms/go-ora/v2`, thin mode)
+- [ ] **T3.33** CockroachDB (pgx, distinct catalog)
+- [ ] **T3.34** DuckDB (`marcboeker/go-duckdb`)
+- [ ] **T3.35** Conformance green for all five
+
+## 3.G Quality
+
+- [ ] **T3.36** E2E: **J4** (understand an unfamiliar schema)
+- [ ] **T3.37** E2E: **J6** (promote a schema change)
+
+### ✅ Phase 3 exit: J4 and J6 complete
+
+---
+
+# PHASE 4 — Hardening & Release (v1.0 GA)
+
+## 4.A Remaining sources
+
+- [ ] **T4.1** Amazon Redshift (pgx, distinct catalog)
+- [ ] **T4.2** Firebird (`nakagami/firebirdsql`)
+- [ ] **T4.3** libSQL / Turso (`tursodatabase/go-libsql`)
+- [ ] **T4.4** Azure Cosmos DB (`azcosmos`)
+- [ ] **T4.5** Google Firestore
+- [ ] **T4.6** DynamoDB (`aws-sdk-go-v2`)
+- [ ] **T4.7** Conformance green for all six
+
+## 4.B Models on disk
+
+- [ ] **T4.8** Save model as a VCS-friendly file tree, one file per object → FR-7.6
+- [ ] **T4.9** Load model from disk for comparison → FR-7.1
+
+## 4.C Remaining features
+
+- [ ] **T4.10** Saved named views per table → FR-3.16
+- [ ] **T4.11** Multiple windows → FR-15.8
+- [ ] **T4.12** Workspaces/projects → FR-15.9
+- [ ] **T4.13** Full-text search across object definitions → FR-2.7
+- [ ] **T4.14** Multi-select batch operations in explorer → FR-2.8
+- [ ] **T4.15** Table-to-table copy across sources → FR-10.9
+- [ ] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16
+- [ ] **T4.17** Optional app-level vault lock → NFR-S7
+- [ ] **T4.18** Backup/restore app data as one archive → FR-17.5
+- [ ] **T4.19** Portable mode → FR-17.6
+
+## 4.D Accessibility
+
+- [ ] **T4.20** Full keyboard operability audit; no mouse-only actions → NFR-A1
+- [ ] **T4.21** Visible focus rings throughout → NFR-A1
+- [ ] **T4.22** WCAG AA contrast re-verified; OS text-scaling respected → NFR-A2
+- [ ] **T4.23** **Document the screen-reader gap publicly** → NFR-A3, DoD-8
+
+## 4.E Packaging & release
+
+- [ ] **T4.24** macOS: signed `.dmg` + notarisation → NFR-D4
+- [ ] **T4.25** Windows: signed `.exe`/`.msi` → NFR-D4
+- [ ] **T4.26** Linux: `.deb`, `.rpm`, AppImage → NFR-D4
+- [ ] **T4.27** In-app update check with release notes, user-controlled install → FR-15.10
+- [ ] **T4.28** Homebrew cask, winget, Scoop, AUR → NFR-D5
+- [ ] **T4.29** Dependency SBOM + CI vulnerability scanning → NFR-S9
+
+## 4.F Final verification
+
+- [ ] **T4.30** All §6.1 budgets green in CI → DoD-2
+- [ ] **T4.31** Conformance passes for every Tier-1/Tier-2 source against real servers → DoD-4
+- [ ] **T4.32** J1–J8 pass on macOS, Windows, Linux → DoD-3
+- [ ] **T4.33** **Security review covering NFR-S1…S6** → DoD-6
+- [ ] **T4.34** Verify offline operation → NFR-D6
+- [ ] **T4.35** Zero open `M`-severity data-loss or credential defects → DoD-7
+- [ ] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5
+- [ ] **T4.37** User documentation + known-gaps page → DoD-8
+
+### ✅ Phase 4 exit: v1.0 GA
+
+---
+
+# PHASE 5 — Differentiators (v1.1+)
+
+- [ ] **T5.1** Visual query designer: canvas, FK-inferred joins → FR-9.1
+- [ ] **T5.2** Designer: columns, conditions, grouping, aggregates, ordering → FR-9.2
+- [ ] **T5.3** Designer: live bidirectional SQL view → FR-9.3
+- [ ] **T5.4** AI: provider abstraction incl. local endpoint → FR-14.5
+- [ ] **T5.5** AI: NL → SQL/CQL grounded in live schema → FR-14.1
+- [ ] **T5.6** AI: explain query / explain plan → FR-14.2
+- [ ] **T5.7** AI: consent model — off by default, per-connection opt-in, data toggle → FR-14.3, FR-14.4
+- [ ] **T5.8** AI: never auto-execute; statements land in the editor → FR-14.6
+- [ ] **T5.9** CLI: run query, export, import, deploy model, diff → FR-16.1, FR-7.7
+- [ ] **T5.10** Plugin SDK for third-party sources and formats → FR-16.2
+- [ ] **T5.11** Map view for geo columns → FR-11.5
+- [ ] **T5.12** Mongo change streams / Redis pub-sub live tail → FR-12.5
+- [ ] **T5.13** Kafka ACL browsing/management → FR-13.15
+- [ ] **T5.14** Kafka throughput sparklines → FR-13.17
+- [ ] **T5.15** Sources: Snowflake, BigQuery, Elasticsearch/OpenSearch, Trino → §4.3
+- [ ] **T5.16** Sources: Redpanda, NATS JetStream, Pulsar → §4.3
+- [ ] **T5.17** Parquet, DBF, YAML formats → FR-10.10
+- [ ] **T5.18** Saved import/export job definitions → FR-10.11
+- [ ] **T5.19** Localisation framework → FR-15.11
+- [ ] **T5.20** Optimistic-concurrency check on edit → FR-4.12
+- [ ] **T5.21** Conditional formatting / heatmap → FR-3.17
+- [ ] **T5.22** Cross-connection query directives → FR-5.17
+- [ ] **T5.23** Multi-cursor / block selection in editor → FR-5.15
+- [ ] **T5.24** Re-evaluate headless web mode (WASM) → FR-16.3, §8.6
+
+---
+
+# Standing tasks (every phase)
+
+- [ ] **S1** Keep the conformance suite green — no phase ends with a red driver
+- [ ] **S2** Keep §6.1 budget benchmarks green; investigate every regression at the commit that caused it
+- [ ] **S3** Write an ADR for every architectural decision
+- [ ] **S4** Review §12 risks at each phase boundary; update mitigations
+- [ ] **S5** Never read, copy, or port DBGate source → RISK-5
+- [ ] **S6** No new `if source == "x"` branches in shared code — use capability descriptors → REQ-DB-4
+- [ ] **S7** Update **Current Position** at the top of this file every session
+
+---
+
+# Open questions blocking tasks
+
+| OQ | Question | Blocks | Workaround |
+|---|---|---|---|
+| OQ-1 | Licence / hosting | T0.1 (module path), T4.36 | Placeholder module path; permissive assumption |
+| OQ-4 | Platform priority | T0.7 CI runner order | Assume macOS → Linux → Windows |
+| OQ-6 | Kafka distributions (OSS / Confluent Cloud / MSK / Redpanda) | T2.57 (MSK IAM) | OSS + Confluent SR for Phase 2 |
+| OQ-7 | Cassandra self-hosted vs Astra | T2.47 | Assume self-hosted; Astra bundle is additive |
+| OQ-8 | Prototype raster fallback alongside W1? | T0.43 | **Recommended: yes, in parallel** |

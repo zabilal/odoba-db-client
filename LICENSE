@@ -1,0 +1,14 @@
+LICENCE NOT YET DECIDED
+=======================
+
+Ikigai DB's licence is an open decision (REQUIREMENTS.md, OQ-1). The working assumption is a
+permissive licence (Apache-2.0 or MIT), but this has NOT been settled.
+
+Until this file is replaced with a real licence text:
+
+  - This code is not published under any open-source licence.
+  - All rights are reserved by the copyright holder.
+
+Resolving this is task T4.36 and is a blocker for v1.0 GA.
+
+See CLEANROOM.md for why this decision must not be foreclosed by accident.
