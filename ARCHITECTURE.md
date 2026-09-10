@@ -15,7 +15,8 @@ internal/ui             Fyne widgets, layouts, theme
   editor/               W2 — query editor widget
   canvas/               W3 — node canvas (ER + designer)
   chart/                W4 — charting
-internal/app            use cases: session, tabs, tasks, changesets, commands
+internal/app            use cases: connections, live health, sessions, tabs, tasks
+  connstr/              pasted URLs, JDBC, key=value, .pgpass, ~/.my.cnf
 internal/source         data-source abstraction, pooling, streaming
   drivers/              one package per source (incl. kafka/)
   introspect/           schema reading → canonical model

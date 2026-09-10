@@ -42,6 +42,18 @@ linters:
             - pkg: github.com/ikigai-db/ikigai-db/internal/app
               desc: "ARCH-1: core packages must not import internal/app (dependencies point downward only)."
 
+        # ARCH-7: use cases are testable without a window. internal/app may
+        # be imported by the UI; it may not import the UI or Fyne.
+        app-must-not-import-ui:
+          list-mode: lax
+          files:
+            - "**/internal/app/**"
+          deny:
+            - pkg: fyne.io
+              desc: "ARCH-7: use cases must not depend on Fyne; UI code belongs in internal/ui."
+            - pkg: github.com/ikigai-db/ikigai-db/internal/ui
+              desc: "ARCH-1: internal/app must not import internal/ui (dependencies point downward)."
+
         # ARCH-2: the UI never constructs SQL.
         ui-must-not-generate-sql:
           list-mode: lax
