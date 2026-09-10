@@ -87,6 +87,10 @@ func (e *Editor) SetPalette(p uitheme.Palette) {
 // Focus puts the keyboard focus in the editor.
 func (e *Editor) Focus() { e.surface.focus() }
 
+// Focusable is the object that holds the keyboard focus, for code that
+// focuses through a canvas, or types into the editor in a test.
+func (e *Editor) Focusable() fyne.Focusable { return e.surface }
+
 // Focused reports whether the editor has the keyboard focus.
 func (e *Editor) Focused() bool { return e.surface.focused }
 

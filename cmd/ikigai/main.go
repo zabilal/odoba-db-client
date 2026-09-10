@@ -61,12 +61,15 @@ func run() error {
 	}
 	// History is an aid, not a requirement: if its database cannot open, the
 	// app runs without it rather than not at all.
-	var history app.HistoryStore
+	var (
+		history app.HistoryStore
+		saved   app.SavedQueryStore
+	)
 	if db, err := localdb.Open(context.Background(), paths.DatabaseFile()); err != nil {
-		log.Warn("history unavailable", "err", err)
+		log.Warn("history and saved queries unavailable", "err", err)
 	} else {
 		defer db.Close()
-		history = db
+		history, saved = db, db
 	}
 
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
@@ -74,7 +77,7 @@ func run() error {
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 
 	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
-		Conns: conns, WS: ws, Settings: settings, History: history, Theme: uitheme.New(), Log: log,
+		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Theme: uitheme.New(), Log: log,
 	})
 	s.ShowNotice(notice)
 	s.Window().ShowAndRun()

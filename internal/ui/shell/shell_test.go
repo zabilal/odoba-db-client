@@ -167,7 +167,7 @@ func newFixture(t *testing.T) *fixture {
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
-	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Run: q.Run, GOOS: "darwin"})
+	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Run: q.Run, GOOS: "darwin"})
 	t.Cleanup(s.shutdown)
 	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist}
 }
@@ -230,19 +230,22 @@ func findButton(o fyne.CanvasObject, text string) *widget.Button {
 }
 
 func labelText(o fyne.CanvasObject) string {
+	var objs []fyne.CanvasObject
 	switch v := o.(type) {
 	case *widget.Label:
 		return v.Text
 	case *fyne.Container:
-		var parts []string
-		for _, c := range v.Objects {
-			if s := labelText(c); s != "" {
-				parts = append(parts, s)
-			}
-		}
-		return strings.Join(parts, "\n")
+		objs = v.Objects
+	case fyne.Widget:
+		objs = test.WidgetRenderer(v).Objects()
 	}
-	return ""
+	var parts []string
+	for _, c := range objs {
+		if s := labelText(c); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func TestEveryShortcutIsOnTheMenuBar(t *testing.T) {

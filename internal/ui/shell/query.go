@@ -15,6 +15,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor"
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -39,6 +40,11 @@ type queryTab struct {
 	// runRev is the document's revision when the latest run began. Error
 	// positions map onto the text only if it has not changed since.
 	runRev uint64
+
+	// saved is the saved query this tab edits; a zero ID means none yet.
+	saved localdb.SavedQuery
+	title string // the tab's name, before any unsaved-edits mark
+	dirty bool   // edited since opened or last saved
 }
 
 // OpenQuery opens a query tab on a connection. Typing can start at once; the
@@ -63,7 +69,14 @@ func (s *Shell) OpenQuery(connID string) *tab {
 	split := container.NewVSplit(q.editor, q.results)
 	split.Offset = 0.55
 	t.body = container.NewStack(split)
-	t.item = container.NewTabItem(fmt.Sprintf("Query %d", s.queries), container.NewBorder(nil, t.footer, nil, nil, t.body))
+	q.title = fmt.Sprintf("Query %d", s.queries)
+	t.item = container.NewTabItem(q.title, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	q.editor.OnChanged = func() {
+		if !q.dirty {
+			q.dirty = true
+			s.retitle(t)
+		}
+	}
 	s.open = append(s.open, t)
 	s.showTabs(true)
 	s.tabs.Append(t.item)
