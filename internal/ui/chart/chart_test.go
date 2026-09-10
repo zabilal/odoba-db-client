@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 )
 
 func TestNiceScaleRoundsOutward(t *testing.T) {
@@ -276,7 +278,13 @@ func TestGateG0_4(t *testing.T) {
 	build := time.Since(start)
 
 	r := rand.New(rand.NewSource(99))
-	const queries = 20_000
+	queries := 20_000
+	if race.Enabled {
+		// The oracle is O(n) per query, and under the detector 20k queries
+		// over 100k points takes most of a minute. Accuracy is what this run
+		// is for, and 2k queries prove it just as well; timing is skipped.
+		queries = 2_000
+	}
 	const radius = 12.0
 
 	var mismatches, hits int
@@ -307,7 +315,7 @@ func TestGateG0_4(t *testing.T) {
 			mismatches++
 		}
 	}
-	mean := total / queries
+	mean := total / time.Duration(queries)
 
 	t.Logf("index build over %d points: %v", n, build.Round(time.Microsecond))
 	t.Logf("%d queries, %d hits: mean %v, worst %v", queries, hits,
@@ -320,6 +328,12 @@ func TestGateG0_4(t *testing.T) {
 	}
 	if hits < queries/20 {
 		t.Errorf("G0-4: only %d hits; the test is not exercising dense regions", hits)
+	}
+	// Timing budgets only mean something without the race detector, which
+	// slows execution 5-20x (see internal/testutil/race). The oracle
+	// agreement above runs either way.
+	if race.Enabled {
+		return
 	}
 	// A mouse move must resolve well inside a frame.
 	if mean > 50*time.Microsecond {

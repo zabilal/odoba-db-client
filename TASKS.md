@@ -29,7 +29,7 @@ OWNER:     1. Close G0-1 on an attended machine:
            2. Push to a remote so CI runs for the first time. That proves Linux and
               Windows packaging and the conformance suite; none has ever executed.
            3. View the theme: go run ./cmd/themegallery
-LAST DONE: 2026-09-10 — W4 spike complete, ADR-0004. Phase 0 spikes done.
+LAST DONE: 2026-09-10 — W4 spike (ADR-0004); timing gates made race-safe and wired into CI (T0.10).
 ```
 
 **Phase 0 findings so far**
@@ -47,6 +47,13 @@ LAST DONE: 2026-09-10 — W4 spike complete, ADR-0004. Phase 0 spikes done.
 - Coverage: `model` 87.8%, `redact` 78.1%, `ui/theme` 82.7%.
 - Two bugs caught by tests rather than review: the `redact` bearer-token ordering
   leak, and three palette roles that were never contrast-checked.
+- **Timing gates cannot run under `-race`.** `go test -race ./...` — what CI's build
+  job runs — failed G0-1 at 11.7ms against an 8ms budget; the same test measures
+  1.4ms without the detector, which slows execution 5-20x. The other gates passed
+  only on this machine's headroom. Gates now skip themselves under `-race` via
+  `internal/testutil/race`, G0-4 keeps its oracle-agreement check there, and CI's
+  performance job runs the gates without `-race`. Before this, that job ran only
+  `-bench`, so the gates executed nowhere in CI at all.
 
 
 **Phase 0 findings so far**
@@ -81,7 +88,7 @@ LAST DONE: 2026-09-10 — W4 spike complete, ADR-0004. Phase 0 spikes done.
 - [x] **T0.7** CI: native runners for macOS (arm64+amd64), Linux (amd64+arm64), Windows (amd64) → NFR-D3, RISK-10
 - [x] **T0.8** CI: prove `fyne package` works on all three platforms **now**, not at Phase 4 → RISK-10
 - [x] **T0.9** CI: testcontainers matrix — postgres, mysql, mariadb, mongo, redis, cassandra, kafka+schema-registry → NFR-Q1
-- [~] **T0.10** Benchmark harness + CI budget assertions that fail the build on regression → NFR-Q3
+- [x] **T0.10** Benchmark harness + CI budget assertions that fail the build on regression → NFR-Q3 — the four `TestGate*` gates run in CI's performance job without `-race`; `internal/testutil/race` makes them skip under the detector
 - [x] **T0.11** `docs/adr/` decision-record folder; ADR-0001 records the Fyne decision and its rationale
 - [x] **T0.12** `LICENSE` placeholder + `CLEANROOM.md` stating the no-DBGate-source rule → RISK-5
 - [x] **T0.13** `ARCHITECTURE.md` summarising §10 layering for future contributors

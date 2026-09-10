@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 )
 
 // syntheticSchema builds a graph shaped like a real database schema: a few
@@ -349,6 +351,7 @@ func TestHitTestPrefersTopmost(t *testing.T) {
 // --- GATE G0-3 -------------------------------------------------------------
 
 func TestGateG0_3(t *testing.T) {
+	race.SkipTimingGate(t)
 	const tables = 200
 	g := syntheticSchema(tables)
 

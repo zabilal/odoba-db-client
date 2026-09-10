@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
@@ -249,6 +250,7 @@ func TestGateG0_1(t *testing.T) {
 	if testing.Short() {
 		t.Skip("gate skipped in -short")
 	}
+	race.SkipTimingGate(t)
 	test.NewTempApp(t)
 
 	m := NewModel(NewSyntheticFetcher(10_000_000))

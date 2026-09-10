@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 )
 
 func loadBuffer(tb testing.TB) *Buffer {
@@ -200,6 +202,7 @@ func TestTokenCacheStaysBounded(t *testing.T) {
 // editor owns: apply the edit, repair the highlight state, and produce tokens
 // for the visible viewport. Painting is Fyne's and is measured separately.
 func TestGateG0_2(t *testing.T) {
+	race.SkipTimingGate(t)
 	buf := loadBuffer(t)
 	if buf.LineCount() < 4000 {
 		t.Skipf("workload is only %d lines", buf.LineCount())
