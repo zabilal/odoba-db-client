@@ -52,6 +52,16 @@ millions of rows makes the server skip ever more rows on each page. Keyset
 paging (`BrowseOptions.Seek` for relational sources) is the fix, and is
 open.
 
+**The export UI.** Export… (⇧⌘E) works on the active tab: a table (whole or
+filtered), or the query result on show. A format sheet leads to the save
+dialog, then to a progress sheet. It shows rows, rows per second and, when
+the total is known, a bar and an estimate of the time left. PostgreSQL gives
+no cheap total, so a table shows rows and rate only.
+
+**Cancel stops the export and removes the partial file.** So does closing
+the tab, and so does a failure: a truncated export left behind looks like a
+complete one.
+
 ## Not decided here
 
 The other FR-10.1 formats (xlsx, SQL INSERT, Markdown, HTML, XML), exporting
