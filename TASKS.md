@@ -20,13 +20,16 @@
 ## Current Position
 
 ```
-PHASE:     0 — Foundations & Spikes
-STATUS:    0.A/0.B/0.C done. W1 provisional, W2 PASSED, W3 PASSED. W4 remains.
-NEXT TASK: T0.55 — spike W4, charts. Last gate before Phase 1.
-BLOCKED:   none
-OWNER:     GATE G0-1 needs one interactive run to close:
-             docker start ikigai-pg && go run -tags spike ./cmd/gridspike -bench
-LAST DONE: 2026-09-10 — W3 spike complete, ADR-0007. 53 tasks closed.
+PHASE:     0 → 1 boundary
+STATUS:    All four spikes complete. G0-2, G0-3, G0-4 PASSED; G0-1 provisional.
+           Phase 0's remaining exits need things only the owner can supply.
+NEXT TASK: T1.1 — application shell. Phase 1 (walking skeleton, J1 + J3).
+OWNER:     1. Close G0-1 on an attended machine:
+                docker start ikigai-pg && go run -tags spike ./cmd/gridspike -bench
+           2. Push to a remote so CI runs for the first time. That proves Linux and
+              Windows packaging and the conformance suite; none has ever executed.
+           3. View the theme: go run ./cmd/themegallery
+LAST DONE: 2026-09-10 — W4 spike complete, ADR-0004. Phase 0 spikes done.
 ```
 
 **Phase 0 findings so far**
@@ -144,17 +147,17 @@ LAST DONE: 2026-09-10 — W3 spike complete, ADR-0007. 53 tasks closed.
 
 ## 0.G SPIKE W4 — Charts
 
-- [ ] **T0.55** Render `gonum/plot` or `wcharczuk/go-chart` into `canvas.Image`
-- [ ] **T0.56** Hit-test overlay for hover tooltips
-- [ ] **T0.57** Accuracy test at 100k points → FR-11.4
-- [ ] **T0.58** Decide image-render vs native canvas drawing; ADR-0004
-- [ ] **GATE G0-4** — tooltip hit-testing accurate at 100k points
+- [x] **T0.55** Render `gonum/plot` or `wcharczuk/go-chart` into `canvas.Image`
+- [x] **T0.56** Hit-test overlay for hover tooltips
+- [x] **T0.57** Accuracy test at 100k points → FR-11.4
+- [x] **T0.58** Decide image-render vs native canvas drawing; ADR-0004
+- [x] **GATE G0-4** — PASSED. 100k-point index builds in 14.3ms; mean query 428ns; 0 of 20,000 queries disagree with a brute-force oracle. ADR-0004.
 
 ### ✅ Phase 0 exit criteria
-- [ ] G0-1, G0-2, G0-3, G0-4 all pass or have documented fallbacks
-- [ ] Custom theme renders in the gallery harness
-- [ ] Conformance suite runs (empty is fine) on all CI platforms
-- [ ] `fyne package` produces an artifact on all three platforms
+- [~] G0-2, G0-3, G0-4 PASSED. G0-1 provisionally passed on CPU evidence; closes with one interactive run (owner action)
+- [~] Theme gallery builds and compiles; not yet viewed on a display — the build session had no window server
+- [!] Conformance suite and CI written but never run — the repository has no remote
+- [~] `fyne package` proven on macOS arm64 (16MB .app); Linux and Windows unproven until CI runs
 
 ---
 
