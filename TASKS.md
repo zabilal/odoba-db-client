@@ -21,14 +21,13 @@
 
 ```
 PHASE:     0 — Foundations & Spikes
-STATUS:    0.A, 0.B, 0.C complete. W1 (grid) provisionally passed — see below.
-NEXT TASK: T0.45 — spike W2, the query editor. Largest single build risk (RISK-2).
-BLOCKED:   T0.10 — benchmarks now exist for the grid; job can be wired up.
-OWNER:     GATE G0-1 needs one interactive run to close:
+STATUS:    0.A/0.B/0.C done. W1 provisional pass, W2 PASSED. W3/W4 remain.
+NEXT TASK: T0.50 — spike W3, the node canvas (ER diagram + query designer).
+BLOCKED:   none
+OWNER:     GATE G0-1 still needs one interactive run to close:
              docker start ikigai-pg
              go run -tags spike ./cmd/gridspike -bench
-           It prints p50/p95/p99 frame times and a PASS/FAIL line.
-LAST DONE: 2026-09-10 — W1 spike complete, ADR-0002. 43 tasks closed.
+LAST DONE: 2026-09-10 — W2 spike complete, ADR-0003. 48 tasks closed.
 ```
 
 **Phase 0 findings so far**
@@ -128,12 +127,12 @@ LAST DONE: 2026-09-10 — W1 spike complete, ADR-0002. 43 tasks closed.
 
 ## 0.E SPIKE W2 — Query editor → RISK-2 *(largest single build risk)*
 
-- [ ] **T0.45** `alecthomas/chroma` lexing → styled output prototype (SQL + CQL lexers)
-- [ ] **T0.46** Caret, selection, and scroll model
-- [ ] **T0.47** Incremental re-highlight on edit (do not re-lex the whole buffer per keystroke)
-- [ ] **T0.48** 5 000-line SQL file: measure keystroke-to-glyph with highlighting live → NFR-P5
-- [ ] **T0.49** Decide `widget.RichText` vs direct canvas text drawing; ADR-0003
-- [ ] **GATE G0-2** — 16 ms keystroke budget met on a 5 000-line file
+- [x] **T0.45** `alecthomas/chroma` lexing → styled output prototype (SQL + CQL lexers)
+- [x] **T0.46** Caret, selection, and scroll model
+- [x] **T0.47** Incremental re-highlight on edit (do not re-lex the whole buffer per keystroke)
+- [x] **T0.48** 5 000-line SQL file: measure keystroke-to-glyph with highlighting live → NFR-P5
+- [x] **T0.49** Decide `widget.RichText` vs direct canvas text drawing; ADR-0003
+- [x] **GATE G0-2** — PASSED. 2.0µs typing mid-file, 231µs worst case (block comment at line 0, invalidating all 5201 lines) against a 16ms budget. ADR-0003.
 
 ## 0.F SPIKE W3 — Node canvas (ER + designer)
 
