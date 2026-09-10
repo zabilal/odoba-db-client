@@ -23,13 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the grid (T1.48–T1.56): sort by header, the filter row, selection and
-           copy, the cell viewer, column resize and hide; then Phase 1's other [~].
-[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
+NEXT TASK: the grid (T1.48–T1.56): the distinct-value picklist (T1.54), the WHERE
+           editor and effective SQL (T1.56), selection and copy, the cell viewer,
+           column resize and hide; then Phase 1's other [~].
+[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44, T1.54 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-10 — sorting by column header on the server (T1.49, ADR-0016).
+LAST DONE: 2026-09-10 — the filter row, applied on the server (T1.55, ADR-0016).
 ```
 
 **Phase 0 findings so far**
@@ -275,8 +276,8 @@ LAST DONE: 2026-09-10 — sorting by column header on the server (T1.49, ADR-001
 - [ ] **T1.51** Cell/range/row/column selection → FR-3.7
 - [ ] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7
 - [ ] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9
-- [ ] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4
-- [ ] **T1.55** Compact filter-row DSL (`>100`, `!=x`, `a,b,c`, `~regex`, `NULL`) → FR-3.5
+- [~] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4 — *every operator is reachable from the filter row (T1.55); the distinct-value picklist is open: no driver implements DistinctLister yet*
+- [x] **T1.55** Compact filter-row DSL (`>100`, `!=x`, `a,b,c`, `~regex`, `NULL`) → FR-3.5 — *a field under each header; parsed in internal/app/filterexpr and checked against the column's type; applied on the server; failures marked and explained (ADR-0016)*
 - [ ] **T1.56** Global WHERE editor showing the generated SQL → FR-3.6, UX-6
 
 ## 1.G Query editor — stage 1 (productionise W2)

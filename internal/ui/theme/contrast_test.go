@@ -92,6 +92,7 @@ var textPairs = []pair{
 	// Status text on plain and tinted backgrounds.
 	{"Danger/Content", fDanger, fContent, aaText},
 	{"Danger/Window", fDanger, fWindow, aaText},
+	{"Danger/Sidebar", fDanger, fSidebar, aaText}, // a filter that failed, in the grid header
 	{"Danger/DangerSubtle", fDanger, fDangerSubtle, aaText},
 	{"Warning/Content", fWarning, fContent, aaText},
 	{"Warning/Window", fWarning, fWindow, aaText},

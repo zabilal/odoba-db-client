@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49 (and T1.48–T1.56 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.55 (and T1.48–T1.56 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -41,8 +41,63 @@ a fetch open across the switch; with the guard removed, it fails.
 numbers its sort requests and applies only the latest, and a sort that
 fails puts the header back as it was.
 
+**Filters are typed into the header, and the server applies them.** A
+filterable grid has a field under each column's title (FR-3.5). Return
+applies every column's filter at once; Escape clears one column's. Filtering
+on each keystroke would send a query per letter to a table that may be
+large. The grid only holds the text. `internal/app/filterexpr` parses it into
+`source.Filter` values, which the driver's dialect renders with every value
+bound, so the notation never becomes SQL in the UI (ARCH-2, NFR-S6):
+
+| Typed | Means |
+|---|---|
+| `text` | contains, ignoring case (text columns); equals (others) |
+| `=x` `>x` `>=x` `<x` `<=x` | the comparison |
+| `!=x` `<>x` `!x` | is not x |
+| `a,b,c` / `!a,b,c` | is one of them / none of them |
+| `x..y` | between, inclusive |
+| `~re` / `!~re` | matches the regular expression / does not |
+| `NULL` / `!NULL` | is NULL / is not NULL |
+| `a%b` | LIKE |
+| `"…"` | literal text: commas, operators and NULL lose their meaning |
+
+**Values are checked against the column's type.** `>abc` on an integer
+column is refused, with the reason, before anything is sent. Decimals travel
+as text, so no digit is lost on the way.
+
+**"Not x" keeps the NULL rows.** `!x` and `!=x` become NOT IN, which the
+drivers render so that NULL rows stay: NULL is not x either, and unticking x
+in a picklist will mean the same. SQL's `<>` would drop them without a word.
+`!NULL` is how to drop them.
+
+**A filter that cannot be applied is marked, never half-applied.** If any
+column's text does not parse, nothing is sent: the column's title turns red
+and the footer names the column and the reason. A filter the server refuses
+(SQLite has no regular expressions) leaves the rows as they were and is
+marked the same way. The footer keeps the reason beside the row count until
+a filter succeeds, so a page loading behind it cannot wipe it. A filtered
+grid says so in the footer.
+
+**Sort and filter compose.** Both go through one re-browse, numbered so that
+only the latest applies. Each builds on what the latest request asked for,
+not on what is on screen, so a sort clicked while a filter is still loading
+keeps the filter.
+
+**Recycled header cells are rebound.** Fyne's table reuses header cells as it
+scrolls sideways. So the filter text lives in the grid, and a field shows
+whichever column it is bound to. A focused field moved to another column
+gives up the focus, so typing never lands in a column the person is not
+looking at.
+
+**A filter row does not make the rows taller.** Fyne makes every row as high
+as the taller of its cell and header templates. So the header reports one
+row's height, and the grid sets the header's real height itself. The fields
+use a small control's metrics, so the header is two rows high, not three.
+The first screenshot of the filter row had every data row at the header's
+height; a test now lays the grid out and checks both.
+
 ## Not decided here
 
-The filter row and per-column filters (T1.54–T1.56), selection and copy
-(T1.51–T1.52), the cell viewer (T1.53), and column resize, reorder and hide
-(T1.48). Each will be added here as it lands.
+The distinct-value picklist (T1.54), the WHERE editor and the effective SQL
+(T1.56), selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
+column resize, reorder and hide (T1.48). Each will be added here as it lands.
