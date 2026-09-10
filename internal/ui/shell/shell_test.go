@@ -65,7 +65,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 		return nil, &source.ConnectError{Kind: source.ConnectUnreachable,
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
-	return fakeSource{uncounted: cfg.Host == "nocount"}, nil
+	return fakeSource{uncounted: cfg.Host == "nocount", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -83,7 +83,10 @@ func (otherFake) Open(context.Context, source.ConnectionConfig) (source.Source, 
 }
 
 // fakeSource serves one database holding one table of fakeRows rows.
-type fakeSource struct{ uncounted bool }
+type fakeSource struct {
+	uncounted bool
+	guard     source.Guard
+}
 
 func (fakeSource) Root(context.Context) ([]model.Node, error) {
 	return []model.Node{{Ref: model.NewRef(model.KindDatabase, "main"), Label: "main", HasChildren: true}}, nil
@@ -198,8 +201,18 @@ func findButton(o fyne.CanvasObject, text string) *widget.Button {
 		if v.Text == text {
 			return v
 		}
+	case *widget.PopUp:
+		return findButton(v.Content, text)
 	case *fyne.Container:
 		for _, c := range v.Objects {
+			if b := findButton(c, text); b != nil {
+				return b
+			}
+		}
+	case fyne.Widget:
+		// A dialog sits in an OverlayContainer, a widget: look inside
+		// through its renderer.
+		for _, c := range test.WidgetRenderer(v).Objects() {
 			if b := findButton(c, text); b != nil {
 				return b
 			}

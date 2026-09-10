@@ -72,7 +72,8 @@ type Shell struct {
 	menu      *fyne.MainMenu
 	menuItems map[string]*fyne.MenuItem
 
-	open []*tab
+	open    []*tab
+	queries int // numbers query tabs
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -89,6 +90,7 @@ type tab struct {
 	cancel context.CancelFunc
 	model  *grid.Model // nil until the object opens
 	grid   *grid.TableGrid
+	query  *queryTab // set only on query tabs
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -196,7 +198,7 @@ func (s *Shell) registerCommands() {
 				}
 			}},
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
-			Shortcut: sc("Down", commands.ModShortcut), Enabled: s.selectionBrowsable,
+			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},
 		{ID: cmdRefresh, Category: "Explorer", Title: "Refresh", Keywords: []string{"reload", "tree"},
 			Shortcut: sc("R", commands.ModShortcut), Run: s.refreshSelected},
@@ -214,6 +216,18 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(1) }},
 		{ID: cmdTabPrev, Category: "Tab", Title: "Show Previous Tab", Shortcut: sc("[", commands.ModShortcut|commands.ModShift),
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(-1) }},
+		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
+			Shortcut: sc("T", commands.ModShortcut), Enabled: hasConn, Run: func() {
+				if id, ok := s.selectedConn(); ok {
+					s.OpenQuery(id)
+				}
+			}},
+		{ID: cmdQueryRun, Category: "Query", Title: "Run", Keywords: []string{"execute", "statement", "selection"},
+			Shortcut: sc("Return", commands.ModShortcut), Enabled: s.canRun, Run: func() { s.runQuery(false) }},
+		{ID: cmdQueryRunAll, Category: "Query", Title: "Run All", Keywords: []string{"execute", "script"},
+			Shortcut: sc("Return", commands.ModShortcut|commands.ModShift), Enabled: s.canRun, Run: func() { s.runQuery(true) }},
+		{ID: cmdQueryStop, Category: "Query", Title: "Stop", Keywords: []string{"cancel", "abort"},
+			Shortcut: sc(".", commands.ModShortcut), Enabled: s.running, Run: s.stopQuery},
 		{ID: cmdAppearSystem, Category: "Appearance", Title: "Follow System", Keywords: []string{"theme", "auto"},
 			Run: func() { s.setAppearance(uitheme.AppearanceSystem) }},
 		{ID: cmdAppearLight, Category: "Appearance", Title: "Light", Keywords: []string{"theme"},
@@ -233,11 +247,14 @@ func (s *Shell) buildSidebar() fyne.CanvasObject {
 }
 
 func (s *Shell) emptyState() fyne.CanvasObject {
-	c, _ := s.reg.Get(cmdPalette)
+	label := func(id string) string {
+		c, _ := s.reg.Get(id)
+		return c.Shortcut.Label(s.d.GOOS)
+	}
 	title := widget.NewLabelWithStyle("No Open Tabs", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	hint := widget.NewLabel(fmt.Sprintf(
-		"Double-click a table in the sidebar to see its rows.\nPress %s to find any command.",
-		c.Shortcut.Label(s.d.GOOS)))
+		"Double-click a table in the sidebar to see its rows,\nor press %s to write a query.\nPress %s to find any command.",
+		label(cmdQueryNew), label(cmdPalette)))
 	hint.Alignment = fyne.TextAlignCenter
 	hint.Importance = widget.LowImportance
 	return container.NewCenter(container.NewVBox(title, hint))
@@ -447,6 +464,9 @@ func (s *Shell) closeTab(it *container.TabItem) {
 	for i, t := range s.open {
 		if t.item == it {
 			t.cancel()
+			if q := t.query; q != nil && q.session != nil {
+				go q.session.Close() // may wait on the network; never on the UI goroutine
+			}
 			s.open = append(s.open[:i], s.open[i+1:]...)
 			break
 		}
@@ -628,6 +648,12 @@ func (s *Shell) recolour() {
 	for _, t := range s.open {
 		if t.grid != nil {
 			t.grid.SetPalette(p)
+		}
+		if q := t.query; q != nil {
+			q.editor.SetPalette(p)
+			for _, g := range q.grids {
+				g.SetPalette(p)
+			}
 		}
 	}
 }

@@ -1,0 +1,320 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"io"
+	"sort"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
+)
+
+// ErrNoQueryLanguage is returned for a source that cannot run text queries,
+// such as Kafka. The UI offers no editor for those (capability.Query).
+var ErrNoQueryLanguage = errors.New("this connection has no query language")
+
+// MaxResultRows caps the rows kept from one result. Past it the result is
+// marked truncated instead of growing memory without bound (NFR-P11);
+// browsing the table, which pages, is how to see the rest.
+const MaxResultRows = 100_000
+
+// QuerySession runs scripts for one editor tab (FR-5.3–FR-5.6). Where the
+// source has sessions it pins one, so SET, temporary tables and an open
+// transaction survive from one run to the next (source.Sessioner).
+type QuerySession struct {
+	q       source.Queryer
+	session source.Session // nil when the source has no sessions
+	dialect source.Dialect // nil when the source cannot split scripts
+
+	mu      sync.Mutex
+	results []*ResultSet // the current run's, closed when the next starts
+	closed  bool
+}
+
+// NewQuerySession prepares a live connection for running scripts.
+func NewQuerySession(ctx context.Context, live *Live) (*QuerySession, error) {
+	return newQuerySession(ctx, live.Source)
+}
+
+func newQuerySession(ctx context.Context, src source.Source) (*QuerySession, error) {
+	qs := &QuerySession{}
+	qs.dialect, _ = src.(source.Dialect)
+	if s, ok := src.(source.Sessioner); ok {
+		sess, err := s.Session(ctx)
+		if err != nil {
+			return nil, err
+		}
+		qs.session, qs.q = sess, sess
+		return qs, nil
+	}
+	if q, ok := src.(source.Queryer); ok {
+		qs.q = q
+		return qs, nil
+	}
+	return nil, ErrNoQueryLanguage
+}
+
+// StatementResult is the outcome of one statement of a script.
+type StatementResult struct {
+	Index int
+	// Offset is the byte offset in the script where the statement starts,
+	// for mapping its errors back to the editor (FR-5.10).
+	Offset    int
+	Statement string
+	Rows      *ResultSet // nil for a statement that returns no rows
+	Affected  int64      // -1 when the engine does not say
+	Duration  time.Duration
+	Messages  []source.Message
+	Err       error
+}
+
+// Run executes a script, delivering each statement's result as it completes;
+// the channel closes when the script ends. It first closes the previous run's
+// results: a session holds one open result at a time.
+//
+// ctx governs the rows as well as the statements: each result keeps reading
+// after the script has finished, until ctx is cancelled or the next Run.
+//
+// confirmed is the user's consent to change data on a production connection.
+// Without it such a script is refused before any statement runs, with
+// source.ErrConfirmationRequired, so the caller can ask and run it again.
+func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) (<-chan StatementResult, error) {
+	qs.closeResults()
+	in, err := qs.q.QueryMulti(ctx, script, confirmed)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan StatementResult, 1)
+	go func() {
+		defer close(out)
+		for r := range in {
+			sr := StatementResult{Index: r.Index, Offset: byteOffset(script, r.Offset),
+				Statement: r.Statement, Err: r.Err, Affected: -1}
+			if res := r.Result; res != nil {
+				sr.Affected, sr.Duration, sr.Messages = res.Affected, res.Duration, res.Messages
+				if res.Rows != nil {
+					sr.Rows = newResultSet(ctx, res.Rows, MaxResultRows)
+					qs.track(sr.Rows)
+				}
+			}
+			select {
+			case out <- sr:
+			case <-ctx.Done():
+				// Nobody is listening any more. Keep draining so the driver can
+				// finish, and release whatever each result holds.
+				if sr.Rows != nil {
+					sr.Rows.Close()
+				}
+			}
+		}
+	}()
+	return out, nil
+}
+
+// StatementAt is the statement of a script that contains a byte offset: what
+// ⌘↵ runs when nothing is selected. Between statements it is the one before,
+// so a caret just past a semicolon runs what the semicolon ended. start is a
+// byte offset too. ok is false when the source cannot split scripts, or the
+// script has no statements.
+func (qs *QuerySession) StatementAt(script string, offset int) (text string, start int, ok bool) {
+	if qs.dialect == nil {
+		return "", 0, false
+	}
+	stmts := qs.dialect.SplitScript(script)
+	if len(stmts) == 0 {
+		return "", 0, false
+	}
+	at := utf8.RuneCountInString(script[:min(max(offset, 0), len(script))])
+	i := sort.Search(len(stmts), func(i int) bool { return stmts[i].Offset > at }) - 1
+	if i < 0 {
+		i = 0
+	}
+	return stmts[i].Text, byteOffset(script, stmts[i].Offset), true
+}
+
+// byteOffset converts a character offset, which is what sources report
+// (source.ScriptStatement), to a byte offset into s, which is what the editor
+// positions by. Mixing the two picks the wrong statement as soon as anything
+// before the caret is not ASCII.
+func byteOffset(s string, chars int) int {
+	for i := range s {
+		if chars == 0 {
+			return i
+		}
+		chars--
+	}
+	return len(s)
+}
+
+// Close ends the session and releases every result.
+func (qs *QuerySession) Close() error {
+	qs.closeResults()
+	qs.mu.Lock()
+	qs.closed = true
+	qs.mu.Unlock()
+	if qs.session != nil {
+		return qs.session.Close()
+	}
+	return nil
+}
+
+func (qs *QuerySession) track(rs *ResultSet) {
+	qs.mu.Lock()
+	defer qs.mu.Unlock()
+	if qs.closed {
+		rs.Close()
+		return
+	}
+	qs.results = append(qs.results, rs)
+}
+
+func (qs *QuerySession) closeResults() {
+	qs.mu.Lock()
+	old := qs.results
+	qs.results = nil
+	qs.mu.Unlock()
+	for _, rs := range old {
+		rs.Close()
+	}
+}
+
+// notifyEvery is how many rows arrive between wake-ups of waiting fetches:
+// one grid page, so a fetch wakes once per page rather than once per row.
+const notifyEvery = 256
+
+// ResultSet keeps a query result's rows as they arrive, for the grid. It
+// drains the stream on a goroutine of its own, so the connection is free as
+// soon as the rows are in: a later statement cannot be held up by a grid
+// nobody has scrolled.
+//
+// It serves the grid's Fetcher contract. Fetch waits until the rows it asks
+// for have arrived, so a short page reliably means the end of the data.
+type ResultSet struct {
+	cols   []model.ColumnDef
+	stream model.RowStream
+	cancel context.CancelFunc
+
+	mu        sync.Mutex
+	rows      []model.Row
+	done      bool
+	truncated bool
+	err       error
+	changed   chan struct{} // closed and replaced whenever rows arrive or reading ends
+	finished  chan struct{} // closed once, when reading ends
+}
+
+func newResultSet(ctx context.Context, rs model.RowStream, max int) *ResultSet {
+	ctx, cancel := context.WithCancel(ctx)
+	r := &ResultSet{cols: rs.Columns(), stream: rs, cancel: cancel,
+		changed: make(chan struct{}), finished: make(chan struct{})}
+	go r.read(ctx, max)
+	return r
+}
+
+func (r *ResultSet) read(ctx context.Context, max int) {
+	defer r.stream.Close()
+	batch := 0
+	for {
+		row, err := r.stream.Next(ctx)
+		r.mu.Lock()
+		switch {
+		case errors.Is(err, io.EOF):
+			r.done = true
+		case err != nil:
+			r.err, r.done = err, true
+		default:
+			r.rows = append(r.rows, row)
+			batch++
+			if len(r.rows) >= max {
+				r.done, r.truncated = true, true
+			}
+		}
+		finished := r.done
+		if finished || batch >= notifyEvery {
+			close(r.changed)
+			r.changed = make(chan struct{})
+			batch = 0
+		}
+		if finished {
+			close(r.finished)
+		}
+		r.mu.Unlock()
+		if finished {
+			return
+		}
+	}
+}
+
+// Done is closed when reading ends, whether at the end of the rows, at the
+// cap, on an error or on Close.
+func (r *ResultSet) Done() <-chan struct{} { return r.finished }
+
+// Columns describes every row.
+func (r *ResultSet) Columns() []model.ColumnDef { return r.cols }
+
+// Fetch returns up to limit rows from offset, waiting for them to arrive.
+// Fewer than limit means the result ended there.
+func (r *ResultSet) Fetch(ctx context.Context, offset, limit int64) ([]model.Row, error) {
+	for {
+		r.mu.Lock()
+		have := int64(len(r.rows))
+		if have >= offset+limit || r.done {
+			defer r.mu.Unlock()
+			if r.err != nil && have < offset+limit {
+				return nil, r.err
+			}
+			if offset >= have {
+				return nil, nil
+			}
+			end := min(have, offset+limit)
+			return append([]model.Row(nil), r.rows[offset:end]...), nil
+		}
+		ch := r.changed
+		r.mu.Unlock()
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// Count is the number of rows once reading has finished, else -1: the grid
+// then grows as rows arrive and learns the total from the short last page.
+func (r *ResultSet) Count(context.Context) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.done || r.err != nil {
+		return -1, nil
+	}
+	return int64(len(r.rows)), nil
+}
+
+// Progress reports how many rows have arrived and whether reading finished.
+func (r *ResultSet) Progress() (rows int, done bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.rows), r.done
+}
+
+// Truncated reports that the result stopped at MaxResultRows.
+func (r *ResultSet) Truncated() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.truncated
+}
+
+// Err is the error that ended reading early, if one did.
+func (r *ResultSet) Err() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.err
+}
+
+// Close stops reading and releases the stream. Rows already read stay
+// available.
+func (r *ResultSet) Close() { r.cancel() }
