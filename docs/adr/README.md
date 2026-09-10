@@ -14,3 +14,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0007](0007-node-canvas.md) | Node canvas — force-directed layout with culling and LOD | Accepted |
 | [0008](0008-postgresql-driver.md) | The PostgreSQL driver, and what the first real driver changed | Accepted |
 | [0009](0009-local-store.md) | The local store — settings, secrets, history | Accepted |
+| [0010](0010-connection-management.md) | Connection management | Accepted |

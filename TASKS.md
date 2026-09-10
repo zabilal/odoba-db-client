@@ -21,14 +21,15 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    PostgreSQL driver (ADR-0008) and local store (ADR-0009) complete.
-NEXT TASK: T1.23–T1.31 connection management — the app layer joining store,
-           secrets and drivers — then T1.1 shell → explorer → grid. J1 runs end
-           to end on PostgreSQL before MySQL/MariaDB/SQLite are added.
-[~] tasks: the core half is done; the app or UI half is still to build.
+STATUS:    Core complete: PostgreSQL driver (ADR-0008), local store (ADR-0009),
+           connection management (ADR-0010). Everything below the UI exists.
+NEXT TASK: The UI, wired to internal/app: T1.1 shell → T1.41 explorer → T1.47
+           grid → T1.57 editor. Built headless-testable through Fyne's test
+           driver; visual review needs an attended run.
+[~] tasks: the core half is done; the UI half is still to build.
 OWNER:     unchanged — G0-1 interactive run; push to a remote so CI runs.
-LAST DONE: 2026-09-10 — T1.17–T1.22: paths, settings, OS keychain, SQLite
-           history with redaction and FTS5, redacting rotated log.
+LAST DONE: 2026-09-10 — T1.23–T1.31 app layer: CRUD with keychain rollback,
+           folders, test connection, health monitor, connection-string parsing.
 ```
 
 **Phase 0 findings so far**
@@ -79,6 +80,12 @@ LAST DONE: 2026-09-10 — T1.17–T1.22: paths, settings, OS keychain, SQLite
   to put passwords on `security`'s command line, visible in `ps`. Its source
   shows v0.2.8 writes them over stdin. Checking in the source cut both ways
   here: it disproved a worry this time, where on pgx it disproved a claim.
+- **Two stores, no transaction.** Settings and secrets can't be updated
+  atomically together, so every operation has an ordering rule and a rollback.
+  The rollbacks are tested against real validation failures. ADR-0010.
+- **Pasting a URL could leak its password into an error.** `url.Parse` quotes
+  the whole input, and its inner error echoes the bad fragment. Parse errors
+  are now fixed messages. Tests check every fragment of the password.
 
 
 **Phase 0 findings so far**
@@ -225,15 +232,15 @@ LAST DONE: 2026-09-10 — T1.17–T1.22: paths, settings, OS keychain, SQLite
 
 ## 1.C Connection management
 
-- [ ] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
-- [ ] **T1.24** Per-source connection forms with defaults → FR-1.2
-- [ ] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
+- [x] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
+- [~] **T1.24** Per-source connection forms with defaults → FR-1.2
+- [x] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
 - [~] **T1.26** Test connection with precise error classification → FR-1.4
-- [ ] **T1.27** Connection folders/groups with colour and icon → FR-1.6
-- [ ] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8
+- [~] **T1.27** Connection folders/groups with colour and icon → FR-1.6
+- [~] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8
 - [~] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4
 - [~] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3
-- [ ] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
+- [~] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
 
 ## 1.D Drivers — relational core
 
@@ -428,7 +435,7 @@ LAST DONE: 2026-09-10 — T1.17–T1.22: paths, settings, OS keychain, SQLite
 - [ ] **T2.85** SSH tunnel: password, private key, key+passphrase → FR-1.9
 - [ ] **T2.86** SSH tunnel: `ssh-agent`, jump host → FR-1.9
 - [ ] **T2.87** Cloud auth: AWS IAM/RDS token, GCP ADC, Azure AD/Entra → FR-1.14
-- [ ] **T2.88** Import connections from DBeaver, DBGate, TablePlus, DataGrip → FR-1.12
+- [~] **T2.88** Import connections from DBeaver, DBGate, TablePlus, DataGrip → FR-1.12
 - [ ] **T2.89** Export/import connection set as JSON, secrets excluded → FR-1.13
 
 ## 2.J Production guardrails → J7
