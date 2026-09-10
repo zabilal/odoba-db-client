@@ -11,3 +11,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | 0004 | *Reserved* — chart rendering (spike W4, T0.58) | Pending |
 | [0005](0005-browser-as-required-data-path.md) | Browse, not Query, is the required data path | Accepted |
 | [0006](0006-macos-design-system.md) | macOS Human Interface Guidelines as the design system | Accepted |
+| [0007](0007-node-canvas.md) | Node canvas — force-directed layout with culling and LOD | Accepted |
