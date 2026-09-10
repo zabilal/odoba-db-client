@@ -1,0 +1,36 @@
+# Binaries
+/ikigai
+/dist/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Fyne packaging
+/fyne-cross/
+*.app/
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.AppImage
+
+# Test & profiling
+*.test
+*.out
+*.prof
+/coverage.*
+
+# Local scratch
+/scratch/
+*.local.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,96 @@
+name: Driver conformance
+
+# REQ-DRV-1 / NFR-Q1: the same battery against every driver, on real servers.
+# Not run per-push: these are slow and need containers.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "internal/source/**"
+
+jobs:
+  conformance:
+    name: Conformance
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ikigai
+          POSTGRES_DB: ikigai_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: ikigai
+          MYSQL_DATABASE: ikigai_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ikigai
+          MARIADB_DATABASE: ikigai_test
+        ports: ["3307:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand(\"ping\")'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+      cassandra:
+        image: cassandra:5
+        ports: ["9042:9042"]
+        options: >-
+          --health-cmd "cqlsh -e 'describe keyspaces'" --health-interval 15s
+          --health-timeout 10s --health-retries 20
+
+      # Kafka in KRaft mode — no ZooKeeper.
+      kafka:
+        image: apache/kafka:3.9.0
+        ports: ["9092:9092"]
+
+      schema-registry:
+        image: confluentinc/cp-schema-registry:7.7.0
+        ports: ["8081:8081"]
+        env:
+          SCHEMA_REGISTRY_HOST_NAME: schema-registry
+          SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+          SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Run conformance suite
+        run: go test -tags=conformance -timeout 20m ./internal/source/...
