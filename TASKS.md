@@ -21,16 +21,15 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    J1 and J3 run end to end on real PostgreSQL. The query editor has
-           find/replace; export streams CSV, TSV, JSON, NDJSON. Phase 1 still
-           needs the MySQL/MariaDB and SQLite drivers.
-NEXT TASK: T1.35–T1.38 drivers: SQLite first (modernc, already a dependency,
-           file-based, so conformance needs no server), then MySQL/MariaDB
-           (go-sql-driver/mysql v1.10.1).
+STATUS:    J1 and J3 run end to end on PostgreSQL and SQLite (internal/e2e; SQLite's
+           in every test run, no server). Phase 1 needs MySQL/MariaDB still.
+NEXT TASK: T1.35–T1.37 MySQL and MariaDB (go-sql-driver/mysql v1.10.1), with a
+           test server in Docker, conformance, and the journeys on both.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — find and replace in the query editor (T1.60).
+LAST DONE: 2026-09-10 — the SQLite driver (ADR-0014), and the journeys made
+           engine-independent.
 ```
 
 **Phase 0 findings so far**
@@ -254,9 +253,9 @@ LAST DONE: 2026-09-10 — find and replace in the query editor (T1.60).
 - [ ] **T1.35** MySQL driver (`go-sql-driver/mysql`)
 - [ ] **T1.36** MySQL introspection + dialect
 - [ ] **T1.37** MariaDB feature-probe divergence from MySQL → REQ-DB-2
-- [ ] **T1.38** SQLite driver (`modernc.org/sqlite`) + introspection + dialect
-- [~] **T1.39** Capability descriptors for all four → REQ-DB-2
-- [~] **T1.40** Conformance suite green for all four → REQ-DRV-1
+- [x] **T1.38** SQLite driver (`modernc.org/sqlite`) + introspection + dialect — *modernc; no file is ever created by opening; read-only refused by guard and engine; trigger-aware splitting; genuine cancel (ADR-0014)*
+- [~] **T1.39** Capability descriptors for all four → REQ-DB-2 — *PostgreSQL and SQLite; MySQL/MariaDB to come*
+- [~] **T1.40** Conformance suite green for all four → REQ-DRV-1 — *PostgreSQL (tagged) and SQLite (every run) green; MySQL/MariaDB to come*
 
 ## 1.E Object explorer
 

@@ -1,10 +1,9 @@
-//go:build conformance
-
 package e2e
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -16,24 +15,43 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor/view"
+	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
+	explorerview "github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
-// TestJ3WriteRunSaveAndFindAgain is journey J3, the other Phase 1 exit
-// criterion: type SQL, run it, inspect the result, refine it, save it, and
-// find it again through history. It drives only what a user touches: text
-// typed into the editor, commands run as the menus run them, and dialogs
-// filled in through their widgets.
-func TestJ3WriteRunSaveAndFindAgain(t *testing.T) {
-	srv := target()
-	fixture(t, srv)
+// fixtureRows is how many rows every engine's people table holds. It is under
+// one grid page, so a total the grid finds by reaching the end is exact.
+const fixtureRows = 42
 
+// journey is one engine's setup: a saved connection to a database holding a
+// table people (id, name) of fixtureRows rows.
+type journey struct {
+	conn    store.SavedConnection
+	secrets map[string]string
+	path    []model.ObjectRef // the sidebar walk from the connection to the table
+	table   string            // how a query names the table
+}
+
+// harness is the application over one engine, as a person would have it.
+type harness struct {
+	s    *shell.Shell
+	q    *uithread.Queue
+	w    fyne.Window
+	tabs *container.DocTabs
+	db   *localdb.DB
+	conn store.SavedConnection
+}
+
+func start(t *testing.T, j journey) *harness {
+	t.Helper()
 	a := test.NewTempApp(t)
 	dir := t.TempDir()
 	db, err := localdb.Open(context.Background(), filepath.Join(dir, "ikigai.db"))
@@ -46,9 +64,7 @@ func TestJ3WriteRunSaveAndFindAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
-	c, err := conns.Create(store.SavedConnection{Name: "it", Driver: "postgres", Host: srv.host, Port: srv.port,
-		Database: srv.db, User: srv.user, TLS: store.TLS{Mode: "disable"}},
-		map[string]string{"password": srv.pass})
+	c, err := conns.Create(j.conn, j.secrets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,45 +73,77 @@ func TestJ3WriteRunSaveAndFindAgain(t *testing.T) {
 	q := &uithread.Queue{}
 	s := shell.New(a, shell.Deps{Conns: conns, WS: ws, History: db, Saved: db, Run: q.Run})
 	w := s.Window()
-	t.Cleanup(w.Close) // quit as a user does, before the workspace cleanup above
+	t.Cleanup(w.Close) // quit as a person does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
-	tabs := findDocTabs(w.Content())
+	return &harness{s: s, q: q, w: w, tabs: findDocTabs(w.Content()), db: db, conn: c}
+}
 
-	// Type a query and run it.
-	s.OpenQuery(c.ID)
+// runJ1 is journey J1: with a saved connection, find a table in the sidebar,
+// open it, and see its rows.
+func runJ1(t *testing.T, j journey) {
+	h := start(t, j)
+	ids := []string{explorerview.ConnectionID(h.conn.ID)}
+	for _, ref := range j.path {
+		ids = append(ids, explorerview.NodeID(h.conn.ID, ref))
+	}
+	parent := explorer.RootID
+	for _, id := range ids {
+		expand(t, h.q, h.s.Explorer.Model, parent, id)
+		parent = id
+	}
+	h.s.Explorer.Tree.Select(parent)
+	if err := h.s.Commands().Run("object.open"); err != nil {
+		t.Fatalf("Open Data: %v", err)
+	}
+	table := j.path[len(j.path)-1].Name()
+	if h.tabs.Selected() == nil || h.tabs.Selected().Text != table {
+		t.Fatalf("no tab for %q opened", table)
+	}
+	want := fmt.Sprintf("%d rows", fixtureRows)
+	waitFor(t, h.q, "the table's rows", func() bool {
+		h.w.Canvas().Capture() // drawing the grid is what fetches its first page
+		return hasLabel(h.tabs.Selected().Content, want)
+	})
+}
+
+// runJ3 is journey J3: type SQL, run it, inspect the result, refine it, save
+// it, and find it again through history and through saved queries.
+func runJ3(t *testing.T, j journey) {
+	h := start(t, j)
+	tabs := h.tabs
+
+	h.s.OpenQuery(h.conn.ID)
 	ed := find[*view.Editor](tabs.Selected().Content)[0]
-	test.Type(ed.Focusable(), "SELECT id, name FROM e2e_j1.people WHERE id <= 10 ORDER BY id")
-	runWhenReady(t, q, s, "query.run")
-	waitFor(t, q, "the first result", func() bool { return hasLabel(tabs.Selected().Content, "10 rows") })
+	test.Type(ed.Focusable(), "SELECT id, name FROM "+j.table+" WHERE id <= 10 ORDER BY id")
+	runWhenReady(t, h.q, h.s, "query.run")
+	waitFor(t, h.q, "the first result", func() bool { return hasLabel(tabs.Selected().Content, "10 rows") })
 
-	// Refine it and run again.
 	ed.Document().SelectAll()
-	test.Type(ed.Focusable(), "SELECT id, name FROM e2e_j1.people WHERE id > 40 ORDER BY id")
-	runWhenReady(t, q, s, "query.run")
-	waitFor(t, q, "the refined result", func() bool { return hasLabel(tabs.Selected().Content, "2 rows") })
+	test.Type(ed.Focusable(), "SELECT id, name FROM "+j.table+" WHERE id > 40 ORDER BY id")
+	runWhenReady(t, h.q, h.s, "query.run")
+	waitFor(t, h.q, "the refined result", func() bool { return hasLabel(tabs.Selected().Content, "2 rows") })
 	refined := ed.Document().Text()
 
-	// Save it.
-	if err := s.Commands().Run("query.save"); err != nil {
+	if err := h.s.Commands().Run("query.save"); err != nil {
 		t.Fatalf("Save Query: %v", err)
 	}
-	sheet := w.Canvas().Overlays().Top()
+	sheet := h.w.Canvas().Overlays().Top()
 	find[*widget.Entry](sheet)[0].SetText("Tail of people")
 	test.Tap(button(t, sheet, "Save"))
-	waitFor(t, q, "the tab to take the saved name", func() bool { return tabs.Selected().Text == "Tail of people" })
+	waitFor(t, h.q, "the tab to take the saved name", func() bool { return tabs.Selected().Text == "Tail of people" })
 
 	// Find it again through history, by words only the refined statement has.
-	waitFor(t, q, "history to record the run", func() bool {
-		got, _ := db.SearchHistory(context.Background(), localdb.HistoryQuery{Text: "people 40"})
+	waitFor(t, h.q, "history to record the run", func() bool {
+		got, _ := h.db.SearchHistory(context.Background(), localdb.HistoryQuery{Text: "people 40"})
 		return len(got) == 1
 	})
-	if err := s.Commands().Run("query.history"); err != nil {
+	if err := h.s.Commands().Run("query.history"); err != nil {
 		t.Fatalf("Query History: %v", err)
 	}
-	panel := w.Canvas().Overlays().Top()
+	panel := h.w.Canvas().Overlays().Top()
 	test.Type(find[*widget.Entry](panel)[0], "people 40")
 	list := find[*widget.List](panel)[0]
-	waitFor(t, q, "the history search", func() bool { return list.Length() == 1 })
+	waitFor(t, h.q, "the history search", func() bool { return list.Length() == 1 })
 	list.Select(0)
 	if len(tabs.Items) != 2 {
 		t.Fatalf("%d tabs; the history entry should open in a new one", len(tabs.Items))
@@ -105,15 +153,36 @@ func TestJ3WriteRunSaveAndFindAgain(t *testing.T) {
 	}
 
 	// And through saved queries: it is open already, so its tab comes forward.
-	if err := s.Commands().Run("query.openSaved"); err != nil {
+	if err := h.s.Commands().Run("query.openSaved"); err != nil {
 		t.Fatalf("Open Saved Query: %v", err)
 	}
-	saved := find[*widget.List](w.Canvas().Overlays().Top())[0]
-	waitFor(t, q, "the saved list", func() bool { return saved.Length() == 1 })
+	saved := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
+	waitFor(t, h.q, "the saved list", func() bool { return saved.Length() == 1 })
 	saved.Select(0)
 	if len(tabs.Items) != 2 || tabs.Selected().Text != "Tail of people" {
 		t.Errorf("%d tabs, selected %q; the saved query's open tab should come forward", len(tabs.Items), tabs.Selected().Text)
 	}
+}
+
+// expand loads parent's children, as expanding it in the tree does, and waits
+// for want among them.
+func expand(t *testing.T, q *uithread.Queue, m *explorer.Model, parent, want string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		q.Flush()
+		kids := m.Children(parent)
+		if slices.Contains(kids, want) {
+			return
+		}
+		for _, k := range kids {
+			if it, st, err := m.Item(k); st == explorer.Failed {
+				t.Fatalf("expanding the sidebar failed: %s: %v", it.Label, err)
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%q never appeared in the sidebar; saw %q", want, m.Children(parent))
 }
 
 // runWhenReady runs a command once it is enabled: a query tab can run only
@@ -159,6 +228,13 @@ func button(t *testing.T, o fyne.CanvasObject, text string) *widget.Button {
 		}
 	}
 	t.Fatalf("no %q button", text)
+	return nil
+}
+
+func findDocTabs(o fyne.CanvasObject) *container.DocTabs {
+	if tabs := find[*container.DocTabs](o); len(tabs) > 0 {
+		return tabs[0]
+	}
 	return nil
 }
 

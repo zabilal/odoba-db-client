@@ -44,6 +44,19 @@ var itemsNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "items"), 
 func init() {
 	source.Register(pgFake{})
 	source.Register(otherFake{})
+	source.Register(fileFake{})
+}
+
+// fileFake is a database that is a file, as SQLite is.
+type fileFake struct{}
+
+func (fileFake) Describe() source.Descriptor {
+	return source.Descriptor{ID: "filefake", Name: "File Fake", Paradigm: model.ParadigmRelational,
+		Fields: []source.Field{{Key: "database", Label: "File", Kind: source.FieldFile, Required: true}}}
+}
+
+func (fileFake) Open(context.Context, source.ConnectionConfig) (source.Source, error) {
+	return fakeSource{}, nil
 }
 
 func (pgFake) Describe() source.Descriptor {
@@ -611,5 +624,22 @@ func TestUncountedTableLoadsAndFindsItsEnd(t *testing.T) {
 	})
 	if !tb.model.Resident(0) {
 		t.Error("footer updated but no rows are resident")
+	}
+}
+
+func TestAFileDatabaseHasNoEncryptionSetting(t *testing.T) {
+	fx := newFixture(t)
+	f := fx.s.showConnectionForm("")
+	f.driver.SetSelected("File Fake")
+	for _, it := range f.form.Items {
+		if it.Text == "Encryption" {
+			t.Fatal("a file database has nothing to encrypt in transit")
+		}
+	}
+	test.Type(f.inputs["database"].entry, "/data/app.db")
+	test.Tap(f.saveBtn)
+	list := fx.conns.List()
+	if len(list) != 1 || list[0].TLS.Mode != "" || list[0].Database != "/data/app.db" {
+		t.Errorf("saved %+v", list)
 	}
 }

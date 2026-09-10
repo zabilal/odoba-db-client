@@ -20,6 +20,7 @@ import (
 	// Drivers register themselves on import (REQ-DB-1). Adding a source to the
 	// application is a blank import here, and nothing else.
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlite"
 )
 
 // version is set at build time via -ldflags.

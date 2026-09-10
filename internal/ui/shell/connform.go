@@ -186,14 +186,28 @@ func (f *connForm) layout() {
 		it.HintText = f.hint(fd)
 		items = append(items, it)
 	}
+	// Encryption in transit means nothing to a database that is a file.
+	if f.networked() {
+		items = append(items, widget.NewFormItem("Encryption", f.tls))
+	}
 	items = append(items,
-		widget.NewFormItem("Encryption", f.tls),
 		widget.NewFormItem("Environment", f.env),
 		widget.NewFormItem("", f.readOnly),
 		widget.NewFormItem("", f.result),
 	)
 	f.form.Items = items
 	f.form.Refresh()
+}
+
+// networked reports whether the driver connects over a network, which is
+// what the encryption settings apply to.
+func (f *connForm) networked() bool {
+	for _, fd := range f.desc.Fields {
+		if fd.Key == "host" {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *connForm) hint(fd source.Field) string {
@@ -290,7 +304,7 @@ func (f *connForm) collect() (store.SavedConnection, map[string]string, error) {
 	if c.Name == "" {
 		c.Name = defaultName(c, f.desc)
 	}
-	if i := f.tls.SelectedIndex(); i >= 0 {
+	if i := f.tls.SelectedIndex(); i >= 0 && f.networked() {
 		c.TLS.Mode = tlsModes[i].mode
 	}
 	if i := f.env.SelectedIndex(); i >= 0 {
