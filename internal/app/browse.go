@@ -56,6 +56,9 @@ func (b *BrowseSource) With(ctx context.Context, opt source.BrowseOptions) (*Bro
 // CanSort reports whether the source sorts on the server (capability.Data).
 func (b *BrowseSource) CanSort() bool { return b.src.Capabilities().Data.ServerSort }
 
+// CanFilter reports whether the source filters on the server (capability.Data).
+func (b *BrowseSource) CanFilter() bool { return b.src.Capabilities().Data.ServerFilter }
+
 // Columns describes every row.
 func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
 

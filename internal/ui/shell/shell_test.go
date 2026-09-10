@@ -116,7 +116,7 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 
 func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
-		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true}}
+		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true}}
 }
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
@@ -143,6 +143,11 @@ func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Browse
 	browses.Lock()
 	browses.opts = append(browses.opts, opt)
 	browses.Unlock()
+	for _, f := range opt.Filters {
+		if f.Op == source.OpRegex {
+			return nil, errors.New("fakesql: no regular expressions")
+		}
+	}
 	end := int64(fakeRows)
 	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
 		end = opt.Offset + opt.Limit
@@ -153,7 +158,7 @@ func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Browse
 type sliceStream struct{ next, end int64 }
 
 func (*sliceStream) Columns() []model.ColumnDef {
-	return []model.ColumnDef{{Name: "id"}, {Name: "name"}}
+	return []model.ColumnDef{{Name: "id", Type: model.DataType{Class: model.TypeInteger}}, {Name: "name"}}
 }
 func (s *sliceStream) Next(context.Context) (model.Row, error) {
 	if s.next >= s.end {

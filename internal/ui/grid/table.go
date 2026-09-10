@@ -55,6 +55,13 @@ type TableGrid struct {
 	Sortable bool
 	OnSort   func(keys []SortKey)
 	sorts    []SortKey
+
+	// OnFilter hears every column's filter text when one is submitted, on a
+	// grid with a filter row (SetFilterable).
+	OnFilter   func(texts []string)
+	filterable bool
+	filters    []string
+	filterErr  []bool
 }
 
 // SortKey is one column of a sort, by index into the grid's columns.
@@ -179,6 +186,8 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 
 	cols := m.Columns()
 	g.widths = make([]float32, len(cols))
+	g.filters = make([]string, len(cols))
+	g.filterErr = make([]bool, len(cols))
 	for i, c := range cols {
 		g.widths[i] = defaultWidth(c)
 	}
@@ -305,22 +314,40 @@ func (g *TableGrid) background(id widget.TableCellID) color.Color {
 	return g.palette.ContentBackground
 }
 
-func (g *TableGrid) createHeader() fyne.CanvasObject { return newHeaderCell(g) }
+func (g *TableGrid) createHeader() fyne.CanvasObject {
+	if g.filterable {
+		return newColumnHeader(g)
+	}
+	return newHeaderCell(g)
+}
 
 func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
-	h, ok := o.(*headerCell)
-	if !ok {
-		return
+	switch h := o.(type) {
+	case *columnHeader:
+		if h.bg.FillColor != g.palette.SidebarBackground {
+			h.bg.FillColor = g.palette.SidebarBackground
+			h.bg.Refresh()
+		}
+		g.updateTitle(id.Col, h.title)
+		g.bindFilter(h.filter, id.Col)
+	case *headerCell:
+		g.updateTitle(id.Col, h)
 	}
-	h.col = id.Col
-	cell := &h.cellWidget
+}
+
+func (g *TableGrid) updateTitle(col int, h *headerCell) {
+	h.col = col
 	cols := g.model.Columns()
-	if id.Col < 0 || id.Col >= len(cols) {
-		cell.set("", g.palette.SecondaryLabel, g.palette.SidebarBackground,
+	if col < 0 || col >= len(cols) {
+		h.set("", g.palette.SecondaryLabel, g.palette.SidebarBackground,
 			fyne.TextAlignLeading, fyne.TextStyle{})
 		return
 	}
-	cell.set(cols[id.Col].Name+g.sortMark(id.Col), g.palette.SecondaryLabel, g.palette.SidebarBackground,
+	fg := g.palette.SecondaryLabel
+	if g.FilterError(col) {
+		fg = g.palette.Danger
+	}
+	h.set(cols[col].Name+g.sortMark(col), fg, g.palette.SidebarBackground,
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 }
 
