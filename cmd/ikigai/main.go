@@ -1,15 +1,19 @@
 // Command ikigai is the Ikigai DB desktop client.
-//
-// The shell is built in Phase 1 (TASKS.md T1.1). Phase 0 delivers the core
-// contracts and the four UI spikes; this entrypoint exists so the module
-// builds and CI has something to compile on every platform.
 package main
 
 import (
 	"fmt"
 	"os"
+	"runtime"
 
-	"github.com/ikigai-db/ikigai-db/internal/source"
+	fyneapp "fyne.io/fyne/v2/app"
+
+	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/logging"
+	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
+	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
+	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 
 	// Drivers register themselves on import (REQ-DB-1). Adding a source to the
 	// application is a blank import here, and nothing else.
@@ -19,15 +23,61 @@ import (
 // version is set at build time via -ldflags.
 var version = "dev"
 
-func main() {
-	fmt.Fprintf(os.Stderr, "ikigai %s\n", version)
+// appID keys Fyne's per-application storage. Like the module path it is a
+// placeholder until the project's home is settled (OQ-1).
+const appID = "io.github.ikigai-db"
 
-	drivers := source.Drivers()
-	if len(drivers) == 0 {
-		fmt.Fprintln(os.Stderr, "no drivers registered")
+func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "-version" || os.Args[1] == "--version") {
+		fmt.Println("ikigai", version)
 		return
 	}
-	for _, d := range drivers {
-		fmt.Fprintf(os.Stderr, "  %s (%s)\n", d.Name, d.Paradigm)
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "ikigai:", err)
+		os.Exit(1)
 	}
+}
+
+func run() error {
+	paths, err := store.Resolve()
+	if err != nil {
+		return err
+	}
+	if err := paths.Ensure(); err != nil {
+		return err
+	}
+	log, logFile, err := logging.New(paths.Logs, logging.Options{})
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+	log.Info("starting", "version", version, "os", runtime.GOOS, "portable", paths.Portable)
+
+	settings, notice, err := store.OpenSettings(paths.SettingsFile())
+	if err != nil {
+		return err
+	}
+	vault := app.NewVault(secrets.OS(), keychainAvailability())
+	conns := app.NewConnections(settings, vault, log)
+	ws := app.NewWorkspace(conns, app.MonitorConfig{})
+
+	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
+		Conns: conns, WS: ws, Settings: settings, Theme: uitheme.New(), Log: log,
+	})
+	s.ShowNotice(notice)
+	s.Window().ShowAndRun()
+	log.Info("stopped")
+	return nil
+}
+
+// keychainAvailability probes the OS keychain only where it can be missing.
+// macOS and Windows always have one, and the probe is a round trip to the
+// keychain service inside the cold-start budget (NFR-P1). On Linux the Secret
+// Service may be absent, and the vault must know, so that it never claims to
+// have saved a password it could not.
+func keychainAvailability() error {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return nil
+	}
+	return secrets.Available()
 }

@@ -15,3 +15,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0008](0008-postgresql-driver.md) | The PostgreSQL driver, and what the first real driver changed | Accepted |
 | [0009](0009-local-store.md) | The local store — settings, secrets, history | Accepted |
 | [0010](0010-connection-management.md) | Connection management | Accepted |
+| [0011](0011-shell-and-ui-threads.md) | The shell, where UI work runs, and tables without a row count | Accepted |

@@ -64,6 +64,13 @@ type Model struct {
 	inflight map[int64]bool
 
 	total int64 // -1 when unknown
+	// seen is how many rows are known to exist: the furthest any fetched page
+	// reached. It only grows until Invalidate. While the total is unknown, it
+	// is what the grid sizes itself by.
+	seen int64
+	// derived reports that total came from reaching the end of the data, not
+	// from a count, so Invalidate must forget it.
+	derived bool
 
 	// OnPageLoaded is invoked, off the UI goroutine, when a page arrives.
 	// The UI must marshal its refresh onto the main goroutine itself.
@@ -105,10 +112,41 @@ func (m *Model) LoadCount(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		// No count from this source. Keep any total already found by reaching
+		// the end of the data: forgetting it would regrow the grid by a page
+		// of placeholders that can never load.
+		return nil
+	}
 	m.mu.Lock()
-	m.total = n
+	m.total, m.derived = n, false
 	m.mu.Unlock()
 	return nil
+}
+
+// Extent is how many rows are known to exist: the total when final, else the
+// furthest row any fetch has reached so far.
+func (m *Model) Extent() (n int64, final bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.total >= 0 {
+		return m.total, true
+	}
+	return m.seen, false
+}
+
+// noteReachLocked records how far a fetched page reached. A short page is the
+// end of the data (see Fetcher): it makes an unknown total known, and corrects
+// a stale one kept across Invalidate when the data shrank. Called with mu
+// held.
+func (m *Model) noteReachLocked(page int64, n int) {
+	reach := page*PageSize + int64(n)
+	if reach > m.seen {
+		m.seen = reach
+	}
+	if n < PageSize && reach != m.total {
+		m.total, m.derived = reach, true
+	}
 }
 
 // Row returns row i.
@@ -194,6 +232,7 @@ func (m *Model) schedule(ctx context.Context, page int64) {
 			m.pages[page] = rows
 			m.lru = append(m.lru, page)
 			m.evictLocked()
+			m.noteReachLocked(page, len(rows))
 		}
 		m.mu.Unlock()
 
@@ -233,12 +272,21 @@ func (m *Model) evictLocked() {
 	}
 }
 
-// Invalidate drops every cached page, for use after a filter or sort change.
+// Invalidate drops every cached page, for a reload or a filter or sort
+// change.
+//
+// A counted total is kept until the next LoadCount replaces it, so the grid
+// keeps its size and scroll position meanwhile instead of collapsing to one
+// page; if the data shrank, the first short page corrects it sooner. A total
+// known only from reaching the end is dropped, since the end may have moved.
 func (m *Model) Invalidate() {
 	m.mu.Lock()
 	m.pages = make(map[int64][]model.Row, MaxResidentPages)
 	m.lru = m.lru[:0]
-	m.total = -1
+	m.seen = 0
+	if m.derived {
+		m.total, m.derived = -1, false
+	}
 	m.mu.Unlock()
 }
 

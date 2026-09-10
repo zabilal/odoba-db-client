@@ -3,7 +3,6 @@ package grid
 import (
 	"context"
 	"image/color"
-	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
+	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
 // TableGrid is the widget.Table-based grid candidate for spike W1.
@@ -39,46 +39,45 @@ type TableGrid struct {
 	// and lands in Phase 1 proper.
 	selRow, selCol int
 
-	// refreshQueued coalesces refreshes. See ScheduleRefresh.
-	refreshQueued atomic.Bool
+	// refresh is the coalesced refresh trigger. See ScheduleRefresh.
+	refresh func()
 }
-
-// RefreshInterval bounds how often the table is refreshed in response to data
-// arriving. Roughly one frame at 60 fps.
-const RefreshInterval = 16 * time.Millisecond
 
 // ScheduleRefresh requests a table refresh, coalescing bursts into one.
 //
 // Refreshing directly from every page-load callback is wrong twice over.
 //
-// It is a correctness bug: during a fast scroll many pages land within
-// milliseconds of each other, each calling fyne.Do from its own goroutine.
-// Those re-enter Fyne's table renderer while it is already refreshing and
-// corrupt its internal cell map — a hard runtime fault, not a glitch. Spike W1
-// hit exactly this (see ADR-0002).
+// It is a correctness bug. During a fast scroll many pages land within
+// milliseconds, each calling back from its own goroutine. Those callbacks
+// re-enter Fyne's table renderer while it is already refreshing and corrupt
+// its internal cell map. That is a hard runtime fault, not a glitch; spike W1
+// hit exactly this (ADR-0002).
 //
-// It is also wasteful: a full refresh redraws every visible cell, so eight
+// It is also wasteful. A full refresh redraws every visible cell, so eight
 // pages landing together would redraw the viewport eight times to show one
 // screen of data.
 //
-// At most one refresh is in flight; further requests during the window are
-// absorbed by the one already queued.
-func (g *TableGrid) ScheduleRefresh() {
-	if g.refreshQueued.Swap(true) {
-		return
+// At most one refresh is in flight, run through the grid's Runner (the UI
+// goroutine in production, a test's own goroutine under uithread.Queue).
+func (g *TableGrid) ScheduleRefresh() { g.refresh() }
+
+// SetPalette recolours the grid, for an appearance change. UI goroutine only.
+func (g *TableGrid) SetPalette(p theme.Palette) {
+	g.palette = p
+	if g.Table != nil {
+		g.Table.Refresh()
 	}
-	time.AfterFunc(RefreshInterval, func() {
-		g.refreshQueued.Store(false)
-		fyne.Do(func() {
-			if g.Table != nil {
-				g.Table.Refresh()
-			}
-		})
-	})
 }
 
-// NewTableGrid builds a grid over a model.
+// NewTableGrid builds a grid over a model, refreshing on Fyne's UI goroutine.
 func NewTableGrid(ctx context.Context, m *Model, pal theme.Palette) *TableGrid {
+	return NewTableGridWith(ctx, m, pal, uithread.Fyne, uithread.FrameDelay)
+}
+
+// NewTableGridWith builds a grid whose refreshes go through run, coalesced over
+// delay. Tests pass a uithread.Queue and zero, so the refresh happens on the
+// test's goroutine: Fyne's headless driver would otherwise run it on a timer's.
+func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uithread.Runner, delay time.Duration) *TableGrid {
 	g := &TableGrid{
 		model:   m,
 		palette: pal,
@@ -112,17 +111,27 @@ func NewTableGrid(ctx context.Context, m *Model, pal theme.Palette) *TableGrid {
 	}
 
 	g.Table = t
+	g.refresh = uithread.Coalesce(run, delay, func() {
+		if g.Table != nil {
+			g.Table.Refresh()
+		}
+	})
 	return g
 }
 
 func (g *TableGrid) length() (int, int) {
-	total, known := g.model.Total()
-	if !known {
-		// Until the count resolves, report what is resident so the user sees
-		// data immediately rather than an empty grid (NFR-P3).
-		total = int64(g.model.Stats().ResidentPages) * PageSize
+	n, final := g.model.Extent()
+	if !final {
+		// The total is unknown, as it is wherever counting is a full scan.
+		// Show what has loaded plus one page of placeholders: drawing those is
+		// what fetches the next page, so the grid grows as the user scrolls
+		// until a short page marks the end. With nothing loaded yet, this is
+		// the page of placeholders that schedules the first fetch (NFR-P3).
+		// Sizing by resident pages alone would be zero rows, which draws no
+		// cells and so never fetches anything.
+		n += PageSize
 	}
-	return int(total), len(g.model.Columns())
+	return int(n), len(g.model.Columns())
 }
 
 func (g *TableGrid) createCell() fyne.CanvasObject { return newCellWidget() }

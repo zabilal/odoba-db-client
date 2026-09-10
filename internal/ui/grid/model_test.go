@@ -8,7 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/test"
+
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
+	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
 func waitFor(t *testing.T, cond func() bool, msg string) {
@@ -205,4 +209,112 @@ type failingFetcher struct {
 
 func (f *failingFetcher) Fetch(context.Context, int64, int64) ([]model.Row, error) {
 	return nil, f.err
+}
+
+func TestScheduleRefreshCoalescesThroughTheRunner(t *testing.T) {
+	test.NewTempApp(t)
+	m := NewModel(NewSyntheticFetcher(1000))
+	q := &uithread.Queue{}
+	g := NewTableGridWith(context.Background(), m, theme.Light, q.Run, 0)
+	for i := 0; i < 50; i++ {
+		g.ScheduleRefresh() // as a burst of page loads would
+	}
+	if q.Len() != 1 {
+		t.Fatalf("50 page loads queued %d refreshes, want 1", q.Len())
+	}
+	q.Flush()
+	g.ScheduleRefresh()
+	if q.Len() != 1 {
+		t.Error("a load after the refresh ran must queue another")
+	}
+}
+
+// uncounted is a fetcher over a source that cannot count cheaply.
+type uncounted struct{ *SyntheticFetcher }
+
+func (uncounted) Count(context.Context) (int64, error) { return -1, nil }
+
+// loadPage fetches one page through the model and waits for it.
+func loadPage(t *testing.T, m *Model, page int64) {
+	t.Helper()
+	loaded := make(chan struct{}, 8)
+	m.OnPageLoaded = func(int64) { loaded <- struct{}{} }
+	m.Row(context.Background(), page*PageSize)
+	select {
+	case <-loaded:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("page %d never loaded", page)
+	}
+}
+
+func TestUnknownTotalBecomesKnownAtAShortPage(t *testing.T) {
+	m := NewModel(uncounted{NewSyntheticFetcher(2*PageSize + PageSize/2)})
+	if err := m.LoadCount(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n, final := m.Extent(); n != 0 || final {
+		t.Fatalf("before any fetch: extent %d final %v", n, final)
+	}
+	loadPage(t, m, 0)
+	if n, final := m.Extent(); n != PageSize || final {
+		t.Fatalf("after a full page: extent %d final %v", n, final)
+	}
+	loadPage(t, m, 2)
+	want := int64(2*PageSize + PageSize/2)
+	if n, final := m.Extent(); n != want || !final {
+		t.Fatalf("after the short last page: extent %d final %v, want %d final", n, final, want)
+	}
+	if err := m.LoadCount(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if total, known := m.Total(); !known || total != want {
+		t.Errorf("an unknown count forgot the end of the data: %d %v", total, known)
+	}
+	m.Invalidate()
+	if _, final := m.Extent(); final {
+		t.Error("Invalidate must forget a total found by reaching the end: the data may have changed")
+	}
+}
+
+func TestACountSurvivesInvalidate(t *testing.T) {
+	m := NewModel(NewSyntheticFetcher(1000))
+	if err := m.LoadCount(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m.Invalidate()
+	if n, final := m.Extent(); !final || n != 1000 {
+		t.Errorf("extent %d final %v; a counted total is replaced by the next count, not dropped", n, final)
+	}
+}
+
+func TestGridOverAnUncountedSourceStillFetches(t *testing.T) {
+	// The regression: sized by resident pages, an uncounted grid had zero
+	// rows, drew no cells, and so never scheduled its first fetch.
+	test.NewTempApp(t)
+	m := NewModel(uncounted{NewSyntheticFetcher(PageSize / 2)})
+	g := NewTableGridWith(context.Background(), m, theme.Light, (&uithread.Queue{}).Run, 0)
+	if rows, _ := g.length(); rows != PageSize {
+		t.Fatalf("an empty uncounted grid shows %d rows; it needs a page of placeholders to fetch into", rows)
+	}
+	loadPage(t, m, 0)
+	if rows, _ := g.length(); rows != PageSize/2 {
+		t.Errorf("after the only, short page the grid shows %d rows, want %d", rows, PageSize/2)
+	}
+}
+
+func TestAShortPageCorrectsAStaleCount(t *testing.T) {
+	// A filter narrows 1000 rows to 10. Until the recount lands, the kept
+	// total would draw 990 rows that no longer exist; the first page, short,
+	// is proof of the new end.
+	f := NewSyntheticFetcher(1000)
+	m := NewModel(f)
+	if err := m.LoadCount(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.Rows = 10
+	m.Invalidate()
+	loadPage(t, m, 0)
+	if n, final := m.Extent(); n != 10 || !final {
+		t.Errorf("extent %d final %v, want 10 final", n, final)
+	}
 }
