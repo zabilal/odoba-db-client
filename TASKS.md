@@ -21,15 +21,14 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    PostgreSQL driver complete and green against a live server (ADR-0008).
-NEXT TASK: T1.17–T1.22 store (config dirs, settings, keychain, SQLite history),
-           then T1.23–T1.31 connection management, then T1.1 shell → explorer →
-           grid. Order is inside-out (ARCH-1), and J1 runs end to end on
-           PostgreSQL before MySQL/MariaDB/SQLite are added.
-[~] tasks: the driver half is done; the app or UI half is still to build.
+STATUS:    PostgreSQL driver (ADR-0008) and local store (ADR-0009) complete.
+NEXT TASK: T1.23–T1.31 connection management — the app layer joining store,
+           secrets and drivers — then T1.1 shell → explorer → grid. J1 runs end
+           to end on PostgreSQL before MySQL/MariaDB/SQLite are added.
+[~] tasks: the core half is done; the app or UI half is still to build.
 OWNER:     unchanged — G0-1 interactive run; push to a remote so CI runs.
-LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementError
-           and ConnectError; QueryMulti takes a confirmed flag; lexer → sqllex.
+LAST DONE: 2026-09-10 — T1.17–T1.22: paths, settings, OS keychain, SQLite
+           history with redaction and FTS5, redacting rotated log.
 ```
 
 **Phase 0 findings so far**
@@ -72,6 +71,14 @@ LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementErr
   `QueryMulti` gained `confirmed`; `StatementError` and `ConnectError` added.
 - Follow-up: `Session` has no database target yet. The editor's database
   selector will need one.
+- **History would have been a plaintext password log.** `CREATE USER ... PASSWORD
+  'x'` is exactly what a query history records. History entries are now
+  redacted through the lexer before they are written; saved queries stay
+  verbatim, because the user saved them deliberately. ADR-0009.
+- **A feared weakness turned out not to exist.** go-keyring on macOS was thought
+  to put passwords on `security`'s command line, visible in `ps`. Its source
+  shows v0.2.8 writes them over stdin. Checking in the source cut both ways
+  here: it disproved a worry this time, where on pgx it disproved a claim.
 
 
 **Phase 0 findings so far**
@@ -209,12 +216,12 @@ LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementErr
 
 ## 1.B Persistence & store
 
-- [ ] **T1.17** OS-convention config directories → FR-17.1
-- [ ] **T1.18** Settings file (JSON/TOML), human-readable → FR-17.2
-- [ ] **T1.19** **OS keychain integration** (Keychain / DPAPI / libsecret) → FR-1.5, NFR-S1
-- [ ] **T1.20** Local SQLite store: history, saved queries, session state → FR-17.3
-- [ ] **T1.21** Store schema versioning + migration on upgrade → FR-17.4
-- [ ] **T1.22** Structured logging with rotation and redaction → NFR-R4, NFR-S2
+- [x] **T1.17** OS-convention config directories → FR-17.1
+- [x] **T1.18** Settings file (JSON/TOML), human-readable → FR-17.2
+- [x] **T1.19** **OS keychain integration** (Keychain / DPAPI / libsecret) → FR-1.5, NFR-S1
+- [x] **T1.20** Local SQLite store: history, saved queries, session state → FR-17.3
+- [x] **T1.21** Store schema versioning + migration on upgrade → FR-17.4
+- [x] **T1.22** Structured logging with rotation and redaction → NFR-R4, NFR-S2
 
 ## 1.C Connection management
 
@@ -273,8 +280,8 @@ LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementErr
 - [~] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9
 - [ ] **T1.64** Timing, rows affected, server messages pane → FR-5.6
 - [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
-- [ ] **T1.66** Persistent searchable query history → FR-5.8
-- [ ] **T1.67** Saved queries with folders → FR-5.9
+- [~] **T1.66** Persistent searchable query history → FR-5.8
+- [~] **T1.67** Saved queries with folders → FR-5.9
 - [~] **T1.68** Map server errors back to editor position → FR-5.10
 
 ## 1.H Export
@@ -534,7 +541,7 @@ LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementErr
 - [ ] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16
 - [ ] **T4.17** Optional app-level vault lock → NFR-S7
 - [ ] **T4.18** Backup/restore app data as one archive → FR-17.5
-- [ ] **T4.19** Portable mode → FR-17.6
+- [~] **T4.19** Portable mode → FR-17.6
 
 ## 4.D Accessibility
 
