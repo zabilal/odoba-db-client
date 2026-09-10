@@ -10,6 +10,8 @@ import (
 	fcanvas "fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
+
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 )
 
 // T0.58 — image render versus native canvas drawing.
@@ -42,6 +44,7 @@ func TestRenderApproach(t *testing.T) {
 	if testing.Short() {
 		t.Skip("render comparison skipped in -short")
 	}
+	race.SkipTimingGate(t)
 	test.NewTempApp(t)
 
 	floor := capturePlot(t, fcanvas.NewRectangle(color.White), 5)
@@ -95,10 +98,10 @@ func TestRenderApproach(t *testing.T) {
 			if n == 10_000 {
 				nativeAt10k = native
 			}
-			nativeCell = native.Round(time.Millisecond).String()
+			nativeCell = aboveFloor(native)
 		}
 
-		t.Logf("%-8d %-22v %-22s %d", n, raster.Round(time.Millisecond), nativeCell, n)
+		t.Logf("%-8d %-22s %-22s %d", n, aboveFloor(raster), nativeCell, n)
 	}
 
 	// Sanity bound on the approach ADR-0004 selects: rasterising 100k points
@@ -112,6 +115,17 @@ func TestRenderApproach(t *testing.T) {
 	if d := time.Since(start); d > 100*time.Millisecond {
 		t.Errorf("rasterising 100k points took %v; exceeds 100ms", d)
 	}
+}
+
+// aboveFloor formats a floor-subtracted cost. A capture can come in under the
+// floor sample, leaving a negative result that is pure noise; printing "-1ms"
+// invites the conclusion that something took negative time, so it is shown as
+// indistinguishable from the floor instead.
+func aboveFloor(d time.Duration) string {
+	if d <= 0 {
+		return "≈ floor"
+	}
+	return d.Round(time.Millisecond).String()
 }
 
 func BenchmarkRasterScatter100k(b *testing.B) {

@@ -37,6 +37,10 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Timing-budget gates (TestGateG0_*) skip themselves under -race: the
+      # detector slows execution 5-20x, so a budget measured under it measures
+      # the detector, not the code. They run in the performance job below,
+      # without -race. Do not add -race there.
       - name: Test
         run: go test -race ./...
 
@@ -88,5 +92,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
-      - name: Run benchmarks
+      # The Phase 0 gates, as budget assertions that fail the build. Without
+      # -race on purpose — see internal/testutil/race. -count=1 defeats the
+      # test cache, which would otherwise report a stale pass.
+      - name: Performance gates
+        run: go test -run 'TestGate' -count=1 -v ./...
+
+      # shell: bash turns on pipefail. Without it the pipeline's exit status
+      # is tee's, and a failing benchmark would report success.
+      - name: Benchmarks
+        shell: bash
         run: go test -run '^$' -bench . -benchmem ./... | tee bench.txt
