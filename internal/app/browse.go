@@ -59,6 +59,31 @@ func (b *BrowseSource) CanSort() bool { return b.src.Capabilities().Data.ServerS
 // CanFilter reports whether the source filters on the server (capability.Data).
 func (b *BrowseSource) CanFilter() bool { return b.src.Capabilities().Data.ServerFilter }
 
+// CanListValues reports whether the source can list a column's distinct
+// values, for the filter picklist.
+func (b *BrowseSource) CanListValues() bool {
+	_, ok := b.src.(source.DistinctLister)
+	return ok && b.src.Capabilities().Data.DistinctValues
+}
+
+// Distinct lists up to limit of a column's values for the filter picklist
+// (FR-3.4), among the rows the other columns' filters select. The column's
+// own filter is left out: with it, the list could only offer what is already
+// picked.
+func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) ([]source.DistinctValue, error) {
+	dl, ok := b.src.(source.DistinctLister)
+	if !ok || !b.CanListValues() {
+		return nil, errors.New("app: this source cannot list a column's values")
+	}
+	var others []source.Filter
+	for _, f := range b.opt.Filters {
+		if f.Column != column {
+			others = append(others, f)
+		}
+	}
+	return dl.Distinct(ctx, b.ref, column, others, limit)
+}
+
 // Columns describes every row.
 func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
 

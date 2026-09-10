@@ -30,7 +30,8 @@ NEXT TASK: the grid (T1.48–T1.56): the distinct-value picklist (T1.54), the WH
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-10 — the filter row, applied on the server (T1.55, ADR-0016).
+LAST DONE: 2026-09-11 — drivers list a column's values with counts for the picklist
+           (DistinctLister, conformance-checked); fixed SQLite dates not filtering.
 ```
 
 **Phase 0 findings so far**
@@ -276,7 +277,7 @@ LAST DONE: 2026-09-10 — the filter row, applied on the server (T1.55, ADR-0016
 - [ ] **T1.51** Cell/range/row/column selection → FR-3.7
 - [ ] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7
 - [ ] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9
-- [~] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4 — *every operator is reachable from the filter row (T1.55); the distinct-value picklist is open: no driver implements DistinctLister yet*
+- [~] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4 — *every operator is reachable from the filter row (T1.55); PostgreSQL, MySQL/MariaDB and SQLite list a column's values with counts (DistinctLister, conformance-checked, ADR-0016); the picklist UI is open*
 - [x] **T1.55** Compact filter-row DSL (`>100`, `!=x`, `a,b,c`, `~regex`, `NULL`) → FR-3.5 — *a field under each header; parsed in internal/app/filterexpr and checked against the column's type; applied on the server; failures marked and explained (ADR-0016)*
 - [ ] **T1.56** Global WHERE editor showing the generated SQL → FR-3.6, UX-6
 

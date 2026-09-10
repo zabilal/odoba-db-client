@@ -192,7 +192,7 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 		Query: capability.Query{Supported: true, Language: lang, MultiStatement: true,
 			Cancel: true, Parameters: true},
 		// InnoDB counts by scanning; the table statistics' estimate is cheap.
-		Data:   capability.Data{ServerSort: true, ServerFilter: true, ApproximateCount: true},
+		Data:   capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ApproximateCount: true},
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true, model.KindTable: true,

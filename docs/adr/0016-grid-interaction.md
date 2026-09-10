@@ -96,8 +96,26 @@ use a small control's metrics, so the header is two rows high, not three.
 The first screenshot of the filter row had every data row at the header's
 height; a test now lays the grid out and checks both.
 
+**The picklist's values come from the server, counted.** A column's
+distinct values are listed by `source.DistinctLister`. It takes the other
+columns' filters, so the list offers only what can still be picked, and it
+returns values most frequent first, so a list cut short at its limit keeps
+the values most rows have. `BrowseSource.Distinct` leaves the column's own
+filter out; with it, the list could only offer what is already picked. The
+relational drivers answer with one `GROUP BY` under the same filters a browse
+uses, and decode the rows with the browse's own decoder. So every listed
+value round-trips: used as an IN filter, it selects exactly the rows it was
+counted from. The conformance suite checks that on every engine, for every
+column whose type can be grouped, against a full read, and requires one
+column whose values repeat unevenly so the order is really tested. Mutating
+the count, the filters or the order each makes it fail. Its first run found
+a real fault: SQLite's driver reads a DATE's text as a time and writes a time
+back in its own layout, so a date picked from the list matched no rows. A
+time operand is now compared through `strftime` on both sides. Counting scans
+the filtered rows, so it runs only when asked for.
+
 ## Not decided here
 
-The distinct-value picklist (T1.54), the WHERE editor and the effective SQL
+The picklist's UI (T1.54), the WHERE editor and the effective SQL
 (T1.56), selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.

@@ -30,7 +30,8 @@ func fixture(t *testing.T) string {
 		`CREATE TABLE tags (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID`,
 		`CREATE VIEW adults AS SELECT id, name FROM people WHERE id > 10`,
 		`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
-		 INSERT INTO people (id, name, score, meta) SELECT i, 'person ' || i, i * 1.5, '{"i": ' || i || '}' FROM n`,
+		 INSERT INTO people (id, name, score, born, meta) SELECT i, 'person ' || i, i * 1.5,
+		   CASE WHEN i % 3 = 0 THEN '2000-01-0' || (1 + i % 2) END, '{"i": ' || i || '}' FROM n`,
 		`INSERT INTO tags VALUES ('b', '2'), ('a', '1')`,
 		`CREATE TABLE orders (id INTEGER PRIMARY KEY, person_id INTEGER REFERENCES people(id) ON DELETE CASCADE,
 		   total NUMERIC, UNIQUE (person_id, total))`,
@@ -154,8 +155,16 @@ func TestFilters(t *testing.T) {
 	if n := count(source.Filter{Column: "name", Op: source.OpContains, Values: []any{"PERSON 1"}}); n != 12 {
 		t.Errorf("contains, ignoring case: %d, want 12 (1, 10-19, 100)", n)
 	}
-	if n := count(source.Filter{Column: "born", Op: source.OpEqual, Values: []any{nil}}); n != 100 {
-		t.Errorf("= NULL means IS NULL: %d", n)
+	if n := count(source.Filter{Column: "born", Op: source.OpEqual, Values: []any{nil}}); n != 67 {
+		t.Errorf("= NULL means IS NULL: %d, want 67 (every third row has a date)", n)
+	}
+	// The driver reads a DATE as a time.Time; that time must filter its rows.
+	jan1 := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	if n := count(source.Filter{Column: "born", Op: source.OpIn, Values: []any{jan1}}); n != 16 {
+		t.Errorf("a date read back as a time selects %d rows, want 16", n)
+	}
+	if n := count(source.Filter{Column: "born", Op: source.OpGreater, Values: []any{jan1}}); n != 17 {
+		t.Errorf("after a date read back as a time: %d rows, want 17", n)
 	}
 	if n := count(source.Filter{Column: "id", Op: source.OpNotIn, Values: []any{int64(1), int64(2)}}); n != 98 {
 		t.Errorf("not in: %d", n)

@@ -14,6 +14,7 @@ package conformance
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -61,6 +62,7 @@ func Run(t *testing.T, target Target) {
 		{"Browse", checkBrowse},
 		{"BrowseCancellation", checkBrowseCancellation},
 		{"BrowseLimit", checkBrowseLimit},
+		{"Distinct", checkDistinct},
 		{"ReadOnlyGuard", checkReadOnlyGuard},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
 	}
@@ -386,5 +388,115 @@ func checkUnsupportedOptionsRejected(t *testing.T, target Target) {
 		stream.Close()
 		t.Error("Browse accepted a sort the source does not support; " +
 			"it must return an error rather than silently ignore it")
+	}
+}
+
+// checkDistinct proves the filter picklist (FR-3.4). For every column whose
+// values can be grouped, the listed values and counts must agree with a full
+// read of the object, most frequent first. Each value, used as a filter, must
+// select exactly the rows it was counted from: the picklist filters with what
+// it was given. And filters must narrow the list.
+func checkDistinct(t *testing.T, target Target) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	src := target.Open(ctx, t)
+	defer src.Close()
+	if !src.Capabilities().Data.DistinctValues {
+		t.Skip("source does not claim DistinctValues")
+	}
+	dl, ok := src.(source.DistinctLister)
+	if !ok {
+		t.Fatal("claims DistinctValues but does not implement DistinctLister")
+	}
+
+	const most = 20000
+	rows, cols := readAll(ctx, t, src, target.Browsable, nil, most)
+	if len(rows) >= most {
+		t.Skipf("%s has %d rows or more, too many to count here", target.Browsable, most)
+	}
+
+	checked, varied := 0, false
+	for i, c := range cols {
+		if !groupable[c.Type.Class] {
+			continue
+		}
+		want := map[string]int64{}
+		for _, r := range rows {
+			want[valueKey(r[i])]++
+		}
+		got, err := dl.Distinct(ctx, target.Browsable, c.Name, nil, len(want)+1)
+		if err != nil {
+			t.Errorf("Distinct(%s): %v", c.Name, err)
+			continue
+		}
+		if len(got) != len(want) {
+			t.Errorf("Distinct(%s): %d values, want %d", c.Name, len(got), len(want))
+			continue
+		}
+		if len(got) == 0 {
+			continue
+		}
+		for j, v := range got {
+			if v.Count != want[valueKey(v.Value)] {
+				t.Errorf("Distinct(%s): %s counted %d, a full read has %d", c.Name, valueKey(v.Value), v.Count, want[valueKey(v.Value)])
+			}
+			if j > 0 && v.Count > got[j-1].Count {
+				t.Errorf("Distinct(%s) is not most frequent first", c.Name)
+			}
+		}
+		varied = varied || got[0].Count != got[len(got)-1].Count
+		for _, v := range got[:min(3, len(got))] {
+			f := source.Filter{Column: c.Name, Op: source.OpIn, Values: []any{v.Value}}
+			picked, _ := readAll(ctx, t, src, target.Browsable, []source.Filter{f}, most)
+			if int64(len(picked)) != v.Count {
+				t.Errorf("filtering %s on the listed %s selects %d rows, want %d", c.Name, valueKey(v.Value), len(picked), v.Count)
+			}
+		}
+		f := source.Filter{Column: c.Name, Op: source.OpIn, Values: []any{got[0].Value}}
+		narrowed, err := dl.Distinct(ctx, target.Browsable, c.Name, []source.Filter{f}, 10)
+		if err != nil || len(narrowed) != 1 || valueKey(narrowed[0].Value) != valueKey(got[0].Value) {
+			t.Errorf("Distinct(%s) under a filter for %s: %v, %v", c.Name, valueKey(got[0].Value), narrowed, err)
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Errorf("%s has no column whose values can be grouped, so nothing was checked", target.Browsable)
+	}
+	if checked > 0 && !varied {
+		t.Errorf("no column of %s repeats values unevenly, so most-frequent-first went unchecked; the fixture needs one", target.Browsable)
+	}
+}
+
+// groupable are the value classes every relational engine can group and
+// compare for equality.
+var groupable = map[model.TypeClass]bool{
+	model.TypeBool: true, model.TypeInteger: true, model.TypeFloat: true, model.TypeDecimal: true,
+	model.TypeString: true, model.TypeDate: true, model.TypeTimestamp: true, model.TypeUUID: true,
+	model.TypeEnum: true,
+}
+
+// valueKey identifies a value by its Go type as well as its text, so a
+// value that comes back decoded differently does not pass as the same.
+func valueKey(v any) string { return fmt.Sprintf("%T(%v)", v, v) }
+
+// readAll reads every row of an object the filters select, up to most.
+func readAll(ctx context.Context, t *testing.T, src source.Source, ref model.ObjectRef, filters []source.Filter, most int64) ([]model.Row, []model.ColumnDef) {
+	t.Helper()
+	st, err := src.Browse(ctx, ref, source.BrowseOptions{Filters: filters, Limit: most})
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	defer st.Close()
+	var rows []model.Row
+	for {
+		r, err := st.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return rows, st.Columns()
+		}
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		rows = append(rows, r)
 	}
 }
