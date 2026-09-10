@@ -329,3 +329,46 @@ func checkHighlight(t *testing.T, d *Document) {
 		}
 	}
 }
+
+func TestMatchBracket(t *testing.T) {
+	for _, c := range []struct {
+		marked   string
+		at, pair Pos
+		ok       bool
+	}{
+		{"(a (b)| c)", Pos{0, 5}, Pos{0, 3}, true}, // just before the caret wins
+		{"|(a (b) c)", Pos{0, 0}, Pos{0, 8}, true}, // else just after it
+		{"(\n  1\n)|", Pos{2, 0}, Pos{0, 0}, true}, // across lines
+		{"select '(', (1)|", Pos{0, 14}, Pos{0, 12}, true},
+		{"select 1 -- (|", Pos{}, Pos{}, false}, // in a comment: text, not code
+		{"(1|", Pos{}, Pos{}, false},            // unmatched
+	} {
+		d := doc(t, c.marked)
+		at, pair, ok := d.MatchBracket()
+		if ok != c.ok || ok && (at != c.at || pair != c.pair) {
+			t.Errorf("%q: got %v %v %v, want %v %v %v", c.marked, at, pair, ok, c.at, c.pair, c.ok)
+		}
+	}
+}
+
+func TestIndentLinesWorksAnywhereInTheLine(t *testing.T) {
+	d := doc(t, "ab|cd")
+	d.IndentLines()
+	expect(t, d, "    ab|cd")
+	d.Outdent()
+	expect(t, d, "ab|cd")
+}
+
+func TestRevisionCountsEditsNotMoves(t *testing.T) {
+	d := doc(t, "ab|")
+	r := d.Revision()
+	d.Move(Left, false)
+	d.SelectAll()
+	if d.Revision() != r {
+		t.Error("moving the caret changed the revision")
+	}
+	d.Insert("x")
+	if d.Revision() == r {
+		t.Error("an edit did not change the revision")
+	}
+}
