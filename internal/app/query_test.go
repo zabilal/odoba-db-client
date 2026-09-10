@@ -87,10 +87,15 @@ func (s *scriptSource) BuildBrowse(model.ObjectRef, source.BrowseOptions) (sourc
 type scriptSession struct {
 	src    *scriptSource
 	closed atomic.Bool
+	closes atomic.Int32
 }
 
 func (ss *scriptSession) Handle() string { return "1" }
-func (ss *scriptSession) Close() error   { ss.closed.Store(true); return nil }
+func (ss *scriptSession) Close() error {
+	ss.closed.Store(true)
+	ss.closes.Add(1)
+	return nil
+}
 func (ss *scriptSession) Query(context.Context, source.Statement) (*source.Result, error) {
 	return nil, errors.New("not here")
 }
@@ -437,5 +442,14 @@ func TestErrorOffsetPointsAtTheTokenInTheScript(t *testing.T) {
 	}
 	if _, ok := res[0].ErrorOffset(); ok {
 		t.Error("a successful statement has no error offset")
+	}
+}
+
+func TestCloseTwiceClosesTheSessionOnce(t *testing.T) {
+	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{})
+	qs.Close()
+	qs.Close()
+	if n := qs.session.(*scriptSession).closes.Load(); n != 1 {
+		t.Errorf("session closed %d times; a pooled connection released twice panics", n)
 	}
 }

@@ -21,16 +21,16 @@
 
 ```
 PHASE:     1 — Walking skeleton (J1 + J3)
-STATUS:    The app runs: sidebar explorer, data tabs, query tabs (editor, ⌘↵,
-           results, Stop), menus and ⌘K from one registry, connection form.
-           J1 runs end to end on real PostgreSQL (internal/e2e, tag conformance).
-NEXT TASK: a J3 end-to-end test on real PostgreSQL → T1.69 CSV/JSON export →
-           T1.35–T1.38 MySQL/MariaDB and SQLite drivers.
+STATUS:    J1 and J3 run end to end on real PostgreSQL (internal/e2e, tag
+           conformance). Phase 1 is not done: MySQL/MariaDB and SQLite drivers,
+           export, and find/replace in the editor remain.
+NEXT TASK: T1.69–T1.72 streaming export (CSV, TSV, JSON, NDJSON) → T1.60
+           find/replace → T1.35–T1.38 MySQL/MariaDB and SQLite drivers.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — saved queries (T1.67): save, save as, open, delete; unsaved
-           edits marked and confirmed on close.
+LAST DONE: 2026-09-10 — J3 journey test; it found quitting hung with a query tab
+           open (sessions now close before their pools; ADR-0012).
 ```
 
 **Phase 0 findings so far**

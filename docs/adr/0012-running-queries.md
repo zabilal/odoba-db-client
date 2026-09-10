@@ -45,6 +45,15 @@ governs the readers. A large `SELECT` showed its first rows and then
 "Stopped". A plain test run passed by timing; the race detector's timing
 exposed it. `TestRowsKeepArrivingAfterTheScriptEnds` pins it.
 
+**Sessions close before their connections.** A pinned session holds a
+pooled connection, and PostgreSQL's pool will not close while any connection
+is out. So quitting with a query tab open hung, because the shell closed the
+connections first and the pool waited forever. The J3 journey test hung the
+same way. Quitting and disconnecting now close sessions first, synchronously,
+and quitting waits at most three seconds for connections, so a vanished
+server cannot hold the app open either. A session closes idempotently,
+because a tab closing and the app quitting can both reach it.
+
 **Chords.** Run is ⌘↵ and runs the selection, or else the statement at the
 caret. Run All is ⇧⌘↵, Stop is ⌘. and New Query is ⌘T. Open Data moved from
 ⌘↓ to ⌘O. A menu shortcut is tried before the focused widget, and on macOS
