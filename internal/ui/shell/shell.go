@@ -104,6 +104,7 @@ type tab struct {
 	want      source.BrowseOptions
 	applied   []grid.SortKey
 	filtered  []string
+	picked    map[int]pick // filters chosen from a column\'s picklist
 	// problem is the last sort or filter failure. The footer keeps showing
 	// it beside the row count until a re-browse succeeds.
 	problem string
@@ -221,6 +222,12 @@ func (s *Shell) registerCommands() {
 			Shortcut: sc("R", commands.ModShortcut), Run: s.refreshSelected},
 		{ID: cmdReload, Category: "Tab", Title: "Reload Rows", Keywords: []string{"refresh", "data"},
 			Shortcut: sc("R", commands.ModShortcut|commands.ModShift), Enabled: s.activeTabLoaded, Run: s.reloadTab},
+		{ID: cmdFilterValues, Category: "Data", Title: "Filter by Values…", Keywords: []string{"picklist", "distinct", "filter"},
+			Enabled: s.canPickValues, Run: func() {
+				if t := s.activeTab(); t != nil && t.grid != nil {
+					s.showPicklist(t, t.grid.SelectedColumn())
+				}
+			}},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
@@ -446,6 +453,10 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }
 	g.SetFilterable(bs.CanFilter()) // before the grid is shown
 	g.OnFilter = func(texts []string) { s.refilter(t, texts) }
+	if bs.CanListValues() {
+		g.OnPickValues = func(col int) { s.showPicklist(t, col) }
+	}
+	g.OnSelectCell = s.sync // Filter by Values follows the selected cell
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)

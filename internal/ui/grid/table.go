@@ -58,10 +58,15 @@ type TableGrid struct {
 
 	// OnFilter hears every column's filter text when one is submitted, on a
 	// grid with a filter row (SetFilterable).
-	OnFilter   func(texts []string)
-	filterable bool
-	filters    []string
-	filterErr  []bool
+	OnFilter func(texts []string)
+	// OnPickValues opens a column's list of values (FR-3.4); a right-click
+	// on the column's title asks for it. Nil where the source cannot list.
+	OnPickValues func(col int)
+	// OnSelectCell hears that the selected cell changed.
+	OnSelectCell func()
+	filterable   bool
+	filters      []string
+	filterErr    []bool
 }
 
 // SortKey is one column of a sort, by index into the grid's columns.
@@ -207,6 +212,9 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 
 	t.OnSelected = func(id widget.TableCellID) {
 		g.selRow, g.selCol = id.Row, id.Col
+		if g.OnSelectCell != nil {
+			g.OnSelectCell()
+		}
 	}
 
 	g.Table = t
@@ -393,3 +401,6 @@ func defaultWidth(c model.ColumnDef) float32 {
 		return 160
 	}
 }
+
+// SelectedColumn is the selected cell's column, or -1.
+func (g *TableGrid) SelectedColumn() int { return g.selCol }

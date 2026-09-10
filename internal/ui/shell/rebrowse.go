@@ -35,6 +35,17 @@ func (s *Shell) refilter(t *tab, texts []string) {
 		if i >= len(cols) {
 			break
 		}
+		if p, ok := t.picked[i]; ok {
+			if strings.TrimSpace(text) == p.text {
+				op := source.OpIn
+				if p.negate {
+					op = source.OpNotIn
+				}
+				filters = append(filters, source.Filter{Column: cols[i].Name, Op: op, Values: p.values})
+				continue
+			}
+			delete(t.picked, i) // edited by hand: the text is the filter now
+		}
 		fs, err := filterexpr.Parse(cols[i].Name, text, cols[i].Type)
 		if err != nil {
 			bad = append(bad, i)

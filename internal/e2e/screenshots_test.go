@@ -67,6 +67,15 @@ func TestScreenshots(t *testing.T) {
 	})
 	shot("3-table-rows")
 
+	find[*widget.Table](h.tabs.Selected().Content)[0].Select(widget.TableCellID{Row: 0, Col: 1})
+	h.s.Commands().Run("data.filterValues")
+	values := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
+	waitFor(t, h.q, "the value list", func() bool { return values.Length() > 0 })
+	shot("3b-picklist")
+	for h.w.Canvas().Overlays().Top() != nil {
+		h.w.Canvas().Overlays().Remove(h.w.Canvas().Overlays().Top())
+	}
+
 	h.s.OpenQuery(h.conn.ID)
 	ed := find[*view.Editor](h.tabs.Selected().Content)[0]
 	test.Type(ed.Focusable(), "-- people with a long id\nSELECT id, name, length(name) AS n\nFROM people\nWHERE id > 30\nORDER BY id DESC;")

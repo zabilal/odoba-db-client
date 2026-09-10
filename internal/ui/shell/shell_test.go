@@ -116,7 +116,7 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 
 func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
-		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true}}
+		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true}}
 }
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
@@ -131,6 +131,13 @@ func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, er
 }
 func (fakeSource) Count(context.Context, model.ObjectRef, source.BrowseOptions) (int64, error) {
 	return fakeRows, nil
+}
+
+// Distinct lists four values of any column, the most frequent first.
+func (fakeSource) Distinct(_ context.Context, _ model.ObjectRef, _ string, _ []source.Filter, limit int) ([]source.DistinctValue, error) {
+	vals := []source.DistinctValue{{Value: "item 1", Count: 5}, {Value: "item 2", Count: 3},
+		{Value: nil, Count: 2}, {Value: "a,b", Count: 1}}
+	return vals[:min(limit, len(vals))], nil
 }
 
 // browses records every Browse, for tests that check what was asked for.

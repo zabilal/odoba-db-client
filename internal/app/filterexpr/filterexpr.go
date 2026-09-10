@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -135,6 +136,9 @@ func Parse(column, text string, t model.DataType) ([]source.Filter, error) {
 	}
 
 	if negate {
+		if lit, ok := unquote(s); ok {
+			s = lit
+		}
 		v, err := value(s, t)
 		if err != nil {
 			return nil, err
@@ -264,10 +268,67 @@ func isQuoted(s string) bool {
 	return ok
 }
 
-// unquote strips one pair of matching double or single quotes.
+// unquote strips one pair of matching double or single quotes around text
+// that does not hold that quote itself: "a","b" is a list, not one literal.
 func unquote(s string) (string, bool) {
-	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] &&
+		!strings.ContainsRune(s[1:len(s)-1], rune(s[0])) {
 		return s[1 : len(s)-1], true
 	}
 	return "", false
+}
+
+// Pick writes a choice from a column's picklist in the filter row's
+// notation: =a for one value, a,b,c for several, and ! before either for all
+// but those. Parse reads it back as what was picked.
+func Pick(vals []any, negate bool) string {
+	parts := make([]string, len(vals))
+	for i, v := range vals {
+		parts[i] = literal(v)
+	}
+	list := strings.Join(parts, ",")
+	switch {
+	case len(vals) == 0:
+		return ""
+	case negate:
+		return "!" + list
+	case len(vals) == 1:
+		return "=" + list
+	}
+	return list
+}
+
+// literal writes one value so that Parse reads it back as the same text:
+// bare where that is safe, quoted where it would otherwise read as notation.
+func literal(v any) string {
+	var s string
+	switch x := v.(type) {
+	case nil:
+		return "NULL"
+	case time.Time:
+		if x.Hour() == 0 && x.Minute() == 0 && x.Second() == 0 && x.Nanosecond() == 0 {
+			return x.Format("2006-01-02")
+		}
+		return x.Format("2006-01-02 15:04:05.999999999")
+	case []byte:
+		s = string(x)
+	case string:
+		s = x
+	default:
+		s = fmt.Sprint(v)
+	}
+	if !needsQuotes(s) {
+		return s
+	}
+	if strings.Contains(s, `"`) && !strings.Contains(s, "'") {
+		return "'" + s + "'"
+	}
+	return `"` + s + `"`
+}
+
+// needsQuotes reports whether text written bare would read as notation.
+func needsQuotes(s string) bool {
+	return s == "" || s != strings.TrimSpace(s) || strings.EqualFold(s, "null") ||
+		strings.EqualFold(s, "not null") || strings.ContainsAny(s, `,"'%`) ||
+		strings.ContainsAny(s[:1], "=!<>~") || strings.Contains(s, "..")
 }
