@@ -24,14 +24,14 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    The app runs: window, sidebar explorer, data tabs, menus and ⌘K from one
            command registry, connection form, appearance (ADR-0011). J1's browse
            path runs end to end on real PostgreSQL (internal/e2e, tag conformance).
-NEXT TASK: T1.57 editor widget (internal/ui/editor/view): draw the Document with
-           syntax colours, caret, selection; then T1.59 line numbers/brackets,
-           T1.60 find/replace, T1.61 run (⌘↵) into result tabs.
+NEXT TASK: T1.61 run: an app-layer query session over Sessioner/Queryer, results
+           buffered into the grid, ⌘↵ and ⇧⌘↵; a New Query tab (⌘T). Open Data
+           moves to ⌘O, because ⌘↓ belongs to the editor.
 [~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs.
-LAST DONE: 2026-09-10 — editor document model; fixed two highlighter cache bugs
-           (multi-line delete, multi-line paste; ADR-0003); syntax colour roles.
+LAST DONE: 2026-09-10 — editor widget: drawing only visible lines, input with each
+           platform's chords, gutter, bracket pairs (T1.57–T1.59).
 ```
 
 **Phase 0 findings so far**
@@ -283,9 +283,9 @@ LAST DONE: 2026-09-10 — editor document model; fixed two highlighter cache bug
 
 ## 1.G Query editor — stage 1 (productionise W2)
 
-- [~] **T1.57** Editor widget: caret, selection, scroll, undo/redo — *document model done: caret, selection, word and smart-home motion, sticky column, word-grouped undo; widget next*
-- [~] **T1.58** Per-dialect syntax highlighting → FR-5.1 — *syntax palette roles added, AA-checked on editor, current-line and selection backgrounds; drawing comes with the widget*
-- [~] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11 — *auto-indent and block indent/outdent done in the model; drawing features come with the widget*
+- [x] **T1.57** Editor widget: caret, selection, scroll, undo/redo — *virtualised drawing, caret, selection, scroll-follow, undo/redo, clipboard, platform chords; headless-tested, not yet seen in a real window*
+- [~] **T1.58** Per-dialect syntax highlighting → FR-5.1 — *SQL dialects drawn in palette colours; MongoDB shell and Redis syntaxes come with those drivers*
+- [x] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11 — *line numbers, current-line highlight, bracket pairs outside strings and comments, auto-indent*
 - [ ] **T1.60** Find/replace with regex → FR-5.11
 - [ ] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3
 - [~] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4

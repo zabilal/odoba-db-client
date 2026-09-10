@@ -73,6 +73,7 @@ type Document struct {
 	goal int
 
 	undo, redo []change
+	rev        uint64 // counts edits; see Revision
 	// sealed stops the next edit merging into the previous undo step. Any
 	// caret movement seals, so typing after a click is a separate step.
 	sealed bool
@@ -369,19 +370,130 @@ func (d *Document) SetText(text string) {
 // Tab indents. Within a line it inserts spaces to the next indent stop; with
 // a selection across lines it indents every line the selection touches.
 func (d *Document) Tab() {
-	from, to, ok := d.Selection()
-	if !ok || from.Line == to.Line {
-		if w := len(d.Indent); w > 0 {
-			d.Insert(strings.Repeat(" ", w-d.Column(from)%w))
-		}
+	if from, to, ok := d.Selection(); ok && from.Line != to.Line {
+		d.IndentLines()
 		return
 	}
+	from, _, _ := d.Selection()
+	if w := len(d.Indent); w > 0 {
+		d.Insert(strings.Repeat(" ", w-d.Column(from)%w))
+	}
+}
+
+// IndentLines indents every line the selection touches, or the caret's line,
+// wherever the caret is in it: ⌘].
+func (d *Document) IndentLines() {
 	d.reindent(func(line string) (string, int) {
 		if line == "" {
 			return line, 0 // no trailing whitespace on blank lines
 		}
 		return d.Indent + line, len(d.Indent)
 	})
+}
+
+// Revision changes whenever the text does, so a caller can tell an edit from
+// a caret move without comparing text.
+func (d *Document) Revision() uint64 { return d.rev }
+
+// maxBracketLines bounds the bracket search. Past it no pair is shown, which
+// costs a highlight; scanning a 50 000-line script on every caret move would
+// cost frames.
+const maxBracketLines = 2000
+
+var bracketPairs = map[byte]byte{'(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{'}
+
+// MatchBracket is the bracket beside the caret and its partner: the one just
+// before the caret, else the one just after. Brackets inside strings,
+// comments and quoted identifiers are text, not structure, and do not count.
+func (d *Document) MatchBracket() (at, partner Pos, ok bool) {
+	c := d.caret
+	cands := []Pos{c}
+	if c.Col > 0 {
+		cands = []Pos{d.prevRune(c), c}
+	}
+	for _, p := range cands {
+		if b, ok := d.bracketAt(p); ok {
+			if q, ok := d.partner(p, b); ok {
+				return p, q, true
+			}
+		}
+	}
+	return Pos{}, Pos{}, false
+}
+
+// structuralBrackets lists the offsets on a line where a bracket is code.
+func (d *Document) structuralBrackets(line int) []int {
+	l := d.buf.Line(line)
+	var out []int
+	for _, t := range d.hl.Tokens(line) {
+		switch t.Kind {
+		case sqllex.TokString, sqllex.TokComment, sqllex.TokQuotedIdent:
+			continue
+		}
+		for i := int(t.Start); i < int(t.End) && i < len(l); i++ {
+			if _, ok := bracketPairs[l[i]]; ok {
+				out = append(out, i)
+			}
+		}
+	}
+	return out
+}
+
+func (d *Document) bracketAt(p Pos) (byte, bool) {
+	l := d.buf.Line(p.Line)
+	if p.Col >= len(l) {
+		return 0, false
+	}
+	if _, ok := bracketPairs[l[p.Col]]; !ok {
+		return 0, false
+	}
+	for _, i := range d.structuralBrackets(p.Line) {
+		if i == p.Col {
+			return l[p.Col], true
+		}
+	}
+	return 0, false
+}
+
+func (d *Document) partner(p Pos, b byte) (Pos, bool) {
+	want, depth := bracketPairs[b], 0
+	visit := func(line, i int) (Pos, bool) {
+		switch d.buf.Line(line)[i] {
+		case b:
+			depth++
+		case want:
+			if depth == 0 {
+				return Pos{line, i}, true
+			}
+			depth--
+		}
+		return Pos{}, false
+	}
+	if b == '(' || b == '[' || b == '{' {
+		for line := p.Line; line < d.buf.LineCount() && line <= p.Line+maxBracketLines; line++ {
+			for _, i := range d.structuralBrackets(line) {
+				if line == p.Line && i <= p.Col {
+					continue
+				}
+				if q, ok := visit(line, i); ok {
+					return q, true
+				}
+			}
+		}
+		return Pos{}, false
+	}
+	for line := p.Line; line >= 0 && line >= p.Line-maxBracketLines; line-- {
+		bs := d.structuralBrackets(line)
+		for k := len(bs) - 1; k >= 0; k-- {
+			if line == p.Line && bs[k] >= p.Col {
+				continue
+			}
+			if q, ok := visit(line, bs[k]); ok {
+				return q, true
+			}
+		}
+	}
+	return Pos{}, false
 }
 
 // Outdent removes one level of indentation from every line the selection
@@ -482,6 +594,7 @@ func (d *Document) replace(from, to Pos, text string, kind editKind) {
 
 // apply performs a change on the buffer and tells the highlighter.
 func (d *Document) apply(at Pos, removed, inserted string) {
+	d.rev++
 	if removed != "" {
 		end := endOf(at, removed)
 		d.hl.Apply(d.buf.DeleteRange(at.Line, at.Col, end.Line, end.Col))
