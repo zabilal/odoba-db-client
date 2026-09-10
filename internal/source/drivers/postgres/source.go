@@ -231,6 +231,7 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 		Data: capability.Data{
 			ServerSort:       true,
 			ServerFilter:     true,
+			DistinctValues:   true,
 			ApproximateCount: true,
 		},
 		Schema: capability.Schema{ForeignKeys: true},

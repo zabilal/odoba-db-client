@@ -56,9 +56,10 @@ const fixture = `DROP DATABASE IF EXISTS ikigai_it;
 CREATE DATABASE ikigai_it;
 CREATE TABLE ikigai_it.people (id INT PRIMARY KEY, name VARCHAR(50) NOT NULL, score DECIMAL(30,10),
   born DATE, seen TIMESTAMP NULL, meta JSON, pic BLOB);
-INSERT INTO ikigai_it.people (id, name, score, meta)
+INSERT INTO ikigai_it.people (id, name, score, born, meta)
   WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
-  SELECT i, CONCAT('person ', i), i * 1.5, JSON_OBJECT('i', i) FROM n;
+  SELECT i, CONCAT('person ', i), i * 1.5,
+    IF(i % 3 = 0, DATE('2000-01-01') + INTERVAL (i % 2) DAY, NULL), JSON_OBJECT('i', i) FROM n;
 INSERT INTO ikigai_it.people (id, name, score) VALUES (1000, 'exact', 12345678901234567890.1234567890);
 CREATE TABLE ikigai_it.nokey (a INT, b VARCHAR(10));
 INSERT INTO ikigai_it.nokey VALUES (2, 'y'), (1, 'x'), (1, 'x'), (3, 'z');

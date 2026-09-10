@@ -2,6 +2,10 @@ package source
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -161,9 +165,12 @@ type Countable interface {
 // DistinctLister is an optional Browser refinement supplying the Excel-style
 // filter picklist (FR-3.4).
 type DistinctLister interface {
-	// Distinct returns up to limit distinct values of a column, with their
-	// frequencies when cheaply available.
-	Distinct(ctx context.Context, ref model.ObjectRef, column string, limit int) ([]DistinctValue, error)
+	// Distinct returns up to limit distinct values of a column among the
+	// rows the filters select, most frequent first, so a list cut short keeps
+	// the values most rows have. NULL is a value like any other and comes back
+	// as nil. Each value must work as an OpIn operand on the same column: the
+	// picklist filters with exactly what it was given.
+	Distinct(ctx context.Context, ref model.ObjectRef, column string, filters []Filter, limit int) ([]DistinctValue, error)
 }
 
 // DistinctValue is one entry of a filter picklist.
@@ -171,4 +178,48 @@ type DistinctValue struct {
 	Value any
 	// Count is -1 when frequency was not computed.
 	Count int64
+}
+
+// ReadDistinct collects a stream of (value, count) rows into picklist
+// entries, for drivers whose Distinct is a GROUP BY query. The caller closes
+// the stream.
+func ReadDistinct(ctx context.Context, rs model.RowStream) ([]DistinctValue, error) {
+	var out []DistinctValue
+	for {
+		row, err := rs.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(row) != 2 {
+			return nil, fmt.Errorf("source: a distinct-value row has %d values, want 2", len(row))
+		}
+		out = append(out, DistinctValue{Value: row[0], Count: frequency(row[1])})
+	}
+}
+
+// frequency reads a count as a row stream decoded it, or -1 ("not computed")
+// for anything that is not a whole number.
+func frequency(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case uint64:
+		return int64(n)
+	case string:
+		if i, err := strconv.ParseInt(n, 10, 64); err == nil {
+			return i
+		}
+	case []byte:
+		if i, err := strconv.ParseInt(string(n), 10, 64); err == nil {
+			return i
+		}
+	}
+	return -1
 }

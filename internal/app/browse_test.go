@@ -21,11 +21,20 @@ type browseFake struct {
 	failNext atomic.Bool
 	overrun  bool // ignore Limit, to prove the adapter bounds it
 	exact    bool
+	distinct bool
+	// listed records the filters the last Distinct was given.
+	listed []source.Filter
+}
+
+func (b *browseFake) Distinct(_ context.Context, _ model.ObjectRef, _ string, filters []source.Filter, _ int) ([]source.DistinctValue, error) {
+	b.listed = filters
+	return []source.DistinctValue{{Value: "a", Count: 3}}, nil
 }
 
 func (b *browseFake) Capabilities() capability.Capabilities {
 	c := b.fakeSource.Capabilities()
 	c.Data.ExactCount = b.exact
+	c.Data.DistinctValues = b.distinct
 	return c
 }
 
@@ -134,5 +143,35 @@ func TestBrowseSourceSurfacesErrors(t *testing.T) {
 	src.failNext.Store(true)
 	if _, err := b.Fetch(context.Background(), 0, 5); err == nil {
 		t.Error("a failed browse returned no error; the grid would show blank rows")
+	}
+}
+
+func TestDistinctLeavesOutTheColumnsOwnFilter(t *testing.T) {
+	src := &browseFake{n: 10, distinct: true}
+	name := source.Filter{Column: "name", Op: source.OpIn, Values: []any{"a"}}
+	id := source.Filter{Column: "id", Op: source.OpGreater, Values: []any{int64(3)}}
+	b, err := NewBrowseSource(context.Background(), src, orders, source.BrowseOptions{Filters: []source.Filter{name, id}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vals, err := b.Distinct(context.Background(), "name", 50)
+	if err != nil || len(vals) != 1 {
+		t.Fatalf("%v, %v", vals, err)
+	}
+	if len(src.listed) != 1 || src.listed[0].Column != "id" {
+		t.Errorf("listed under %+v; want only the id filter", src.listed)
+	}
+}
+
+func TestDistinctNeedsTheCapability(t *testing.T) {
+	b, err := NewBrowseSource(context.Background(), &browseFake{n: 10}, orders, source.BrowseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.CanListValues() {
+		t.Error("a source that does not claim DistinctValues cannot list values")
+	}
+	if _, err := b.Distinct(context.Background(), "name", 50); err == nil {
+		t.Error("Distinct should refuse without the capability")
 	}
 }

@@ -114,17 +114,8 @@ func (d dialect) BuildBrowse(ref model.ObjectRef, opt source.BrowseOptions) (sou
 	sb.WriteString(" FROM ")
 	sb.WriteString(d.QualifyRef(ref))
 
-	for i, f := range opt.Filters {
-		if i == 0 {
-			sb.WriteString(" WHERE ")
-		} else {
-			sb.WriteString(" AND ")
-		}
-		clause, err := b.filter(f)
-		if err != nil {
-			return source.Statement{}, err
-		}
-		sb.WriteString(clause)
+	if err := b.where(&sb, opt.Filters); err != nil {
+		return source.Statement{}, err
 	}
 
 	for i, s := range opt.Sorts {
@@ -328,4 +319,41 @@ func (b *builder) in(col string, vals []any, negate bool) string {
 
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// where renders the filters, joined by AND.
+func (b *builder) where(sb *strings.Builder, filters []source.Filter) error {
+	for i, f := range filters {
+		if i == 0 {
+			sb.WriteString(" WHERE ")
+		} else {
+			sb.WriteString(" AND ")
+		}
+		clause, err := b.filter(f)
+		if err != nil {
+			return err
+		}
+		sb.WriteString(clause)
+	}
+	return nil
+}
+
+// buildDistinct renders a column's distinct values among the rows the
+// filters select, most frequent first (source.DistinctLister).
+func (d dialect) buildDistinct(ref model.ObjectRef, column string, filters []source.Filter, limit int) (source.Statement, error) {
+	if !browsableKinds[ref.Kind] {
+		return source.Statement{}, fmt.Errorf("postgres: %s is not browsable", ref)
+	}
+	if limit <= 0 {
+		return source.Statement{}, errors.New("postgres: a list of distinct values needs a limit")
+	}
+	b := &builder{d: d}
+	col := d.QuoteIdentifier(column)
+	var sb strings.Builder
+	sb.WriteString("SELECT " + col + ", count(*) FROM " + d.QualifyRef(ref))
+	if err := b.where(&sb, filters); err != nil {
+		return source.Statement{}, err
+	}
+	sb.WriteString(" GROUP BY " + col + " ORDER BY count(*) DESC, " + col + " NULLS LAST LIMIT " + b.bind(int64(limit)))
+	return source.Statement{SQL: sb.String(), Args: b.args}, nil
 }

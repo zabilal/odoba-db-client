@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -107,14 +108,57 @@ func (d dialect) buildCount(ref model.ObjectRef, opt source.BrowseOptions) (sour
 	return source.Statement{SQL: sb.String(), Args: b.args}, nil
 }
 
+// buildDistinct renders a column's distinct values among the rows the
+// filters select, most frequent first (source.DistinctLister).
+func (d dialect) buildDistinct(ref model.ObjectRef, column string, filters []source.Filter, limit int) (source.Statement, error) {
+	if !browsableKinds[ref.Kind] {
+		return source.Statement{}, fmt.Errorf("sqlite: %s is not browsable", ref)
+	}
+	if limit <= 0 {
+		return source.Statement{}, errors.New("sqlite: a list of distinct values needs a limit")
+	}
+	b := &builder{d: d}
+	col := d.QuoteIdentifier(column)
+	var sb strings.Builder
+	sb.WriteString("SELECT " + col + ", count(*) FROM " + d.QualifyRef(ref))
+	if err := b.where(&sb, filters); err != nil {
+		return source.Statement{}, err
+	}
+	sb.WriteString(" GROUP BY " + col + " ORDER BY count(*) DESC, " + col + " LIMIT " + b.bind(int64(limit)))
+	return source.Statement{SQL: sb.String(), Args: b.args}, nil
+}
+
 type builder struct {
 	d    dialect
 	args []any
 }
 
 func (b *builder) bind(v any) string {
+	if t, ok := v.(time.Time); ok {
+		b.args = append(b.args, t.UTC().Format("2006-01-02 15:04:05.000"))
+		return "strftime('" + timeText + "', ?)"
+	}
 	b.args = append(b.args, v)
 	return "?"
+}
+
+// timeText is the one layout both sides of a time comparison are put in.
+//
+// The driver reads a DATE or DATETIME column's text as a time.Time, and
+// writes a time.Time back in a layout of its own, so the date read from
+// '2000-01-01' would never equal it again: a date picked from a filter list
+// would match no rows. strftime reads every layout SQLite's date functions
+// accept, so a time operand and its column are both compared through it.
+const timeText = "%Y-%m-%d %H:%M:%f"
+
+// hasTime reports whether any operand is a time.
+func hasTime(vals []any) bool {
+	for _, v := range vals {
+		if _, ok := v.(time.Time); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *builder) where(sb *strings.Builder, filters []source.Filter) error {
@@ -142,6 +186,9 @@ var comparisons = map[source.FilterOp]string{
 // filter a person builds in the grid means the same on every engine.
 func (b *builder) filter(f source.Filter) (string, error) {
 	col := b.d.QuoteIdentifier(f.Column)
+	if hasTime(f.Values) {
+		col = "strftime('" + timeText + "', " + col + ")" // see timeText
+	}
 	arity := func(n int) error {
 		if len(f.Values) != n {
 			return fmt.Errorf("sqlite: filter %q on %q takes %d value(s), got %d", f.Op, f.Column, n, len(f.Values))
