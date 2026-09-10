@@ -40,3 +40,11 @@ func (h *headerCell) Cursor() desktop.Cursor {
 	}
 	return desktop.DefaultCursor
 }
+
+// TappedSecondary asks for the column's list of values, where the grid
+// offers one (OnPickValues).
+func (h *headerCell) TappedSecondary(*fyne.PointEvent) {
+	if h.g.OnPickValues != nil && h.col >= 0 {
+		h.g.OnPickValues(h.col)
+	}
+}

@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.55 (and T1.48–T1.56 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.54, T1.55 (and T1.48–T1.56 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -114,8 +114,22 @@ back in its own layout, so a date picked from the list matched no rows. A
 time operand is now compared through `strftime` on both sides. Counting scans
 the filtered rows, so it runs only when asked for.
 
+**Picking from the list filters by the values themselves.** Right-clicking
+a column's title, or View › Filter by Values… on the selected cell's column,
+lists the column's values with their counts: searchable, each with a tick.
+Ticking everything removes the column's filter. Otherwise the shorter side
+is sent: a few ticked become IN, all but a few become NOT IN. Both select
+the same rows when every value is listed. When the list stops at its limit
+(1,000) they do not, and the shorter side is what a person means: NOT IN
+keeps the values not listed. The filter row shows the choice in its own
+notation (`a,"b,c",NULL`, `!NULL`), but the filter sent carries the values
+as the source typed them, so a date or a decimal filters exactly the rows it
+was counted from. Edit that text and the text is the filter again.
+Reopening the list shows what is picked, and closing it stops a count still
+running.
+
 ## Not decided here
 
-The picklist's UI (T1.54), the WHERE editor and the effective SQL
+The WHERE editor and the effective SQL
 (T1.56), selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.

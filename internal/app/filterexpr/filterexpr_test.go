@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -91,5 +92,39 @@ func TestMistakesAreExplained(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%q: %v, want an error saying %q", c.text, err, c.want)
 		}
+	}
+}
+
+func TestPickReadsBackAsWhatWasPicked(t *testing.T) {
+	for _, c := range []struct {
+		vals   []any
+		negate bool
+		typ    model.DataType
+		text   string
+		want   source.Filter
+	}{
+		{[]any{"a"}, false, text, "=a", f(source.OpEqual, "a")},
+		{[]any{"a", "b,c", nil}, false, text, `a,"b,c",NULL`, f(source.OpIn, "a", "b,c", nil)},
+		{[]any{"a,b", "c,d"}, false, text, `"a,b","c,d"`, f(source.OpIn, "a,b", "c,d")},
+		{[]any{"NULL"}, false, text, `="NULL"`, f(source.OpEqual, "NULL")},
+		{[]any{" x", `say "hi"`}, false, text, `" x",'say "hi"'`, f(source.OpIn, " x", `say "hi"`)},
+		{[]any{"a,b"}, true, text, `!"a,b"`, f(source.OpNotIn, "a,b")},
+		{[]any{"x", ">y"}, true, text, `!x,">y"`, f(source.OpNotIn, "x", ">y")},
+		{[]any{nil}, true, text, "!NULL", f(source.OpIsNotNull)},
+		{[]any{int64(1), int64(2)}, false, integer, "1,2", f(source.OpIn, int64(1), int64(2))},
+		{[]any{time.Date(2000, 1, 2, 0, 0, 0, 0, time.UTC)}, false, date, "=2000-01-02", f(source.OpEqual, "2000-01-02")},
+	} {
+		got := Pick(c.vals, c.negate)
+		if got != c.text {
+			t.Errorf("Pick(%q, %v) = %q, want %q", c.vals, c.negate, got, c.text)
+			continue
+		}
+		back, err := Parse("c", got, c.typ)
+		if err != nil || len(back) != 1 || !reflect.DeepEqual(back[0], c.want) {
+			t.Errorf("%q reads back as %+v, %v; want %+v", got, back, err, c.want)
+		}
+	}
+	if Pick(nil, false) != "" {
+		t.Error("nothing picked is no text")
 	}
 }

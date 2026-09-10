@@ -142,3 +142,29 @@ func TestAFailedFilterMarksItsTitle(t *testing.T) {
 		t.Error("clearing the errors should clear the mark")
 	}
 }
+
+func TestRightClickingATitleAsksForItsValues(t *testing.T) {
+	g := filterableGrid(t)
+	h := header(t, g, 2)
+	h.title.TappedSecondary(&fyne.PointEvent{}) // nobody asked to hear: nothing happens
+	got := -1
+	g.OnPickValues = func(col int) { got = col }
+	h.title.TappedSecondary(&fyne.PointEvent{})
+	if got != 2 {
+		t.Errorf("asked for column %d's values, want 2", got)
+	}
+}
+
+func TestSelectingACellIsHeard(t *testing.T) {
+	g := sortableGrid(t)
+	test.NewTempWindow(t, g.View())
+	heard := 0
+	g.OnSelectCell = func() { heard++ }
+	if g.SelectedColumn() != -1 {
+		t.Errorf("nothing selected, yet column %d", g.SelectedColumn())
+	}
+	g.Table.Select(widget.TableCellID{Row: 3, Col: 1})
+	if heard != 1 || g.SelectedColumn() != 1 {
+		t.Errorf("heard %d, column %d", heard, g.SelectedColumn())
+	}
+}
