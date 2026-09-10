@@ -20,16 +20,16 @@
 ## Current Position
 
 ```
-PHASE:     0 → 1 boundary
-STATUS:    All four spikes complete. G0-2, G0-3, G0-4 PASSED; G0-1 provisional.
-           Phase 0's remaining exits need things only the owner can supply.
-NEXT TASK: T1.1 — application shell. Phase 1 (walking skeleton, J1 + J3).
-OWNER:     1. Close G0-1 on an attended machine:
-                docker start ikigai-pg && go run -tags spike ./cmd/gridspike -bench
-           2. Push to a remote so CI runs for the first time. That proves Linux and
-              Windows packaging and the conformance suite; none has ever executed.
-           3. View the theme: go run ./cmd/themegallery
-LAST DONE: 2026-09-10 — W4 spike (ADR-0004); timing gates made race-safe and wired into CI (T0.10).
+PHASE:     1 — Walking skeleton (J1 + J3)
+STATUS:    PostgreSQL driver complete and green against a live server (ADR-0008).
+NEXT TASK: T1.17–T1.22 store (config dirs, settings, keychain, SQLite history),
+           then T1.23–T1.31 connection management, then T1.1 shell → explorer →
+           grid. Order is inside-out (ARCH-1), and J1 runs end to end on
+           PostgreSQL before MySQL/MariaDB/SQLite are added.
+[~] tasks: the driver half is done; the app or UI half is still to build.
+OWNER:     unchanged — G0-1 interactive run; push to a remote so CI runs.
+LAST DONE: 2026-09-10 — T1.32–T1.34. Contract gained Sessioner, StatementError
+           and ConnectError; QueryMulti takes a confirmed flag; lexer → sqllex.
 ```
 
 **Phase 0 findings so far**
@@ -54,6 +54,24 @@ LAST DONE: 2026-09-10 — W4 spike (ADR-0004); timing gates made race-safe and w
   `internal/testutil/race`, G0-4 keeps its oracle-agreement check there, and CI's
   performance job runs the gates without `-race`. Before this, that job ran only
   `-bench`, so the gates executed nowhere in CI at all.
+
+**Phase 1 findings so far**
+
+- **pgx's default cancel destroys the whole connection.** It stops the query by
+  tearing down the backend, taking the user's temp tables, SETs and open
+  transaction with it. The driver sends a CancelRequest that keeps the session
+  instead: 102ms to return, and state survives the cancel. This was first
+  recorded the other way round ("never reaches the server"), from a test that
+  sampled once, at +0ms, before pgconn's async teardown had run. ADR-0008.
+- **Read-only needs three layers.** A function that calls `set_config` flips the
+  session default to off without the lexer seeing it. An explicit READ ONLY
+  transaction around every statement still stops the next hidden write. Proven
+  against the live server.
+- **The contract needed sessions.** Session state lives on one connection, so a
+  pooled editor loses temp tables and SETs between runs. `Sessioner` added;
+  `QueryMulti` gained `confirmed`; `StatementError` and `ConnectError` added.
+- Follow-up: `Session` has no database target yet. The editor's database
+  selector will need one.
 
 
 **Phase 0 findings so far**
@@ -203,24 +221,24 @@ LAST DONE: 2026-09-10 — W4 spike (ADR-0004); timing gates made race-safe and w
 - [ ] **T1.23** Connection CRUD, duplicate, reorder → FR-1.1
 - [ ] **T1.24** Per-source connection forms with defaults → FR-1.2
 - [ ] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
-- [ ] **T1.26** Test connection with precise error classification → FR-1.4
+- [~] **T1.26** Test connection with precise error classification → FR-1.4
 - [ ] **T1.27** Connection folders/groups with colour and icon → FR-1.6
 - [ ] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8
-- [ ] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4
-- [ ] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3
+- [~] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4
+- [~] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3
 - [ ] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
 
 ## 1.D Drivers — relational core
 
-- [ ] **T1.32** PostgreSQL driver (`jackc/pgx/v5`) — reference implementation
-- [ ] **T1.33** PostgreSQL introspection → canonical model
-- [ ] **T1.34** PostgreSQL dialect + quoter + paging
+- [x] **T1.32** PostgreSQL driver (`jackc/pgx/v5`) — reference implementation
+- [x] **T1.33** PostgreSQL introspection → canonical model
+- [x] **T1.34** PostgreSQL dialect + quoter + paging
 - [ ] **T1.35** MySQL driver (`go-sql-driver/mysql`)
 - [ ] **T1.36** MySQL introspection + dialect
 - [ ] **T1.37** MariaDB feature-probe divergence from MySQL → REQ-DB-2
 - [ ] **T1.38** SQLite driver (`modernc.org/sqlite`) + introspection + dialect
-- [ ] **T1.39** Capability descriptors for all four → REQ-DB-2
-- [ ] **T1.40** Conformance suite green for all four → REQ-DRV-1
+- [~] **T1.39** Capability descriptors for all four → REQ-DB-2
+- [~] **T1.40** Conformance suite green for all four → REQ-DRV-1
 
 ## 1.E Object explorer
 
@@ -251,13 +269,13 @@ LAST DONE: 2026-09-10 — W4 spike (ADR-0004); timing gates made race-safe and w
 - [ ] **T1.59** Line numbers, current-line highlight, bracket matching, auto-indent → FR-5.11
 - [ ] **T1.60** Find/replace with regex → FR-5.11
 - [ ] **T1.61** Run all / run selection / run statement at cursor (⌘↵) → FR-5.3
-- [ ] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4
-- [ ] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9
+- [~] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4
+- [~] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9
 - [ ] **T1.64** Timing, rows affected, server messages pane → FR-5.6
-- [ ] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
+- [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
 - [ ] **T1.66** Persistent searchable query history → FR-5.8
 - [ ] **T1.67** Saved queries with folders → FR-5.9
-- [ ] **T1.68** Map server errors back to editor position → FR-5.10
+- [~] **T1.68** Map server errors back to editor position → FR-5.10
 
 ## 1.H Export
 

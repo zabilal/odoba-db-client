@@ -1,6 +1,15 @@
-// Package editor implements the query editor — spike W2 (T0.45–T0.49) and the
-// largest single build risk in the project (RISK-2).
-package editor
+// Package sqllex tokenises SQL, one line at a time, resuming from saved state.
+//
+// It began inside the query editor (spike W2, ADR-0003) and moved here at the
+// start of Phase 1, because the source layer needs the same tokenisation: a
+// driver splitting a script into statements (FR-5.4) must not split on a ';'
+// inside a string or a dollar-quoted body, and classifying a statement for
+// read-only mode (NFR-S4) must not mistake "DELETE" in a comment for a write.
+// Those are exactly the traps this lexer is tested against. ARCH-1 forbids the
+// source layer importing UI packages, so the lexer could not stay in the UI.
+//
+// This package must not import any UI package (ARCH-1).
+package sqllex
 
 import "strings"
 

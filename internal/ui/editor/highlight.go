@@ -1,5 +1,7 @@
 package editor
 
+import "github.com/ikigai-db/ikigai-db/internal/sqllex"
+
 // Incremental highlighting.
 //
 // Two caches, with deliberately different lifetimes:
@@ -23,10 +25,10 @@ package editor
 
 // Highlighter maintains per-line lexer state and tokens for a buffer.
 type Highlighter struct {
-	lexer  *Lexer
+	lexer  *sqllex.Lexer
 	buf    *Buffer
-	states []State
-	tokens map[int][]Token
+	states []sqllex.State
+	tokens map[int][]sqllex.Token
 	valid  map[int]bool
 
 	// statesValid is the number of leading entries in states that were
@@ -39,11 +41,11 @@ type Highlighter struct {
 }
 
 // NewHighlighter builds a highlighter and computes the initial state chain.
-func NewHighlighter(buf *Buffer, d *Dialect) *Highlighter {
+func NewHighlighter(buf *Buffer, d *sqllex.Dialect) *Highlighter {
 	h := &Highlighter{
-		lexer:  NewLexer(d),
+		lexer:  sqllex.NewLexer(d),
 		buf:    buf,
-		tokens: make(map[int][]Token),
+		tokens: make(map[int][]sqllex.Token),
 		valid:  make(map[int]bool),
 	}
 	h.rebuildStates(0)
@@ -51,9 +53,9 @@ func NewHighlighter(buf *Buffer, d *Dialect) *Highlighter {
 }
 
 // SetDialect switches language, invalidating everything.
-func (h *Highlighter) SetDialect(d *Dialect) {
-	h.lexer = NewLexer(d)
-	h.tokens = make(map[int][]Token)
+func (h *Highlighter) SetDialect(d *sqllex.Dialect) {
+	h.lexer = sqllex.NewLexer(d)
+	h.tokens = make(map[int][]sqllex.Token)
 	h.valid = make(map[int]bool)
 	h.statesValid = 0
 	h.rebuildStates(0)
@@ -64,14 +66,14 @@ func (h *Highlighter) SetDialect(d *Dialect) {
 func (h *Highlighter) rebuildStates(from int) {
 	n := h.buf.LineCount()
 	if cap(h.states) < n+1 {
-		grown := make([]State, n+1, (n+1)*2)
+		grown := make([]sqllex.State, n+1, (n+1)*2)
 		copy(grown, h.states)
 		h.states = grown
 	}
 	h.states = h.states[:n+1]
 
 	if from == 0 {
-		h.states[0] = State{}
+		h.states[0] = sqllex.State{}
 	}
 
 	for i := from; i < n; i++ {
@@ -121,7 +123,7 @@ func (h *Highlighter) shiftCaches(from, delta int) {
 	// Shift the state chain alongside the token caches. Discarding it instead
 	// would make every newline an O(lines) rebuild.
 	if len(h.states) > from+1 {
-		shifted := make([]State, len(h.states)+delta)
+		shifted := make([]sqllex.State, len(h.states)+delta)
 		copy(shifted, h.states[:from+1])
 		for i := from + 1; i < len(h.states); i++ {
 			if j := i + delta; j >= 0 && j < len(shifted) {
@@ -134,7 +136,7 @@ func (h *Highlighter) shiftCaches(from, delta int) {
 		h.statesValid += delta
 	}
 
-	nt := make(map[int][]Token, len(h.tokens))
+	nt := make(map[int][]sqllex.Token, len(h.tokens))
 	nv := make(map[int]bool, len(h.valid))
 	for i, t := range h.tokens {
 		if i < from {
@@ -157,7 +159,7 @@ func (h *Highlighter) shiftCaches(from, delta int) {
 //
 // The returned slice is owned by the highlighter and is valid until the next
 // edit; callers must not retain it across one.
-func (h *Highlighter) Tokens(line int) []Token {
+func (h *Highlighter) Tokens(line int) []sqllex.Token {
 	if line < 0 || line >= h.buf.LineCount() {
 		return nil
 	}
@@ -170,7 +172,7 @@ func (h *Highlighter) Tokens(line int) []Token {
 
 	// LexLine's slice aliases the lexer's buffer, so it must be copied before
 	// being cached.
-	cp := make([]Token, len(toks))
+	cp := make([]sqllex.Token, len(toks))
 	copy(cp, toks)
 
 	h.tokens[line] = cp
@@ -180,7 +182,7 @@ func (h *Highlighter) Tokens(line int) []Token {
 
 // TokensForRange returns tokens for a visible range, which is all a renderer
 // ever needs.
-func (h *Highlighter) TokensForRange(first, last int) [][]Token {
+func (h *Highlighter) TokensForRange(first, last int) [][]sqllex.Token {
 	if first < 0 {
 		first = 0
 	}
@@ -190,22 +192,22 @@ func (h *Highlighter) TokensForRange(first, last int) [][]Token {
 	if last < first {
 		return nil
 	}
-	out := make([][]Token, 0, last-first+1)
+	out := make([][]sqllex.Token, 0, last-first+1)
 	for i := first; i <= last; i++ {
 		out = append(out, h.Tokens(i))
 	}
 	return out
 }
 
-func (h *Highlighter) stateAt(line int) State {
+func (h *Highlighter) stateAt(line int) sqllex.State {
 	if line < len(h.states) {
 		return h.states[line]
 	}
-	return State{}
+	return sqllex.State{}
 }
 
 // StateAt exposes the line's starting state, for tests.
-func (h *Highlighter) StateAt(line int) State { return h.stateAt(line) }
+func (h *Highlighter) StateAt(line int) sqllex.State { return h.stateAt(line) }
 
 // CachedLines reports how many lines currently hold tokens, so tests can prove
 // the token cache stays bounded to what is drawn.

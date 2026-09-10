@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 )
 
 func loadBuffer(tb testing.TB) *Buffer {
 	tb.Helper()
-	b, err := os.ReadFile("testdata/workload.sql")
+	b, err := os.ReadFile("../../sqllex/testdata/workload.sql")
 	if err != nil {
 		tb.Skipf("workload not generated: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestHighlightMatchesFullRelex(t *testing.T) {
 	// This is the property that makes incremental highlighting trustworthy;
 	// everything else is an optimisation on top of it.
 	buf := loadBuffer(t)
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
 	// Edit inside a function body, near a block comment, and at the very top.
 	for _, edit := range []struct {
@@ -91,13 +92,13 @@ func TestHighlightMatchesFullRelex(t *testing.T) {
 	// The oracle is a direct sequential lex from line 0, NOT another
 	// Highlighter. Comparing two Highlighters hid a construction-time bug
 	// behind itself: both were wrong in the same way, so they agreed.
-	oracle := NewLexer(PostgreSQL)
-	st := State{}
-	want := make([][]Token, buf.LineCount())
+	oracle := sqllex.NewLexer(sqllex.PostgreSQL)
+	st := sqllex.State{}
+	want := make([][]sqllex.Token, buf.LineCount())
 	for i := 0; i < buf.LineCount(); i++ {
-		var toks []Token
+		var toks []sqllex.Token
 		toks, st = oracle.LexLine(buf.Line(i), st)
-		cp := make([]Token, len(toks))
+		cp := make([]sqllex.Token, len(toks))
 		copy(cp, toks)
 		want[i] = cp
 	}
@@ -121,21 +122,21 @@ func TestOpeningBlockCommentCascades(t *testing.T) {
 	// The pathological edit: opening a comment at the top must recolour
 	// everything below it.
 	buf := NewBuffer("SELECT 1;\nSELECT 2;\nSELECT 3;")
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
-	if h.StateAt(2).Kind != StateNormal {
+	if h.StateAt(2).Kind != sqllex.StateNormal {
 		t.Fatal("precondition: line 2 should start normal")
 	}
 
 	buf.Insert(0, 0, "/*")
 	h.Apply(Edit{Line: 0, LinesRemoved: 1, LinesInserted: 1})
 
-	if h.StateAt(2).Kind != StateBlockComment {
-		t.Errorf("line 2 state = %v, want StateBlockComment; the cascade stopped short",
+	if h.StateAt(2).Kind != sqllex.StateBlockComment {
+		t.Errorf("line 2 state = %v, want sqllex.StateBlockComment; the cascade stopped short",
 			h.StateAt(2).Kind)
 	}
 	toks := h.Tokens(2)
-	if len(toks) != 1 || toks[0].Kind != TokComment {
+	if len(toks) != 1 || toks[0].Kind != sqllex.TokComment {
 		t.Errorf("line 2 should be entirely comment, got %+v", toks)
 	}
 }
@@ -144,7 +145,7 @@ func TestOrdinaryEditDoesNotCascade(t *testing.T) {
 	// The common case must stay O(1). If a keystroke re-lexed the whole file
 	// the editor would be unusable on a large script.
 	buf := loadBuffer(t)
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
 	// Touch the far end of the file so its state is cached and valid.
 	_ = h.Tokens(buf.LineCount() - 1)
@@ -160,7 +161,7 @@ func TestOrdinaryEditDoesNotCascade(t *testing.T) {
 
 func TestInsertingLinesShiftsCachesRatherThanDiscarding(t *testing.T) {
 	buf := loadBuffer(t)
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
 	// Warm a window far below the edit.
 	h.TokensForRange(4000, 4060)
@@ -182,7 +183,7 @@ func TestTokenCacheStaysBounded(t *testing.T) {
 	// NFR-P6: holding tokens for every line of a large file is exactly the
 	// kind of unbounded growth the memory budget forbids.
 	buf := loadBuffer(t)
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
 	for first := 0; first+60 < buf.LineCount(); first += 60 {
 		h.TokensForRange(first, first+60)
@@ -207,7 +208,7 @@ func TestGateG0_2(t *testing.T) {
 	if buf.LineCount() < 4000 {
 		t.Skipf("workload is only %d lines", buf.LineCount())
 	}
-	h := NewHighlighter(buf, PostgreSQL)
+	h := NewHighlighter(buf, sqllex.PostgreSQL)
 
 	const viewFirst, viewLast = 2470, 2530 // 60 visible lines around the edit
 	h.TokensForRange(viewFirst, viewLast)
@@ -258,7 +259,7 @@ func TestGateG0_2(t *testing.T) {
 	// The pathological edit: opening a block comment at the top of the file
 	// invalidates every line below it. It must still be survivable.
 	fresh := NewBuffer(buf.Text())
-	fh := NewHighlighter(fresh, PostgreSQL)
+	fh := NewHighlighter(fresh, sqllex.PostgreSQL)
 	start := time.Now()
 	fresh.Insert(0, 0, "/*")
 	fh.Apply(Edit{Line: 0, LinesRemoved: 1, LinesInserted: 1})

@@ -92,5 +92,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
 
+      # IKIGAI_REQUIRE_PG turns a missing server into a failure. Locally the
+      # suite skips when no server is running; in CI a skip would be a silent
+      # pass of a suite that never ran.
       - name: Run conformance suite
+        env:
+          IKIGAI_REQUIRE_PG: "1"
+          IKIGAI_PG_PORT: "5432"
         run: go test -tags=conformance -timeout 20m ./internal/source/...
