@@ -91,7 +91,13 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, confirmed 
 			executed.Add(1)
 			r := source.ScriptResult{Index: i, Offset: st.Offset, Statement: st.Text}
 			f := strings.Fields(strings.TrimSuffix(st.Text, ";"))
+			if at := strings.Index(st.Text, "oops"); at >= 0 {
+				f = []string{"oops"}
+				r.Err = &source.StatementError{Message: source.Message{Text: `syntax error at or near "oops"`,
+					Position: utf8.RuneCountInString(st.Text[:at]) + 1}}
+			}
 			switch f[0] {
+			case "oops":
 			case "rows", "slow":
 				n, _ := strconv.Atoi(f[1])
 				r.Result = &source.Result{Rows: &slowStream{n: n, slow: f[0] == "slow"}, Affected: -1}
@@ -308,5 +314,25 @@ func TestRowsKeepArrivingAfterTheScriptEnds(t *testing.T) {
 	waitDone(t, q.sets[0].Done())
 	if n, _ := q.sets[0].Progress(); n != 300 || q.sets[0].Err() != nil {
 		t.Errorf("%d rows, err %v; the script ending must not stop its rows", n, q.sets[0].Err())
+	}
+}
+
+func TestAServerErrorPointsAtItsToken(t *testing.T) {
+	// Run only the second line, so the error's position has to be carried
+	// through the statement's offset in the script AND the script's offset in
+	// the editor, across non-ASCII text that makes characters and bytes differ.
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	doc := q.editor.Document()
+	doc.SetText("rows 1;\nselect éé oops;")
+	doc.SetCaret(editor.Pos{Line: 1, Col: 3}, false)
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return !q.executing })
+	want := editor.Pos{Line: 1, Col: strings.Index("select éé oops;", "oops")}
+	if c := doc.Caret(); c != want {
+		t.Errorf("caret %v, want %v at the rejected token", c, want)
+	}
+	if !strings.Contains(q.messages.Text, "failed at line 2, column 11") {
+		t.Errorf("messages %q", q.messages.Text)
 	}
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
 // Target describes the source under test.
@@ -111,6 +112,11 @@ func checkCapabilities(t *testing.T, target Target) {
 
 	// A claimed capability that has no implementation behind it is worse than
 	// an unclaimed one: the UI will offer an affordance that fails at runtime.
+	if caps.Query.Supported && !sqllex.Known(caps.Query.Language) {
+		// DialectFor would quietly fall back to PostgreSQL: the editor would
+		// colour, and history redact, by another engine's rules.
+		t.Errorf("Capabilities.Query.Language = %q, which the lexer does not know", caps.Query.Language)
+	}
 	if caps.Query.Supported {
 		if _, ok := src.(source.Queryer); !ok {
 			t.Error("claims Query.Supported but does not implement Queryer")

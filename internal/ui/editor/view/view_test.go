@@ -236,3 +236,26 @@ func TestBracketPairIsOutlined(t *testing.T) {
 		t.Errorf("%d brackets outlined, want the pair", outlined)
 	}
 }
+
+func TestMarkErrorUnderlinesUntilTheNextEdit(t *testing.T) {
+	e, _ := setup(t, "SELECT oops FROM t")
+	e.MarkError(editor.Pos{Line: 0, Col: 8})
+	if c := e.Document().Caret(); c != (editor.Pos{Line: 0, Col: 7}) {
+		t.Errorf("caret %v; it should move to the start of the rejected word", c)
+	}
+	underlined := func() bool {
+		for _, o := range surfaceObjects(t, e) {
+			if r, ok := o.(*canvas.Rectangle); ok && r.FillColor == uitheme.Light.Danger {
+				return true
+			}
+		}
+		return false
+	}
+	if !underlined() {
+		t.Fatal("no underline under the rejected word")
+	}
+	test.Type(e.surface, "x")
+	if underlined() {
+		t.Error("the mark outlived an edit that may have moved what it pointed at")
+	}
+}

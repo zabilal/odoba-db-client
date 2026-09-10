@@ -382,3 +382,32 @@ func TestOffset(t *testing.T) {
 		t.Errorf("offset %d", got)
 	}
 }
+
+func TestPosAtInvertsOffset(t *testing.T) {
+	d := doc(t, "|é1\n\nab😀")
+	for line := 0; line < d.Buffer().LineCount(); line++ {
+		l := d.Buffer().Line(line)
+		for col := 0; col <= len(l); col++ {
+			if col < len(l) && !utf8RuneStart(l[col]) {
+				continue
+			}
+			p := Pos{line, col}
+			if got := d.PosAt(d.Offset(p)); got != p {
+				t.Errorf("PosAt(Offset(%v)) = %v", p, got)
+			}
+		}
+	}
+	if got := d.PosAt(1 << 20); got != (Pos{2, len("ab😀")}) {
+		t.Errorf("past the end → %v", got)
+	}
+}
+
+func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
+
+func TestWordAt(t *testing.T) {
+	d := doc(t, "|select foo_bar")
+	from, to := d.WordAt(Pos{0, 9})
+	if from != (Pos{0, 7}) || to != (Pos{0, 14}) {
+		t.Errorf("WordAt → %v..%v", from, to)
+	}
+}

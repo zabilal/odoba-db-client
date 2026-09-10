@@ -108,7 +108,13 @@ func (ss *scriptSession) QueryMulti(ctx context.Context, script string, confirme
 		for i, st := range stmts {
 			r := source.ScriptResult{Index: i, Offset: st.Offset, Statement: st.Text}
 			f := strings.Fields(st.Text)
+			if at := strings.Index(st.Text, "oops"); at >= 0 {
+				f = []string{"oops"} // a server error with a position
+				r.Err = &source.StatementError{Message: source.Message{Text: `syntax error at or near "oops"`,
+					Position: utf8.RuneCountInString(st.Text[:at]) + 1}}
+			}
 			switch f[0] {
+			case "oops":
 			case "rows", "slow":
 				n, _ := strconv.Atoi(strings.TrimSuffix(f[1], ";"))
 				cs := &countStream{n: n, slow: f[0] == "slow"}
@@ -412,5 +418,24 @@ func TestAStoppedQueryIsStillRecordedWithoutAnError(t *testing.T) {
 	e := h.wait(t, 1)["slow 100000"]
 	if e.Rows >= 100000 || e.Error != "" {
 		t.Errorf("entry %+v; a stop is the user's choice, not a failure", e)
+	}
+}
+
+func TestErrorOffsetPointsAtTheTokenInTheScript(t *testing.T) {
+	// The server counts characters within the statement; the result's
+	// offset is bytes within the script. "éé" makes the two disagree.
+	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{})
+	script := "rows 1; select éé oops;"
+	ch, _ := qs.Run(context.Background(), script, false)
+	res := collect(t, ch)
+	if len(res) != 2 {
+		t.Fatalf("%d results", len(res))
+	}
+	off, ok := res[1].ErrorOffset()
+	if !ok || !strings.HasPrefix(script[off:], "oops") {
+		t.Errorf("error offset %d (%v) points at %q, want \"oops\"", off, ok, script[min(off, len(script)):])
+	}
+	if _, ok := res[0].ErrorOffset(); ok {
+		t.Error("a successful statement has no error offset")
 	}
 }

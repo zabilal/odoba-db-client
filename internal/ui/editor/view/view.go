@@ -44,6 +44,24 @@ type Editor struct {
 	// OnChanged is called after an edit changes the text; caret moves and
 	// selection changes do not call it.
 	OnChanged func()
+
+	mark *errorMark
+}
+
+// errorMark underlines the word a server rejected, until the text changes.
+type errorMark struct {
+	from, to editor.Pos
+	rev      uint64
+}
+
+// MarkError underlines the word at p in the danger colour and moves the caret
+// there, for a statement the server rejected (FR-5.10). The mark lasts until
+// the text next changes, since an edit may have moved what it pointed at.
+func (e *Editor) MarkError(p editor.Pos) {
+	from, to := e.doc.WordAt(p)
+	e.mark = &errorMark{from: from, to: to, rev: e.doc.Revision()}
+	e.doc.SetCaret(from, false)
+	e.surface.changed()
 }
 
 // New builds an editor over a document. UI goroutine only, like the document.
@@ -167,7 +185,7 @@ func newSurface(e *Editor) *surface {
 
 func (s *surface) CreateRenderer() fyne.WidgetRenderer {
 	r := &surfaceRenderer{s: s, current: canvas.NewRectangle(color.Transparent),
-		caret: canvas.NewRectangle(color.Transparent)}
+		caret: canvas.NewRectangle(color.Transparent), errLine: canvas.NewRectangle(color.Transparent)}
 	for i := range r.brackets {
 		r.brackets[i] = canvas.NewRectangle(color.Transparent)
 	}
@@ -474,6 +492,7 @@ type surfaceRenderer struct {
 	m        metrics
 	current  *canvas.Rectangle
 	caret    *canvas.Rectangle
+	errLine  *canvas.Rectangle
 	brackets [2]*canvas.Rectangle
 	sel      []*canvas.Rectangle
 	texts    []*canvas.Text
@@ -601,6 +620,15 @@ func (r *surfaceRenderer) draw() {
 			t.Resize(fyne.NewSize(float32(len(t.Text))*m.cw, m.th))
 			objs = append(objs, t)
 		}
+	}
+
+	if mk := e.mark; mk != nil && mk.rev == doc.Revision() && mk.from.Line >= first && mk.from.Line <= last {
+		c0, c1 := doc.Column(mk.from), doc.Column(mk.to)
+		r.errLine.FillColor = pal.Danger
+		p := at(c0, mk.from.Line)
+		r.errLine.Move(fyne.NewPos(p.X, p.Y+m.lh-2))
+		r.errLine.Resize(fyne.NewSize(float32(max(c1-c0, 1))*m.cw, 2))
+		objs = append(objs, r.errLine)
 	}
 
 	if r.s.focused && caret.Line >= first && caret.Line <= last {

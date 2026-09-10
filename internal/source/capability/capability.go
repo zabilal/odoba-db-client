@@ -62,8 +62,12 @@ type Query struct {
 	// Supported is false for sources with no query language at all.
 	Supported bool
 
-	// Language names the dialect for the editor's lexer: "sql", "cql",
-	// "mongosh", "redis".
+	// Language names the query language as sqllex.DialectFor knows it:
+	// "postgresql", "mysql", "sqlite", "sqlserver", "cql". It picks the
+	// editor's highlighting and the rules history is redacted by, so an
+	// unknown name is a defect, not a harmless default; the conformance suite
+	// checks it with sqllex.Known. Document and key-value languages
+	// ("mongosh", "redis") arrive with their lexers.
 	Language string
 
 	// MultiStatement reports whether one submission may contain several
