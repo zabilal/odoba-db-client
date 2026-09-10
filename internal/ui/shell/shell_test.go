@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,8 +134,23 @@ func (fakeSource) Count(context.Context, model.ObjectRef, source.BrowseOptions) 
 	return fakeRows, nil
 }
 
+// distinctGate, when set, holds every Distinct until it is closed or the
+// caller gives up; distinctStopped records a caller giving up.
+var (
+	distinctGate    chan struct{}
+	distinctStopped atomic.Bool
+)
+
 // Distinct lists four values of any column, the most frequent first.
-func (fakeSource) Distinct(_ context.Context, _ model.ObjectRef, _ string, _ []source.Filter, limit int) ([]source.DistinctValue, error) {
+func (fakeSource) Distinct(ctx context.Context, _ model.ObjectRef, _ string, _ []source.Filter, limit int) ([]source.DistinctValue, error) {
+	if g := distinctGate; g != nil {
+		select {
+		case <-ctx.Done():
+			distinctStopped.Store(true)
+			return nil, ctx.Err()
+		case <-g:
+		}
+	}
 	vals := []source.DistinctValue{{Value: "item 1", Count: 5}, {Value: "item 2", Count: 3},
 		{Value: nil, Count: 2}, {Value: "a,b", Count: 1}}
 	return vals[:min(limit, len(vals))], nil

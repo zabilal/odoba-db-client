@@ -309,6 +309,7 @@ LAST DONE: 2026-09-11 — the filter picklist: a column's values, counted on the
 - [x] **T1.74** E2E test: **J1** (zero to first result) — *internal/e2e: J1 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
+- [ ] **T1.77** Panels, not modals (UX principle 4): History and Saved Queries open as modal dialogs that hide the data; make them panels or popovers
 
 ### ✅ Phase 1 exit: J1 and J3 complete end to end on all three platforms
 

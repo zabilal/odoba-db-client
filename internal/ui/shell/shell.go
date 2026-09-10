@@ -225,7 +225,7 @@ func (s *Shell) registerCommands() {
 		{ID: cmdFilterValues, Category: "Data", Title: "Filter by Values…", Keywords: []string{"picklist", "distinct", "filter"},
 			Enabled: s.canPickValues, Run: func() {
 				if t := s.activeTab(); t != nil && t.grid != nil {
-					s.showPicklist(t, t.grid.SelectedColumn())
+					s.showPicklist(t, t.grid.SelectedColumn(), s.underHeader(t))
 				}
 			}},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
@@ -454,7 +454,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.SetFilterable(bs.CanFilter()) // before the grid is shown
 	g.OnFilter = func(texts []string) { s.refilter(t, texts) }
 	if bs.CanListValues() {
-		g.OnPickValues = func(col int) { s.showPicklist(t, col) }
+		g.OnPickValues = func(col int, at fyne.Position) { s.showPicklist(t, col, at) }
 	}
 	g.OnSelectCell = s.sync // Filter by Values follows the selected cell
 	t.body.Objects = []fyne.CanvasObject{g.View()}
