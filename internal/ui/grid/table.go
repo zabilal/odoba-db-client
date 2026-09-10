@@ -5,6 +5,8 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"image/color"
+	"slices"
+	"strconv"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -46,6 +48,82 @@ type TableGrid struct {
 
 	bg   *canvas.Rectangle
 	view *fyne.Container
+
+	// Sortable lets the header sort the grid, and OnSort hears the new sort.
+	// A browse re-sorts on the server; a query's result cannot, since that
+	// means running the query again, so it stays unsortable.
+	Sortable bool
+	OnSort   func(keys []SortKey)
+	sorts    []SortKey
+}
+
+// SortKey is one column of a sort, by index into the grid's columns.
+type SortKey struct {
+	Column     int
+	Descending bool
+}
+
+// ToggleSort changes the sort as a header click does. Alone, a column cycles
+// ascending, descending and unsorted, replacing any other sort; with add
+// (⇧-click) it joins the sort as its next key, or cycles within it.
+func (g *TableGrid) ToggleSort(col int, add bool) {
+	if !g.Sortable {
+		return
+	}
+	i := slices.IndexFunc(g.sorts, func(k SortKey) bool { return k.Column == col })
+	var next []SortKey
+	switch {
+	case add && i < 0:
+		next = append(slices.Clone(g.sorts), SortKey{Column: col})
+	case add:
+		next = slices.Clone(g.sorts)
+		if next[i].Descending {
+			next = slices.Delete(next, i, i+1)
+		} else {
+			next[i].Descending = true
+		}
+	case i >= 0 && len(g.sorts) == 1:
+		if !g.sorts[0].Descending {
+			next = []SortKey{{Column: col, Descending: true}}
+		}
+	default:
+		next = []SortKey{{Column: col}}
+	}
+	g.SetSorts(next)
+	if g.OnSort != nil {
+		g.OnSort(slices.Clone(next))
+	}
+}
+
+// Sorts is the sort the header shows.
+func (g *TableGrid) Sorts() []SortKey { return slices.Clone(g.sorts) }
+
+// SetSorts shows a sort in the header without asking for it: to put back the
+// previous sort when a new one fails.
+func (g *TableGrid) SetSorts(keys []SortKey) {
+	g.sorts = slices.Clone(keys)
+	if g.Table != nil {
+		g.Table.Refresh()
+	}
+}
+
+// sortMark is the header's arrow for a column, numbered when several
+// columns sort.
+func (g *TableGrid) sortMark(col int) string {
+	for i, k := range g.sorts {
+		if k.Column != col {
+			continue
+		}
+		mark := " ↑"
+		if k.Descending {
+			mark = " ↓"
+		}
+		if len(g.sorts) > 1 {
+			mark += strconv.Itoa(i + 1)
+		}
+		return mark
+	}
+	return ""
 }
 
 // View is what to put on screen: the table over the content background, so
@@ -227,20 +305,22 @@ func (g *TableGrid) background(id widget.TableCellID) color.Color {
 	return g.palette.ContentBackground
 }
 
-func (g *TableGrid) createHeader() fyne.CanvasObject { return newCellWidget() }
+func (g *TableGrid) createHeader() fyne.CanvasObject { return newHeaderCell(g) }
 
 func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
-	cell, ok := o.(*cellWidget)
+	h, ok := o.(*headerCell)
 	if !ok {
 		return
 	}
+	h.col = id.Col
+	cell := &h.cellWidget
 	cols := g.model.Columns()
 	if id.Col < 0 || id.Col >= len(cols) {
 		cell.set("", g.palette.SecondaryLabel, g.palette.SidebarBackground,
 			fyne.TextAlignLeading, fyne.TextStyle{})
 		return
 	}
-	cell.set(cols[id.Col].Name, g.palette.SecondaryLabel, g.palette.SidebarBackground,
+	cell.set(cols[id.Col].Name+g.sortMark(id.Col), g.palette.SecondaryLabel, g.palette.SidebarBackground,
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 }
 

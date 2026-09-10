@@ -9,6 +9,7 @@ package grid
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
@@ -53,7 +54,13 @@ const (
 // placeholder, and the model schedules a fetch that calls OnPageLoaded when
 // the data lands.
 type Model struct {
-	fetcher Fetcher
+	// src is the current fetcher. Atomic because fetches and counts run off
+	// the UI goroutine, and a new sort or filter swaps it (SetFetcher).
+	src atomic.Pointer[fetcherRef]
+	// gen is bumped by Invalidate and SetFetcher. A fetch or count begun in
+	// an older generation is dropped when it lands: its rows belong to an
+	// order or a moment that is gone, and would appear in the wrong place.
+	gen uint64
 
 	mu sync.RWMutex
 	// pages holds resident data keyed by page index.
@@ -88,16 +95,30 @@ type Model struct {
 
 // NewModel builds a model over a fetcher.
 func NewModel(f Fetcher) *Model {
-	return &Model{
-		fetcher:  f,
+	m := &Model{
 		pages:    make(map[int64][]model.Row, MaxResidentPages),
 		inflight: make(map[int64]bool),
 		total:    -1,
 	}
+	m.src.Store(&fetcherRef{f})
+	return m
 }
 
+type fetcherRef struct{ f Fetcher }
+
+func (m *Model) current() Fetcher { return m.src.Load().f }
+
 // Columns returns the result shape.
-func (m *Model) Columns() []model.ColumnDef { return m.fetcher.Columns() }
+func (m *Model) Columns() []model.ColumnDef { return m.current().Columns() }
+
+// SetFetcher swaps the source, as a new sort or filter does, then drops the
+// cached pages like Invalidate: the grid keeps its size and position until
+// the new rows arrive. A fetch still running against the old source is
+// dropped when it lands.
+func (m *Model) SetFetcher(f Fetcher) {
+	m.src.Store(&fetcherRef{f})
+	m.Invalidate()
+}
 
 // Total returns the row count and whether it is known.
 func (m *Model) Total() (int64, bool) {
@@ -108,7 +129,10 @@ func (m *Model) Total() (int64, bool) {
 
 // LoadCount resolves the total row count.
 func (m *Model) LoadCount(ctx context.Context) error {
-	n, err := m.fetcher.Count(ctx)
+	m.mu.RLock()
+	gen, f := m.gen, m.current()
+	m.mu.RUnlock()
+	n, err := f.Count(ctx)
 	if err != nil {
 		return err
 	}
@@ -119,7 +143,9 @@ func (m *Model) LoadCount(ctx context.Context) error {
 		return nil
 	}
 	m.mu.Lock()
-	m.total, m.derived = n, false
+	if gen == m.gen { // not a count of a source since replaced
+		m.total, m.derived = n, false
+	}
 	m.mu.Unlock()
 	return nil
 }
@@ -219,14 +245,19 @@ func (m *Model) schedule(ctx context.Context, page int64) {
 		return
 	}
 	m.inflight[page] = true
+	gen, f := m.gen, m.current()
 	m.mu.Unlock()
 
 	m.count(&m.fetches)
 
 	go func() {
-		rows, err := m.fetcher.Fetch(ctx, page*PageSize, PageSize)
+		rows, err := f.Fetch(ctx, page*PageSize, PageSize)
 
 		m.mu.Lock()
+		if gen != m.gen {
+			m.mu.Unlock()
+			return // fetched for a source or moment since replaced
+		}
 		delete(m.inflight, page)
 		if err == nil {
 			m.pages[page] = rows
@@ -281,7 +312,9 @@ func (m *Model) evictLocked() {
 // known only from reaching the end is dropped, since the end may have moved.
 func (m *Model) Invalidate() {
 	m.mu.Lock()
+	m.gen++
 	m.pages = make(map[int64][]model.Row, MaxResidentPages)
+	m.inflight = make(map[int64]bool) // requests of the old generation no longer count
 	m.lru = m.lru[:0]
 	m.seen = 0
 	if m.derived {

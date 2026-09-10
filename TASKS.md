@@ -29,9 +29,7 @@ NEXT TASK: the grid (T1.48–T1.56): sort by header, the filter row, selection a
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-10 — first visual review, from rendered screenshots
-           (IKIGAI_SCREENSHOTS=dir go test -run TestScreenshots ./internal/e2e/):
-           fixed the find bar's negative-width layout (a crash) and five smaller things.
+LAST DONE: 2026-09-10 — sorting by column header on the server (T1.49, ADR-0016).
 ```
 
 **Phase 0 findings so far**
@@ -272,7 +270,7 @@ LAST DONE: 2026-09-10 — first visual review, from rendered screenshots
 
 - [x] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11 — *paged LRU model with MaxResidentPages; tables without a count grow as they are read (ADR-0011)*
 - [ ] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2
-- [ ] **T1.49** Server-side multi-column sort → FR-3.3
+- [x] **T1.49** Server-side multi-column sort → FR-3.3 — *header click cycles, ⇧-click adds a key; the server re-sorts; stale pages from the old order are dropped (ADR-0016)*
 - [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7 — *rows are plain for now: cell-width stripes read as blocks; full-width stripes need a scroll-synced background (ADR-0011 §6)*
 - [ ] **T1.51** Cell/range/row/column selection → FR-3.7
 - [ ] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7

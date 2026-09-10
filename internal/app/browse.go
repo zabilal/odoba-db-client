@@ -43,6 +43,19 @@ func NewBrowseSource(ctx context.Context, src source.Source, ref model.ObjectRef
 	return b, nil
 }
 
+// Options is how the browse is filtered and sorted.
+func (b *BrowseSource) Options() source.BrowseOptions { return b.opt }
+
+// With is the same object browsed another way: a new sort or filter. It
+// probes the source again, so an option it cannot honour fails here rather
+// than while the grid pages (REQ-DRV-3).
+func (b *BrowseSource) With(ctx context.Context, opt source.BrowseOptions) (*BrowseSource, error) {
+	return NewBrowseSource(ctx, b.src, b.ref, opt)
+}
+
+// CanSort reports whether the source sorts on the server (capability.Data).
+func (b *BrowseSource) CanSort() bool { return b.src.Capabilities().Data.ServerSort }
+
 // Columns describes every row.
 func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
 

@@ -20,3 +20,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0013](0013-export.md) | Export | Accepted |
 | [0014](0014-sqlite-driver.md) | The SQLite driver | Accepted |
 | [0015](0015-mysql-mariadb-driver.md) | The MySQL and MariaDB driver | Accepted |
+| [0016](0016-grid-interaction.md) | The grid's interaction model | Accepted |
