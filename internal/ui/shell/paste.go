@@ -8,6 +8,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+	"github.com/ikigai-db/ikigai-db/internal/value"
 )
 
 // Pasting a block of cells (FR-4.10, ADR-0037), and one value written into
@@ -241,10 +242,10 @@ func writeCell(col model.ColumnDef, mc int, value func(model.ColumnDef) (any, er
 // parsed is text as each column reads it, as typing it would be.
 func parsed(text string) func(model.ColumnDef) (any, error) {
 	return func(col model.ColumnDef) (any, error) {
-		if !grid.Editable(col) {
+		if !value.Editable(col) {
 			return nil, errors.New("its values are not typed")
 		}
-		return grid.Parse(text, col, time.Local)
+		return value.Parse(text, col, time.Local)
 	}
 }
 

@@ -24,6 +24,7 @@ internal/source         data-source abstraction, pooling, streaming
   capability/           per-source feature descriptors
   conformance/          the one battery every driver runs (REQ-DRV-1)
 internal/model          canonical model (relational · document · kv · stream)
+internal/value          a value as text, read as its column's type (editors, imports)
 internal/diff           schema comparison & sync-script synthesis
 internal/transfer       import/export pipelines (streaming)
 internal/store          paths and the settings file (JSON, atomic, never clobbered)

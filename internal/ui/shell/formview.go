@@ -12,6 +12,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+	"github.com/ikigai-db/ikigai-db/internal/value"
 )
 
 // formView shows one row laid out vertically, a field for each column shown,
@@ -229,8 +230,8 @@ func (ff *formField) set(e *edits, deleted bool) bool {
 	if changed {
 		ff.item.HintText = join(ff.item.HintText, "changed")
 	}
-	if e != nil && e.pending != nil && f.g.OnEdit != nil && !deleted && grid.Editable(col) {
-		ff.start = grid.EditText(v, col, time.Local)
+	if e != nil && e.pending != nil && f.g.OnEdit != nil && !deleted && value.Editable(col) {
+		ff.start = value.EditText(v, col, time.Local)
 		ff.entry.SetText(ff.start)
 		ff.text.Hide()
 		ff.entry.Show()
@@ -257,7 +258,7 @@ func (ff *formField) write() {
 		return
 	}
 	col := f.g.Model().Columns()[ff.mc]
-	v, err := grid.Parse(text, col, time.Local)
+	v, err := value.Parse(text, col, time.Local)
 	if err == nil {
 		err = f.g.SetValue(f.r, f.row, ff.mc, v)
 	}
