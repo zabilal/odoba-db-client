@@ -257,6 +257,21 @@ at once and fills in when the description arrives, and it comes back with
 the session as a structure tab. Editing a structure is the table designer's
 (T3.x), and writing a CREATE statement from one is T3.7's.
 
+## 15. Script as writes a starting point, in the dialect's words
+
+Explorer › Script As writes a SELECT, INSERT or UPDATE for the selected
+object and opens it in a new query tab, unsaved, for the person to edit and
+run; nothing is run for them (FR-2.4). The columns and key come from the
+driver's Describe, and every quoted name and placeholder from the source's
+dialect, so the statement is the engine's own and no statement text is
+built in the UI (ARCH-2): `sqlscript` only lays the statement out, and
+`app.ScriptAs` fills it in. SELECT names every column. INSERT leaves out
+what the server fills in itself: generated, identity and auto-increment
+columns. UPDATE sets the columns outside the primary key and matches on the
+key; a table with none is matched on every column, and a comment in the
+script says so. A view is written only as SELECT, and a source with no
+query language cannot be scripted. Writing a CREATE statement is T3.7's.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key
