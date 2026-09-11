@@ -2,6 +2,7 @@ package shell
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/transfer"
 )
 
 // itemsDescribed is the items table open, its rows loaded and its columns known.
@@ -62,7 +66,7 @@ func TestAFileIsReadAndItsColumnsPairedForAnImport(t *testing.T) {
 	if p.pairs["id"] != 1 || p.pairs["name"] != 0 {
 		t.Errorf("each table column is filled by the file column of its name: %v", p.pairs)
 	}
-	if !strings.Contains(it.footer.Text, "1 of the first 2 rows have a value that would not go in; the first: id: not a whole number (x)") {
+	if !strings.Contains(it.footer.Text, "1 of the first 2 rows has a value that would not go in; the first: id: not a whole number (x)") {
 		t.Errorf("footer %q", it.footer.Text)
 	}
 	if n, _ := p.grid.Model().Extent(); n != 2 {
@@ -127,6 +131,9 @@ func TestAnImportsMappingAndOptionsAreChanged(t *testing.T) {
 	}
 	p.header.SetChecked(false) // the first row is a row, and the columns are numbered
 	pump(t, fx.q, func() bool { return strings.Contains(it.footer.Text, "No column of the file fills one of the table's") })
+	if p.dryRun(); len(fx.s.tasks) != 0 {
+		t.Error("nothing to write, nothing to try")
+	}
 	if len(p.rows) != 3 || p.from[0].Name != "column 1" {
 		t.Errorf("read again as the options say: %d rows, %v", len(p.rows), p.from)
 	}
@@ -171,5 +178,189 @@ func TestImportIsOfferedOnlyWhereATableTakesIt(t *testing.T) {
 	openQuery(t, fx2, "")
 	if fx2.s.canImport() {
 		t.Error("a query tab takes no import")
+	}
+}
+
+// pickFor is the mapping's picker for a table column.
+func pickFor(p *importPanel, name string) *widget.Select {
+	for _, item := range p.mapping.Objects[0].(*widget.Form).Items {
+		if item.Text == name {
+			return item.Widget.(*widget.Select)
+		}
+	}
+	return nil
+}
+
+// dryRunEnds waits for the latest task, a dry run, to end.
+func dryRunEnds(t *testing.T, fx *fixture) *task {
+	t.Helper()
+	k := fx.s.tasks[len(fx.s.tasks)-1]
+	pump(t, fx.q, func() bool { return k.state != taskRunning })
+	return k
+}
+
+func TestADryRunReadsEveryRowAndListsWhatWouldNotGoIn(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	var b strings.Builder
+	b.WriteString("name,id\n")
+	for i := 1; i <= 30; i++ {
+		switch i {
+		case 5:
+			b.WriteString("n5,x\n")
+		case 25:
+			b.WriteString("n25,2.5\n")
+		default:
+			fmt.Fprintf(&b, "n%d,%d\n", i, i)
+		}
+	}
+	it, p := importing(t, fx, b.String())
+	if p.tabs.SelectedIndex() != 0 || p.summary.Text != dryRunIntro {
+		t.Errorf("the first rows are shown until a dry run: %q", p.summary.Text)
+	}
+	test.Tap(p.dry)
+	if !p.dry.Disabled() {
+		t.Error("one dry run at a time")
+	}
+	k := dryRunEnds(t, fx)
+	if k.title != "Dry run of people.csv" || k.state != taskDone || k.status != "2 of 30 rows would not go in." {
+		t.Errorf("task %q: %v %q", k.title, k.state, k.status)
+	}
+	if p.tabs.SelectedIndex() != 1 || p.summary.Text != k.status || p.dry.Disabled() {
+		t.Errorf("the dry run answers in its tab: %q", p.summary.Text)
+	}
+	select {
+	case <-k.finished:
+	default:
+		t.Error("a dry run says when it has stopped reading, as quitting waits for it")
+	}
+	pump(t, fx.q, func() bool { _, ok := p.checked.Model().Row(it.ctx, 1); return ok })
+	first, _ := p.checked.Model().Row(it.ctx, 0)
+	second, _ := p.checked.Model().Row(it.ctx, 1)
+	if n, _ := p.checked.Model().Extent(); n != 2 || fmt.Sprint(first) != "[5 id x not a whole number]" || fmt.Sprint(second) != "[25 id 2.5 not a whole number]" {
+		t.Errorf("each value that would not go in, by row: %v %v", first, second)
+	}
+	test.Tap(p.dry)
+	if again := dryRunEnds(t, fx); again == k || again.status != k.status {
+		t.Error("a dry run can be run again")
+	}
+	pickFor(p, "id").SetSelected(notImported)
+	if p.checked != nil || p.summary.Text != dryRunIntro {
+		t.Error("a change to the mapping forgets the dry run, which was for the mapping as it was")
+	}
+	test.Tap(p.dry)
+	if k := dryRunEnds(t, fx); k.status != "All 30 rows would go in." {
+		t.Errorf("status %q", k.status)
+	}
+}
+
+func TestAChangeStopsADryRun(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	_, p := importing(t, fx, "name,id\nfirst,1\nsecond,x\n")
+	p.dryRun()
+	p.dryRun()
+	if len(fx.s.runningTasks(nil)) != 1 {
+		t.Errorf("one dry run at a time: %d", len(fx.s.runningTasks(nil)))
+	}
+	k := fx.s.tasks[len(fx.s.tasks)-1]
+	pickFor(p, "name").SetSelected(notImported)
+	if !k.stopping {
+		t.Error("a change to the mapping stops the dry run, in the task centre too")
+	}
+	dryRunEnds(t, fx)
+	if k.state != taskCancelled || k.status != "Stopped, as the import changed" || p.dry.Disabled() || p.summary.Text != dryRunIntro {
+		t.Errorf("a dry run of the import as it was stops: %v %q, summary %q", k.state, k.status, p.summary.Text)
+	}
+	p.dryRun()
+	if len(fx.s.runningTasks(nil)) != 1 {
+		t.Error("a dry run of the import as it is now starts")
+	}
+	dryRunEnds(t, fx)
+	p.header.SetChecked(false)
+	if p.summary.Text != dryRunIntro {
+		t.Errorf("a change to the options forgets the findings too: %q", p.summary.Text)
+	}
+}
+
+func TestClosingAnImportStopsItsDryRun(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\nfirst,1\n")
+	p.dryRun()
+	fx.s.closeTab(it.item)
+	if k := dryRunEnds(t, fx); k.state != taskCancelled {
+		t.Errorf("closing the tab stops its dry run: %v %q", k.state, k.status)
+	}
+}
+
+func TestADryRunsFindingsAreWorded(t *testing.T) {
+	for _, c := range []struct {
+		c    transfer.Checked
+		want string
+	}{
+		{transfer.Checked{}, "The file has no rows."},
+		{transfer.Checked{Rows: 1}, "The file's one row would go in."},
+		{transfer.Checked{Rows: 1200}, "All 1,200 rows would go in."},
+		{transfer.Checked{Rows: 1200, Bad: 2, Values: 2, Problems: make([]transfer.Problem, 2)}, "2 of 1,200 rows would not go in."},
+		{transfer.Checked{Rows: 5000, Bad: 1500, Values: 1600, Problems: make([]transfer.Problem, 1000)},
+			"1,500 of 5,000 rows would not go in. The first 1,000 of 1,600 values that would not are listed."},
+	} {
+		if got := checkedSummary(c.c); got != c.want {
+			t.Errorf("%+v: %q", c.c, got)
+		}
+	}
+	if got := checkedStatus(transfer.Checked{Rows: 1000}); got != "1,000 rows read" {
+		t.Errorf("%q", got)
+	}
+	if got := checkedStatus(transfer.Checked{Rows: 1000, Bad: 3}); got != "1,000 rows read, 3 would not go in" {
+		t.Errorf("%q", got)
+	}
+}
+
+func TestACancelledOrFailedDryRunSaysSo(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	var b strings.Builder
+	b.WriteString("name,id\n")
+	for i := range 300000 {
+		fmt.Fprintf(&b, "n,%d\n", i)
+	}
+	it, p := importing(t, fx, b.String())
+	p.dryRun()
+	k := fx.s.tasks[len(fx.s.tasks)-1]
+	pump(t, fx.q, func() bool { return strings.HasSuffix(k.status, " rows read") })
+	fx.s.stopTask(k)
+	dryRunEnds(t, fx)
+	if k.state != taskCancelled || !strings.HasPrefix(k.status, "Cancelled after ") || !strings.HasSuffix(k.status, " rows; nothing was written.") ||
+		p.summary.Text != k.status || p.dry.Disabled() {
+		t.Errorf("cancelled: %v %q, summary %q", k.state, k.status, p.summary.Text)
+	}
+	p.format.SetSelected("Excel")
+	pump(t, fx.q, func() bool { return strings.HasPrefix(it.footer.Text, "Could not read the file as Excel") })
+	p.dryRun()
+	if k := dryRunEnds(t, fx); k.state != taskFailed || !strings.HasPrefix(k.status, "Could not read the file past 0 rows: ") || p.summary.Text != k.status {
+		t.Errorf("failed: %v %q", k.state, k.status)
+	}
+}
+
+func TestAColumnNoFileColumnFillsIsSaid(t *testing.T) {
+	fx, tb := itemsDescribed(t)
+	tb.table.Columns[1].Type.Nullable, tb.table.Columns[1].HasDefault = false, false
+	tb.table.Columns = append(tb.table.Columns, model.Column{Name: "total", Type: model.DataType{Class: model.TypeInteger}, Generated: "id * 2"})
+	it, p := importing(t, fx, "id\n1\n")
+	if !strings.HasPrefix(it.footer.Text, "name needs a value, and no column of the file fills it. The first row goes in as shown.") {
+		t.Errorf("footer %q", it.footer.Text)
+	}
+	if _, ok := p.pairs["total"]; ok || pickFor(p, "total") != nil {
+		t.Error("a generated column is the database's to fill")
+	}
+	p.dryRun()
+	if len(fx.s.tasks) != 0 || p.tabs.SelectedIndex() != 1 || p.summary.Text != "Every row would be refused: name needs a value, and no column of the file fills it." {
+		t.Errorf("no dry run needed: %d tasks, %q", len(fx.s.tasks), p.summary.Text)
+	}
+	pickFor(p, "id").SetSelected(notImported)
+	p.dryRun()
+	if len(fx.s.tasks) != 0 {
+		t.Error("no column filled, no dry run")
+	}
+	if got := unfilledText([]string{"a", "b"}); got != "a, b need a value, and no column of the file fills them." {
+		t.Errorf("%q", got)
 	}
 }

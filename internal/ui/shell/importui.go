@@ -8,22 +8,27 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
 // Importing a file into a table (FR-10.4, FR-10.5, ADR-0047). A panel in a
 // tab of its own says how the file is read, as found from it and for a
 // person to correct; which of its columns fills which of the table's; and
-// its first rows as the table would take them, with what would not go in.
-// Writing the rows is T2.21's.
+// its first rows as the table would take them, with what would not go in;
+// and, on asking, what of the whole file would not go in. Writing the rows
+// is T2.21's.
 
 // previewRows is how many of a file's rows the panel shows.
 const previewRows = 20
@@ -37,6 +42,13 @@ var (
 	importCommas    = []rune{',', '\t', ';', '|'}
 	commaNames      = []string{"Comma", "Tab", "Semicolon", "Pipe"}
 )
+
+// maxProblems is how many values that would not go in a dry run lists.
+const maxProblems = 1000
+
+// dryRunIntro is what the Dry Run tab says before a dry run.
+const dryRunIntro = "A dry run reads every row of the file as the import would write it, " +
+	"and lists each value that would not go in. Nothing is written."
 
 // notImported is the choice of no file column for a table column.
 const notImported = "— not imported —"
@@ -52,7 +64,8 @@ type importPanel struct {
 	opt   transfer.Options
 	from  []model.ColumnDef // the file's columns, as last read
 	rows  []model.Row       // the file's first rows, as last read
-	to    []model.ColumnDef // the table's columns
+	to    []model.ColumnDef // the table's columns a file can fill
+	cols  []model.Column    // the table's columns, as described
 	pairs map[string]int    // each table column's file column, by its place; -1 for none
 
 	format, encoding, comma *widget.Select
@@ -62,6 +75,18 @@ type importPanel struct {
 	preview                 *fyne.Container
 	grid                    *grid.TableGrid
 	seq                     int // numbers reads, so that only the latest lands
+
+	// The dry run: its button, the tab it answers in, what it says there
+	// and the values it lists. checks numbers the findings, so that a dry
+	// run the import's changes overtook lands nowhere; running is the one
+	// under way.
+	dry      *widget.Button
+	tabs     *container.AppTabs
+	problems *fyne.Container
+	summary  *widget.Label
+	checked  *grid.TableGrid
+	checks   int
+	running  *task
 }
 
 // canImport reports whether the tab in front is a table rows can be
@@ -137,8 +162,12 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p := &importPanel{s: s, t: t, into: into, f: f, size: size, opt: opt, pairs: map[string]int{},
 		mapping: container.NewVBox(), preview: container.NewStack()}
 	for _, c := range into.table.Columns {
+		if c.Generated != "" {
+			continue // the database fills it
+		}
 		p.to = append(p.to, model.ColumnDef{Name: c.Name, Type: c.Type})
 	}
+	p.cols = into.table.Columns
 	t.imp = p
 	go func() { <-ctx.Done(); f.Close() }() // the file is open for as long as its tab is
 
@@ -163,9 +192,17 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 
 	options := widget.NewForm(widget.NewFormItem("Format", p.format), widget.NewFormItem("Encoding", p.encoding),
 		widget.NewFormItem("Delimiter", p.comma), widget.NewFormItem("", p.header), widget.NewFormItem("Sheet", p.sheet))
-	split := container.NewVSplit(container.NewVScroll(p.mapping), p.preview)
+	p.dry = widget.NewButton("Dry Run", p.dryRun)
+	p.summary = widget.NewLabel("")
+	p.summary.Wrapping = fyne.TextWrapWord
+	p.problems = container.NewStack()
+	p.tabs = container.NewAppTabs(container.NewTabItem("First Rows", p.preview),
+		container.NewTabItem("Dry Run", container.NewBorder(p.summary, nil, nil, nil, p.problems)))
+	p.forget()
+	split := container.NewVSplit(container.NewVScroll(p.mapping), p.tabs)
 	split.Offset = 0.45
-	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, nil, nil, nil, split)}
+	actions := container.NewHBox(layout.NewSpacer(), p.dry)
+	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, actions, nil, nil, split)}
 	t.item = container.NewTabItem("Import "+filepath.Base(f.Name())+" into "+into.item.Text,
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
@@ -205,6 +242,7 @@ func setWidgetEnabled(w fyne.Disableable, on bool) {
 
 // changed reads the options as they are set, and reads the file again.
 func (p *importPanel) changed() {
+	p.forget()
 	p.opt = transfer.Options{
 		Format:   importFormats[max(p.format.SelectedIndex(), 0)],
 		Encoding: importEncodings[max(p.encoding.SelectedIndex(), 0)],
@@ -295,6 +333,7 @@ func (p *importPanel) showMapping() {
 		pick.SetSelectedIndex(p.pairs[name] + 1)
 		pick.OnChanged = func(string) {
 			p.pairs[name] = pick.SelectedIndex() - 1
+			p.forget()
 			p.showPreview()
 		}
 		hint := c.Type.Native
@@ -369,15 +408,166 @@ func (p *importPanel) showPreview() {
 	p.grid = grid.NewTableGridWith(p.t.ctx, m, p.s.colours(), p.s.d.Run, p.s.d.Delay)
 	p.preview.Objects = []fyne.CanvasObject{p.grid.View()}
 	p.preview.Refresh()
+	var say string
 	switch {
 	case len(rows) == 0:
-		p.t.footer.SetText("The file has no rows.")
+		say = "The file has no rows."
+	case bad == 0 && len(rows) == 1:
+		say = "The first row goes in as shown."
 	case bad == 0:
-		p.t.footer.SetText(fmt.Sprintf("The first %s go in as shown.", nounCount(len(rows), "row")))
+		say = fmt.Sprintf("The first %d rows go in as shown.", len(rows))
 	default:
-		p.t.footer.SetText(fmt.Sprintf("%d of the first %s have a value that would not go in; the first: %v",
-			bad, nounCount(len(rows), "row"), first))
+		verb := "has"
+		if bad > 1 {
+			verb = "have"
+		}
+		say = fmt.Sprintf("%d of the first %s %s a value that would not go in; the first: %v",
+			bad, nounCount(len(rows), "row"), verb, first)
 	}
+	if miss := transfer.Unfilled(p.cols, pairs); len(miss) > 0 {
+		say = unfilledText(miss) + " " + say
+	}
+	p.t.footer.SetText(say)
+}
+
+// unfilledText says which columns need a value no file column gives.
+func unfilledText(names []string) string {
+	if len(names) == 1 {
+		return names[0] + " needs a value, and no column of the file fills it."
+	}
+	return strings.Join(names, ", ") + " need a value, and no column of the file fills them."
+}
+
+// forget stops a dry run under way and lets go of the last one's findings:
+// they were for the options and the mapping as they were.
+func (p *importPanel) forget() {
+	p.checks++
+	if p.running != nil {
+		p.s.stopTask(p.running)
+		p.running = nil
+	}
+	p.dry.Enable()
+	p.showChecked(dryRunIntro, nil)
+}
+
+// dryRun reads every row of the file as the import would write it, writing
+// nothing, as a task in the task centre (FR-10.5, ADR-0048). What would not
+// go in is listed under Dry Run, with the row it is in.
+func (p *importPanel) dryRun() {
+	pairs, _ := p.pairList()
+	if len(pairs) == 0 || p.running != nil {
+		return // nothing to write, or a dry run is under way
+	}
+	if miss := transfer.Unfilled(p.cols, pairs); len(miss) > 0 {
+		p.showChecked("Every row would be refused: "+unfilledText(miss), nil)
+		p.tabs.SelectIndex(1)
+		return
+	}
+	s, t := p.s, p.t
+	to := map[string]model.ColumnDef{}
+	for _, c := range p.to {
+		to[c.Name] = c
+	}
+	opt, seq := p.opt, p.checks
+	ctx, cancel := context.WithCancel(t.ctx)
+	p.dry.Disable()
+	k := s.startTask(t, "Dry run of "+filepath.Base(p.f.Name()), cancel)
+	p.running = k
+	var mu sync.Mutex
+	var latest transfer.Checked
+	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
+		mu.Lock()
+		c := latest
+		mu.Unlock()
+		s.progressTask(k, checkedStatus(c), -1)
+	})
+	go func() {
+		var c transfer.Checked
+		rs, err := transfer.Open(p.f, p.size, opt)
+		if err == nil {
+			c, err = transfer.Check(ctx, rs, pairs, to, maxProblems, func(c transfer.Checked) {
+				mu.Lock()
+				latest = c
+				mu.Unlock()
+				update()
+			})
+			rs.Close()
+		}
+		close(k.finished)
+		s.d.Run(func() {
+			stopped := ctx.Err() != nil
+			cancel()
+			if seq != p.checks {
+				s.endTask(k, taskCancelled, "Stopped, as the import changed")
+				return
+			}
+			p.running = nil
+			p.dry.Enable()
+			var say string
+			state := taskDone
+			switch {
+			case stopped:
+				state, say = taskCancelled, fmt.Sprintf("Cancelled after %s; nothing was written.", nounCount(int(c.Rows), "row"))
+			case err != nil:
+				state, say = taskFailed, fmt.Sprintf("Could not read the file past %s: %v", nounCount(int(c.Rows), "row"), err)
+			default:
+				say = checkedSummary(c)
+			}
+			s.endTask(k, state, say)
+			p.showChecked(say, c.Problems)
+			p.tabs.SelectIndex(1)
+		})
+	}()
+}
+
+// checkedStatus is how far a dry run has got, as the task centre says it.
+func checkedStatus(c transfer.Checked) string {
+	say := group(c.Rows) + " rows read"
+	if c.Bad > 0 {
+		say += ", " + group(c.Bad) + " would not go in"
+	}
+	return say
+}
+
+// checkedSummary is what a dry run found.
+func checkedSummary(c transfer.Checked) string {
+	switch {
+	case c.Rows == 0:
+		return "The file has no rows."
+	case c.Bad == 0 && c.Rows == 1:
+		return "The file's one row would go in."
+	case c.Bad == 0:
+		return "All " + group(c.Rows) + " rows would go in."
+	}
+	say := fmt.Sprintf("%s of %s would not go in.", group(c.Bad), nounCount(int(c.Rows), "row"))
+	if n := int64(len(c.Problems)); n < c.Values {
+		say += fmt.Sprintf(" The first %s of %s values that would not are listed.", group(n), group(c.Values))
+	}
+	return say
+}
+
+// showChecked says what a dry run found, and lists the values that would
+// not go in: the row each is in, its column, the value and why.
+func (p *importPanel) showChecked(say string, problems []transfer.Problem) {
+	p.summary.SetText(say)
+	p.checked = nil
+	p.problems.Objects = nil
+	if len(problems) > 0 {
+		cols := []model.ColumnDef{
+			{Name: "Row", Type: model.DataType{Class: model.TypeInteger, Nullable: true}},
+			{Name: "Column", Type: model.DataType{Class: model.TypeString, Nullable: true}},
+			{Name: "Value", Type: model.DataType{Class: model.TypeString, Nullable: true}},
+			{Name: "Why", Type: model.DataType{Class: model.TypeString, Nullable: true}},
+		}
+		rows := make([]model.Row, len(problems))
+		for i, pr := range problems {
+			rows[i] = model.Row{pr.Row, pr.Column, pr.Value, pr.Err.Error()}
+		}
+		p.checked = grid.NewTableGridWith(p.t.ctx, grid.NewModel(rowsFetcher{cols: cols, rows: rows}),
+			p.s.colours(), p.s.d.Run, p.s.d.Delay)
+		p.problems.Objects = []fyne.CanvasObject{p.checked.View()}
+	}
+	p.problems.Refresh()
 }
 
 // rowsFetcher serves rows held in memory, for a preview.
