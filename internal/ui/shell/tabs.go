@@ -55,11 +55,15 @@ func (s *Shell) moveTab(delta int) {
 // togglePin pins the active tab, which then comes last among the pinned
 // tabs, or unpins it, which then comes first among the rest.
 func (s *Shell) togglePin() {
-	t := s.activeTab()
-	if t == nil {
-		return
+	if t := s.activeTab(); t != nil {
+		s.pin(t, !t.pinned)
 	}
-	t.pinned = !t.pinned
+}
+
+// pin pins a tab or unpins it. A pinned tab joins the end of the pinned
+// ones; an unpinned one goes first among the rest.
+func (s *Shell) pin(t *tab, on bool) {
+	t.pinned = on
 	items := slices.DeleteFunc(slices.Clone(s.tabs.Items), func(it *container.TabItem) bool { return it == t.item })
 	at := 0
 	for _, it := range items {

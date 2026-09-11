@@ -3,71 +3,68 @@ package shell
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
 // autosaveDelay is how long after an edit a query tab's text is kept, at the
 // latest (NFR-R2). Writes are throttled, not debounced: text typed without a
 // pause is still kept every autosaveDelay, not only once the typing stops.
+// The session is saved on the same rhythm.
 const autosaveDelay = time.Second
 
-// scratchTimeout bounds one write of a scratch buffer.
-const scratchTimeout = 5 * time.Second
+// storeTimeout bounds one write to the local database.
+const storeTimeout = 5 * time.Second
 
-// scratchWriter keeps unsaved query text in the local database, off the UI
-// goroutine. The latest word on a buffer replaces any not yet written, and
-// one goroutine writes them in turn, so a buffer forgotten after a save is
-// never written back by an earlier, slower write.
-type scratchWriter struct {
-	store  app.ScratchStore
+// writer keeps state in the local database off the UI goroutine: unsaved
+// query text and the session. The latest word on a key replaces any not yet
+// written, and one goroutine writes them in turn, so a buffer forgotten
+// after a save is never written back by an earlier, slower write.
+type writer struct {
 	failed func(error) // called off the UI goroutine
 
 	mu      sync.Mutex
-	pending map[string]*localdb.Scratch // nil forgets the buffer
+	pending map[string]func(context.Context) error
 	order   []string
 	closed  bool
 	wake    chan struct{}
 	done    chan struct{}
 }
 
-func newScratchWriter(store app.ScratchStore, failed func(error)) *scratchWriter {
-	w := &scratchWriter{store: store, failed: failed, pending: map[string]*localdb.Scratch{},
+func newWriter(failed func(error)) *writer {
+	w := &writer{failed: failed, pending: map[string]func(context.Context) error{},
 		wake: make(chan struct{}, 1), done: make(chan struct{})}
 	go w.run()
 	return w
 }
 
-func (w *scratchWriter) put(sc localdb.Scratch) { w.queue(sc.ID, &sc) }
-func (w *scratchWriter) forget(id string)       { w.queue(id, nil) }
-
-func (w *scratchWriter) queue(id string, sc *localdb.Scratch) {
+// queue makes op the next write under key, replacing any not yet written.
+// Its error is said to the user as it stands, so it says what was not kept.
+func (w *writer) queue(key string, op func(context.Context) error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed {
 		return
 	}
-	if _, ok := w.pending[id]; !ok {
-		w.order = append(w.order, id)
+	if _, ok := w.pending[key]; !ok {
+		w.order = append(w.order, key)
 	}
-	w.pending[id] = sc
+	w.pending[key] = op
 	w.signal()
 }
 
-func (w *scratchWriter) signal() {
+func (w *writer) signal() {
 	select {
 	case w.wake <- struct{}{}:
 	default:
 	}
 }
 
-func (w *scratchWriter) run() {
+func (w *writer) run() {
 	defer close(w.done)
 	for {
 		w.mu.Lock()
@@ -80,32 +77,26 @@ func (w *scratchWriter) run() {
 			<-w.wake
 			continue
 		}
-		id := w.order[0]
+		key := w.order[0]
 		w.order = w.order[1:]
-		sc := w.pending[id]
-		delete(w.pending, id)
+		op := w.pending[key]
+		delete(w.pending, key)
 		w.mu.Unlock()
-		w.write(id, sc)
+		w.write(op)
 	}
 }
 
-func (w *scratchWriter) write(id string, sc *localdb.Scratch) {
-	ctx, cancel := context.WithTimeout(context.Background(), scratchTimeout)
+func (w *writer) write(op func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	var err error
-	if sc == nil {
-		err = w.store.DeleteScratch(ctx, id)
-	} else {
-		err = w.store.PutScratch(ctx, *sc)
-	}
-	if err != nil {
+	if err := op(ctx); err != nil {
 		w.failed(err)
 	}
 }
 
 // close writes what is pending, waiting at most wait, and takes nothing more.
 // It reports whether everything was written in time.
-func (w *scratchWriter) close(wait time.Duration) bool {
+func (w *writer) close(wait time.Duration) bool {
 	w.mu.Lock()
 	w.closed = true
 	w.signal()
@@ -121,7 +112,7 @@ func (w *scratchWriter) close(wait time.Duration) bool {
 // edited keeps a query tab's text within the autosave delay of an edit.
 func (s *Shell) edited(t *tab) {
 	q := t.query
-	if s.scratch == nil || q.keeping {
+	if s.writer == nil || s.d.Scratch == nil || q.keeping {
 		return
 	}
 	q.keeping = true
@@ -139,67 +130,59 @@ func (s *Shell) edited(t *tab) {
 // saved nowhere else, and forgets it once it has none.
 func (s *Shell) keep(t *tab) {
 	q := t.query
-	if s.scratch == nil || q == nil {
+	if s.writer == nil || s.d.Scratch == nil || q == nil {
 		return
 	}
 	text := q.editor.Document().Text()
 	if !q.dirty || strings.TrimSpace(text) == "" {
-		s.scratch.forget(q.scratchID)
+		s.dropScratch(q.scratchID)
 		return
 	}
-	s.scratch.put(localdb.Scratch{ID: q.scratchID, ConnectionID: t.connID, SavedID: q.saved.ID,
+	s.putScratch(localdb.Scratch{ID: q.scratchID, ConnectionID: t.connID, SavedID: q.saved.ID,
 		Body: text, Opened: q.opened})
 }
 
 // forgetScratch drops a query tab's text from the scratch store: its tab was
 // closed on purpose.
 func (s *Shell) forgetScratch(t *tab) {
-	if s.scratch != nil && t.query != nil {
-		s.scratch.forget(t.query.scratchID)
+	if s.writer != nil && s.d.Scratch != nil && t.query != nil {
+		s.dropScratch(t.query.scratchID)
 	}
 }
 
-// autosaveFailed says, once a session, that unsaved text is not being kept.
+func (s *Shell) putScratch(sc localdb.Scratch) {
+	st := s.d.Scratch
+	s.writer.queue("scratch/"+sc.ID, func(ctx context.Context) error {
+		if err := st.PutScratch(ctx, sc); err != nil {
+			return fmt.Errorf("unsaved query text could not be kept safe; save it to keep it: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *Shell) dropScratch(id string) {
+	st := s.d.Scratch
+	s.writer.queue("scratch/"+id, func(ctx context.Context) error {
+		if err := st.DeleteScratch(ctx, id); err != nil {
+			return fmt.Errorf("query text that needs no keeping could not be cleared, and may reopen at the next start: %w", err)
+		}
+		return nil
+	})
+}
+
+// autosaveFailed says, once a session, that something is not being kept.
 func (s *Shell) autosaveFailed(err error) {
 	if s.autosaveWarned {
 		return
 	}
 	s.autosaveWarned = true
-	s.showError(fmt.Errorf("unsaved query text could not be kept safe; save it to keep it: %w", err))
-}
-
-// reopenScratches reopens the query tabs a crash or a quit left with unsaved
-// text, each on its connection and still marked unsaved. It reads off the UI
-// goroutine and opens the tabs on it.
-func (s *Shell) reopenScratches() {
-	ctx, cancel := context.WithTimeout(s.ctx, scratchTimeout)
-	defer cancel()
-	list, err := s.d.Scratch.Scratches(ctx)
-	saved := map[string]localdb.SavedQuery{}
-	if len(list) > 0 && s.d.Saved != nil {
-		all, serr := s.d.Saved.SavedQueries(ctx)
-		for _, sq := range all {
-			saved[sq.ID] = sq
-		}
-		err = errors.Join(err, serr)
-	}
-	s.d.Run(func() {
-		if s.ctx.Err() != nil {
-			return
-		}
-		for _, sc := range list {
-			s.reopenScratch(sc, saved[sc.SavedID])
-		}
-		if err != nil {
-			s.showError(fmt.Errorf("some unsaved query text could not be read back; it is still in the local database: %w", err))
-		}
-	})
+	s.showError(err)
 }
 
 // reopenScratch reopens one buffer. Text whose connection no longer exists
 // opens in a tab that cannot run it, rather than being thrown away: it can
 // still be read, copied, saved or closed.
-func (s *Shell) reopenScratch(sc localdb.Scratch, sq localdb.SavedQuery) {
+func (s *Shell) reopenScratch(sc localdb.Scratch, sq localdb.SavedQuery) *tab {
 	t := s.newQueryTab(sc.ConnectionID)
 	q := t.query
 	q.scratchID, q.opened = sc.ID, sc.Opened
@@ -212,11 +195,12 @@ func (s *Shell) reopenScratch(sc localdb.Scratch, sq localdb.SavedQuery) {
 	s.retitle(t)
 	if _, ok := s.d.Conns.Get(sc.ConnectionID); ok {
 		s.connectQuery(t)
-		return
+		return t
 	}
 	t.footer.SetText("")
 	s.note(q, "The connection this query was written for no longer exists. "+
 		"Its text is kept here: copy it, save it or close the tab.")
+	return t
 }
 
 // newScratchID names a query tab's buffer: unique across restarts.
