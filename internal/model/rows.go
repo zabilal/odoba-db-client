@@ -35,11 +35,25 @@ type ColumnDef struct {
 	// column to share a single origin.
 	Origin ObjectRef
 
+	// OriginColumn is this column's name in Origin, where the source knows
+	// it: a query can rename a column ("SELECT name AS label"), and a change
+	// is written by the table's name for it (FR-4.8, ADR-0035).
+	OriginColumn string
+
 	// ReadOnly marks a column that cannot be written even when the stream is
 	// otherwise editable — a computed column, or a Kafka offset.
 	ReadOnly bool
 
 	Comment string
+}
+
+// SourceName is the column's name where it is stored: its name in its
+// origin when known, else its name here.
+func (c ColumnDef) SourceName() string {
+	if c.OriginColumn != "" {
+		return c.OriginColumn
+	}
+	return c.Name
 }
 
 // RowStream is how every paradigm delivers tabular data to the UI.

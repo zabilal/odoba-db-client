@@ -56,7 +56,7 @@ func NewPending(cols []model.ColumnDef, id model.RowIdentity) (*Pending, error) 
 	for _, name := range id.Columns {
 		at := -1
 		for i, c := range cols {
-			if c.Name == name {
+			if c.SourceName() == name { // a key renamed in a query is still the key
 				at = i
 			}
 		}
@@ -301,11 +301,12 @@ func (p *Pending) Changeset(confirmed bool) source.Changeset {
 	return cs
 }
 
-// named is values by column name.
+// named is values by the name each column is stored under, which a query
+// may have renamed.
 func (p *Pending) named(values map[int]any) map[string]any {
 	out := make(map[string]any, len(values))
 	for col, v := range values {
-		out[p.cols[col].Name] = v
+		out[p.cols[col].SourceName()] = v
 	}
 	return out
 }

@@ -206,6 +206,46 @@ func TestATableIsWrittenByItsKeyOrElseItsRowid(t *testing.T) {
 	}
 }
 
+func TestAQueryResultSaysWhereItsColumnsCameFrom(t *testing.T) {
+	s := open(t, fixture(t), source.Guard{})
+	if !s.Capabilities().Query.EditableResults {
+		t.Error("SQLite says where a result's columns come from, and claims it")
+	}
+	ctx := context.Background()
+	ss, err := s.Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	query := func(q string) (model.RowIdentity, []model.ColumnDef) {
+		t.Helper()
+		res, err := ss.Query(ctx, source.Statement{SQL: q})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Rows.Close()
+		return res.Rows.(model.Identified).Identity(), res.Rows.Columns()
+	}
+	id, cols := query(`SELECT id, name AS who FROM people`)
+	if id.Kind != model.IdentityPrimaryKey || !slices.Equal(id.Columns, []string{"id"}) || !id.Target.Equal(people) {
+		t.Errorf("a query of one table, its key among the columns, is known by it: %+v", id)
+	}
+	if cols[1].Name != "who" || cols[1].OriginColumn != "name" || !cols[1].Origin.Equal(people) {
+		t.Errorf("a column renamed says its name in the table: %+v", cols[1])
+	}
+	orders := model.NewRef(model.KindTable, "main", "orders")
+	id, cols = query(`SELECT p.id, o.total FROM people p JOIN orders o ON o.person_id = p.id`)
+	if id.Kind != model.IdentityNone || !cols[1].Origin.Equal(orders) {
+		t.Errorf("a join is no one table's, though each column says where it is from: %+v %+v", id, cols)
+	}
+	if id, _ := query(`SELECT name FROM people`); id.Kind != model.IdentityNone {
+		t.Error("without the key a result is known by none")
+	}
+	if id, cols := query(`SELECT count(*) FROM people`); id.Kind != model.IdentityNone || !cols[0].Origin.IsZero() {
+		t.Error("a count is no table's column")
+	}
+}
+
 func TestFilters(t *testing.T) {
 	s := open(t, fixture(t), source.Guard{})
 	count := func(f ...source.Filter) int64 {

@@ -222,11 +222,12 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 		Paradigm:  model.ParadigmRelational,
 		Structure: capability.Structure{MultipleDatabases: true, Schemas: true},
 		Query: capability.Query{
-			Supported:      true,
-			Language:       "postgresql",
-			MultiStatement: true,
-			Cancel:         true,
-			Parameters:     true,
+			Supported:       true,
+			Language:        "postgresql",
+			MultiStatement:  true,
+			Cancel:          true,
+			Parameters:      true,
+			EditableResults: true,
 		},
 		Data: capability.Data{
 			ServerSort:       true,

@@ -74,6 +74,20 @@ func TestASourceThatDoesNotWriteSaysSo(t *testing.T) {
 	}
 }
 
+func TestAResultIsKnownAsItsStreamSays(t *testing.T) {
+	byID := model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: orders}
+	rs := newResultSet(context.Background(), &sliceRows{to: 2, closed: new(atomic.Int64), id: byID}, 10)
+	defer rs.Close()
+	if id := rs.Identity(); id.Kind != model.IdentityPrimaryKey || id.Columns[0] != "id" {
+		t.Errorf("a result is known by the key its stream reports: %+v", id)
+	}
+	plain := newResultSet(context.Background(), struct{ model.RowStream }{&sliceRows{to: 2, closed: new(atomic.Int64)}}, 10)
+	defer plain.Close()
+	if plain.Identity().Kind != model.IdentityNone {
+		t.Error("a stream that says nothing of its rows' identity gives none")
+	}
+}
+
 type sliceRows struct {
 	from, to int64
 	closed   *atomic.Int64

@@ -149,6 +149,7 @@ func (ss *pgSession) Query(ctx context.Context, stmt source.Statement) (*source.
 
 	stream := ss.src.newRowStream(ctx, rows, ss.src.primary, model.ObjectRef{},
 		model.RowIdentity{Kind: model.IdentityNone})
+	ss.src.resultOrigins(ctx, ss.src.primary, stream, rows.FieldDescriptions()) // origins.go
 	stream.onClose = func() { endTx(tx) }
 	ss.open = stream
 	return &source.Result{Rows: stream, Affected: -1,
