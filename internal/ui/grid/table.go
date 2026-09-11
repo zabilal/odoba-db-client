@@ -335,12 +335,7 @@ func (g *TableGrid) background(id widget.TableCellID) color.Color {
 	return g.palette.ContentBackground
 }
 
-func (g *TableGrid) createHeader() fyne.CanvasObject {
-	if g.filterable {
-		return newColumnHeader(g)
-	}
-	return newHeaderCell(g)
-}
+func (g *TableGrid) createHeader() fyne.CanvasObject { return newColumnHeader(g) }
 
 func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 	switch h := o.(type) {
@@ -350,7 +345,10 @@ func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 			h.bg.Refresh()
 		}
 		g.updateTitle(g.ColumnAt(id.Col), h.title)
-		g.bindFilter(h.filter, g.ColumnAt(id.Col))
+		if h.filter != nil {
+			g.bindFilter(h.filter, g.ColumnAt(id.Col))
+		}
+		h.handle.col = g.ColumnAt(id.Col)
 	case *headerCell:
 		g.updateTitle(g.ColumnAt(id.Col), h)
 	}

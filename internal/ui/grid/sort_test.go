@@ -53,14 +53,14 @@ func TestHeaderShowsTheSortAndShiftClickAdds(t *testing.T) {
 	g := sortableGrid(t)
 	g.OnSort = func([]SortKey) {}
 	name := g.model.Columns()[1].Name
-	h := g.createHeader().(*headerCell)
+	h := g.createHeader().(*columnHeader).title
 	g.updateHeader(widget.TableCellID{Row: -1, Col: 1}, h)
 	h.Tapped(&fyne.PointEvent{})
 	g.updateHeader(widget.TableCellID{Row: -1, Col: 1}, h)
 	if h.text != name+" ↑" {
 		t.Errorf("header %q after a click", h.text)
 	}
-	other := g.createHeader().(*headerCell)
+	other := g.createHeader().(*columnHeader).title
 	g.updateHeader(widget.TableCellID{Row: -1, Col: 0}, other)
 	other.MouseDown(&desktop.MouseEvent{Button: desktop.MouseButtonPrimary, PointEvent: fyne.PointEvent{}, Modifier: fyne.KeyModifierShift})
 	other.Tapped(&fyne.PointEvent{})
@@ -75,7 +75,7 @@ func TestAnUnsortableGridIgnoresHeaderClicks(t *testing.T) {
 	g.Sortable = false
 	called := false
 	g.OnSort = func([]SortKey) { called = true }
-	h := g.createHeader().(*headerCell)
+	h := g.createHeader().(*columnHeader).title
 	g.updateHeader(widget.TableCellID{Row: -1, Col: 0}, h)
 	h.Tapped(&fyne.PointEvent{})
 	if called || len(g.Sorts()) != 0 {

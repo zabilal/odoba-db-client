@@ -31,8 +31,8 @@ func header(t *testing.T, g *TableGrid, col int) *columnHeader {
 
 func TestOnlyAFilterableGridHasFilterFields(t *testing.T) {
 	g := sortableGrid(t)
-	if _, ok := g.createHeader().(*headerCell); !ok {
-		t.Errorf("an unfilterable grid's header is %T", g.createHeader())
+	if h, ok := g.createHeader().(*columnHeader); !ok || h.filter != nil {
+		t.Errorf("an unfilterable grid's header should have no filter field")
 	}
 	g.SetFilterable(true)
 	if _, ok := g.createHeader().(*columnHeader); !ok {

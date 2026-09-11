@@ -65,6 +65,16 @@ func (t *gridTable) KeyUp(e *fyne.KeyEvent) {
 	}
 }
 
+// Dragged and DragEnd switch off Fyne's own column resizing, which drags the
+// gap between two titles and tells nobody the width it set. Each title
+// carries a handle that does the same and leaves the width with the grid
+// (resize.go).
+func (t *gridTable) Dragged(*fyne.DragEvent) {}
+func (t *gridTable) DragEnd()                {}
+
+// Cursor is the arrow; the resize cursor is the handle's.
+func (t *gridTable) Cursor() desktop.Cursor { return desktop.DefaultCursor }
+
 func (t *gridTable) FocusLost() {
 	t.shift = false
 	t.Table.FocusLost()
