@@ -376,6 +376,8 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: func() { s.onGrid((*grid.TableGrid).SelectAll) }},
 		{ID: cmdEditCell, Category: "Edit", Title: "Edit Cell", Keywords: []string{"change", "value", "type", "update"},
 			Enabled: s.canEditCell, Run: func() { s.onGrid(func(g *grid.TableGrid) { g.EditCell("") }) }},
+		{ID: cmdEditValue, Category: "Edit", Title: "Edit in Cell Viewer", Keywords: []string{"long", "json", "date", "calendar", "text", "value"},
+			Enabled: s.canEditCell, Run: s.editInViewer},
 		{ID: cmdSetNull, Category: "Edit", Title: "Set to NULL", Keywords: []string{"clear", "empty", "null", "value"},
 			Enabled: s.canSetNull, Run: s.setNull},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},

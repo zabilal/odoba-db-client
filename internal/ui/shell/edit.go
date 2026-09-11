@@ -58,6 +58,19 @@ func (s *Shell) setNull() {
 	s.showCount(t)
 }
 
+// editInViewer opens the active cell's value at length in the cell viewer,
+// opening the viewer if it is not open.
+func (s *Shell) editInViewer() {
+	t, g := s.activeTab(), s.activeGrid()
+	if t == nil || g == nil || t.holders[g] == nil {
+		return
+	}
+	if v := t.viewers[g]; v == nil || !v.shown() {
+		s.toggleViewerFor(t, g)
+	}
+	t.viewers[g].beginEdit()
+}
+
 // pendingText words how many rows have changes not yet committed.
 func pendingText(n int) string {
 	if n == 1 {

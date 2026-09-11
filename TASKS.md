@@ -23,18 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the rest of T2.3 (a calendar and a JSON editor of more than
-           one line, as the cell viewer's Edit), then T2.4, T2.5
-           (statement preview), T2.6 (commit), T2.8 (SQLite's rowid). What is open in Phase 1 waits on other work:
+NEXT TASK: T2.4 (insert, delete and duplicate rows; new rows shown in
+           the grid), then T2.5 (statement preview), T2.6 (commit), T2.7
+           (revert), T2.8 (SQLite's rowid). What is open in Phase 1 waits on other work:
            T1.58 on the MongoDB and Redis drivers, T1.14's scroll position
            on Fyne.
-[~] tasks: T1.14 and T2.3 partly done; each line says what is open.
+[~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — cells edited in place (most of T2.3,
-           ADR-0029). Before it: pending changes marked in the grid (T2.2,
+LAST DONE: 2026-09-11 — values edited at length in the cell viewer,
+           with a calendar, finishing T2.3 (ADR-0029 §9); cells edited in
+           place (e6eee52). Before it: pending changes marked in the grid (T2.2,
            ADR-0028), the pending changeset (T2.1, ADR-0027),
            query parameters with a prompt panel (T1.65, ADR-0026), a
            lost connection said on its row and
@@ -346,7 +347,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T2.1** Pending-changeset model with add/modify/delete states → FR-4.3 — *app.Pending: a table's edits, kept by each row's identity values so they follow it through a sort; only real changes count; a deleted row loses its edits; revert by cell, row or all; new rows kept apart; the contract's Changeset out, updates carrying only the columns changed and the key the row had. Refuses rows it cannot tell apart (ADR-0027)*
 - [x] **T2.2** Visual marking of changed cells/rows → FR-4.3, UX-9 — *grid.Changes, asked about a row, not its place: a changed cell shows its new value bold on its tint and says what it was; a deleted row struck through to the edge; a new row on its tint; a gutter (Fyne's header column) marks each changed row •, − or + and says it in words. On the selection a change's text takes the selection's colour, the deleted red failing AA on it. A table tab holds app.Pending when its rows have a key (ADR-0028)*
-- [~] **T2.3** In-place editors per type (text, number, date, bool, enum, JSON) → FR-4.1 — *in the cell: Return or typing opens an editor drawn in the cell; what is typed is read as the column's type (grid.Parse), and text left as it started is no edit; Return and Tab write and move, Escape gives up, leaving writes; true/false and an enum's labels are picked from a menu; Set to NULL; the footer counts the pending changes (ADR-0029). Open: a calendar for dates and a JSON editor of more than one line, planned as the cell viewer's Edit*
+- [x] **T2.3** In-place editors per type (text, number, date, bool, enum, JSON) → FR-4.1 — *in the cell: Return or typing opens an editor drawn in the cell; what is typed is read as the column's type (grid.Parse), and text left as it started is no edit; Return and Tab write and move, Escape gives up, leaving writes; true/false and an enum's labels are picked from a menu; Set to NULL; the footer counts the pending changes. The cell viewer's Edit: a long editor, JSON on lines, and a calendar for dates (ADR-0029)*
 - [ ] **T2.4** Insert / delete / duplicate row → FR-4.2
 - [ ] **T2.5** **Statement preview before commit, always** → FR-4.4, UX-6
 - [ ] **T2.6** Transactional commit; full rollback + offending row on failure → FR-4.5
