@@ -368,6 +368,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	g.OnPaste = func() { s.paste(editsFor(t, g)) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
+	g.OnLayout = func() { t.viewerFollow(g) } // a form shows the columns shown
 	r := &result{rs: rs, stmt: stmt, named: q.named, count: widget.NewLabel("Loading rows…")}
 	r.count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {

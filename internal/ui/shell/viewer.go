@@ -62,6 +62,7 @@ type cellViewer struct {
 func (t *tab) hold(g *grid.TableGrid, holder *fyne.Container) {
 	if t.holders == nil {
 		t.holders, t.viewers = map[*grid.TableGrid]*fyne.Container{}, map[*grid.TableGrid]*cellViewer{}
+		t.forms = map[*grid.TableGrid]*formView{}
 	}
 	t.holders[g] = holder
 }
@@ -78,6 +79,12 @@ func (s *Shell) toggleViewerFor(t *tab, g *grid.TableGrid) {
 	if holder == nil {
 		return
 	}
+	if f := t.forms[g]; f != nil && f.shown() {
+		f.hide() // the viewer takes the form's place, beside the grid
+		if v := t.viewers[g]; v != nil && v.shown() {
+			return // it was open under the form
+		}
+	}
 	v := t.viewers[g]
 	if v == nil {
 		v = s.newViewer(t.ctx, g, holder)
@@ -90,10 +97,14 @@ func (s *Shell) toggleViewerFor(t *tab, g *grid.TableGrid) {
 	v.show()
 }
 
-// viewerFollow brings a grid's viewer to the selected cell, if it is open.
+// viewerFollow brings a grid's viewer to the selected cell, and its form
+// view to the selected row, if they are open.
 func (t *tab) viewerFollow(g *grid.TableGrid) {
 	if v := t.viewers[g]; v != nil && v.shown() {
 		v.follow()
+	}
+	if f := t.forms[g]; f != nil && f.shown() {
+		f.follow()
 	}
 }
 
