@@ -96,6 +96,10 @@ type TableGrid struct {
 	// OnPaste is asked to paste the clipboard into the grid, by ⌘V on the
 	// focused grid.
 	OnPaste func()
+	// Labels, where set, gives a value of the model's column col the label
+	// of the row it refers to (FR-3.12, ADR-0042). It is asked for every cell
+	// drawn, so it answers from memory.
+	Labels func(col int, v any) (string, bool)
 	// OnSpace is asked to show or hide the cell viewer, by Space on the
 	// focused grid, as Quick Look does.
 	OnSpace func()
@@ -323,16 +327,18 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 	row, loaded, state := g.rowAt(id.Row)
 
 	var c Cell
+	var val any // the value drawn, for its label
 	changed := false
 	switch {
 	case !loaded:
 		c = PendingCell()
 	case mc < len(row):
-		c = Format(row[mc], col, g.loc)
+		val = row[mc]
+		c = Format(val, col, g.loc)
 		if state == model.RowModified {
 			if v, ok := g.changes.Value(row, mc); ok {
 				was := shown(c)
-				c, changed = Format(v, col, g.loc), true
+				val, c, changed = v, Format(v, col, g.loc), true
 				c.Hint = "Changed from " + was
 				if was == "" {
 					c.Hint = "Changed from an empty value"
@@ -341,6 +347,11 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 		}
 	default:
 		c = Cell{Text: "", Kind: CellNormal}
+	}
+	if g.Labels != nil && val != nil {
+		if l, ok := g.Labels(mc, val); ok {
+			c = withLabel(c, l)
+		}
 	}
 
 	fg := g.foreground(c.Kind)

@@ -31,6 +31,7 @@ func (s *Shell) describe(t *tab) {
 		s.d.Run(func() {
 			if tbl, ok := desc.(*model.Table); ok && err == nil && t.ctx.Err() == nil {
 				t.table, t.referrers = tbl, refs
+				s.startLabels(t) // labels.go
 				s.sync()
 			}
 		})
