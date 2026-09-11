@@ -398,6 +398,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canRevert, Run: s.revertRows},
 		{ID: cmdDiscardAll, Category: "Edit", Title: "Discard All Changes…", Keywords: []string{"revert", "undo", "throw away", "forget"},
 			Enabled: s.canReview, Run: s.discardAll},
+		{ID: cmdChooseKey, Category: "Edit", Title: "Choose a Key…", Keywords: []string{"key", "identity", "primary", "unique", "edit"},
+			Enabled: s.canChooseKey, Run: s.chooseKey},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
@@ -646,29 +648,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		})
 	}
 	t.model, t.grid, t.browse = m, g, bs
-	// A table whose rows can be told apart shows the edits made to it. They
-	// are kept by each row's key, so they stay through a sort or a filter. A
-	// read-only connection edits nothing (FR-1.8).
-	_, readOnly := s.envOf(t)
-	if p, err := app.NewPending(bs.Columns(), bs.Identity()); err == nil && !readOnly {
-		t.pending = p
-		g.SetChanges(p)
-		g.OnEdit = func(row model.Row, col int, v any) error {
-			if err := p.Set(row, col, v); err != nil {
-				return err
-			}
-			s.showCount(t)
-			return nil
-		}
-		g.OnEditAdded = func(i, col int, v any) error {
-			if err := p.SetAdded(i, col, v); err != nil {
-				return err
-			}
-			m.SetAdded(p.Added())
-			s.showCount(t)
-			return nil
-		}
-	}
+	s.startEditing(t, bs.Identity()) // key.go
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
 	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }

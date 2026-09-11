@@ -55,7 +55,7 @@ func TestIdentityKindMutability(t *testing.T) {
 	}
 	for _, k := range []IdentityKind{
 		IdentityPrimaryKey, IdentityUniqueIndex, IdentityRowID,
-		IdentityDocumentID, IdentityKeyName,
+		IdentityDocumentID, IdentityKeyName, IdentityChosen,
 	} {
 		if !k.Mutable() {
 			t.Errorf("identity kind %d should be mutable", k)
