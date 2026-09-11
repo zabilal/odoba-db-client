@@ -274,9 +274,8 @@ query language cannot be scripted. Writing a CREATE statement is T3.7's.
 
 ## Not decided here
 
-Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key
-bindings (T1.8), the task centre (T1.10) and a copyable error sheet (T1.11)
-are still open. When a connection has no saved password, the tab offers
+Dragging tabs (T1.4), custom key bindings (T1.8) and the task centre (T1.10)
+are still open; single-instance handling is ADR-0022's. When a connection has no saved password, the tab offers
 "Edit Connection…". A proper prompt with a "remember" choice is still to be
 designed. Nothing here has been looked at in a real window yet; the first
 `go run ./cmd/ikigai` is the first visual review.

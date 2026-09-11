@@ -23,14 +23,15 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
-           and custom bindings (T1.8).
-[~] tasks: T1.1, T1.4, T1.8, T1.14 partly done; each line says what is open.
+NEXT TASK: Phase 1's other [~]: dragging tabs (T1.4) and custom bindings (T1.8);
+           then the task centre (T1.10) and split panes (T1.5).
+[~] tasks: T1.4, T1.8, T1.14 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a performance gate for each of NFR-P1 to P6 (T1.73,
-           ADR-0021). Before it: coverage past 70% (T1.76), explorer badges
+LAST DONE: 2026-09-11 — one copy to a data directory: a second asks the first to
+           come forward and gives way (T1.1, ADR-0022). Before it: gates for
+           NFR-P1 to P6 (T1.73), coverage past 70% (T1.76), explorer badges
            (T1.45), exporting the selection (T1.71), T1.44's context actions,
            favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
            ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
@@ -217,7 +218,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 1.A Application shell
 
-- [~] **T1.1** App entry, window lifecycle, single-instance handling — *window, lifecycle, startup wiring done; single-instance open*
+- [x] **T1.1** App entry, window lifecycle, single-instance handling — *window, lifecycle, startup wiring done; one copy to a data directory: a second copy asks the first to come forward and gives way, a crashed copy's socket is taken over, and a copy with its own data runs beside it (ADR-0022)*
 - [x] **T1.2** Native menu bar → FR-15.5 — *built from the command registry; native on macOS (ADR-0011)*
 - [ ] **T1.3** Native file dialogs + notifications → FR-15.5
 - [~] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, reuse an open object's tab, move left and right, and pin, from the Window menu (ADR-0011 §8); dragging a tab is open: Fyne's tab bar cannot be dragged, so it needs one of our own*

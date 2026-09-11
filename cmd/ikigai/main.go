@@ -3,15 +3,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"runtime"
+	"sync/atomic"
 
+	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/logging"
+	"github.com/ikigai-db/ikigai-db/internal/single"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
@@ -59,6 +63,26 @@ func run() error {
 	log.Info("starting", "version", version, "os", runtime.GOOS, "portable", paths.Portable)
 	slog.SetDefault(log) // where panics.Recover writes a driver's stack (NFR-R1)
 
+	// One copy to a data directory (T1.1, ADR-0022). A second copy asks the
+	// first to come forward and gives way, before touching the settings or
+	// the database. If the check itself cannot be made, the app still
+	// starts: refusing to open would be worse than the risk it guards.
+	var shown atomic.Pointer[fyne.Window]
+	inst, err := single.Acquire(paths.Data, func() {
+		if w := shown.Load(); w != nil {
+			fyne.Do(func() { (*w).Show(); (*w).RequestFocus() })
+		}
+	})
+	switch {
+	case errors.Is(err, single.ErrRunning):
+		log.Info("another copy is running with this data; asked it to come forward")
+		return nil
+	case err != nil:
+		log.Warn("the single-copy check is unavailable", "err", err)
+	default:
+		defer inst.Release()
+	}
+
 	settings, notice, err := store.OpenSettings(paths.SettingsFile())
 	if err != nil {
 		return err
@@ -86,7 +110,9 @@ func run() error {
 		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Theme: uitheme.New(), Log: log,
 	})
 	s.ShowNotice(notice)
-	s.Window().ShowAndRun()
+	w := s.Window()
+	shown.Store(&w)
+	w.ShowAndRun()
 	log.Info("stopped")
 	return nil
 }
