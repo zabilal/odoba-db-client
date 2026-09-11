@@ -122,7 +122,7 @@ func (f fakeSource) Capabilities() capability.Capabilities {
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
 }
-func (fakeSource) Ping(context.Context) error { return nil }
+func (fakeSource) Ping(context.Context) error { return pingErr() }
 func (fakeSource) Close() error               { logClose("source"); return nil }
 func (fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
 	if ref.Name() == "boom" {

@@ -69,7 +69,8 @@ Retries back off from 1 s to 30 s with ±20% jitter, so a restarted server is
 not hit by every client at once. Healthy checks notify no one. `Check()` asks
 for an immediate re-check, which the UI uses when a query fails in a way that
 suggests the connection dropped, so the state changes now rather than at the
-next 30-second tick.
+next 30-second tick. Where the UI shows the state, and Reconnect Now, which
+is `Check()` on demand, are ADR-0011 §21's.
 
 ## Pasting a connection string
 

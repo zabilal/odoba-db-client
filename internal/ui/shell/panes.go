@@ -93,9 +93,9 @@ func (s *Shell) selectTab(t *tab) {
 
 // addTab opens a tab, selected, in the pane worked in.
 func (s *Shell) addTab(t *tab) {
-	if t.band == nil { // every tab says its environment (envband.go)
-		t.band = newEnvBand(s, t)
-		t.item.Content = container.NewBorder(t.band, nil, nil, nil, t.item.Content)
+	if t.band == nil { // every tab says its environment, and a lost connection (envband.go, lost.go)
+		t.band, t.lost = newEnvBand(s, t), newLostBand(s, t)
+		t.item.Content = container.NewBorder(container.NewVBox(t.band, t.lost), nil, nil, nil, t.item.Content)
 	}
 	s.showTabs(true)
 	s.tabs.Append(t.item)

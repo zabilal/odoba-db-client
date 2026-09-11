@@ -400,6 +400,29 @@ words are in the label colour on the environment's Subtle tint, which a
 test holds to AA in both appearances. The word on the pill already met AA
 against its fill.
 
+## 21. A lost connection is said where it is used
+
+The monitor (ADR-0010) saw a connection stop answering and tried it again,
+backing off, but only the status bar said so, and only for the connection
+in focus. A lost connection looked well in the explorer and on its tabs
+until a query failed (FR-1.15, T1.31). Now a change in a connection's
+health reaches the shell as it happens, and three things follow:
+
+- **The explorer row** says Disconnected, in words and in the error colour.
+  The row is drawn again without anything being loaded
+  (`Explorer.Redraw`).
+- **Each of its tabs** has a band below the environment's. It says when the
+  connection was lost and why, redacted, and that it is being tried
+  again, with how many attempts so far. A Reconnect Now button in the band
+  tries it at once, rather than at the next try.
+- **Reconnect Now** is also in the Connection menu and in a connection's
+  context menu, enabled while the connection in focus is lost.
+
+All of it goes when the connection comes back. A tab whose connection
+never opened has no band: it already says why it could not connect. The
+outage's time is the time it began, which does not move with each failed
+attempt.
+
 ## Not decided here
 
 Single-instance handling is ADR-0022's.
