@@ -136,8 +136,8 @@ rest, Copy for all of it, and a close button. It replaces Fyne's error
 dialog, which was modal, covered the data and could not be copied, against
 UX principle 4. A later error replaces an earlier one, and the band
 re-divides the window as it opens, as the WHERE bar does (ADR-0016). An
-error inside a panel that covers the window, such as Saved Queries, is said
-in that panel, where it can be seen. A test fails if the modal error dialog
+error about a side panel's list, such as a failed delete in Saved Queries,
+is said on the panel's own line, beside the list it concerns (§11). A test fails if the modal error dialog
 comes back. The band's tint is drawn, not themed, so an appearance change
 repaints it: the first version kept the dark tint under light-mode text,
 and could not be read.
@@ -205,6 +205,20 @@ connection left expanded without a tab comes back closed.
 
 Not yet restored: the grid's scroll position. Fyne's table keeps its offset
 to itself, so it can be set but not read.
+
+## 11. History and Saved Queries are panels, not dialogs
+
+Query History and Saved Queries open in a panel beside the tabs, not in a
+modal dialog over them (UX principle 4), so the data they are about stays in
+view. One panel is open at a time, in a split the person can widen, and a
+width given to one is kept when the other replaces it. Each command toggles
+its panel and the menu ticks the one open; Escape in the panel's field, or
+its Close button, closes it. The Close button has words, not a bare ×, so
+that it has a name to be read out. Opening an entry leaves the panel open,
+as an inspector stays, and the same entry can be chosen again. Confirming a
+delete and naming a query to save are still sheets: each asks one question
+and waits for the answer, which is what a sheet is for. The commands lost
+their trailing ellipsis, which on the Mac promises a question before acting.
 
 ## Not decided here
 

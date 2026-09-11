@@ -30,11 +30,10 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — the session comes back at the next start: tabs, pins,
-           selection, window and sidebar, and each table's filters, sort, WHERE
-           clause and column layout, and the explorer's open nodes (T1.14 in part,
-           ADR-0011 §10). Before it: autosave
-           (T1.15) and contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — Query History and Saved Queries open in a side panel
+           beside the tabs, not over them (T1.77, ADR-0011 §11). Before it:
+           the session comes back at the next start (T1.14, all but scroll
+           position), autosave (T1.15) and contained driver panics (T1.16).
 DOCKER:    Docker Desktop stopped answering for a while on 2026-09-11. Once it
            answered again, the tagged suites passed on 4a64299, which holds
            every commit made while it was down (c0d0769 onward).
@@ -315,7 +314,7 @@ DOCKER:    Docker Desktop stopped answering for a while on 2026-09-11. Once it
 - [x] **T1.74** E2E test: **J1** (zero to first result) — *internal/e2e: J1 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
-- [ ] **T1.77** Panels, not modals (UX principle 4): History and Saved Queries open as modal dialogs that hide the data; make them panels or popovers
+- [x] **T1.77** Panels, not modals (UX principle 4): History and Saved Queries open as modal dialogs that hide the data; make them panels or popovers — *both open in a side panel beside the tabs, one at a time, toggled by their commands with a tick in the menu; Escape or Close shuts it, and opening an entry leaves it open (ADR-0011 §11)*
 
 ### ✅ Phase 1 exit: J1 and J3 complete end to end on all three platforms
 

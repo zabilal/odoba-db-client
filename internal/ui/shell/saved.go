@@ -176,13 +176,12 @@ func (s *Shell) tabForSaved(id string) *tab {
 // savedPanel lists saved queries, filtered as you type.
 type savedPanel struct {
 	s      *Shell
-	filter *widget.Entry
+	filter *panelEntry
 	list   *widget.List
 	status *widget.Label
 	all    []localdb.SavedQuery
 	shown  []localdb.SavedQuery
 	loaded bool
-	dlg    *dialog.CustomDialog
 	now    func() time.Time
 }
 
@@ -190,7 +189,7 @@ func (s *Shell) showSaved() *savedPanel {
 	if s.d.Saved == nil {
 		return nil
 	}
-	p := &savedPanel{s: s, filter: widget.NewEntry(), status: widget.NewLabel(""), now: time.Now}
+	p := &savedPanel{s: s, filter: s.newPanelEntry(), status: widget.NewLabel(""), now: time.Now}
 	p.filter.SetPlaceHolder("Filter by name, folder or text")
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(
@@ -230,10 +229,7 @@ func (s *Shell) showSaved() *savedPanel {
 			p.open(p.shown[0])
 		}
 	}
-	p.dlg = dialog.NewCustom("Saved Queries", "Close", container.NewBorder(p.filter, p.status, nil, nil, p.list), s.win)
-	p.dlg.Resize(fyne.NewSize(640, 440))
-	p.dlg.Show()
-	s.win.Canvas().Focus(p.filter)
+	s.openPanel(panelSaved, "Saved Queries", container.NewBorder(p.filter, p.status, nil, nil, p.list), p.filter)
 	p.load()
 	return p
 }
@@ -295,8 +291,8 @@ func (p *savedPanel) describe(sq localdb.SavedQuery) string {
 // open reopens a saved query on its connection, or brings its tab forward
 // if it is already open.
 func (p *savedPanel) open(sq localdb.SavedQuery) {
+	defer p.list.UnselectAll() // the panel stays open, and the same query can be chosen again
 	if t := p.s.tabForSaved(sq.ID); t != nil {
-		p.dlg.Hide()
 		p.s.tabs.Select(t.item)
 		return
 	}
@@ -305,7 +301,6 @@ func (p *savedPanel) open(sq localdb.SavedQuery) {
 		p.list.UnselectAll()
 		return
 	}
-	p.dlg.Hide()
 	p.s.reopenSaved(sq.ConnectionID, sq)
 }
 
@@ -336,7 +331,7 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 				err := p.s.d.Saved.DeleteQuery(ctx, sq.ID)
 				p.s.d.Run(func() {
 					if err != nil {
-						// The panel covers the window, so its own line says it.
+						// Said on the panel's own line, beside the list it concerns.
 						p.status.SetText("Could not delete “" + sq.Name + "”: " + err.Error())
 						return
 					}
