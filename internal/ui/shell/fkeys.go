@@ -15,17 +15,22 @@ import (
 // refers to, filtered to the row with the cell's row's values in the key.
 
 // describe reads a table tab's description off the UI goroutine, for its
-// foreign keys. A source that cannot describe it leaves the tab without.
+// foreign keys, and the keys of other tables that refer to it (referring.go).
+// A source that cannot describe it leaves the tab without either.
 func (s *Shell) describe(t *tab) {
 	go func() {
 		live, err := s.d.WS.Connect(t.ctx, t.connID)
 		var desc any
+		var refs []model.Referrer
 		if err == nil {
 			desc, err = app.Describe(t.ctx, live.Source, t.ref)
 		}
+		if _, table := desc.(*model.Table); table && err == nil {
+			refs, _ = app.Referrers(t.ctx, live.Source, t.ref) // none, where they cannot be listed
+		}
 		s.d.Run(func() {
 			if tbl, ok := desc.(*model.Table); ok && err == nil && t.ctx.Err() == nil {
-				t.table = tbl
+				t.table, t.referrers = tbl, refs
 				s.sync()
 			}
 		})
@@ -55,23 +60,23 @@ func (s *Shell) reference() (t *tab, fk model.ForeignKey, vals []any, ok bool) {
 		if !slices.Contains(k.Columns, cols[mc].Name) || len(k.RefColumns) != len(k.Columns) {
 			continue
 		}
-		if vals := keyValues(t, c.Row, row, cols, k.Columns); vals != nil {
+		if vals := keyValues(cols, k.Columns, func(i int) any { return t.grid.CellValue(c.Row, row, i) }); vals != nil {
 			return t, k, vals, true
 		}
 	}
 	return t, fk, nil, false
 }
 
-// keyValues are a row's values in the named columns, or nil if one is
+// keyValues are the values value gives the named columns, or nil if one is
 // missing, NULL, or a new row's not given.
-func keyValues(t *tab, r int, row model.Row, cols []model.ColumnDef, names []string) []any {
+func keyValues(cols []model.ColumnDef, names []string, value func(col int) any) []any {
 	var vals []any
 	for _, name := range names {
 		i := slices.IndexFunc(cols, func(c model.ColumnDef) bool { return c.Name == name })
 		if i < 0 {
 			return nil
 		}
-		v := t.grid.CellValue(r, row, i)
+		v := value(i)
 		if _, given := v.(model.Default); v == nil || given {
 			return nil
 		}
@@ -96,11 +101,17 @@ func (s *Shell) goToReferenced() {
 	for i, v := range vals {
 		filters[fk.RefColumns[i]] = filterexpr.Pick([]any{v}, false)
 	}
-	ref := referenced(t.ref, fk)
-	key := view.NodeID(t.connID, ref)
+	s.openFiltered(t.connID, referenced(t.ref, fk), filters)
+}
+
+// openFiltered opens a table's tab, or brings it forward, filtered to the
+// rows with values in columns (filterTo): at once, or once a tab still
+// opening has its grid.
+func (s *Shell) openFiltered(connID string, ref model.ObjectRef, filters map[string]string) {
+	key := view.NodeID(connID, ref)
 	to := s.tabFor(key)
 	if to == nil {
-		s.OpenObject(t.connID, model.Node{Ref: ref, Label: fk.RefTable})
+		s.OpenObject(connID, model.Node{Ref: ref, Label: ref.Name()})
 		to = s.tabFor(key)
 	} else {
 		s.selectTab(to)

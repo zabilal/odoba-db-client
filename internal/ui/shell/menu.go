@@ -76,6 +76,7 @@ const (
 	cmdCellViewer     = "grid.viewer"
 	cmdFormView       = "grid.form"
 	cmdGoToReferenced = "data.goToReferenced"
+	cmdShowReferring  = "data.showReferring"
 	cmdHideColumn     = "grid.hideColumn"
 	cmdShowColumns    = "grid.showColumns"
 	cmdMoveLeft       = "grid.moveLeft"
@@ -136,7 +137,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), item(cmdFormView), item(cmdGoToReferenced),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), item(cmdFormView), item(cmdGoToReferenced), item(cmdShowReferring),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),

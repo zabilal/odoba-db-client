@@ -137,6 +137,13 @@ type ForeignKey struct {
 	OnUpdate ReferentialAction
 }
 
+// Referrer is a foreign key of another table that refers to a table: the
+// table the key is in, and the key (FR-3.11).
+type Referrer struct {
+	From ObjectRef
+	Key  ForeignKey
+}
+
 // View is a view or materialized view.
 type View struct {
 	Name         string

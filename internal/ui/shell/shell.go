@@ -182,6 +182,8 @@ type tab struct {
 	// is attached: what a jump asked of a tab still opening.
 	table *model.Table
 	then  func()
+	// referrers are the keys of other tables that refer to it (referring.go).
+	referrers []model.Referrer
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -355,6 +357,8 @@ func (s *Shell) registerCommands() {
 			Run:     s.toggleForm},
 		{ID: cmdGoToReferenced, Category: "View", Title: "Go to Referenced Row", Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
 			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
+		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
+			Enabled: s.canShowReferring, Run: s.showReferring},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
 			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
 		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
