@@ -187,6 +187,10 @@ type tab struct {
 	// labels are its keys' values' labels (labels.go), from the moment its
 	// grid is attached.
 	labels *valueLabels
+	// center holds a table's body, or it and its detail panel in a split
+	// (detail.go); detail is that panel, once shown.
+	center *fyne.Container
+	detail *detailPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -362,6 +366,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
 		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
 			Enabled: s.canShowReferring, Run: s.showReferring},
+		{ID: cmdDetail, Category: "View", Title: "Detail Rows", Keywords: []string{"master", "detail", "children", "child rows", "nested", "related"},
+			Enabled: s.canShowDetail, Run: s.toggleDetail},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
 			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
 		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
@@ -620,7 +626,8 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 	})
 	t.ed.review.Hide()
 	foot := container.NewBorder(nil, nil, nil, t.ed.review, t.footer)
-	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, foot, nil, nil, t.body))
+	t.center = container.NewStack(t.body)
+	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, foot, nil, nil, t.center))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()

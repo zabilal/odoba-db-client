@@ -2,7 +2,6 @@ package shell
 
 import (
 	"slices"
-	"strings"
 
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
@@ -53,8 +52,7 @@ func (s *Shell) referrals() (*tab, []referral) {
 		for i, v := range vals {
 			filters[rf.Key.Columns[i]] = filterexpr.Pick([]any{v}, false)
 		}
-		out = append(out, referral{label: rf.From.Name() + ", by " + strings.Join(rf.Key.Columns, ", "),
-			ref: rf.From, filters: filters})
+		out = append(out, referral{label: referrerLabel(rf), ref: rf.From, filters: filters}) // detail.go
 	}
 	return t, out
 }

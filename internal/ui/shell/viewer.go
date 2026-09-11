@@ -98,13 +98,16 @@ func (s *Shell) toggleViewerFor(t *tab, g *grid.TableGrid) {
 }
 
 // viewerFollow brings a grid's viewer to the selected cell, and its form
-// view to the selected row, if they are open.
+// view and a table's detail panel to the selected row, if they are open.
 func (t *tab) viewerFollow(g *grid.TableGrid) {
 	if v := t.viewers[g]; v != nil && v.shown() {
 		v.follow()
 	}
 	if f := t.forms[g]; f != nil && f.shown() {
 		f.follow()
+	}
+	if d := t.detail; d != nil && g == t.grid {
+		d.follow() // detail.go
 	}
 }
 
