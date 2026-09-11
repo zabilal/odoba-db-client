@@ -36,6 +36,7 @@ type Settings struct {
 	Editor      EditorSettings    `json:"editor"`
 	Folders     []Folder          `json:"folders,omitempty"`
 	Connections []SavedConnection `json:"connections"`
+	Favorites   []Favorite        `json:"favorites,omitempty"`
 }
 
 // EditorSettings are query-editor preferences.
@@ -48,6 +49,20 @@ type Folder struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`
+}
+
+// Favorite is an object pinned above the explorer's tree (FR-2.6, ADR-0019):
+// a connection, the object's kind and path on it, and its name.
+type Favorite struct {
+	ConnectionID string   `json:"connection"`
+	Kind         string   `json:"kind"`
+	Path         []string `json:"path"`
+	Label        string   `json:"label"`
+}
+
+// Key is what makes a favourite one of a kind: its connection and object.
+func (f Favorite) Key() string {
+	return f.ConnectionID + "\x00" + f.Kind + "\x00" + strings.Join(f.Path, "\x00")
 }
 
 // SavedConnection is a connection's settings as persisted.
@@ -290,6 +305,22 @@ func validate(s Settings) error {
 				return fmt.Errorf("store: %s: %q is not a secret name", where, n)
 			}
 		}
+	}
+
+	// A favourite points into a connection this file holds, once: deleting
+	// a connection has to delete its favourites in the same write.
+	seen := map[string]bool{}
+	for i, f := range s.Favorites {
+		where := fmt.Sprintf("favourite %d (%q)", i+1, f.Label)
+		switch {
+		case !ids[f.ConnectionID]:
+			return fmt.Errorf("store: %s is on connection %q, which does not exist", where, f.ConnectionID)
+		case f.Kind == "" || len(f.Path) == 0:
+			return fmt.Errorf("store: %s names no object", where)
+		case seen[f.Key()]:
+			return fmt.Errorf("store: %s is listed twice", where)
+		}
+		seen[f.Key()] = true
 	}
 	return nil
 }
