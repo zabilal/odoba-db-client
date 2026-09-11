@@ -23,17 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 2, from changeset editing (T2.1 onwards). What is open
-           in Phase 1 waits on other work: T1.58 on the MongoDB and Redis
-           drivers, T1.14's scroll position on Fyne's table reporting its
-           offset.
+NEXT TASK: T2.2 (pending changes marked in the grid), then T2.3 (cell
+           editors), T2.4, T2.5 (statement preview), T2.6 (commit), T2.8
+           (SQLite's rowid). What is open in Phase 1 waits on other work:
+           T1.58 on the MongoDB and Redis drivers, T1.14's scroll position
+           on Fyne.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — query parameters with a prompt panel (T1.65,
-           ADR-0026). Before it: a lost connection said on its row and
+LAST DONE: 2026-09-11 — the pending changeset (T2.1, ADR-0027). Before
+           it: query parameters with a prompt panel (T1.65, ADR-0026), a
+           lost connection said on its row and
            tabs, with Reconnect Now (T1.31, ADR-0011 §21), connection
            folders (T1.27, ADR-0025), the environment on every tab (T1.28,
            ADR-0011 §20), object classes from the model (T1.42,
@@ -340,14 +342,14 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.A Changeset editing
 
-- [ ] **T2.1** Pending-changeset model with add/modify/delete states → FR-4.3
+- [x] **T2.1** Pending-changeset model with add/modify/delete states → FR-4.3 — *app.Pending: a table's edits, kept by each row's identity values so they follow it through a sort; only real changes count; a deleted row loses its edits; revert by cell, row or all; new rows kept apart; the contract's Changeset out, updates carrying only the columns changed and the key the row had. Refuses rows it cannot tell apart (ADR-0027)*
 - [ ] **T2.2** Visual marking of changed cells/rows → FR-4.3, UX-9
 - [ ] **T2.3** In-place editors per type (text, number, date, bool, enum, JSON) → FR-4.1
 - [ ] **T2.4** Insert / delete / duplicate row → FR-4.2
 - [ ] **T2.5** **Statement preview before commit, always** → FR-4.4, UX-6
 - [ ] **T2.6** Transactional commit; full rollback + offending row on failure → FR-4.5
 - [ ] **T2.7** Revert cell / row / entire changeset → FR-4.6
-- [ ] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7
+- [ ] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7 — *found in T2.1: an ordinary SQLite table's identity is its rowid, which its browse does not return, so app.Pending refuses it*
 - [ ] **T2.9** Editable query results when mapping to one updatable table → FR-4.8
 - [ ] **T2.10** Paste TSV/CSV block into the grid → FR-4.10
 - [ ] **T2.11** Bulk set-column-value across selection → FR-4.11

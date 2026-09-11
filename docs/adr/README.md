@@ -31,3 +31,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0024](0024-object-classes.md) | Object classes are the model's | Accepted |
 | [0025](0025-connection-folders.md) | Connection folders | Accepted |
 | [0026](0026-query-parameters.md) | Query parameters | Accepted |
+| [0027](0027-pending-changes.md) | Pending changes | Accepted |
