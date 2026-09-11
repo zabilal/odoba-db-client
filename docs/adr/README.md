@@ -23,3 +23,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0016](0016-grid-interaction.md) | The grid's interaction model | Accepted |
 | [0017](0017-driver-panics-contained.md) | A driver's panic is contained | Accepted |
 | [0018](0018-explorer-filter.md) | The explorer's filter matches paths, over what is loaded | Accepted |
+| [0019](0019-favourites.md) | Favourites live in the settings file | Accepted |

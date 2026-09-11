@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -205,6 +206,7 @@ func (c *Connections) Delete(id string) error {
 			return ErrNotFound
 		}
 		s.Connections = append(s.Connections[:i], s.Connections[i+1:]...)
+		s.Favorites = slices.DeleteFunc(s.Favorites, func(f store.Favorite) bool { return f.ConnectionID == id })
 		return nil
 	}); err != nil {
 		return err

@@ -87,6 +87,8 @@ type Shell struct {
 	// beside the open side panel (panel.go).
 	work, right *fyne.Container
 	panel       *sidePanel
+	// favBox is the sidebar's favourites section, and favRows its rows.
+	favBox, favRows *fyne.Container
 
 	menu      *fyne.MainMenu
 	menuItems map[string]*fyne.MenuItem
@@ -268,6 +270,9 @@ func (s *Shell) registerCommands() {
 					s.disconnect(id)
 				}
 			}},
+		{ID: cmdFavorite, Category: "Explorer", Title: "Favourite", Keywords: []string{"pin", "bookmark", "star", "favorite"},
+			Shortcut: sc("D", commands.ModShortcut), Enabled: func() bool { _, ok := s.selectedFavorite(); return ok },
+			Run: s.toggleFavorite},
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},
@@ -387,7 +392,7 @@ func (s *Shell) buildSidebar() fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("Connections", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	add := widget.NewButtonWithIcon("New", fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
 	add.Importance = widget.LowImportance
-	return container.NewBorder(container.NewBorder(nil, nil, nil, add, title), nil, nil, nil, s.Explorer.View())
+	return container.NewBorder(container.NewVBox(container.NewBorder(nil, nil, nil, add, title), s.newFavorites()), nil, nil, nil, s.Explorer.View())
 }
 
 func (s *Shell) emptyState() fyne.CanvasObject {
@@ -796,6 +801,7 @@ func (s *Shell) deleteConnection(id string) {
 		s.showError(err)
 		return
 	}
+	s.refreshFavorites() // its favourites went with it
 	s.Explorer.Refresh(explorer.RootID)
 	s.sync()
 }
@@ -824,6 +830,7 @@ func (s *Shell) release(id string, keep bool) {
 // edited connection that is open is closed: its session still uses the old
 // settings, and quietly keeping it would show data from the wrong place.
 func (s *Shell) connectionSaved(id string, edited bool) {
+	defer s.refreshFavorites() // a renamed connection renames its favourites' rows
 	if _, open := s.d.WS.Get(id); edited && open {
 		s.disconnect(id)
 	}
@@ -863,6 +870,9 @@ func (s *Shell) checked(id string) bool {
 		return s.panelIs(panelSaved)
 	case cmdShortcuts:
 		return s.panelIs(panelShortcuts)
+	case cmdFavorite:
+		f, ok := s.selectedFavorite()
+		return ok && s.isFavorite(f)
 	}
 	if name, ok := strings.CutPrefix(id, accentPrefix); ok {
 		return s.d.Theme.Accent.String() == name
