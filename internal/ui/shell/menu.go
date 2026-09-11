@@ -53,6 +53,7 @@ const (
 	cmdFilterValues   = "data.filterValues"
 	cmdWhere          = "data.where"
 	cmdCopyCells      = "grid.copy"
+	cmdPasteCells     = "grid.paste"
 	cmdSelectRow      = "grid.selectRow"
 	cmdSelectColumn   = "grid.selectColumn"
 	cmdSelectAllCells = "grid.selectAll"
@@ -124,7 +125,7 @@ var menuBar = []struct {
 	}},
 	{"Edit", []menuEntry{
 		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev), separator,
-		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
+		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
 		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
 		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,

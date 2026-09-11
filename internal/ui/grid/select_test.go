@@ -65,10 +65,11 @@ func TestShiftArrowsStretchTheSelection(t *testing.T) {
 	}
 }
 
-func TestTheFocusedGridAnswersCopyAndSelectAll(t *testing.T) {
+func TestTheFocusedGridAnswersCopyPasteAndSelectAll(t *testing.T) {
 	g := selectingGrid(t)
-	copied := 0
+	copied, pasted := 0, 0
 	g.OnCopy = func() { copied++ }
+	g.OnPaste = func() { pasted++ }
 	g.table.TypedShortcut(&fyne.ShortcutSelectAll{})
 	last := len(g.model.Columns()) - 1
 	if s := g.Selection(); !s.Contains(99, 0) || !s.Contains(0, last) || s.Contains(0, last+1) {
@@ -77,6 +78,10 @@ func TestTheFocusedGridAnswersCopyAndSelectAll(t *testing.T) {
 	g.table.TypedShortcut(&fyne.ShortcutCopy{})
 	if copied != 1 {
 		t.Errorf("⌘C asked to copy %d times, want once", copied)
+	}
+	g.table.TypedShortcut(&fyne.ShortcutPaste{})
+	if pasted != 1 || copied != 1 {
+		t.Errorf("⌘V asked to paste %d times, want once", pasted)
 	}
 }
 
