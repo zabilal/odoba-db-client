@@ -105,6 +105,7 @@ var menuBar = []struct {
 		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
+		submenu("Accent Colour", accentIDs()...),
 	}},
 	{"Connection", []menuEntry{
 		item(cmdOpen), separator,

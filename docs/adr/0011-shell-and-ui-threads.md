@@ -138,7 +138,9 @@ UX principle 4. A later error replaces an earlier one, and the band
 re-divides the window as it opens, as the WHERE bar does (ADR-0016). An
 error inside a panel that covers the window, such as Saved Queries, is said
 in that panel, where it can be seen. A test fails if the modal error dialog
-comes back.
+comes back. The band's tint is drawn, not themed, so an appearance change
+repaints it: the first version kept the dark tint under light-mode text,
+and could not be read.
 
 ## Not decided here
 

@@ -137,6 +137,7 @@ func New(a fyne.App, d Deps) *Shell {
 	}
 	if d.Settings != nil {
 		d.Theme.Appearance = appearanceNamed(d.Settings.Get().Appearance)
+		d.Theme.Accent = uitheme.AccentNamed(d.Settings.Get().Accent)
 	}
 	a.Settings().SetTheme(d.Theme)
 
@@ -205,7 +206,7 @@ func sc(key string, mods commands.Mod) commands.Shortcut {
 
 func (s *Shell) registerCommands() {
 	hasConn := func() bool { _, ok := s.selectedConn(); return ok }
-	for _, c := range []commands.Command{
+	for _, c := range append([]commands.Command{
 		{ID: cmdPalette, Category: "View", Title: "Command Palette…", Keywords: []string{"actions", "commands"},
 			Shortcut: sc("K", commands.ModShortcut), Run: func() { s.pal.Show() }},
 		{ID: cmdConnNew, Category: "Connection", Title: "New Connection…", Keywords: []string{"add", "server", "database"},
@@ -328,7 +329,7 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
 		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
-	} {
+	}, s.accentCommands()...) {
 		s.reg.MustRegister(c)
 	}
 }
@@ -772,6 +773,9 @@ func (s *Shell) checked(id string) bool {
 	case cmdAppearDark:
 		return s.d.Theme.Appearance == uitheme.AppearanceDark
 	}
+	if name, ok := strings.CutPrefix(id, accentPrefix); ok {
+		return s.d.Theme.Accent.String() == name
+	}
 	return false
 }
 
@@ -782,6 +786,9 @@ func (s *Shell) colours() uitheme.Palette {
 // recolour repaints what caches colours: open grids draw from a palette
 // captured when they were built.
 func (s *Shell) recolour() {
+	if s.errors != nil {
+		s.errors.repaint(s.colours())
+	}
 	p := s.colours()
 	for _, t := range s.open {
 		if t.grid != nil {
