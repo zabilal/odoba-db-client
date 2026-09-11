@@ -1,6 +1,12 @@
 package shell
 
-import "github.com/ikigai-db/ikigai-db/internal/ui/grid"
+import (
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
+)
 
 // Editing a grid's cells and rows (FR-4.1, FR-4.2, ADR-0029, ADR-0030).
 // The grid edits in place and hands each value to its pending changes
@@ -26,42 +32,37 @@ func (s *Shell) canChangeRows() bool {
 	return s.canInsert() && !s.activeEdits().grid.Selection().Empty()
 }
 
-// setNull sets every selected cell of the rows loaded, and of the new rows,
-// to NULL. A column that cannot hold NULL is left as it is, and it is said;
-// so is a row to be deleted.
+// setNull sets every selected cell to NULL, in the rows not loaded too
+// (ADR-0038). A column that cannot hold NULL is left as it is, and it is
+// said; so is a row to be deleted.
 func (s *Shell) setNull() {
+	if s.canChangeRows() {
+		s.fill(s.activeEdits(), null, nulling)
+	}
+}
+
+// setValue asks for one value, and writes it into every selected cell as
+// each column reads it (FR-4.11, ADR-0038).
+func (s *Shell) setValue() {
 	if !s.canChangeRows() {
 		return
 	}
 	e := s.activeEdits()
-	g, cols := e.grid, e.model.Columns()
-	sel := g.Selection()
-	problem := ""
-	for _, vc := range sel.Columns() {
-		mc := g.ColumnAt(vc)
-		if mc < 0 || mc >= len(cols) {
-			continue
-		}
-		if !cols[mc].Type.Nullable {
-			problem = cols[mc].Name + " cannot be NULL"
-			continue
-		}
-		for _, r := range selectedRows(e) {
-			if !sel.Contains(r, vc) {
-				continue
+	entry := widget.NewEntry()
+	entry.SetPlaceHolder("Empty is NULL, or empty text in a column of text")
+	note := widget.NewLabel("Written into each selected cell, read as its column's type. " +
+		"Nothing reaches the server until the changes are committed.")
+	note.Wrapping = fyne.TextWrapWord
+	d := dialog.NewForm("Set Value", "Set", "Cancel",
+		[]*widget.FormItem{widget.NewFormItem("Value", entry), widget.NewFormItem("", note)},
+		func(ok bool) {
+			if ok {
+				s.fill(e, parsed(entry.Text), setting)
 			}
-			row, _ := e.model.Row(e.ctx, int64(r))
-			if row == nil {
-				continue
-			}
-			if err := g.SetValue(r, row, mc, nil); err != nil && problem == "" {
-				problem = err.Error()
-			}
-		}
-	}
-	e.say(problem)
-	g.Table.Refresh()
-	e.show()
+		}, s.win)
+	d.Resize(fyne.NewSize(440, 220))
+	d.Show()
+	s.win.Canvas().Focus(entry)
 }
 
 // selectedRows lists, in order, the grid's rows with a cell selected, among

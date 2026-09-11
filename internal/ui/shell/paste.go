@@ -3,14 +3,16 @@ package shell
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
-// Pasting a block of cells (FR-4.10, ADR-0037). The clipboard's text is read
-// as rows of cells (grid.ParseBlock) and written from the active cell,
+// Pasting a block of cells (FR-4.10, ADR-0037), and one value written into
+// every selected cell (FR-4.11, ADR-0038). The clipboard's text is read as
+// rows of cells (grid.ParseBlock) and written from the active cell,
 // rightwards over the columns as shown, each cell as its column's type, as
 // pending changes: nothing reaches the server before Commit.
 
@@ -19,6 +21,16 @@ import (
 var (
 	errPastLastColumn = errors.New("past the last column")
 	errPastLastRow    = errors.New("past the last row")
+)
+
+// doing is what writes cells, for what it says: its name, what it says while
+// it reads rows, and what it did.
+type doing struct{ name, ing, ed string }
+
+var (
+	pasting = doing{"Paste", "Pasting…", "Pasted"}
+	setting = doing{"Set Value", "Setting…", "Set"}
+	nulling = doing{"Set to NULL", "Setting…", "Set"}
 )
 
 // canPaste reports whether the grid in front takes a paste: its rows are
@@ -45,12 +57,12 @@ func (s *Shell) paste(e *edits) {
 		e.say("Nothing to paste: the clipboard holds no text")
 		e.show()
 	case len(block) == 1 && len(block[0]) == 1 && !oneCell(sel):
-		e.sayPasted(fill(e, block[0][0]))
+		s.fill(e, parsed(block[0][0]), pasting)
 	case int64(len(block)) > copyLimit:
 		e.say(fmt.Sprintf("Paste takes up to %s rows, and the clipboard has more.", group(copyLimit)))
 		e.show()
 	case at.Row < e.model.Added():
-		e.sayPasted(pasteNew(e, at, block))
+		e.sayDone(pasting, pasteNew(e, at, block))
 	default:
 		s.pasteRead(e, at, block)
 	}
@@ -62,19 +74,48 @@ func oneCell(sel grid.Selection) bool {
 	return first == last && len(sel.Columns()) == 1
 }
 
-// fill writes one value into every selected cell of the new rows and the
-// rows loaded, as Set to NULL writes NULL.
-func fill(e *edits, text string) pasted {
+// fill writes one value into every selected cell: what each column makes of
+// it. It reads the rows the selection reaches off the UI goroutine, those
+// not loaded too, so that a whole column is filled and not only the rows
+// drawn; up to as many rows as Copy takes (ADR-0038).
+func (s *Shell) fill(e *edits, value func(model.ColumnDef) (any, error), d doing) {
+	sel := e.grid.Selection()
+	first, last := sel.Rows()
+	to := int64(last) + 1
+	if last == grid.End || to > int64(first)+copyLimit {
+		to = int64(first) + copyLimit + 1 // one past the limit, to know it was passed
+	}
+	e.say(d.ing)
+	e.show()
+	m := e.model
+	go func() {
+		rows, err := m.Read(e.ctx, int64(first), to)
+		s.d.Run(func() {
+			switch {
+			case e.ctx.Err() != nil:
+			case err != nil:
+				e.say("Could not read the rows: " + err.Error())
+				e.show()
+			case int64(len(rows)) > copyLimit:
+				e.say(fmt.Sprintf("%s takes up to %s rows, and the selection has more.", d.name, group(copyLimit)))
+				e.show()
+			default:
+				e.sayDone(d, fillRows(e, sel, first, rows, value))
+			}
+		})
+	}()
+}
+
+// fillRows writes a value into the cells of sel among rows, which were read
+// from grid row first on.
+func fillRows(e *edits, sel grid.Selection, first int, rows []model.Row, value func(model.ColumnDef) (any, error)) pasted {
 	g, cols := e.grid, e.model.Columns()
-	sel := g.Selection()
 	var p pasted
 	for _, vc := range sel.Columns() {
-		for _, r := range selectedRows(e) {
-			if !sel.Contains(r, vc) {
-				continue
-			}
-			if row, _ := e.model.Row(e.ctx, int64(r)); row != nil {
-				p.write(cols, g.ColumnAt(vc), text, setter(e, r, row))
+		mc := g.ColumnAt(vc)
+		for i, row := range rows {
+			if r := first + i; sel.Contains(r, vc) {
+				p.write(cols, mc, value, setter(e, r, row))
 			}
 		}
 	}
@@ -99,7 +140,7 @@ func pasteNew(e *edits, at grid.CellID, block [][]string) pasted {
 				p.count(1, nil)
 				continue
 			}
-			p.write(cols, mc, text, setter(e, at.Row+i, nil))
+			p.write(cols, mc, parsed(text), setter(e, at.Row+i, nil))
 		}
 	}
 	selectBlock(e.grid, at, len(block), width(block))
@@ -110,7 +151,7 @@ func pasteNew(e *edits, at grid.CellID, block [][]string) pasted {
 // reading those not loaded off the UI goroutine. What reaches past the last
 // row is not pasted: rows are added only among the new ones.
 func (s *Shell) pasteRead(e *edits, at grid.CellID, block [][]string) {
-	e.say("Pasting…")
+	e.say(pasting.ing)
 	e.show()
 	m := e.model
 	go func() {
@@ -122,7 +163,7 @@ func (s *Shell) pasteRead(e *edits, at grid.CellID, block [][]string) {
 				e.say("Could not paste: " + err.Error())
 				e.show()
 			default:
-				e.sayPasted(pasteRows(e, at, block, rows))
+				e.sayDone(pasting, pasteRows(e, at, block, rows))
 			}
 		})
 	}()
@@ -140,7 +181,7 @@ func pasteRows(e *edits, at grid.CellID, block [][]string, rows []model.Row) pas
 		row := rows[i]
 		set := func(col int, v any) error { return e.pending.Set(row, col, v) }
 		for j, text := range line {
-			p.write(cols, e.grid.ColumnAt(at.Col+j), text, set)
+			p.write(cols, e.grid.ColumnAt(at.Col+j), parsed(text), set)
 		}
 	}
 	selectBlock(e.grid, at, min(len(block), len(rows)), width(block))
@@ -156,19 +197,19 @@ func setter(e *edits, r int, row model.Row) func(col int, v any) error {
 	return func(col int, v any) error { return e.pending.Set(row, col, v) }
 }
 
-// pasted counts the cells a paste reached and those it wrote, and keeps why
-// the first it did not write was not.
+// pasted counts the cells a paste or a fill reached and those it wrote, and
+// keeps why the first it did not write was not.
 type pasted struct {
 	cells, written int
 	why            error
 }
 
-// write writes text into model column mc, as the column's type, through
-// set. mc is -1 past the last column shown.
-func (p *pasted) write(cols []model.ColumnDef, mc int, text string, set func(int, any) error) {
+// write writes the value model column mc makes of it, through set. mc is -1
+// past the last column shown.
+func (p *pasted) write(cols []model.ColumnDef, mc int, value func(model.ColumnDef) (any, error), set func(int, any) error) {
 	err := errPastLastColumn
 	if mc >= 0 && mc < len(cols) {
-		err = pasteCell(cols[mc], mc, text, set)
+		err = writeCell(cols[mc], mc, value, set)
 	}
 	p.count(1, err)
 }
@@ -184,13 +225,10 @@ func (p *pasted) count(n int, err error) {
 	}
 }
 
-// pasteCell reads text as a column's type, as typing it would be, and
-// writes it.
-func pasteCell(col model.ColumnDef, mc int, text string, set func(int, any) error) error {
-	if !grid.Editable(col) {
-		return fmt.Errorf("%s: its values are not typed", col.Name)
-	}
-	v, err := grid.Parse(text, col, time.Local)
+// writeCell writes the value a column makes of it into the column, through
+// set, and names the column in what goes wrong.
+func writeCell(col model.ColumnDef, mc int, value func(model.ColumnDef) (any, error), set func(int, any) error) error {
+	v, err := value(col)
 	if err == nil {
 		err = set(mc, v)
 	}
@@ -198,6 +236,24 @@ func pasteCell(col model.ColumnDef, mc int, text string, set func(int, any) erro
 		return fmt.Errorf("%s: %w", col.Name, err)
 	}
 	return nil
+}
+
+// parsed is text as each column reads it, as typing it would be.
+func parsed(text string) func(model.ColumnDef) (any, error) {
+	return func(col model.ColumnDef) (any, error) {
+		if !grid.Editable(col) {
+			return nil, errors.New("its values are not typed")
+		}
+		return grid.Parse(text, col, time.Local)
+	}
+}
+
+// null is NULL, in a column that can hold it.
+func null(col model.ColumnDef) (any, error) {
+	if !col.Type.Nullable {
+		return nil, errors.New("cannot be NULL")
+	}
+	return nil, nil
 }
 
 // width is the most cells any row of a block has.
@@ -219,13 +275,14 @@ func selectBlock(g *grid.TableGrid, at grid.CellID, rows, cols int) {
 	g.Select(at, grid.CellID{Row: at.Row + rows - 1, Col: last})
 }
 
-// sayPasted says how many cells a paste wrote, and why the first it did not
-// write was not, and shows the changes.
-func (e *edits) sayPasted(p pasted) {
+// sayDone says how many cells d wrote, and why the first it did not write
+// was not, and shows the changes.
+func (e *edits) sayDone(d doing, p pasted) {
 	if p.written == p.cells {
-		e.say("Pasted " + nounCount(p.cells, "cell"))
+		e.say(d.ed + " " + nounCount(p.cells, "cell"))
 	} else {
-		e.say(fmt.Sprintf("Pasted %s of %s; the first not pasted: %v", group(int64(p.written)), nounCount(p.cells, "cell"), p.why))
+		e.say(fmt.Sprintf("%s %s of %s; the first not %s: %v", d.ed, group(int64(p.written)),
+			nounCount(p.cells, "cell"), strings.ToLower(d.ed), p.why))
 	}
 	e.showAdded()
 }

@@ -382,6 +382,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canEditCell, Run: s.editInViewer},
 		{ID: cmdSetNull, Category: "Edit", Title: "Set to NULL", Keywords: []string{"clear", "empty", "null", "value"},
 			Enabled: s.canChangeRows, Run: s.setNull},
+		{ID: cmdSetValue, Category: "Edit", Title: "Set Value…", Keywords: []string{"bulk", "fill", "column", "many", "same", "update"},
+			Enabled: s.canChangeRows, Run: s.setValue},
 		{ID: cmdInsertRow, Category: "Edit", Title: "Insert Row", Keywords: []string{"add", "new", "row", "record"},
 			Enabled: s.canInsert, Run: s.insertRow},
 		{ID: cmdDuplicateRows, Category: "Edit", Title: "Duplicate Rows", Keywords: []string{"copy", "clone", "row", "record"},
