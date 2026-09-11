@@ -146,6 +146,9 @@ type tab struct {
 	model  *grid.Model // nil until the object opens
 	grid   *grid.TableGrid
 	browse *app.BrowseSource
+	// pending are the table's edits not yet written (FR-4.3). It is nil
+	// where the rows cannot be told apart, which are never edited (FR-4.7).
+	pending *app.Pending
 	// browseSeq numbers re-browses (a sort or a filter), so only the latest
 	// is applied. want is what the latest asked for, so a sort made while a
 	// filter is on its way keeps it. applied and filtered are the sort and
@@ -612,6 +615,12 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		})
 	}
 	t.model, t.grid, t.browse = m, g, bs
+	// A table whose rows can be told apart shows the edits made to it. They
+	// are kept by each row's key, so they stay through a sort or a filter.
+	if p, err := app.NewPending(bs.Columns(), bs.Identity()); err == nil {
+		t.pending = p
+		g.SetChanges(p)
+	}
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
 	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }

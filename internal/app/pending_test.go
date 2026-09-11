@@ -54,7 +54,7 @@ func TestAnEditIsTheColumnChangedAndNoMore(t *testing.T) {
 	if err := p.Set(ann, 1, "anne"); err != nil {
 		t.Fatal(err)
 	}
-	if p.State(ann) != RowModified || p.Len() != 1 {
+	if p.State(ann) != model.RowModified || p.Len() != 1 {
 		t.Fatalf("state %v, %d changes", p.State(ann), p.Len())
 	}
 	if v, ok := p.Value(ann, 1); !ok || v != "anne" {
@@ -74,7 +74,7 @@ func TestAnEditIsTheColumnChangedAndNoMore(t *testing.T) {
 	}
 	p.Set(again, 1, "ann") // back to what it was
 	p.RevertCell(again, 2)
-	if p.State(ann) != RowUnchanged || p.Len() != 0 {
+	if p.State(ann) != model.RowUnchanged || p.Len() != 0 {
 		t.Errorf("a row set back to what it holds is unchanged: %v, %d", p.State(ann), p.Len())
 	}
 }
@@ -95,7 +95,7 @@ func TestADeletedRowLosesItsEditsAndTakesNoMore(t *testing.T) {
 	bob := model.Row{int64(2), "bob", 1.0}
 	p.Set(bob, 1, "robert")
 	p.Delete(bob)
-	if p.State(bob) != RowDeleted {
+	if p.State(bob) != model.RowDeleted {
 		t.Fatalf("state %v", p.State(bob))
 	}
 	if got := changes(p.Changeset(false)); got != "[delete [2] map[]]" {
@@ -105,11 +105,11 @@ func TestADeletedRowLosesItsEditsAndTakesNoMore(t *testing.T) {
 		t.Error("a deleted row should not be edited")
 	}
 	p.RevertCell(bob, 1) // not an edit: nothing to undo
-	if p.State(bob) != RowDeleted {
+	if p.State(bob) != model.RowDeleted {
 		t.Error("reverting a cell does not bring a deleted row back")
 	}
 	p.RevertRow(bob)
-	if p.State(bob) != RowUnchanged || p.Len() != 0 {
+	if p.State(bob) != model.RowUnchanged || p.Len() != 0 {
 		t.Errorf("reverted, the row is %v with %d changes", p.State(bob), p.Len())
 	}
 }
@@ -171,7 +171,7 @@ func TestACellIsNoChangeWhenItsValueIsTheSame(t *testing.T) {
 	}
 	// SQLite's columns can hold 1 and '1' alike: a key is its values' types too.
 	p.Set(model.Row{int64(1), "ann", 3.5}, 1, "anne")
-	if p.State(model.Row{"1", "ann", 3.5}) != RowUnchanged {
+	if p.State(model.Row{"1", "ann", 3.5}) != model.RowUnchanged {
 		t.Error("a row keyed '1' is not the row keyed 1")
 	}
 }

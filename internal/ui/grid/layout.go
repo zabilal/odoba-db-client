@@ -29,6 +29,9 @@ func (l *gridLayout) MinSize([]fyne.CanvasObject) fyne.Size { return l.g.table.M
 // keeps a sliver, since Fyne keeps no column of no width.
 func (g *TableGrid) fitFiller() {
 	used := float32(0)
+	if g.Table.ShowHeaderColumn {
+		used = gutterWidth + theme.SeparatorWidth
+	}
 	for _, mc := range g.order {
 		used += g.widths[mc] + theme.SeparatorWidth
 	}

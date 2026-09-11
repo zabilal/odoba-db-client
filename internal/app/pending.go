@@ -24,16 +24,6 @@ import (
 // be edited: a change could not say which row it is to (FR-4.7).
 var ErrNoRowIdentity = errors.New("these rows have no key to tell them apart, so they cannot be edited")
 
-// RowState is how a row stands in the pending changes.
-type RowState uint8
-
-const (
-	RowUnchanged RowState = iota
-	RowModified
-	RowDeleted
-	RowAdded
-)
-
 // Pending is one table's changes not yet written.
 type Pending struct {
 	id    model.RowIdentity
@@ -166,20 +156,27 @@ func (p *Pending) RevertAll() {
 	p.rows, p.order, p.added = map[string]*change{}, nil, nil
 }
 
-// State is how a row read stands.
-func (p *Pending) State(row model.Row) RowState {
+// State is how a row read stands. The grid asks it of every cell it draws,
+// so with nothing changed it answers without reading the row's key.
+func (p *Pending) State(row model.Row) model.RowState {
+	if len(p.rows) == 0 {
+		return model.RowUnchanged
+	}
 	k, _ := p.key(row)
 	switch c := p.rows[k]; {
 	case c == nil:
-		return RowUnchanged
+		return model.RowUnchanged
 	case c.kind == source.ChangeDelete:
-		return RowDeleted
+		return model.RowDeleted
 	}
-	return RowModified
+	return model.RowModified
 }
 
 // Value is a cell's pending value, if it has one.
 func (p *Pending) Value(row model.Row, col int) (any, bool) {
+	if len(p.rows) == 0 {
+		return nil, false
+	}
 	k, _ := p.key(row)
 	c := p.rows[k]
 	if c == nil {

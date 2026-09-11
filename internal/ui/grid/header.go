@@ -19,6 +19,7 @@ type headerCell struct {
 func newHeaderCell(g *TableGrid) *headerCell {
 	h := &headerCell{g: g}
 	h.fg, h.bg = color.Black, color.Transparent
+	h.onHint = g.hint // a row's mark, in the gutter, says what it means
 	h.ExtendBaseWidget(h)
 	return h
 }
@@ -35,7 +36,7 @@ func (h *headerCell) Tapped(*fyne.PointEvent) {
 }
 
 func (h *headerCell) Cursor() desktop.Cursor {
-	if h.g.Sortable {
+	if h.g.Sortable && h.col >= 0 {
 		return desktop.PointerCursor
 	}
 	return desktop.DefaultCursor
