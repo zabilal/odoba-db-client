@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,34 +13,48 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
-var itemsRef = model.NewRef(model.KindTable, "db", "s", "items")
+var (
+	itemsRef     = model.NewRef(model.KindTable, "db", "s", "items")
+	errDuplicate = errors.New("duplicate key")
+)
 
-// fakeWriter keeps each changeset it is given, and fails as it is told.
-type fakeWriter struct {
-	sets      []source.Changeset
-	planErr   error
-	applyErr  error
-	failBatch int  // the batch, from 1, whose outcome fails
-	failAt    int  // the change of it that fails; -1 for the commit
-	undone    bool // whether the failed batch was rolled back
+// fakeLoader keeps what a load gives it, committing a batch at a time as
+// the drivers do, and refuses the row failAt says, or everything with err.
+type fakeLoader struct {
+	target  model.ObjectRef
+	columns []string
+	types   []model.ColumnDef
+	opt     source.LoadOptions
+	rows    []model.Row
+	failAt  int64
+	err     error
 }
 
-func (w *fakeWriter) Plan(_ context.Context, cs source.Changeset) (*source.WritePlan, error) {
-	if w.planErr != nil {
-		return nil, w.planErr
+func (f *fakeLoader) LoadRows(ctx context.Context, target model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
+	f.target, f.columns, f.types, f.opt = target, columns, rows.Columns(), opt
+	if f.err != nil {
+		return 0, f.err
 	}
-	w.sets = append(w.sets, cs)
-	return &source.WritePlan{Target: cs.Target, Statements: make([]source.Statement, len(cs.Changes))}, nil
-}
-
-func (w *fakeWriter) Apply(_ context.Context, p *source.WritePlan) (*source.WriteOutcome, error) {
-	if w.applyErr != nil {
-		return nil, w.applyErr
+	size := int64(max(opt.BatchSize, 1))
+	committed := func() int64 {
+		if opt.Truncate {
+			return 0
+		}
+		return int64(len(f.rows)) / size * size
 	}
-	if len(w.sets) == w.failBatch {
-		return &source.WriteOutcome{Applied: max(w.failAt, 0), FailedAt: w.failAt, RolledBack: w.undone, Err: errors.New("duplicate key")}, nil
+	for {
+		r, err := rows.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return int64(len(f.rows)), nil
+		}
+		if err != nil {
+			return committed(), err
+		}
+		if int64(len(f.rows))+1 == f.failAt {
+			return committed(), &source.LoadError{Row: f.failAt, Err: errDuplicate}
+		}
+		f.rows = append(f.rows, r)
 	}
-	return &source.WriteOutcome{Applied: len(p.Statements), FailedAt: -1}, nil
 }
 
 // itemsCSV is a file of ids and names, one line a row.
@@ -50,96 +65,88 @@ var (
 	itemsPairs = []Pair{{0, "id"}, {1, "name"}}
 )
 
-func TestRowsAreWrittenABatchATransaction(t *testing.T) {
+func load(t *testing.T, ctx context.Context, file string, f *fakeLoader, opt LoadOptions, progress func(Loaded)) (Loaded, error) {
+	t.Helper()
+	return Load(ctx, csvRows(t, file), itemsPairs, itemsTo, itemsRef, f, opt, progress)
+}
+
+func TestRowsAreMadeTheTablesAndLoaded(t *testing.T) {
 	var lines []string
-	for i := 1; i <= DefaultBatch*2+3; i++ {
+	for i := 1; i <= 2*reportEvery+3; i++ {
 		lines = append(lines, fmt.Sprintf("%d,n%d", i, i))
 	}
 	lines[1] = "2," // a name left empty goes in as NULL
-	w := &fakeWriter{}
+	f := &fakeLoader{}
 	var told []Loaded
-	l, err := Load(context.Background(), csvRows(t, itemsCSV(lines...)), itemsPairs, itemsTo, itemsRef, w,
-		LoadOptions{Confirmed: true}, func(p Loaded) { told = append(told, p) })
+	l, err := load(t, context.Background(), itemsCSV(lines...), f, LoadOptions{Batch: 7, Confirmed: true}, func(p Loaded) { told = append(told, p) })
 	if err != nil || l.Rows != 1003 || l.Written != 1003 || l.Elapsed <= 0 {
 		t.Fatalf("%v %+v", err, l)
 	}
-	var sizes []int
-	for _, cs := range w.sets {
-		sizes = append(sizes, len(cs.Changes))
-		if !cs.Target.Equal(itemsRef) || !cs.Confirmed || cs.Identity.Editable() {
-			t.Errorf("a changeset of new rows, to the table, with the consent given: %+v", cs)
-		}
+	if !f.target.Equal(itemsRef) || !reflect.DeepEqual(f.columns, []string{"id", "name"}) || f.opt != (source.LoadOptions{BatchSize: 7, Confirmed: true}) {
+		t.Errorf("into the table, its columns named, as told: %v %v %+v", f.target, f.columns, f.opt)
 	}
-	if !reflect.DeepEqual(sizes, []int{500, 500, 3}) {
-		t.Errorf("rows a transaction: %v", sizes)
+	if len(f.types) != 2 || f.types[0].Type.Class != model.TypeInteger || f.types[1].Name != "name" {
+		t.Errorf("the rows are the table's columns: %+v", f.types)
 	}
-	first, second := w.sets[0].Changes[0], w.sets[0].Changes[1]
-	if first.Kind != source.ChangeInsert || !reflect.DeepEqual(first.Values, map[string]any{"id": int64(1), "name": "n1"}) {
-		t.Errorf("each row made the table's values: %+v", first)
+	if !reflect.DeepEqual(f.rows[0], model.Row{int64(1), "n1"}) || f.rows[1][1] != nil || f.rows[1002][0] != int64(1003) {
+		t.Errorf("each row made the table's values, NULL too: %v %v", f.rows[0], f.rows[1])
 	}
-	if v, ok := second.Values["name"]; !ok || v != nil {
-		t.Errorf("NULL is written as NULL: %+v", second)
+	if len(told) != 2 || told[0].Rows != 500 || told[1].Rows != 1000 || told[1].Elapsed <= 0 || told[1].Written != 0 {
+		t.Errorf("told how many rows have been read, now and then: %+v", told)
 	}
-	if last := w.sets[2].Changes[2].Values["id"]; last != int64(1003) {
-		t.Errorf("a batch is not written over by the next: %v", last)
-	}
-	if len(told) != 3 || told[0].Written != 500 || told[0].Rows != 500 || told[2].Written != 1003 || told[2].Elapsed <= 0 {
-		t.Errorf("told after each batch: %+v", told)
+	f = &fakeLoader{}
+	if _, err := load(t, context.Background(), itemsCSV("1,a"), f, LoadOptions{Replace: true, Confirmed: true}, nil); err != nil || !f.opt.Truncate {
+		t.Errorf("replacing empties the table first: %v %+v", err, f.opt)
 	}
 }
 
 func TestALoadStopsAtAValueThatWouldNotGoIn(t *testing.T) {
-	w := &fakeWriter{}
-	l, err := Load(context.Background(), csvRows(t, itemsCSV("1,a", "2,b", "x,c", "4,d")), itemsPairs, itemsTo, itemsRef, w,
-		LoadOptions{Batch: 2}, nil)
+	f := &fakeLoader{}
+	l, err := load(t, context.Background(), itemsCSV("1,a", "2,b", "x,c", "4,d"), f, LoadOptions{Batch: 2}, nil)
 	var le *LoadError
 	var ce CellError
-	if !errors.As(err, &le) || le.Row != 3 || !le.Undone || !errors.As(err, &ce) || ce.Column != "id" {
+	if !errors.As(err, &le) || le.Row != 3 || !errors.As(err, &ce) || ce.Column != "id" || err.Error() != "row 3: id: not a whole number (x)" {
 		t.Fatalf("stopped at the row, with why: %v", err)
 	}
-	if err.Error() != "row 3: id: not a whole number (x)" {
-		t.Errorf("%q", err)
-	}
-	if l.Rows != 3 || l.Written != 2 || len(w.sets) != 1 {
-		t.Errorf("the batch before it written, and nothing after: %+v, %d batches", l, len(w.sets))
+	if l.Rows != 3 || l.Written != 2 || len(f.rows) != 2 {
+		t.Errorf("the batch before it written, and nothing after: %+v", l)
 	}
 }
 
 func TestALoadStopsWhereTheServerRefusesARow(t *testing.T) {
 	file := itemsCSV("1,a", "2,b", "3,c", "4,d", "5,e")
-	w := &fakeWriter{failBatch: 2, failAt: 1, undone: true}
-	l, err := Load(context.Background(), csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{Batch: 2}, nil)
+	f := &fakeLoader{failAt: 4}
+	l, err := load(t, context.Background(), file, f, LoadOptions{Batch: 2}, nil)
 	var le *LoadError
-	if !errors.As(err, &le) || le.Row != 4 || !le.Undone || le.Err.Error() != "duplicate key" || l.Written != 2 {
-		t.Errorf("the row the server refused, its batch undone: %v %+v", err, l)
+	if !errors.As(err, &le) || le.Row != 4 || !errors.Is(err, errDuplicate) || l.Written != 2 || l.Rows != 4 {
+		t.Errorf("the row the server refused, and the batches before it: %v %+v", err, l)
 	}
-	w = &fakeWriter{failBatch: 1, failAt: 0}
-	if _, err := Load(context.Background(), csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{Batch: 2}, nil); !errors.As(err, &le) || le.Undone || le.Row != 1 {
-		t.Errorf("a batch the server could not undo: %v", err)
-	}
-	w = &fakeWriter{failBatch: 3, failAt: -1}
-	if l, err := Load(context.Background(), csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{Batch: 2}, nil); err == nil || errors.As(err, &le) || l.Written != 4 {
-		t.Errorf("a commit that failed is said as it is: %v %+v", err, l)
+	f = &fakeLoader{failAt: 2}
+	if l, err := load(t, context.Background(), file, f, LoadOptions{Replace: true, Confirmed: true}, nil); !errors.As(err, &le) || le.Row != 2 || l.Written != 0 {
+		t.Errorf("a replace refused leaves the table as it was: %v %+v", err, l)
 	}
 }
 
-func TestALoadTheWriterRefusesWritesNothing(t *testing.T) {
+func TestALoadTheSourceRefusesWritesNothing(t *testing.T) {
 	file := itemsCSV("1,a")
-	w := &fakeWriter{applyErr: source.ErrReadOnly}
-	if l, err := Load(context.Background(), csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{}, nil); !errors.Is(err, source.ErrReadOnly) || l.Written != 0 {
+	if l, err := load(t, context.Background(), file, &fakeLoader{err: source.ErrReadOnly}, LoadOptions{}, nil); !errors.Is(err, source.ErrReadOnly) || l.Written != 0 {
 		t.Errorf("refused: %v %+v", err, l)
-	}
-	w = &fakeWriter{planErr: errors.New("cannot plan")}
-	if _, err := Load(context.Background(), csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{}, nil); err == nil || err.Error() != "cannot plan" {
-		t.Errorf("not planned: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	w = &fakeWriter{}
-	if _, err := Load(ctx, csvRows(t, file), itemsPairs, itemsTo, itemsRef, w, LoadOptions{}, nil); !errors.Is(err, context.Canceled) || len(w.sets) != 0 {
+	f := &fakeLoader{}
+	if _, err := load(t, ctx, file, f, LoadOptions{}, nil); !errors.Is(err, context.Canceled) || len(f.rows) != 0 {
 		t.Errorf("stopped before it began: %v", err)
 	}
-	if l, err := Load(context.Background(), csvRows(t, itemsCSV()[:len("id,name\n")]), itemsPairs, itemsTo, itemsRef, w, LoadOptions{}, nil); err != nil || l.Rows != 0 || len(w.sets) != 0 {
-		t.Errorf("a file with no rows writes nothing: %v %+v", err, l)
+	var many []string
+	for i := range reportEvery + 1 {
+		many = append(many, fmt.Sprint(i, ",n"))
+	}
+	if l, err := load(t, context.Background(), itemsCSV(many...), &fakeLoader{}, LoadOptions{}, nil); err != nil || l.Written != reportEvery+1 {
+		t.Errorf("with no one to tell how far it has got: %v %+v", err, l)
+	}
+	var le *LoadError
+	if l, err := load(t, context.Background(), itemsCSV("1,a", "2,b,c"), &fakeLoader{}, LoadOptions{}, nil); err == nil || errors.As(err, &le) || l.Rows != 1 {
+		t.Errorf("a file that cannot be read further is said as it is: %v %+v", err, l)
 	}
 }

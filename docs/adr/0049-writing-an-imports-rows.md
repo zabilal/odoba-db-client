@@ -1,6 +1,6 @@
 # ADR-0049: Writing an import's rows
 
-**Status:** Accepted · **Date:** 2026-09-11
+**Status:** Accepted; the rows now go through the bulk loader (ADR-0051) · **Date:** 2026-09-11
 **Tasks:** T2.21 (inserting) · **Requirements:** FR-10.6, FR-10.7 · **Packages:** `internal/transfer`, `internal/source/sqlscript`, `internal/ui/shell`
 
 ## Context

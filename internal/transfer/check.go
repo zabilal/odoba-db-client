@@ -27,8 +27,8 @@ type Checked struct {
 	Elapsed  time.Duration
 }
 
-// checkEvery is how many rows a dry run reads between reports.
-const checkEvery = 500
+// reportEvery is how many rows a dry run, or a load, reads between reports.
+const reportEvery = 500
 
 // Check reads every row of rs and makes it the table's values, as Coerce
 // does, writing nothing. It keeps the first limit problems and counts the
@@ -58,7 +58,7 @@ func Check(ctx context.Context, rs model.RowStream, pairs []Pair, to map[string]
 				}
 			}
 		}
-		if progress != nil && c.Rows%checkEvery == 0 {
+		if progress != nil && c.Rows%reportEvery == 0 {
 			progress(Checked{Rows: c.Rows, Bad: c.Bad, Values: c.Values, Elapsed: time.Since(start)})
 		}
 	}

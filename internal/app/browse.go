@@ -142,6 +142,16 @@ func (b *BrowseSource) Apply(ctx context.Context, plan *source.WritePlan) (_ *so
 	return w.Apply(ctx, plan)
 }
 
+// LoadRows imports rows into an object in bulk (FR-10.6, ADR-0050).
+func (b *BrowseSource) LoadRows(ctx context.Context, target model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (_ int64, err error) {
+	defer panics.Recover(&err, "loading rows")
+	l, ok := b.src.(source.BulkLoader)
+	if !ok {
+		return 0, errors.New("app: this source cannot load rows in bulk")
+	}
+	return l.LoadRows(ctx, target, columns, rows, opt)
+}
+
 // Ref is the object being browsed.
 func (b *BrowseSource) Ref() model.ObjectRef { return b.ref }
 

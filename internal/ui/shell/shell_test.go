@@ -218,6 +218,7 @@ var (
 	fakeWrites struct {
 		sync.Mutex
 		plans []*source.WritePlan
+		loads []fakeLoad
 	}
 	failWrite atomic.Int32
 )
@@ -226,6 +227,52 @@ func writtenPlans() []*source.WritePlan {
 	fakeWrites.Lock()
 	defer fakeWrites.Unlock()
 	return append([]*source.WritePlan(nil), fakeWrites.plans...)
+}
+
+// fakeLoad is a load the fake source took.
+type fakeLoad struct {
+	columns []string
+	rows    []model.Row
+	opt     source.LoadOptions
+}
+
+func loadsSoFar() []fakeLoad {
+	fakeWrites.Lock()
+	defer fakeWrites.Unlock()
+	return append([]fakeLoad(nil), fakeWrites.loads...)
+}
+
+// LoadRows keeps the rows a load gives it, as the guard allows, committing
+// 500 rows at a time as the drivers do; failWrite, when not 0, is the row
+// refused.
+func (f fakeSource) LoadRows(ctx context.Context, _ model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
+	if err := f.guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
+		return 0, err
+	}
+	var got []model.Row
+	committed := func() int64 {
+		if opt.Truncate {
+			return 0
+		}
+		return int64(len(got) / 500 * 500)
+	}
+	for {
+		r, err := rows.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return committed(), err
+		}
+		if at := int(failWrite.Load()); at > 0 && len(got)+1 == at {
+			return committed(), &source.LoadError{Row: int64(at), Err: errors.New("fakesql: duplicate key")}
+		}
+		got = append(got, r)
+	}
+	fakeWrites.Lock()
+	fakeWrites.loads = append(fakeWrites.loads, fakeLoad{columns: columns, rows: got, opt: opt})
+	fakeWrites.Unlock()
+	return int64(len(got)), nil
 }
 
 // Plan writes each change as a line of text, and binds one value to it.

@@ -75,10 +75,10 @@ func TestADryRunEndsWhereTheFileCannotBeRead(t *testing.T) {
 	}
 	var many strings.Builder
 	many.WriteString("id\n")
-	for i := range checkEvery + 1 {
+	for i := range reportEvery + 1 {
 		fmt.Fprintf(&many, "%d\n", i)
 	}
-	if c, err := Check(context.Background(), csvRows(t, many.String()), []Pair{{0, "id"}}, to, 10, nil); err != nil || c.Rows != checkEvery+1 {
+	if c, err := Check(context.Background(), csvRows(t, many.String()), []Pair{{0, "id"}}, to, 10, nil); err != nil || c.Rows != reportEvery+1 {
 		t.Errorf("with no one to tell how far it has got: %v %+v", err, c)
 	}
 }
