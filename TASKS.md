@@ -23,17 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
-           custom bindings (T1.8), and the explorer's script-as (T1.44).
-[~] tasks: T1.1, T1.4, T1.8, T1.14, T1.44 partly done; each line says what is open.
+NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
+           and custom bindings (T1.8).
+[~] tasks: T1.1, T1.4, T1.8, T1.14 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — Open Structure (⌥⌘O): a read-only structure tab from
-           the driver's Describe (T1.44 in part, ADR-0011 §14). Before it: the
-           explorer's context menu (T1.44), favourites (T1.46), buttons with
-           words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts (T1.9), side panels
-           (T1.77), the session (T1.14), autosave (T1.15), panics (T1.16).
+LAST DONE: 2026-09-11 — Script As SELECT, INSERT or UPDATE, which finishes
+           T1.44's context actions (ADR-0011 §15). Before it: Open Structure
+           and the explorer's context menu (T1.44), favourites (T1.46),
+           buttons with words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts
+           (T1.9), side panels (T1.77), the session (T1.14), autosave
+           (T1.15), contained driver panics (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
            ports accept TCP, servers never reply. Each time, the next gate
            that could reach them ran the tagged suites over everything since;
@@ -271,7 +272,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
 - [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
 - [x] **T1.43** Fuzzy filter matching on full path → FR-2.3 — *⇧⌘F filters loaded objects by a fuzzy match on their full path, listed in the tree's place; a table opens, anything else is shown in the tree; unopened connections are named, not searched (ADR-0018)*
-- [~] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *open data and refresh via menu and ⌘K; right-clicking a node selects it and shows its commands: Open Data, Favourite, Refresh, or a connection's Edit, Duplicate, Disconnect, Delete (ADR-0011 §13); Open Structure (⌥⌘O) shows a read-only structure tab: columns, keys, indexes, constraints, triggers, or a view's definition (ADR-0011 §14); script-as open*
+- [x] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *right-clicking a node selects it and shows its commands (ADR-0011 §13); Open Structure (⌥⌘O) shows a read-only structure tab (§14); Script As writes SELECT, INSERT or UPDATE from Describe and the dialect into a new query tab (§15). CREATE scripts are T3.7's; rename, drop and truncate belong with the table designer (3.A)*
 - [ ] **T1.45** Lazy cancellable row-count/size badges → FR-2.5
 - [x] **T1.46** Pinned/favourite objects → FR-2.6 — *⌘D makes the selected table, view or collection a favourite, listed above the tree only when there are any; kept in the settings file and deleted with their connection (ADR-0019)*
 
