@@ -89,6 +89,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 				t.problem = failed + err.Error()
 				s.showCount(t)
 				s.browsed(t)
+				s.crashed(t.connID, err)
 				return
 			}
 			t.browse, t.applied, t.filtered, t.problem, t.said = next, keys, texts, "", ""

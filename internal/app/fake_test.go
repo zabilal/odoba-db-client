@@ -60,6 +60,8 @@ type fakeSource struct {
 	pingErr atomic.Pointer[error]
 	pings   atomic.Int64
 	closed  atomic.Bool
+	// boomPing makes Ping panic, as a broken driver might.
+	boomPing atomic.Bool
 }
 
 func (f *fakeSource) failPing(err error) {
@@ -72,6 +74,9 @@ func (f *fakeSource) failPing(err error) {
 
 func (f *fakeSource) Ping(context.Context) error {
 	f.pings.Add(1)
+	if f.boomPing.Load() {
+		panic("fake driver: the ping fell over")
+	}
 	if e := f.pingErr.Load(); e != nil {
 		return *e
 	}

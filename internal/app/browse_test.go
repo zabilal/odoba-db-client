@@ -22,6 +22,7 @@ type browseFake struct {
 	overrun  bool // ignore Limit, to prove the adapter bounds it
 	exact    bool
 	distinct bool
+	boom     atomic.Bool // Browse panics, as a broken driver might
 	// listed records the options the last Distinct was given.
 	listed source.BrowseOptions
 }
@@ -43,6 +44,9 @@ func (b *browseFake) Count(context.Context, model.ObjectRef, source.BrowseOption
 }
 
 func (b *browseFake) Browse(_ context.Context, ref model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+	if b.boom.Load() {
+		panic("fake driver: the browse fell over")
+	}
 	if b.failNext.Swap(false) {
 		return nil, errors.New("connection reset")
 	}

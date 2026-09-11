@@ -175,6 +175,9 @@ func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Browse
 	browses.Lock()
 	browses.opts = append(browses.opts, opt)
 	browses.Unlock()
+	if strings.Contains(opt.Where, "panic") {
+		panic("fakesql: the driver fell over")
+	}
 	if strings.Contains(opt.Where, "boom") {
 		return nil, errors.New(`fakesql: syntax error at or near "boom"`)
 	}

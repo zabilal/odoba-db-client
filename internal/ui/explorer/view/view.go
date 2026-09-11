@@ -17,6 +17,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -50,7 +51,8 @@ var _ explorer.Loader = (*Loader)(nil)
 const sep = "\x1f"
 
 // Load returns a node's children.
-func (l *Loader) Load(ctx context.Context, parent explorer.Item) ([]explorer.Item, error) {
+func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.Item, err error) {
+	defer panics.Recover(&err, "listing objects") // the driver is called here directly
 	switch d := parent.Data.(type) {
 	case nil:
 		var out []explorer.Item

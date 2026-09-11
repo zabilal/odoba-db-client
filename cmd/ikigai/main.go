@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"runtime"
 
@@ -56,6 +57,7 @@ func run() error {
 	}
 	defer logFile.Close()
 	log.Info("starting", "version", version, "os", runtime.GOOS, "portable", paths.Portable)
+	slog.SetDefault(log) // where panics.Recover writes a driver's stack (NFR-R1)
 
 	settings, notice, err := store.OpenSettings(paths.SettingsFile())
 	if err != nil {

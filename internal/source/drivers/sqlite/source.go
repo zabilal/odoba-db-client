@@ -19,6 +19,7 @@ import (
 	_ "modernc.org/sqlite" // registers "sqlite" with database/sql
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 )
@@ -212,6 +213,7 @@ func (s *sqliteSource) QueryMulti(ctx context.Context, script string, confirmed 
 	out := make(chan source.ScriptResult, cap(in))
 	go func() {
 		defer close(out)
+		defer panics.Catch("handing on results", func(error) { ss.Close() })
 		owned := false
 		for r := range in {
 			if r.Result != nil && r.Result.Rows != nil {

@@ -280,6 +280,7 @@ func (s *Shell) showResult(t *tab, r app.StatementResult, base int) {
 	q, n := t.query, r.Index+1
 	switch {
 	case r.Err != nil:
+		s.crashed(t.connID, r.Err)
 		msg := fmt.Sprintf("Statement %d failed: %v", n, r.Err)
 		doc := q.editor.Document()
 		if off, ok := r.ErrorOffset(); ok && doc.Revision() == q.runRev {
