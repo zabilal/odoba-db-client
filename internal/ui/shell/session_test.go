@@ -199,3 +199,82 @@ func TestQuittingBeforeATabShowsKeepsItsView(t *testing.T) {
 		t.Errorf("session after a quick quit: %+v", ss)
 	}
 }
+
+func TestColumnLayoutComesBack(t *testing.T) {
+	fx, tb := openItems(t)
+	fx.s.autosave = time.Hour // so that only quitting saves it
+	tb.grid.MoveColumn(1, -1)
+	tb.grid.ResizeColumn(0, 150)
+	tb.grid.FreezeThrough(1)
+	fx.s.shutdown()
+	s := fx.relaunch(t)
+	pump(t, fx.q, func() bool {
+		r := tabNamed(s, "items")
+		return r != nil && r.grid != nil && slices.Equal(r.grid.Shown(), []int{1, 0})
+	})
+	r := tabNamed(s, "items")
+	if r.grid.Frozen() != 1 || r.grid.ColumnWidth(0) != 150 || r.grid.Resized(1) {
+		t.Errorf("frozen %d, widths %v and %v", r.grid.Frozen(), r.grid.ColumnWidth(0), r.grid.ColumnWidth(1))
+	}
+}
+
+func TestAHiddenColumnStaysHidden(t *testing.T) {
+	fx, tb := openItems(t)
+	fx.s.autosave = time.Hour
+	tb.grid.HideColumn(0)
+	fx.s.shutdown()
+	s := fx.relaunch(t)
+	pump(t, fx.q, func() bool {
+		r := tabNamed(s, "items")
+		return r != nil && r.grid != nil && slices.Equal(r.grid.Shown(), []int{1})
+	})
+}
+
+func TestAColumnAddedSinceAppearsLast(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	// Saved when the table had name and a column since dropped; id is new.
+	fx.hist.PutSession(context.Background(), localdb.Session{Tabs: []localdb.SessionTab{{
+		Kind: localdb.SessionObject, ConnectionID: c.ID, RefKind: string(model.KindTable),
+		RefPath: []string{"main", "items"}, Label: "items",
+		Columns: []localdb.SessionColumn{{Name: "name", Width: 90}, {Name: "dropped"}},
+	}}})
+	s := fx.relaunch(t)
+	pump(t, fx.q, func() bool {
+		r := tabNamed(s, "items")
+		return r != nil && r.grid != nil && slices.Equal(r.grid.Shown(), []int{1, 0})
+	})
+	if r := tabNamed(s, "items"); r.grid.ColumnWidth(1) != 90 {
+		t.Errorf("name's width %v", r.grid.ColumnWidth(1))
+	}
+	if s.errors.text != "" {
+		t.Errorf("a dropped column's place is nothing to lose: %q", s.errors.text)
+	}
+}
+
+func TestAResizeIsKeptWithoutQuitting(t *testing.T) {
+	fx, tb := openItems(t)
+	// Settle first: any save the opening scheduled has run, and nothing is
+	// queued. Otherwise a later save would pick the resize up by chance.
+	pump(t, fx.q, func() bool { return fx.q.Flush() == 0 && !fx.s.sessionPending })
+	tb.grid.ResizeColumn(1, 222)
+	if !fx.s.sessionPending {
+		t.Fatal("a resize should schedule a save of the session by itself")
+	}
+	pump(t, fx.q, func() bool {
+		ss, ok, _ := fx.hist.Session(context.Background())
+		return ok && len(ss.Tabs) == 1 && len(ss.Tabs[0].Columns) == 2 && ss.Tabs[0].Columns[1].Width == 222
+	})
+}
+
+func TestQuittingBeforeATabShowsKeepsItsLayout(t *testing.T) {
+	fx, tb := openItems(t)
+	tb.grid.HideColumn(0)
+	fx.s.shutdown()
+	s := fx.relaunch(t)
+	s.shutdown() // before the reopened tab's rows arrive
+	ss, ok, _ := fx.hist.Session(context.Background())
+	if !ok || len(ss.Tabs) != 1 || !slices.Equal(ss.Tabs[0].Hidden, []string{"id"}) {
+		t.Errorf("session after a quick quit: %+v", ss)
+	}
+}

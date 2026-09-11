@@ -95,6 +95,24 @@ func (g *TableGrid) Unfreeze() {
 	g.relayout(false)
 }
 
+// SetLayout shows the given model columns, in order, with the first frozen
+// of them kept in view: a layout put back as it was. A column out of range
+// or named twice is skipped, and with none left the layout stays as it is.
+func (g *TableGrid) SetLayout(order []int, frozen int) {
+	n := len(g.model.Columns())
+	var keep []int
+	for _, c := range order {
+		if c >= 0 && c < n && !slices.Contains(keep, c) {
+			keep = append(keep, c)
+		}
+	}
+	if len(keep) == 0 {
+		return
+	}
+	g.order, g.frozen = keep, min(max(frozen, 0), len(keep))
+	g.relayout(true)
+}
+
 // relayout applies the column order: each width goes with its column, and
 // the frozen count follows. A selection names shown columns, so when the
 // order changes it no longer means what it did and is cleared.
@@ -105,6 +123,9 @@ func (g *TableGrid) relayout(clearSelection bool) {
 	}
 	g.fillerWidth = -1 // the filler has moved: size it afresh
 	g.fitFiller()
+	if g.OnLayout != nil {
+		g.OnLayout()
+	}
 	if clearSelection {
 		g.sel.Clear()
 	}
