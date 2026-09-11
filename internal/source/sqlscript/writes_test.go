@@ -110,10 +110,15 @@ func TestAPlanIsAppliedWholeOrNotAtAll(t *testing.T) {
 		i := 0
 		return func(source.Statement) (int64, error) { i++; return ns[i-1], nil }
 	}
-	out := ApplyWith(p, counts(1, 2, 1), commit, rollback)
-	if out.Err != nil || out.Applied != 3 || out.Affected != 4 || out.FailedAt != -1 || committed != 1 || rolledBack != 0 {
+	out := ApplyWith(p, counts(1, 1, 1), commit, rollback)
+	if out.Err != nil || out.Applied != 3 || out.Affected != 3 || out.FailedAt != -1 || committed != 1 || rolledBack != 0 {
 		t.Fatalf("all applied: %+v, committed %d", out, committed)
 	}
+	out = ApplyWith(p, counts(1, 2), commit, rollback)
+	if !errors.Is(out.Err, ErrManyRows) || !strings.Contains(out.Err.Error(), "2 rows matched") || out.FailedAt != 1 || !out.RolledBack {
+		t.Errorf("a statement matching two rows stops it all: %+v", out)
+	}
+	rolledBack = 0
 	out = ApplyWith(p, counts(1, 0, 1), commit, rollback)
 	if !errors.Is(out.Err, ErrNoRow) || out.FailedAt != 1 || !out.RolledBack || out.Affected != 0 || committed != 1 || rolledBack != 1 {
 		t.Errorf("a statement matching no row stops it all: %+v", out)

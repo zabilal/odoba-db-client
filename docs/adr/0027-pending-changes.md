@@ -47,6 +47,6 @@ held the edits between the grid and the writer.
 
 - An ordinary SQLite table is told apart by its rowid, which its browse
   does not return. So SQLite's tables are refused until the browse returns
-  it, or a key column stands in for it (T2.8).
+  it, or a key column stands in for it (T2.8). ADR-0034 does both.
 - The grid shows pending changes (T2.2, ADR-0028) but does not edit yet
   (T2.3), and no driver implements the writer yet (T2.5, T2.6).

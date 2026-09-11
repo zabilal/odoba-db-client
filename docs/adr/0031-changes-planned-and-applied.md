@@ -35,8 +35,8 @@ contract. No driver implemented it.
 
 5. **A plan is applied in one transaction: all of it, or none**
    (`sqlscript.ApplyWith`). A statement the server refuses, or one that
-   changes no row, stops it, and it is rolled back. The outcome says which
-   statement failed and why. Every statement is planned for exactly one
+   changes no row or more than one (ADR-0034), stops it, and it is
+   rolled back. The outcome says which statement failed and why. Every statement is planned for exactly one
    row, so one that matches none means the row was changed or deleted since
    it was read. MySQL is connected with `ClientFoundRows`, so an UPDATE
    counts the rows it matched as the other engines do, not only those whose
@@ -63,7 +63,8 @@ contract. No driver implemented it.
 - PostgreSQL, MySQL, MariaDB and SQLite claim Insert, Update, Delete and
   TransactionalWrite, all backed by the conformance suite.
 - The preview and the Commit button that use this are the grid's
-  (ADR-0032). SQLite's ordinary tables still wait on T2.8 (the rowid).
-- A trigger that changes other rows makes an UPDATE's count larger, not
-  zero, so it does not trip the check for a row not matched. A table with
-  an INSTEAD OF trigger that writes nothing would read as a row gone.
+  (ADR-0032). SQLite's tables are known by their key, or their rowid
+  (ADR-0034).
+- The count checked is the statement's own rows; a trigger's writes do
+  not add to it. A table with an INSTEAD OF trigger that writes nothing
+  would read as a row gone.
