@@ -73,15 +73,7 @@ func (g *TableGrid) EditCell(first string) bool {
 	}
 	a, _ := g.sel.Active()
 	col := g.model.Columns()[mc]
-	var v any
-	if mc < len(row) {
-		v = row[mc]
-	}
-	if g.changes != nil {
-		if nv, ok := g.changes.Value(row, mc); ok {
-			v = nv
-		}
-	}
+	v := g.CellValue(row, mc)
 	e := &edit{at: widget.TableCellID{Row: a.Row, Col: a.Col}, row: row, col: mc, start: EditText(v, col, g.loc)}
 	g.editing = e
 	// An editor is drawn only in a cell on screen, and only one drawn can
@@ -107,6 +99,20 @@ func (g *TableGrid) EditCell(first string) bool {
 	g.Table.Refresh()
 	g.focus(e.entry)
 	return true
+}
+
+// CellValue is a cell's value as the grid shows it: its pending value, if it
+// has one, or the value read. col is the model's.
+func (g *TableGrid) CellValue(row model.Row, col int) any {
+	if g.changes != nil && row != nil {
+		if v, ok := g.changes.Value(row, col); ok {
+			return v
+		}
+	}
+	if col >= 0 && col < len(row) {
+		return row[col]
+	}
+	return nil
 }
 
 // host shows the open editor in the cell at its place, and takes it from a

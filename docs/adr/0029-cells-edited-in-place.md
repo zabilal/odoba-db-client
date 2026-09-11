@@ -57,10 +57,20 @@ editor put anything into them yet.
    that cannot hold NULL is left, and the footer says so. The footer counts
    the rows with pending changes.
 
+9. **The cell viewer edits a value at length.** Its Edit button, or Edit
+   in Cell Viewer, opens the value in an editor of many lines, with JSON
+   laid out on lines in a fixed font. A date or an instant also has a
+   calendar: the day picked replaces the date and keeps the time of day
+   typed. Done reads the text as `Parse` does and writes JSON compact
+   again; text left as it started is no edit; what cannot be read is said,
+   and the editor stays. Cancel or Escape gives it up. While editing, the
+   viewer stays on its cell; it shows a cell's pending value, not only the
+   value read. The calendar and the long editor are in the viewer rather
+   than the cell because Fyne's calendar is made of buttons, which take the
+   focus, and a cell's editor writes itself when it loses the focus.
+
 ## Consequences
 
-- Still open under T2.3: a calendar to pick a date, and a JSON editor of
-  more than one line. Today a date is typed, and JSON is typed on one line.
 - Whether a column can hold NULL is known only where the driver says so:
   SQLite and PostgreSQL's browses say every column can, so the server
   refuses a NULL at commit (T2.6).

@@ -1,14 +1,18 @@
 package shell
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"image/color"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -38,6 +42,18 @@ type cellViewer struct {
 	col     model.ColumnDef
 	has     bool
 	seq     int // numbers reads, so that only the latest lands
+
+	// Edit (FR-4.1, ADR-0029 §9) opens the value at length in an editor,
+	// with a calendar for a date or an instant. While editing, the viewer
+	// stays on its cell: row and mc are the cell's row and model column.
+	editBtn *widget.Button
+	editor  *valueEntry
+	calBox  *fyne.Container
+	editBox fyne.CanvasObject
+	editing bool
+	row     model.Row
+	mc      int
+	start   string
 }
 
 // hold records where a grid's view lives, so the viewer can open beside it.
@@ -93,8 +109,18 @@ func (s *Shell) newViewer(ctx context.Context, g *grid.TableGrid, holder *fyne.C
 	copyIt := widget.NewButtonWithIcon("Copy Value", fynetheme.ContentCopyIcon(), v.copyValue)
 	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), v.hide)
 	copyIt.Importance, closeIt.Importance = widget.LowImportance, widget.LowImportance
-	head := container.NewBorder(nil, nil, nil, container.NewHBox(copyIt, closeIt), container.NewVBox(v.title, v.meta))
-	panel := container.NewBorder(head, nil, nil, nil, container.NewStack(v.textBox, v.codeBox))
+	v.editBtn = widget.NewButtonWithIcon("Edit", fynetheme.DocumentCreateIcon(), v.beginEdit)
+	v.editBtn.Importance = widget.LowImportance
+	v.editBtn.Disable()
+	v.editor = newValueEntry(v)
+	v.calBox = container.NewVBox()
+	done := widget.NewButton("Done", v.finishEdit)
+	done.Importance = widget.HighImportance
+	cancel := widget.NewButton("Cancel", v.cancelEdit)
+	v.editBox = container.NewBorder(v.calBox, container.NewHBox(layout.NewSpacer(), cancel, done), nil, nil, v.editor)
+	v.editBox.Hide()
+	head := container.NewBorder(nil, nil, nil, container.NewHBox(v.editBtn, copyIt, closeIt), container.NewVBox(v.title, v.meta))
+	panel := container.NewBorder(head, nil, nil, nil, container.NewStack(v.textBox, v.codeBox, v.editBox))
 	v.split = container.NewHSplit(g.View(), panel)
 	v.split.Offset = 0.62
 	return v
@@ -118,6 +144,9 @@ func (v *cellViewer) hide() {
 // follow shows the active cell's value. A row not yet in memory is read for
 // it, off the UI goroutine, and only the latest read lands.
 func (v *cellViewer) follow() {
+	if v.editing {
+		return // it stays on the cell it edits
+	}
 	v.seq++
 	c, ok := v.g.Selection().Active()
 	cols := v.g.Model().Columns()
@@ -127,6 +156,7 @@ func (v *cellViewer) follow() {
 		v.title.SetText("No cell selected")
 		v.meta.SetText("Select a cell to see its whole value.")
 		v.render(cellview.View{Kind: cellview.KindText})
+		v.editBtn.Disable()
 		return
 	}
 	col := cols[mc]
@@ -158,11 +188,8 @@ func (v *cellViewer) follow() {
 }
 
 func (v *cellViewer) set(col model.ColumnDef, row model.Row, i int) {
-	var val any
-	if i < len(row) {
-		val = row[i]
-	}
-	v.value, v.col, v.has = val, col, true
+	val := v.g.CellValue(row, i) // a pending change, if it has one
+	v.value, v.col, v.has, v.row, v.mc = val, col, true, row, i
 	view := cellview.Prepare(val, col, time.Local)
 	var meta []string
 	if col.Type.Native != "" {
@@ -177,6 +204,137 @@ func (v *cellViewer) set(col model.ColumnDef, row model.Row, i int) {
 	v.title.SetText(col.Name)
 	v.meta.SetText(strings.Join(meta, " · "))
 	v.render(view)
+	if v.g.CanEditCell() {
+		v.editBtn.Enable()
+	} else {
+		v.editBtn.Disable()
+	}
+}
+
+// beginEdit opens the value at length for editing, JSON laid out on lines,
+// with a calendar for a date or an instant.
+func (v *cellViewer) beginEdit() {
+	if v.editing {
+		v.focus()
+		return
+	}
+	if !v.has || !v.g.CanEditCell() {
+		return
+	}
+	v.seq++ // a read still on its way must not move the viewer off this cell
+	text := grid.EditText(v.value, v.col, time.Local)
+	if v.col.Type.Class == model.TypeJSON {
+		var b bytes.Buffer
+		if json.Indent(&b, []byte(text), "", "  ") == nil {
+			text = b.String()
+		}
+	}
+	v.start, v.editing = text, true
+	v.editor.TextStyle.Monospace = v.col.Type.Class == model.TypeJSON || v.col.Type.Class == model.TypeXML
+	v.editor.SetText(text)
+	v.calBox.Objects = nil
+	if c := v.col.Type.Class; c == model.TypeDate || c == model.TypeTimestamp {
+		at := time.Now()
+		if t, ok := v.value.(time.Time); ok {
+			at = t
+			if v.col.Type.TimeZone {
+				at = t.In(time.Local)
+			}
+		}
+		v.calBox.Objects = []fyne.CanvasObject{widget.NewCalendar(at, v.pickDate)}
+	}
+	v.calBox.Refresh()
+	v.title.SetText("Editing " + v.col.Name)
+	v.meta.SetText("Done keeps it as a pending change; Cancel leaves it as it was.")
+	v.textBox.Hide()
+	v.codeBox.Hide()
+	v.editBox.Show()
+	v.editBtn.Disable()
+	v.focus()
+}
+
+func (v *cellViewer) focus() {
+	if c := fyne.CurrentApp().Driver().CanvasForObject(v.g.Table); c != nil {
+		c.Focus(v.editor)
+	}
+}
+
+// pickDate puts the day picked on the calendar into the editor, keeping the
+// time of day typed there.
+func (v *cellViewer) pickDate(d time.Time) { v.editor.SetText(withDate(v.editor.Text, d)) }
+
+var dayRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// withDate is text with its date made d's: before the time of day it has,
+// or alone.
+func withDate(text string, d time.Time) string {
+	day := d.Format("2006-01-02")
+	if len(text) >= 10 && dayRE.MatchString(text[:10]) {
+		return day + text[10:]
+	}
+	return day
+}
+
+// finishEdit writes the text as the column's type, JSON made compact again.
+// Text left as it started is no edit. Text that cannot be read, or a value
+// refused, is said, and the editor stays.
+func (v *cellViewer) finishEdit() {
+	if !v.editing {
+		return
+	}
+	if text := v.editor.Text; text != v.start {
+		val, err := grid.Parse(text, v.col, time.Local)
+		if j, ok := val.(model.JSON); ok && err == nil {
+			var b bytes.Buffer
+			if json.Compact(&b, j) == nil {
+				val = model.JSON(b.String())
+			}
+		}
+		if err == nil {
+			err = v.g.OnEdit(v.row, v.mc, val)
+		}
+		if err != nil {
+			v.meta.SetText("Not written: " + v.col.Name + ": " + err.Error())
+			return
+		}
+		v.g.Table.Refresh()
+	}
+	v.leaveEdit()
+}
+
+func (v *cellViewer) cancelEdit() {
+	if v.editing {
+		v.leaveEdit()
+	}
+}
+
+// leaveEdit shows the value again, following the selection once more.
+func (v *cellViewer) leaveEdit() {
+	v.editing = false
+	v.editBox.Hide()
+	v.calBox.Objects = nil
+	v.follow()
+}
+
+// valueEntry is the viewer's editor. Escape gives the edit up.
+type valueEntry struct {
+	widget.Entry
+	v *cellViewer
+}
+
+func newValueEntry(v *cellViewer) *valueEntry {
+	e := &valueEntry{v: v}
+	e.MultiLine, e.Wrapping = true, fyne.TextWrapWord
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+func (e *valueEntry) TypedKey(k *fyne.KeyEvent) {
+	if k.Name == fyne.KeyEscape {
+		e.v.cancelEdit()
+		return
+	}
+	e.Entry.TypedKey(k)
 }
 
 func (v *cellViewer) render(view cellview.View) {
