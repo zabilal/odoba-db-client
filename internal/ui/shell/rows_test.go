@@ -15,8 +15,8 @@ func TestInsertRowAddsANewRowAtTheTop(t *testing.T) {
 		t.Fatal("a keyed table takes new rows; with nothing selected, nothing else")
 	}
 	fx.s.run(cmdInsertRow)
-	if tb.pending.Len() != 1 || tb.model.Added() != 1 {
-		t.Fatalf("%d changes, %d new rows", tb.pending.Len(), tb.model.Added())
+	if tb.ed.pending.Len() != 1 || tb.model.Added() != 1 {
+		t.Fatalf("%d changes, %d new rows", tb.ed.pending.Len(), tb.model.Added())
 	}
 	if row, _ := tb.model.Row(tb.ctx, 0); row[0] != (model.Default{}) {
 		t.Errorf("the new row is first, given nothing: %v", row)
@@ -35,7 +35,7 @@ func TestInsertRowAddsANewRowAtTheTop(t *testing.T) {
 	}
 	tb.grid.Select(grid.CellID{Row: 0, Col: 0}, grid.CellID{Row: 0, Col: 1})
 	fx.s.run(cmdSetNull)
-	if got := tb.pending.Added()[0]; got[0] != (model.Default{}) || got[1] != nil {
+	if got := tb.ed.pending.Added()[0]; got[0] != (model.Default{}) || got[1] != nil {
 		t.Errorf("a new row's cell set to NULL; its id cannot be: %v", got)
 	}
 }
@@ -45,7 +45,7 @@ func TestDuplicateRowsCopiesAllButTheKey(t *testing.T) {
 	tb.grid.Select(grid.CellID{Row: 2, Col: 0}, grid.CellID{Row: 3, Col: 1})
 	tb.grid.ToggleCell(grid.CellID{Row: 5, Col: 0})
 	fx.s.run(cmdDuplicateRows)
-	added := tb.pending.Added()
+	added := tb.ed.pending.Added()
 	if len(added) != 3 || added[0][1] != "item 2" || added[1][1] != "item 3" || added[2][1] != "item 5" || added[0][0] != (model.Default{}) {
 		t.Fatalf("a copy of each row selected, but for its key: %v", added)
 	}
@@ -67,15 +67,15 @@ func TestDeleteRowsMarksRowsReadAndDropsNewOnes(t *testing.T) {
 	}
 	tb.grid.Select(grid.CellID{Row: 1, Col: 0}, grid.CellID{Row: 4, Col: 0}) // two new rows, and ids 0 and 1
 	fx.s.run(cmdDeleteRows)
-	if added := tb.pending.Added(); tb.model.Added() != 1 || len(added) != 1 || added[0][1] != "kept" {
+	if added := tb.ed.pending.Added(); tb.model.Added() != 1 || len(added) != 1 || added[0][1] != "kept" {
 		t.Errorf("the new rows selected are gone, the other kept: %v", added)
 	}
 	for _, id := range []int64{0, 1} {
-		if tb.pending.State(model.Row{id, fmt.Sprintf("item %d", id)}) != model.RowDeleted {
+		if tb.ed.pending.State(model.Row{id, fmt.Sprintf("item %d", id)}) != model.RowDeleted {
 			t.Errorf("row %d is to be deleted", id)
 		}
 	}
-	if row, _ := tb.model.Row(tb.ctx, 3); tb.pending.State(row) != model.RowUnchanged { // id 2
+	if row, _ := tb.model.Row(tb.ctx, 3); tb.ed.pending.State(row) != model.RowUnchanged { // id 2
 		t.Error("the next row is not")
 	}
 	if !strings.HasSuffix(tb.footer.Text, " · 3 pending changes") {

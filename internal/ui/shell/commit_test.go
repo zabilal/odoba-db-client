@@ -44,11 +44,11 @@ func tapOnTop(t *testing.T, fx *fixture, label string) {
 func TestReviewShowsEveryStatementBeforeAnythingRuns(t *testing.T) {
 	fx, tb := loadedItems(t)
 	before := len(writtenPlans())
-	if tb.review.Visible() || fx.s.canReview() {
+	if tb.ed.review.Visible() || fx.s.canReview() {
 		t.Error("with no changes there is nothing to review")
 	}
 	editOne(t, tb)
-	if !tb.review.Visible() || !fx.s.canReview() {
+	if !tb.ed.review.Visible() || !fx.s.canReview() {
 		t.Fatal("a change pending offers Review Changes beside the footer")
 	}
 	text := reviewed(t, fx)
@@ -61,7 +61,7 @@ func TestReviewShowsEveryStatementBeforeAnythingRuns(t *testing.T) {
 		t.Error("nothing runs while the changes are reviewed")
 	}
 	tapOnTop(t, fx, "Cancel")
-	if tb.pending.Len() != 1 || len(writtenPlans()) != before {
+	if tb.ed.pending.Len() != 1 || len(writtenPlans()) != before {
 		t.Error("Cancel writes nothing, and keeps the changes")
 	}
 }
@@ -76,17 +76,19 @@ func TestCommitWritesTheChangesAndReadsTheRowsAgain(t *testing.T) {
 	browsed := len(browses.opts)
 	browses.Unlock()
 	tapOnTop(t, fx, "Commit")
-	if fx.s.canReview() || !tb.review.Disabled() || !tb.committing {
+	if fx.s.canReview() || !tb.ed.review.Disabled() || !tb.ed.committing {
 		t.Error("while the changes are written they are not reviewed again")
 	}
-	pump(t, fx.q, func() bool { return tb.pending.Len() == 0 && strings.Contains(tb.footer.Text, "Committed 2 changes") })
+	pump(t, fx.q, func() bool {
+		return tb.ed.pending.Len() == 0 && strings.Contains(tb.footer.Text, "Committed 2 changes")
+	})
 	pump(t, fx.q, func() bool { browses.Lock(); defer browses.Unlock(); return len(browses.opts) > browsed })
 	plans := writtenPlans()
 	if len(plans) != before+1 || len(plans[before].Statements) != 2 {
 		t.Fatalf("one plan of two statements written: %d plans", len(plans)-before)
 	}
-	if tb.model.Added() != 0 || tb.review.Visible() || tb.committing {
-		t.Errorf("written, the changes are gone: %d new rows, review shown %v", tb.model.Added(), tb.review.Visible())
+	if tb.model.Added() != 0 || tb.ed.review.Visible() || tb.ed.committing {
+		t.Errorf("written, the changes are gone: %d new rows, review shown %v", tb.model.Added(), tb.ed.review.Visible())
 	}
 }
 
@@ -96,14 +98,14 @@ func TestAFailedCommitSaysWhichChangeAndSelectsItsRow(t *testing.T) {
 	fx, tb := loadedItems(t)
 	editOne(t, tb)
 	row3, _ := tb.model.Row(tb.ctx, 3)
-	tb.pending.Delete(row3)
+	tb.ed.pending.Delete(row3)
 	reviewed(t, fx)
 	tapOnTop(t, fx, "Commit")
 	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "Not committed") })
 	if !strings.Contains(tb.footer.Text, "change 2 failed: fakesql: duplicate key. Nothing was written.") {
 		t.Errorf("footer %q", tb.footer.Text)
 	}
-	if tb.pending.Len() != 2 || tb.committing {
+	if tb.ed.pending.Len() != 2 || tb.ed.committing {
 		t.Error("the changes stay, to be put right")
 	}
 	if a, ok := tb.grid.Selection().Active(); !ok || a != (grid.CellID{Row: 3, Col: 0}) {
@@ -146,7 +148,7 @@ func TestProductionAsksBeforeCommitting(t *testing.T) {
 		t.Fatalf("Commit asks before writing to production: %q", text)
 	}
 	tapOnTop(t, fx, "Cancel")
-	if len(writtenPlans()) != before || !strings.Contains(tb.footer.Text, "Not committed") || tb.pending.Len() != 1 {
+	if len(writtenPlans()) != before || !strings.Contains(tb.footer.Text, "Not committed") || tb.ed.pending.Len() != 1 {
 		t.Fatalf("no to production writes nothing: %q", tb.footer.Text)
 	}
 	reviewed(t, fx)
@@ -181,7 +183,7 @@ func TestAReadOnlyConnectionEditsNothing(t *testing.T) {
 	fx.s.OpenObject(c.ID, itemsNode)
 	tb := fx.onlyTab(t)
 	pump(t, fx.q, func() bool { return tb.browse != nil })
-	if tb.pending != nil || tb.grid.OnEdit != nil || fx.s.canInsert() {
+	if tb.ed.pending != nil || tb.grid.OnEdit != nil || fx.s.canInsert() {
 		t.Error("a read-only connection edits nothing")
 	}
 }

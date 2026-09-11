@@ -21,31 +21,28 @@ import (
 // run, and the values bound to each, before anything runs; Commit runs them
 // in one transaction. On a production connection Commit asks first.
 
-// canReview reports whether the active tab has changes to review, and is
-// not already committing them.
-func (s *Shell) canReview() bool {
-	t := s.activeTab()
-	return t != nil && t.pending != nil && t.pending.Len() > 0 && !t.committing
-}
+// canReview reports whether the grid in front has changes to review, and
+// is not already committing them.
+func (s *Shell) canReview() bool { return s.activeEdits().reviewable() }
 
 func (s *Shell) reviewActive() {
-	if s.canReview() {
-		s.review(s.activeTab())
+	if e := s.activeEdits(); e.reviewable() {
+		s.review(e)
 	}
 }
 
-// review plans the tab's changes and shows the plan. Nothing is written
-// until Commit.
-func (s *Shell) review(t *tab) {
-	plan, err := t.browse.Plan(t.ctx, t.pending.Changeset(false))
+// review plans the changes and shows the plan. Nothing is written until
+// Commit.
+func (s *Shell) review(e *edits) {
+	plan, err := e.writes.Plan(e.ctx, e.pending.Changeset(false))
 	if err != nil {
-		t.said = "Could not plan the changes: " + err.Error()
-		s.showCount(t)
+		e.say("Could not plan the changes: " + err.Error())
+		e.show()
 		return
 	}
 	d := dialog.NewCustomConfirm("Review Changes", "Commit", "Cancel", reviewBody(plan), func(ok bool) {
 		if ok {
-			s.commit(t, plan)
+			s.commit(e, plan)
 		}
 	}, s.win)
 	d.SetConfirmImportance(widget.HighImportance)
@@ -112,27 +109,27 @@ func valueText(v any) string {
 
 // commit writes a plan. On a production connection it asks first; the plan
 // is made again with the consent, since nothing has run yet (FR-4.9).
-func (s *Shell) commit(t *tab, plan *source.WritePlan) {
+func (s *Shell) commit(e *edits, plan *source.WritePlan) {
 	if !plan.Guarded {
-		s.apply(t, plan)
+		s.apply(e, plan)
 		return
 	}
-	c, _ := s.d.Conns.Get(t.connID)
+	c, _ := s.d.Conns.Get(e.connID)
 	d := dialog.NewConfirm("Change Data on Production?",
 		fmt.Sprintf("These changes write to “%s”, which is marked Production. Nothing has been written yet.", c.Name),
 		func(yes bool) {
 			if !yes {
-				t.said = "Not committed"
-				s.showCount(t)
+				e.say("Not committed")
+				e.show()
 				return
 			}
-			confirmed, err := t.browse.Plan(t.ctx, t.pending.Changeset(true))
+			confirmed, err := e.writes.Plan(e.ctx, e.pending.Changeset(true))
 			if err != nil {
-				t.said = "Could not plan the changes: " + err.Error()
-				s.showCount(t)
+				e.say("Could not plan the changes: " + err.Error())
+				e.show()
 				return
 			}
-			s.apply(t, confirmed)
+			s.apply(e, confirmed)
 		}, s.win)
 	d.SetConfirmText("Commit")
 	d.SetDismissText("Cancel")
@@ -141,14 +138,15 @@ func (s *Shell) commit(t *tab, plan *source.WritePlan) {
 }
 
 // apply runs a plan off the UI goroutine.
-func (s *Shell) apply(t *tab, plan *source.WritePlan) {
-	t.committing, t.said = true, "Committing…"
-	s.showCount(t)
+func (s *Shell) apply(e *edits, plan *source.WritePlan) {
+	e.committing = true
+	e.say("Committing…")
+	e.show()
 	go func() {
-		out, err := t.browse.Apply(t.ctx, plan)
+		out, err := e.writes.Apply(e.ctx, plan)
 		s.d.Run(func() {
-			if t.ctx.Err() == nil {
-				s.applied(t, plan, out, err)
+			if e.ctx.Err() == nil {
+				s.applied(e, plan, out, err)
 			}
 		})
 	}()
@@ -158,44 +156,44 @@ func (s *Shell) apply(t *tab, plan *source.WritePlan) {
 // the rows read again. Refused, or stopped by a failing statement, they
 // stay as they were, and the row the failing statement was for is
 // selected.
-func (s *Shell) applied(t *tab, plan *source.WritePlan, out *source.WriteOutcome, err error) {
-	t.committing = false
+func (s *Shell) applied(e *edits, plan *source.WritePlan, out *source.WriteOutcome, err error) {
+	e.committing = false
 	switch {
 	case errors.Is(err, source.ErrReadOnly):
-		t.said = "Not committed: this connection is read-only."
+		e.say("Not committed: this connection is read-only.")
 	case err != nil:
-		t.said = "Could not commit: " + err.Error()
+		e.say("Could not commit: " + err.Error())
 	case out.Err != nil && out.FailedAt >= 0 && out.FailedAt < len(plan.Descriptions):
 		written := "Nothing was written."
 		if !out.RolledBack {
 			written = "The changes before it may have been written."
 		}
-		t.said = fmt.Sprintf("Not committed: %s failed: %v. %s", plan.Descriptions[out.FailedAt], out.Err, written)
-		s.showFailed(t, out.FailedAt)
+		e.say(fmt.Sprintf("Not committed: %s failed: %v. %s", plan.Descriptions[out.FailedAt], out.Err, written))
+		s.showFailed(e, out.FailedAt)
 	case out.Err != nil:
-		t.said = "Not committed: " + out.Err.Error()
+		e.say("Not committed: " + out.Err.Error())
 	default:
-		n := t.pending.Len()
-		t.pending.RevertAll()
-		t.model.SetAdded(nil)
-		t.said = "Committed " + changesText(n)
-		s.reload(t)
+		n := e.pending.Len()
+		e.pending.RevertAll()
+		e.model.SetAdded(nil)
+		e.say("Committed " + changesText(n))
+		e.reload()
 		return
 	}
-	s.showCount(t)
+	e.show()
 }
 
 // showFailed selects the row the changeset's i'th change is to: a new row
 // by its place, or a row read by its key, if it is in memory.
-func (s *Shell) showFailed(t *tab, i int) {
-	key, added, ok := t.pending.Change(i)
+func (s *Shell) showFailed(e *edits, i int) {
+	key, added, ok := e.pending.Change(i)
 	switch {
 	case !ok:
 	case added >= 0:
-		t.grid.GoTo(grid.CellID{Row: added, Col: 0})
+		e.grid.GoTo(grid.CellID{Row: added, Col: 0})
 	default:
-		if r, found := t.model.Find(func(row model.Row) bool { return t.pending.IsRow(row, key) }); found {
-			t.grid.GoTo(grid.CellID{Row: int(r), Col: 0})
+		if r, found := e.model.Find(func(row model.Row) bool { return e.pending.IsRow(row, key) }); found {
+			e.grid.GoTo(grid.CellID{Row: int(r), Col: 0})
 		}
 	}
 }

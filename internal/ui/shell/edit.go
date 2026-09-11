@@ -2,36 +2,39 @@ package shell
 
 import "github.com/ikigai-db/ikigai-db/internal/ui/grid"
 
-// Editing a table's cells and rows (FR-4.1, FR-4.2, ADR-0029, ADR-0030).
-// The grid edits in place and hands each value to the tab's pending changes;
-// nothing is written to the server until the changes are committed (T2.6).
+// Editing a grid's cells and rows (FR-4.1, FR-4.2, ADR-0029, ADR-0030).
+// The grid edits in place and hands each value to its pending changes
+// (edits.go); nothing is written to the server until the changes are
+// committed (commit.go).
 
-// canEditCell reports whether the active tab's active cell can be edited.
+// canEditCell reports whether the active cell of the grid in front can be
+// edited.
 func (s *Shell) canEditCell() bool {
-	t := s.activeTab()
-	return t != nil && t.pending != nil && t.grid != nil && t.grid.CanEditCell()
+	e := s.activeEdits()
+	return e != nil && e.pending != nil && e.grid.CanEditCell()
 }
 
-// canInsert reports whether the active tab's table takes new rows.
+// canInsert reports whether the grid in front takes new rows.
 func (s *Shell) canInsert() bool {
-	t := s.activeTab()
-	return t != nil && t.pending != nil && t.grid != nil
+	e := s.activeEdits()
+	return e != nil && e.pending != nil
 }
 
-// canChangeRows reports whether the active tab edits and has cells selected.
+// canChangeRows reports whether the grid in front edits and has cells
+// selected.
 func (s *Shell) canChangeRows() bool {
-	return s.canInsert() && !s.activeTab().grid.Selection().Empty()
+	return s.canInsert() && !s.activeEdits().grid.Selection().Empty()
 }
 
 // setNull sets every selected cell of the rows loaded, and of the new rows,
-// to NULL. A column that cannot hold NULL is left as it is, and the footer
-// says so; so is a row to be deleted.
+// to NULL. A column that cannot hold NULL is left as it is, and it is said;
+// so is a row to be deleted.
 func (s *Shell) setNull() {
 	if !s.canChangeRows() {
 		return
 	}
-	t := s.activeTab()
-	g, cols := t.grid, t.model.Columns()
+	e := s.activeEdits()
+	g, cols := e.grid, e.model.Columns()
 	sel := g.Selection()
 	problem := ""
 	for _, vc := range sel.Columns() {
@@ -43,11 +46,11 @@ func (s *Shell) setNull() {
 			problem = cols[mc].Name + " cannot be NULL"
 			continue
 		}
-		for _, r := range selectedRows(t) {
+		for _, r := range selectedRows(e) {
 			if !sel.Contains(r, vc) {
 				continue
 			}
-			row, _ := t.model.Row(t.ctx, int64(r))
+			row, _ := e.model.Row(e.ctx, int64(r))
 			if row == nil {
 				continue
 			}
@@ -56,18 +59,18 @@ func (s *Shell) setNull() {
 			}
 		}
 	}
-	t.said = problem
+	e.say(problem)
 	g.Table.Refresh()
-	s.showCount(t)
+	e.show()
 }
 
 // selectedRows lists, in order, the grid's rows with a cell selected, among
 // the new rows and the rows loaded: a whole column reaches past the rows
 // loaded.
-func selectedRows(t *tab) []int {
-	sel := t.grid.Selection()
+func selectedRows(e *edits) []int {
+	sel := e.grid.Selection()
 	first, last := sel.Rows()
-	if n, _ := t.model.Extent(); int64(last) >= n {
+	if n, _ := e.model.Extent(); int64(last) >= n {
 		last = int(n) - 1
 	}
 	var out []int
@@ -85,10 +88,10 @@ func (s *Shell) insertRow() {
 	if !s.canInsert() {
 		return
 	}
-	t := s.activeTab()
-	i := t.pending.Add()
-	s.showAdded(t)
-	t.grid.GoTo(grid.CellID{Row: i, Col: 0})
+	e := s.activeEdits()
+	i := e.pending.Add()
+	e.showAdded()
+	e.grid.GoTo(grid.CellID{Row: i, Col: 0})
 }
 
 // duplicateRows adds a new row for each row selected, with its values but
@@ -97,20 +100,20 @@ func (s *Shell) duplicateRows() {
 	if !s.canChangeRows() {
 		return
 	}
-	t := s.activeTab()
+	e := s.activeEdits()
 	first := -1
-	for _, r := range selectedRows(t) {
-		row, _ := t.model.Row(t.ctx, int64(r))
+	for _, r := range selectedRows(e) {
+		row, _ := e.model.Row(e.ctx, int64(r))
 		if row == nil {
 			continue
 		}
-		if i := t.pending.Duplicate(row); first < 0 {
+		if i := e.pending.Duplicate(row); first < 0 {
 			first = i
 		}
 	}
-	s.showAdded(t)
+	e.showAdded()
 	if first >= 0 {
-		t.grid.GoTo(grid.CellID{Row: first, Col: 0})
+		e.grid.GoTo(grid.CellID{Row: first, Col: 0})
 	}
 }
 
@@ -120,26 +123,19 @@ func (s *Shell) deleteRows() {
 	if !s.canChangeRows() {
 		return
 	}
-	t := s.activeTab()
-	rows, k := selectedRows(t), t.model.Added()
+	e := s.activeEdits()
+	rows, k := selectedRows(e), e.model.Added()
 	for i := len(rows) - 1; i >= 0; i-- { // from the last, so a new row's place holds
 		r := rows[i]
 		if r < k {
-			t.pending.RemoveAdded(r)
+			e.pending.RemoveAdded(r)
 			continue
 		}
-		if row, _ := t.model.Row(t.ctx, int64(r)); row != nil {
-			t.pending.Delete(row)
+		if row, _ := e.model.Row(e.ctx, int64(r)); row != nil {
+			e.pending.Delete(row)
 		}
 	}
-	s.showAdded(t)
-}
-
-// showAdded puts the pending new rows in the grid and counts the changes.
-func (s *Shell) showAdded(t *tab) {
-	t.model.SetAdded(t.pending.Added())
-	t.grid.Table.Refresh()
-	s.showCount(t)
+	e.showAdded()
 }
 
 // editInViewer opens the active cell's value at length in the cell viewer,

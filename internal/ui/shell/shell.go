@@ -146,13 +146,9 @@ type tab struct {
 	model  *grid.Model // nil until the object opens
 	grid   *grid.TableGrid
 	browse *app.BrowseSource
-	// pending are the table's edits not yet written (FR-4.3). It is nil
+	// ed is the table's editing (edits.go): its pending changes are nil
 	// where the rows cannot be told apart, which are never edited (FR-4.7).
-	pending *app.Pending
-	// review is Review Changes…, beside the footer while changes are
-	// pending; committing is set while they are being written (commit.go).
-	review     *widget.Button
-	committing bool
+	ed *edits
 	// browseSeq numbers re-browses (a sort or a filter), so only the latest
 	// is applied. want is what the latest asked for, so a sort made while a
 	// filter is on its way keeps it. applied and filtered are the sort and
@@ -593,13 +589,15 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 		body: container.NewStack(quiet("Opening…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
 	t.top = container.NewVBox()
-	t.review = widget.NewButton("Review Changes…", func() {
-		if t.pending != nil && t.pending.Len() > 0 && !t.committing {
-			s.review(t)
+	t.ed = &edits{ctx: ctx, connID: connID, say: func(text string) { t.said = text },
+		show: func() { s.showCount(t) }, reload: func() { s.reload(t) }}
+	t.ed.review = widget.NewButton("Review Changes…", func() {
+		if t.ed.reviewable() {
+			s.review(t.ed)
 		}
 	})
-	t.review.Hide()
-	foot := container.NewBorder(nil, nil, nil, t.review, t.footer)
+	t.ed.review.Hide()
+	foot := container.NewBorder(nil, nil, nil, t.ed.review, t.footer)
 	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, foot, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
@@ -648,6 +646,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		})
 	}
 	t.model, t.grid, t.browse = m, g, bs
+	t.ed.grid, t.ed.model, t.ed.writes = g, m, bs
 	s.startEditing(t, bs.Identity()) // key.go
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
@@ -710,15 +709,15 @@ func (s *Shell) showCount(t *tab) {
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
 	}
-	if p := t.pending; p != nil && p.Len() > 0 {
-		text += " · " + pendingText(p.Len())
-	}
-	if t.review != nil {
-		setShown(t.review, t.pending != nil && t.pending.Len() > 0)
-		if t.committing {
-			t.review.Disable()
+	if e := t.ed; e != nil {
+		if n := e.changes(); n > 0 {
+			text += " · " + pendingText(n)
+		}
+		setShown(e.review, e.changes() > 0)
+		if e.committing {
+			e.review.Disable()
 		} else {
-			t.review.Enable()
+			e.review.Enable()
 		}
 	}
 	if t.said != "" {

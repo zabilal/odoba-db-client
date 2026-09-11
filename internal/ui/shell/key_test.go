@@ -54,7 +54,7 @@ func keyless(t *testing.T, readOnly bool) (*fixture, *tab) {
 func TestATableWithNoKeySaysWhyAndTakesAChosenOne(t *testing.T) {
 	fx, tb := keyless(t, false)
 	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, noKeyText) })
-	if tb.pending != nil || !fx.s.canChooseKey() {
+	if tb.ed.pending != nil || !fx.s.canChooseKey() {
 		t.Fatal("a table with no key is not edited, and offers to choose one")
 	}
 	fx.s.run(cmdChooseKey)
@@ -63,13 +63,13 @@ func TestATableWithNoKeySaysWhyAndTakesAChosenOne(t *testing.T) {
 		t.Fatalf("the key is chosen from the columns: %v", pick)
 	}
 	tapOnTop(t, fx, "Edit by These")
-	if tb.pending != nil || !strings.Contains(tb.footer.Text, "No key chosen") {
+	if tb.ed.pending != nil || !strings.Contains(tb.footer.Text, "No key chosen") {
 		t.Fatalf("with no column chosen nothing changes: %q", tb.footer.Text)
 	}
 	fx.s.run(cmdChooseKey)
 	findCheckGroup(fx.s.win.Canvas().Overlays().Top()).SetSelected([]string{"name", "id"})
 	tapOnTop(t, fx, "Edit by These")
-	if tb.pending == nil || !tb.grid.Table.ShowHeaderColumn || fx.s.canChooseKey() {
+	if tb.ed.pending == nil || !tb.grid.Table.ShowHeaderColumn || fx.s.canChooseKey() {
 		t.Fatal("the rows are edited by the key chosen")
 	}
 	if !strings.Contains(tb.footer.Text, "Edited by id, name, the key chosen") {
@@ -79,7 +79,7 @@ func TestATableWithNoKeySaysWhyAndTakesAChosenOne(t *testing.T) {
 	if err := tb.grid.OnEdit(row, 1, "renamed"); err != nil {
 		t.Fatal(err)
 	}
-	cs := tb.pending.Changeset(false)
+	cs := tb.ed.pending.Changeset(false)
 	if cs.Identity.Kind != model.IdentityChosen || !slices.Equal(cs.Identity.Columns, []string{"id", "name"}) ||
 		len(cs.Changes) != 1 || len(cs.Changes[0].Key) != 2 {
 		t.Errorf("the change is written by the key chosen: %+v", cs)
