@@ -81,46 +81,6 @@ func TestRunRespectsEnabled(t *testing.T) {
 	}
 }
 
-func TestFuzzyPrefersWordStarts(t *testing.T) {
-	// Greedy matching would take the first n and c, mid-word in "Connection".
-	score, pos, ok := Fuzzy("nc", "Connection: New Connection")
-	if !ok {
-		t.Fatal("no match")
-	}
-	want := []int{12, 16} // New, Connection
-	if pos[0] != want[0] || pos[1] != want[1] {
-		t.Errorf("positions %v, want %v (word starts)", pos, want)
-	}
-	if other, _, _ := Fuzzy("nc", "Syncing"); other >= score {
-		t.Errorf("a mid-word match (%d) scored at least the word-start one (%d)", other, score)
-	}
-}
-
-func TestFuzzyBasics(t *testing.T) {
-	if _, _, ok := Fuzzy("xyz", "New Connection"); ok {
-		t.Error("non-subsequence matched")
-	}
-	if _, _, ok := Fuzzy("NEWCONN", "new connection"); !ok {
-		t.Error("matching must be case-insensitive")
-	}
-	if _, _, ok := Fuzzy("", "anything"); !ok {
-		t.Error("empty query should match")
-	}
-	if _, _, ok := Fuzzy("toolong", "short"); ok {
-		t.Error("longer query than target matched")
-	}
-	// Consecutive runs beat scattered letters.
-	tight, _, _ := Fuzzy("run", "Query: Run")
-	loose, _, _ := Fuzzy("run", "Query: Refresh Unused Nodes")
-	if tight <= loose {
-		t.Errorf("consecutive %d should beat scattered %d", tight, loose)
-	}
-	// Unicode survives.
-	if _, pos, ok := Fuzzy("ü", "Grüße"); !ok || pos[0] != 2 {
-		t.Errorf("unicode: %v %v", pos, ok)
-	}
-}
-
 func TestSearchRanking(t *testing.T) {
 	r := NewRegistry()
 	r.MustRegister(cmd("q.run", "Query", "Run Statement", Shortcut{Key: "Return", Mods: ModShortcut}))

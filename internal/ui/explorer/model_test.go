@@ -208,3 +208,32 @@ func TestPathGivesLabelsFromTheRoot(t *testing.T) {
 		t.Errorf("path = %q", got)
 	}
 }
+
+func TestSearchMatchesThePathAndLoadsNothing(t *testing.T) {
+	tr := &tree{}
+	m := NewModel(tr, 0)
+	m.Children(RootID)
+	top := waitLoaded(t, m, RootID)
+	m.Children(top[0])
+	waitLoaded(t, m, top[0])
+	calls := tr.calls.Load()
+	// Every label is n0 to n2: only the path tells one n1 from another.
+	res := m.Search("n0 / n1", 0)
+	if len(res.Hits) == 0 || res.Hits[0].ID != top[0]+"/1" {
+		t.Fatalf("hits %+v, want %s first", res.Hits, top[0]+"/1")
+	}
+	for _, h := range res.Hits {
+		if len(h.Path) > 2 {
+			t.Errorf("hit %v lies inside a branch that was never loaded", h.Path)
+		}
+	}
+	if res.Unopened != 2 {
+		t.Errorf("unopened %d, want the 2 top-level branches never loaded", res.Unopened)
+	}
+	if tr.calls.Load() != calls {
+		t.Error("a search loaded something")
+	}
+	if got := m.Search("  ", 0); len(got.Hits) != 0 {
+		t.Errorf("a blank filter matched %d", len(got.Hits))
+	}
+}

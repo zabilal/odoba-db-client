@@ -24,6 +24,7 @@ const (
 	cmdRefresh        = "explorer.refresh"
 	cmdReload         = "tab.reload"
 	cmdSidebar        = "view.sidebar"
+	cmdFilterObjects  = "explorer.filter"
 	cmdTabClose       = "tab.close"
 	cmdTabNext        = "tab.next"
 	cmdTabPrev        = "tab.previous"
@@ -106,7 +107,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),

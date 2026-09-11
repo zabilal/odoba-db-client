@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
@@ -306,5 +308,118 @@ func TestConnectionOf(t *testing.T) {
 	}
 	if _, ok := ConnectionOf(""); ok {
 		t.Error("the root belongs to no connection")
+	}
+}
+
+// filtered builds an explorer over one connection with sales, both its
+// schemas and schema a's table loaded.
+func filtered(t *testing.T, hosts ...string) (*Explorer, *uithread.Queue, []string) {
+	t.Helper()
+	newApp(t)
+	l, saved := setup(t, hosts...)
+	q := &uithread.Queue{}
+	e := New(l, q.Run, 0)
+	e.Model.Children(explorer.RootID)
+	waitReal(t, e.Model, explorer.RootID)
+	conn := ConnectionID(saved[0].ID)
+	e.Model.Children(conn)
+	dbs := waitReal(t, e.Model, conn)
+	e.Model.Children(dbs[0])
+	schemas := waitReal(t, e.Model, dbs[0])
+	e.Model.Children(schemas[1])
+	waitReal(t, e.Model, schemas[1])
+	q.Flush()
+	return e, q, []string{conn, dbs[0], schemas[0], schemas[1]}
+}
+
+func TestTheFilterListsMatchingPathsInPlaceOfTheTree(t *testing.T) {
+	e, q, _ := filtered(t, "primary")
+	test.Type(e.Filter, "a b.c")
+	q.Flush()
+	if e.body.Objects[0] == e.Tree || len(e.hits) == 0 {
+		t.Fatal("the matches should be listed in the tree's place")
+	}
+	if got := e.hits[0].Path; len(got) != 4 || got[3] != "b.c" || got[2] != "a" {
+		t.Errorf("best match %v, want primary / sales / a / b.c", got)
+	}
+	var opened model.Node
+	e.OnOpen = func(_ string, n model.Node) { opened = n }
+	e.results.Select(0)
+	if opened.Label != "b.c" {
+		t.Errorf("choosing a table should open it, opened %q", opened.Label)
+	}
+}
+
+func TestChoosingAFolderShowsItInTheTree(t *testing.T) {
+	e, q, ids := filtered(t, "primary")
+	e.Filter.SetText("a.b")
+	q.Flush()
+	at := -1
+	for i, h := range e.hits {
+		if h.ID == ids[2] {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("schema a.b not among %v", e.hits)
+	}
+	e.results.Select(at)
+	if e.Filter.Text != "" || e.body.Objects[0] != e.Tree {
+		t.Error("choosing a schema should clear the filter and bring the tree back")
+	}
+	if !e.Tree.IsBranchOpen(ids[0]) || !e.Tree.IsBranchOpen(ids[1]) || e.Selected() != ids[2] {
+		t.Errorf("the schema should be selected with its connection and database open; selected %s", debugID(e.Selected()))
+	}
+}
+
+func TestEscapeClearsTheFilter(t *testing.T) {
+	e, q, _ := filtered(t, "primary")
+	e.Filter.SetText("sales")
+	q.Flush()
+	e.Filter.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
+	q.Flush()
+	if e.Filter.Text != "" || e.body.Objects[0] != e.Tree {
+		t.Error("Escape should clear the filter and bring the tree back")
+	}
+}
+
+func TestTheFilterSaysWhatItDidNotSearch(t *testing.T) {
+	e, q, _ := filtered(t, "primary", "secondary")
+	e.Filter.SetText("sales")
+	q.Flush()
+	if want := "Not searched: 1 connection not opened."; !strings.Contains(e.note.Text, want) {
+		t.Errorf("note %q, want it to say %q", e.note.Text, want)
+	}
+	e.Filter.SetText("zzz")
+	q.Flush()
+	if !strings.HasPrefix(e.note.Text, "No loaded objects match") {
+		t.Errorf("note %q", e.note.Text)
+	}
+}
+
+func TestMatchesFollowTheTreeAsItLoads(t *testing.T) {
+	e, q, ids := filtered(t, "primary")
+	e.Filter.SetText("a.b / c")
+	q.Flush()
+	if len(e.hits) != 0 {
+		t.Fatalf("table c is not loaded yet, but the filter found %v", e.hits)
+	}
+	e.Model.Children(ids[2]) // schema a.b's table loads while the filter is on
+	waitReal(t, e.Model, ids[2])
+	q.Flush()
+	if len(e.hits) == 0 || e.hits[0].Path[len(e.hits[0].Path)-1] != "c" {
+		t.Errorf("the matches should follow the tree as it loads: %v", e.hits)
+	}
+}
+
+func TestEnterOpensTheBestMatch(t *testing.T) {
+	e, q, _ := filtered(t, "primary")
+	var opened model.Node
+	e.OnOpen = func(_ string, n model.Node) { opened = n }
+	test.Type(e.Filter, "a b.c")
+	q.Flush()
+	e.Filter.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	if opened.Label != "b.c" {
+		t.Errorf("Enter should open the best match, opened %q", opened.Label)
 	}
 }

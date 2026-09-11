@@ -315,6 +315,8 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.onGrid((*grid.TableGrid).SelectColumn) }},
 		{ID: cmdSelectAllCells, Category: "Edit", Title: "Select All Cells", Keywords: []string{"everything"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: func() { s.onGrid((*grid.TableGrid).SelectAll) }},
+		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
+			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
@@ -385,7 +387,7 @@ func (s *Shell) buildSidebar() fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("Connections", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	add := widget.NewButtonWithIcon("", fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
 	add.Importance = widget.LowImportance
-	return container.NewBorder(container.NewBorder(nil, nil, nil, add, title), nil, nil, nil, s.Explorer.Tree)
+	return container.NewBorder(container.NewBorder(nil, nil, nil, add, title), nil, nil, nil, s.Explorer.View())
 }
 
 func (s *Shell) emptyState() fyne.CanvasObject {
@@ -729,6 +731,15 @@ func (s *Shell) cycleTab(delta int) {
 		return
 	}
 	s.tabs.SelectIndex((s.tabs.SelectedIndex() + delta + n) % n)
+}
+
+// filterObjects puts the keyboard in the explorer's filter, showing the
+// sidebar first if it is hidden.
+func (s *Shell) filterObjects() {
+	if !s.sidebar.Visible() {
+		s.toggleSidebar()
+	}
+	s.win.Canvas().Focus(s.Explorer.Filter)
 }
 
 func (s *Shell) toggleSidebar() {

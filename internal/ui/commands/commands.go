@@ -15,7 +15,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"unicode"
+
+	"github.com/ikigai-db/ikigai-db/internal/fuzzy"
 )
 
 // Mod is a set of modifier keys.
@@ -257,10 +258,10 @@ func (r *Registry) Search(query string, limit int) []Match {
 			out = append(out, Match{Command: c, Label: label, Score: -i, Enabled: enabled})
 			continue
 		}
-		score, pos, ok := Fuzzy(q, label)
+		score, pos, ok := fuzzy.Match(q, label)
 		if !ok {
 			for _, kw := range c.Keywords {
-				if s, _, found := Fuzzy(q, kw); found {
+				if s, _, found := fuzzy.Match(q, kw); found {
 					// Found through a keyword, not the visible title: rank it
 					// below matches the user can see, and highlight nothing.
 					score, pos, ok = s-60, nil, true
@@ -282,115 +283,4 @@ func (r *Registry) Search(query string, limit int) []Match {
 		out = out[:limit]
 	}
 	return out
-}
-
-const (
-	scoreMatch     = 10
-	bonusWordStart = 12
-	bonusFirst     = 6
-	bonusConsec    = 8
-	penaltyGap     = 1
-)
-
-const impossible = -1 << 30
-
-// Fuzzy reports whether query's runes appear in order in target,
-// case-insensitively, and scores the best such placement.
-//
-// The best placement is found by dynamic programming, not taken greedily. A
-// greedy match of "nc" in "Connection: New Connection" takes the first n and
-// the next c, both mid-word, and scores badly. The placement on the word
-// starts, New Connection, is the one a person means. A running maximum over
-// earlier positions keeps it O(len(query) × len(target)).
-func Fuzzy(query, target string) (int, []int, bool) {
-	qs := []rune(strings.ToLower(query))
-	ts := []rune(target)
-	lt := make([]rune, len(ts))
-	for i, r := range ts {
-		lt[i] = unicode.ToLower(r)
-	}
-	nq, nt := len(qs), len(ts)
-	if nq == 0 {
-		return 0, nil, true
-	}
-	if nq > nt {
-		return 0, nil, false
-	}
-
-	start := make([]int, nt)
-	for j := range ts {
-		start[j] = scoreMatch
-		if isWordStart(ts, j) {
-			start[j] += bonusWordStart
-		}
-		if j == 0 {
-			start[j] += bonusFirst
-		}
-	}
-
-	best := make([][]int, nq)
-	back := make([][]int, nq)
-	for i := range best {
-		best[i] = make([]int, nt)
-		back[i] = make([]int, nt)
-		for j := range best[i] {
-			best[i][j] = impossible
-			back[i][j] = -1
-		}
-	}
-	for j := 0; j < nt; j++ {
-		if lt[j] == qs[0] {
-			best[0][j] = start[j] - j/4 // a gentle preference for early matches
-		}
-	}
-	for i := 1; i < nq; i++ {
-		runMax, runArg := impossible, -1 // max over k <= j-2 of best[i-1][k] + k
-		for j := i; j < nt; j++ {
-			if k := j - 2; k >= 0 && best[i-1][k] != impossible && best[i-1][k]+k > runMax {
-				runMax, runArg = best[i-1][k]+k, k
-			}
-			if lt[j] != qs[i] {
-				continue
-			}
-			cand, arg := impossible, -1
-			if p := best[i-1][j-1]; p != impossible {
-				cand, arg = p+bonusConsec, j-1
-			}
-			if runMax != impossible {
-				if gap := runMax + 1 - j*penaltyGap; gap > cand {
-					cand, arg = gap, runArg
-				}
-			}
-			if cand != impossible {
-				best[i][j], back[i][j] = cand+start[j], arg
-			}
-		}
-	}
-
-	endScore, end := impossible, -1
-	for j := 0; j < nt; j++ {
-		if best[nq-1][j] > endScore {
-			endScore, end = best[nq-1][j], j
-		}
-	}
-	if end < 0 {
-		return 0, nil, false
-	}
-	pos := make([]int, nq)
-	for i, j := nq-1, end; i >= 0; i-- {
-		pos[i] = j
-		j = back[i][j]
-	}
-	return endScore - nt/8, pos, true // on a tie, the shorter label wins
-}
-
-func isWordStart(ts []rune, j int) bool {
-	if j == 0 {
-		return true
-	}
-	prev, cur := ts[j-1], ts[j]
-	if unicode.IsSpace(prev) || strings.ContainsRune(":_-./()…", prev) {
-		return true
-	}
-	return unicode.IsLower(prev) && unicode.IsUpper(cur) // camelCase
 }
