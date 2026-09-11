@@ -21,6 +21,11 @@ func (s *Shell) showExplorerMenu(id string, at fyne.Position) {
 // commands act on the selection, so the node is selected first: the menu
 // and what its commands would do then always agree, whoever asks for it.
 func (s *Shell) explorerMenu(id string) *fyne.Menu {
+	if _, ok := view.FolderOf(id); ok {
+		s.Explorer.Tree.Select(id)
+		s.sync()
+		return fyne.NewMenu("", s.popupItems([]string{cmdConnNew, cmdFolderEdit, "", cmdFolderDelete})...)
+	}
 	conn, ok := view.ConnectionOf(id)
 	if !ok {
 		return nil

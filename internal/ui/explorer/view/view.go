@@ -21,6 +21,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
+	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -35,6 +36,26 @@ type connItem struct {
 type objItem struct {
 	ConnID string
 	Node   model.Node
+}
+
+// folderItem is a connection folder (FR-1.6, ADR-0025): its ID and colour.
+type folderItem struct {
+	ID, Color string
+}
+
+// FolderID is the tree ID of a connection folder.
+func FolderID(id string) string { return "f" + sep + id }
+
+// FolderOf returns the connection folder a tree node is, if it is one.
+func FolderOf(id string) (string, bool) {
+	rest, ok := strings.CutPrefix(id, "f"+sep)
+	return rest, ok && rest != "" && !strings.ContainsRune(rest, 0) // not its loading row
+}
+
+// connectionItem is a saved connection's row. Expanding it connects.
+func connectionItem(c store.SavedConnection) explorer.Item {
+	return explorer.Item{ID: ConnectionID(c.ID), Label: c.Name, HasChildren: true, Connects: true,
+		Data: connItem{ConnID: c.ID, Environment: c.Environment}}
 }
 
 // Loader fills the tree. Saved connections sit at the root. Expanding one
@@ -75,12 +96,31 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 	defer panics.Recover(&err, "listing objects") // the driver is called here directly
 	switch d := parent.Data.(type) {
 	case nil:
+		// The folders first, then the connections in none. A folder lists
+		// its connections at once: they are in the settings, and the filter
+		// must find them in a folder not opened.
+		// The store refuses a connection in a folder that is not there.
+		in := map[string]int{}
+		for _, c := range l.Conns.List() {
+			in[c.Folder]++
+		}
+		var out []explorer.Item
+		for _, f := range l.Conns.Folders() {
+			out = append(out, explorer.Item{ID: FolderID(f.ID), Label: f.Name, HasChildren: in[f.ID] > 0, Eager: true,
+				Data: folderItem{ID: f.ID, Color: f.Color}})
+		}
+		for _, c := range l.Conns.List() {
+			if c.Folder == "" {
+				out = append(out, connectionItem(c))
+			}
+		}
+		return out, nil
+	case folderItem:
 		var out []explorer.Item
 		for _, c := range l.Conns.List() {
-			out = append(out, explorer.Item{
-				ID: "c" + sep + c.ID, Label: c.Name, HasChildren: true,
-				Data: connItem{ConnID: c.ID, Environment: c.Environment},
-			})
+			if c.Folder == d.ID {
+				out = append(out, connectionItem(c))
+			}
 		}
 		return out, nil
 	case connItem:
@@ -397,6 +437,8 @@ func (e *Explorer) update(id string, r *nodeRow) {
 		return
 	}
 	switch d := it.Data.(type) {
+	case folderItem:
+		r.show(fynetheme.IconNameFolder, it.Label, folderBadge(d.Color))
 	case connItem:
 		r.show(uitheme.IconNameDatabase, it.Label, environmentBadge(d.Environment))
 	case objItem:
@@ -438,6 +480,24 @@ func iconFor(k model.ObjectKind) fyne.ThemeIconName {
 type badgeText struct {
 	text     string
 	emphatic bool
+	// color, when set, is the badge's own colour: a folder's dot.
+	color color.Color
+}
+
+// folderBadge is a folder's colour, as a dot beside its name the way Finder
+// shows a tag: the name says which folder it is, the dot only groups the
+// eye (ADR-0025). None for a folder with no colour.
+func folderBadge(name string) badgeText {
+	a := fyne.CurrentApp().Settings()
+	dark := a.ThemeVariant() == fynetheme.VariantDark
+	if th, ok := a.Theme().(*uitheme.Theme); ok {
+		dark = th.IsDark(a.ThemeVariant())
+	}
+	c, ok := uitheme.FolderColor(name, dark)
+	if !ok {
+		return badgeText{}
+	}
+	return badgeText{text: "●", color: c}
 }
 
 // badge renders a node's count. An estimate is marked with ~, so a
@@ -638,6 +698,9 @@ func (r *nodeRow) show(icon fyne.ThemeIconName, label string, b badgeText) {
 	r.badge.TextStyle = fyne.TextStyle{}
 	if b.emphatic {
 		r.badge.Color, r.badge.TextStyle = danger, fyne.TextStyle{Bold: true}
+	}
+	if b.color != nil {
+		r.badge.Color = b.color
 	}
 	r.Refresh()
 }

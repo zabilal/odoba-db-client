@@ -207,6 +207,26 @@ func TestDeletingAFolderKeepsItsConnections(t *testing.T) {
 	}
 }
 
+func TestEditingAFolderRenamesAndRecolours(t *testing.T) {
+	f := setup(t)
+	fo, err := f.c.CreateFolder("Staging", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.c.EditFolder(fo.ID, "Live", "orange"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.c.Folders(); len(got) != 1 || got[0].Name != "Live" || got[0].Color != "orange" {
+		t.Errorf("folders %+v", got)
+	}
+	if err := f.c.EditFolder(fo.ID, " ", ""); err == nil || f.c.Folders()[0].Name != "Live" {
+		t.Error("a folder was left with no name")
+	}
+	if err := f.c.EditFolder("no-such-folder", "X", ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("editing a folder that does not exist: %v", err)
+	}
+}
+
 func TestTestConnectionReportsWhatToFix(t *testing.T) {
 	f := setup(t)
 	ok := f.c.Test(context.Background(), draft("A"), nil)
