@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app/connstr"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 )
 
 // testTimeout bounds "Test Connection". It is generous: it exists so a
@@ -166,6 +168,10 @@ func (f *connForm) setDriver(d source.Descriptor) {
 	f.inputs = make(map[string]*input, len(d.Fields))
 	for _, fd := range d.Fields {
 		in := newInput(fd, f.save)
+		if fd.Kind == source.FieldFile {
+			in.choose = widget.NewButton("Choose…", func() { f.chooseFile(in) })
+			in.obj = container.NewBorder(nil, nil, nil, in.choose, in.entry)
+		}
 		if o, ok := old[fd.Key]; ok && o.f.Kind == fd.Kind {
 			in.set(o.value())
 		}
@@ -454,6 +460,23 @@ func (f *connForm) close() {
 	}
 }
 
+// chooseFile fills a file field from the platform's open dialog (FR-15.5),
+// starting in the folder of the file it names already.
+func (f *connForm) chooseFile(in *input) {
+	o := filedlg.Options{Message: "Choose the " + f.desc.Name + " database file", Accept: "Choose"}
+	if cur := strings.TrimSpace(in.entry.Text); filepath.IsAbs(cur) {
+		o.Directory = filepath.Dir(cur)
+	}
+	f.s.d.Files.Open(f.s.win, o, func(path string, err error) {
+		switch {
+		case err != nil:
+			f.say(err.Error(), true)
+		case path != "":
+			in.entry.SetText(path)
+		}
+	})
+}
+
 func (f *connForm) say(msg string, bad bool) {
 	f.result.Importance = widget.MediumImportance
 	if bad {
@@ -465,11 +488,12 @@ func (f *connForm) say(msg string, bad bool) {
 
 // input is one driver field's widget.
 type input struct {
-	f     source.Field
-	obj   fyne.CanvasObject
-	entry *widget.Entry
-	check *widget.Check
-	sel   *widget.Select
+	f      source.Field
+	obj    fyne.CanvasObject
+	entry  *widget.Entry
+	check  *widget.Check
+	sel    *widget.Select
+	choose *widget.Button // a file field's Choose…
 }
 
 func newInput(fd source.Field, submit func()) *input {

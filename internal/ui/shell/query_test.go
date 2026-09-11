@@ -22,11 +22,13 @@ import (
 )
 
 // The fake runs scripts of ";"-separated statements: "rows N", "slow N" (a
-// row a millisecond), "update …" (a write) and anything else, which fails.
-// Its offsets are characters, as the source contract says.
+// row a millisecond), "update …" (a write), "wait" (which holds the script
+// until it is stopped) and anything else, which fails. Its offsets are
+// characters, as the source contract says.
 
 var (
 	executed     atomic.Int64
+	waiting      atomic.Int64 // how many "wait" statements have begun
 	fakeSessions struct {
 		sync.Mutex
 		list []*fakeSession
@@ -123,6 +125,10 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, confirmed 
 				r.Result = &source.Result{Rows: &slowStream{n: n, slow: f[0] == "slow"}, Affected: -1}
 			case "update":
 				r.Result = &source.Result{Affected: 3, Duration: 2 * time.Millisecond}
+			case "wait":
+				waiting.Add(1)
+				<-ctx.Done()
+				return
 			default:
 				r.Err = fmt.Errorf("syntax error at or near %q", f[0])
 			}

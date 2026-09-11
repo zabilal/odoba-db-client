@@ -62,10 +62,11 @@ func (s *Shell) progressTask(k *task, status string, frac float64) {
 }
 
 // endTask records how a task ended. It stays in the panel, saying so, until
-// Clear Finished.
+// Clear Finished; from the background, a notification says so too.
 func (s *Shell) endTask(k *task, state taskState, status string) {
 	k.state, k.status = state, status
 	s.tasksChanged()
+	s.notifyTask(k)
 }
 
 // stopTask asks a task to stop. It says it has once it has cleaned up.

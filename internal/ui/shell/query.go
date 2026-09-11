@@ -258,7 +258,11 @@ func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
 			// once cut every large SELECT off after its first rows.
 			q.executing = false
 			if t.ctx.Err() == nil {
-				t.footer.SetText(runSummary(n, elapsed, stopped, failed))
+				summary := runSummary(n, elapsed, stopped, failed)
+				t.footer.SetText(summary)
+				if !stopped && elapsed >= notifyAfter {
+					s.notify(t.item.Text, summary) // a long run, ended in the background
+				}
 				s.sync()
 			}
 		})
