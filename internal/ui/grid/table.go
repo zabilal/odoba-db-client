@@ -35,9 +35,9 @@ type TableGrid struct {
 	// widths are the resolved pixel widths per column.
 	widths []float32
 
-	// RowStates optionally reports a row's changeset state, tinting the row
-	// (FR-4.3). Nil in the spike.
-	RowStates func(row int64) CellKind
+	// changes are the edits not yet written, shown in the cells and marked
+	// in the gutter; nil on a grid that shows none. See changes.go.
+	changes Changes
 
 	// sel is the selected cells (FR-3.7); table is the Table that hears the
 	// clicks and keys that change it.
@@ -105,7 +105,7 @@ type SortKey struct {
 // ascending, descending and unsorted, replacing any other sort; with add
 // (⇧-click) it joins the sort as its next key, or cycles within it.
 func (g *TableGrid) ToggleSort(col int, add bool) {
-	if !g.Sortable {
+	if !g.Sortable || col < 0 { // the gutter and the filler sort nothing
 		return
 	}
 	i := slices.IndexFunc(g.sorts, func(k SortKey) bool { return k.Column == col })
@@ -294,27 +294,44 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 
 	cols := g.model.Columns()
 	mc := g.ColumnAt(id.Col)
-	if mc < 0 || mc >= len(cols) { // the filler: the row's stripe, and nothing to say
+	if mc < 0 || mc >= len(cols) { // the filler: the row's stripe or tint, and nothing to say
+		var tint color.Color
+		if g.changes != nil {
+			if _, _, state := g.rowAt(id.Row); state != model.RowModified {
+				_, tint, _ = g.look(state)
+			}
+		}
 		cell.hint = ""
-		cell.set("", g.palette.Label, g.stripe(id.Row), fyne.TextAlignLeading, fyne.TextStyle{})
+		cell.set("", g.palette.Label, g.background(id, tint), fyne.TextAlignLeading, fyne.TextStyle{})
 		return
 	}
 	col := cols[mc]
 
-	row, loaded := g.model.Row(g.ctx, int64(id.Row))
+	row, loaded, state := g.rowAt(id.Row)
 
 	var c Cell
+	changed := false
 	switch {
 	case !loaded:
 		c = PendingCell()
 	case mc < len(row):
 		c = Format(row[mc], col, g.loc)
+		if state == model.RowModified {
+			if v, ok := g.changes.Value(row, mc); ok {
+				was := shown(c)
+				c, changed = Format(v, col, g.loc), true
+				c.Hint = "Changed from " + was
+				if was == "" {
+					c.Hint = "Changed from an empty value"
+				}
+			}
+		}
 	default:
 		c = Cell{Text: "", Kind: CellNormal}
 	}
 
 	fg := g.foreground(c.Kind)
-	bg := g.background(id)
+	var tint color.Color
 
 	align := fyne.TextAlignLeading
 	if c.Kind.RightAligned() {
@@ -332,8 +349,29 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 		style.Monospace = true
 	}
 
+	// A change has a second sign besides its colour: bold for a new value,
+	// a line through a row to be deleted (ADR-0028).
+	switch {
+	case changed:
+		style.Bold = true
+	case state == model.RowDeleted:
+		style.Strikethrough = true
+		c.Hint = deletedHint
+	case state == model.RowAdded:
+		c.Hint = addedHint
+	}
+	if changed || state == model.RowDeleted || state == model.RowAdded {
+		fg, tint, _ = g.look(state)
+		if g.sel.Contains(id.Row, id.Col) {
+			// The selection's tint takes the change's place, so the text
+			// takes the selection's colour, as a change's colour is not
+			// legible on it. The bold or the line stays.
+			fg = g.palette.Label
+		}
+	}
+
 	cell.hint = c.Hint
-	cell.set(shown(c), fg, bg, align, style)
+	cell.set(shown(c), fg, g.background(id, tint), align, style)
 }
 
 func (g *TableGrid) foreground(k CellKind) color.Color {
@@ -349,17 +387,16 @@ func (g *TableGrid) foreground(k CellKind) color.Color {
 	}
 }
 
-// background is a cell's fill: the selection's tint, or the row's stripe. A
-// cell can tint only its own width, so the filler column after the last one
-// carries the stripe to the grid's edge (see gridLayout).
-func (g *TableGrid) background(id widget.TableCellID) color.Color {
+// background is a cell's fill: the selection's tint, a change's tint when
+// it has one, or the row's stripe. A cell can tint only its own width, so
+// the filler column after the last one carries the stripe to the grid's
+// edge (see gridLayout).
+func (g *TableGrid) background(id widget.TableCellID, tint color.Color) color.Color {
 	if g.sel.Contains(id.Row, id.Col) {
 		return g.palette.SelectedUnemphasized
 	}
-	if g.RowStates != nil {
-		switch g.RowStates(int64(id.Row)) {
-		case CellKind(200): // placeholder; real changeset states land in Phase 1
-		}
+	if tint != nil {
+		return tint
 	}
 	return g.stripe(id.Row)
 }
@@ -378,6 +415,10 @@ func (g *TableGrid) createHeader() fyne.CanvasObject { return newColumnHeader(g)
 func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 	switch h := o.(type) {
 	case *columnHeader:
+		if id.Col < 0 { // a row's, in the gutter
+			g.updateGutter(id.Row, h)
+			return
+		}
 		if h.bg.FillColor != g.palette.SidebarBackground {
 			h.bg.FillColor = g.palette.SidebarBackground
 			h.bg.Refresh()
@@ -404,7 +445,7 @@ func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 }
 
 func (g *TableGrid) updateTitle(col int, h *headerCell) {
-	h.col = col
+	h.col, h.hint = col, ""
 	cols := g.model.Columns()
 	if col < 0 || col >= len(cols) {
 		h.set("", g.palette.SecondaryLabel, g.palette.SidebarBackground,

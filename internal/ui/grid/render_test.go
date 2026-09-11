@@ -42,8 +42,8 @@ func TestACutValueEndsInAnEllipsis(t *testing.T) {
 
 func TestRowsAreStripedToTheGridsEdge(t *testing.T) {
 	g := selectingGrid(t)
-	if g.background(widget.TableCellID{Row: 0, Col: 0}) != g.palette.ContentBackground ||
-		g.background(widget.TableCellID{Row: 1, Col: 0}) != g.palette.AlternateRow {
+	if g.background(widget.TableCellID{Row: 0, Col: 0}, nil) != g.palette.ContentBackground ||
+		g.background(widget.TableCellID{Row: 1, Col: 0}, nil) != g.palette.AlternateRow {
 		t.Error("every other row should be tinted")
 	}
 	_, cols := g.length()

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
@@ -284,6 +285,37 @@ func TestGateG0_1(t *testing.T) {
 	}
 	perUpdate := time.Since(start) / iterations
 
+	// The same with changes to show (ADR-0028): every seventh row deleted
+	// and every third changed in two cells, through app.Pending, which reads
+	// a row's key for each cell drawn.
+	p, err := app.NewPending(m.Columns(), ordersKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for r := int64(0); r < iterations*7+rows; r++ {
+		row, ok := m.Row(ctx, r)
+		if !ok {
+			t.Fatalf("row %d is not loaded", r)
+		}
+		switch {
+		case r%7 == 0:
+			p.Delete(row)
+		case r%3 == 0:
+			_ = p.Set(row, 2, "Someone Else")
+			_ = p.Set(row, 4, "changed")
+		}
+	}
+	g.SetChanges(p)
+	start = time.Now()
+	for i := 0; i < iterations; i++ {
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				g.UpdateCell(widget.TableCellID{Row: i*7 + r, Col: c % 13}, cells[r*cols+c])
+			}
+		}
+	}
+	perChanged := time.Since(start) / iterations
+
 	w := test.NewTempWindow(t, g.Table)
 	w.Resize(fyne.NewSize(1440, 960))
 	start = time.Now()
@@ -294,6 +326,7 @@ func TestGateG0_1(t *testing.T) {
 	perRefresh := time.Since(start) / iterations
 
 	t.Logf("viewport update (%d cells): %v", rows*cols, perUpdate.Round(time.Microsecond))
+	t.Logf("  with changes to show:      %v", perChanged.Round(time.Microsecond))
 	t.Logf("table refresh incl. layout:  %v", perRefresh.Round(time.Microsecond))
 
 	// Budgets are a fraction of the 16.7ms frame, leaving the rest for
@@ -305,6 +338,9 @@ func TestGateG0_1(t *testing.T) {
 	if perUpdate > updateBudget {
 		t.Errorf("G0-1: viewport update %v exceeds %v; the CPU path alone "+
 			"now threatens the frame budget", perUpdate, updateBudget)
+	}
+	if perChanged > updateBudget {
+		t.Errorf("G0-1: viewport update with changes to show %v exceeds %v", perChanged, updateBudget)
 	}
 	if perRefresh > refreshBudget {
 		t.Errorf("G0-1: table refresh %v exceeds %v", perRefresh, refreshBudget)

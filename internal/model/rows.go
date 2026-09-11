@@ -111,6 +111,16 @@ func (id RowIdentity) Editable() bool {
 	return id.Kind.Mutable() && len(id.Columns) > 0 && !id.Target.IsZero()
 }
 
+// RowState is how a row stands in changes not yet written (FR-4.3).
+type RowState uint8
+
+const (
+	RowUnchanged RowState = iota
+	RowModified
+	RowDeleted
+	RowAdded
+)
+
 // Identified is an optional RowStream refinement exposing row identity.
 //
 // A stream that does not implement it is treated as read-only, which is the

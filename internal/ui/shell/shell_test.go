@@ -81,7 +81,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 		return nil, &source.ConnectError{Kind: source.ConnectUnreachable,
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
-	return fakeSource{uncounted: cfg.Host == "nocount", guard: cfg.Guard}, nil
+	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -101,6 +101,7 @@ func (otherFake) Open(context.Context, source.ConnectionConfig) (source.Source, 
 // fakeSource serves one database holding one table of fakeRows rows.
 type fakeSource struct {
 	uncounted bool
+	unkeyed   bool // its rows cannot be told apart
 	guard     source.Guard
 }
 
@@ -181,7 +182,7 @@ var browses struct {
 	opts []source.BrowseOptions
 }
 
-func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+func (f fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
 	browses.Lock()
 	browses.opts = append(browses.opts, opt)
 	browses.Unlock()
@@ -200,10 +201,21 @@ func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Browse
 	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
 		end = opt.Offset + opt.Limit
 	}
-	return &sliceStream{next: opt.Offset, end: end}, nil
+	return &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}, nil
 }
 
-type sliceStream struct{ next, end int64 }
+type sliceStream struct {
+	next, end int64
+	keyed     bool
+}
+
+// Identity is the items' key, id, on a source whose rows have one.
+func (s *sliceStream) Identity() model.RowIdentity {
+	if !s.keyed {
+		return model.RowIdentity{}
+	}
+	return model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: itemsNode.Ref}
+}
 
 func (*sliceStream) Columns() []model.ColumnDef {
 	return []model.ColumnDef{{Name: "id", Type: model.DataType{Class: model.TypeInteger}}, {Name: "name"}}

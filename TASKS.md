@@ -23,9 +23,8 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.2 (pending changes marked in the grid), then T2.3 (cell
-           editors), T2.4, T2.5 (statement preview), T2.6 (commit), T2.8
-           (SQLite's rowid). What is open in Phase 1 waits on other work:
+NEXT TASK: T2.3 (cell editors, into tab.pending), then T2.4, T2.5
+           (statement preview), T2.6 (commit), T2.8 (SQLite's rowid). What is open in Phase 1 waits on other work:
            T1.58 on the MongoDB and Redis drivers, T1.14's scroll position
            on Fyne.
 [~] tasks: T1.14 partly done; its line says what is open.
@@ -33,8 +32,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — the pending changeset (T2.1, ADR-0027). Before
-           it: query parameters with a prompt panel (T1.65, ADR-0026), a
+LAST DONE: 2026-09-11 — pending changes marked in the grid (T2.2,
+           ADR-0028). Before it: the pending changeset (T2.1, ADR-0027),
+           query parameters with a prompt panel (T1.65, ADR-0026), a
            lost connection said on its row and
            tabs, with Reconnect Now (T1.31, ADR-0011 §21), connection
            folders (T1.27, ADR-0025), the environment on every tab (T1.28,
@@ -343,7 +343,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.A Changeset editing
 
 - [x] **T2.1** Pending-changeset model with add/modify/delete states → FR-4.3 — *app.Pending: a table's edits, kept by each row's identity values so they follow it through a sort; only real changes count; a deleted row loses its edits; revert by cell, row or all; new rows kept apart; the contract's Changeset out, updates carrying only the columns changed and the key the row had. Refuses rows it cannot tell apart (ADR-0027)*
-- [ ] **T2.2** Visual marking of changed cells/rows → FR-4.3, UX-9
+- [x] **T2.2** Visual marking of changed cells/rows → FR-4.3, UX-9 — *grid.Changes, asked about a row, not its place: a changed cell shows its new value bold on its tint and says what it was; a deleted row struck through to the edge; a new row on its tint; a gutter (Fyne's header column) marks each changed row •, − or + and says it in words. On the selection a change's text takes the selection's colour, the deleted red failing AA on it. A table tab holds app.Pending when its rows have a key (ADR-0028)*
 - [ ] **T2.3** In-place editors per type (text, number, date, bool, enum, JSON) → FR-4.1
 - [ ] **T2.4** Insert / delete / duplicate row → FR-4.2
 - [ ] **T2.5** **Statement preview before commit, always** → FR-4.4, UX-6
