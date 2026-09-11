@@ -67,9 +67,9 @@ func (b *BrowseSource) CanListValues() bool {
 }
 
 // Distinct lists up to limit of a column's values for the filter picklist
-// (FR-3.4), among the rows the other columns' filters select. The column's
-// own filter is left out: with it, the list could only offer what is already
-// picked.
+// (FR-3.4), among the rows the other columns' filters and the typed WHERE
+// select. The column's own filter is left out: with it, the list could only
+// offer what is already picked.
 func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) ([]source.DistinctValue, error) {
 	dl, ok := b.src.(source.DistinctLister)
 	if !ok || !b.CanListValues() {
@@ -81,7 +81,14 @@ func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) (
 			others = append(others, f)
 		}
 	}
-	return dl.Distinct(ctx, b.ref, column, others, limit)
+	return dl.Distinct(ctx, b.ref, column, source.BrowseOptions{Filters: others, Where: b.opt.Where}, limit)
+}
+
+// CanWhere reports whether the grid can take a WHERE clause typed by the
+// person (FR-3.6): the source needs a query language to write it in.
+func (b *BrowseSource) CanWhere() bool {
+	_, ok := b.src.(source.Dialect)
+	return ok
 }
 
 // Columns describes every row.

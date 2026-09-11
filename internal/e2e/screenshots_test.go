@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -75,6 +76,21 @@ func TestScreenshots(t *testing.T) {
 	for h.w.Canvas().Overlays().Top() != nil {
 		h.w.Canvas().Overlays().Remove(h.w.Canvas().Overlays().Top())
 	}
+
+	h.s.Commands().Run("data.where")
+	test.Type(h.w.Canvas().Focused(), "id > 30")
+	h.w.Canvas().Focused().TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	waitFor(t, h.q, "the WHERE clause", func() bool {
+		h.w.Canvas().Capture()
+		for _, l := range find[*widget.Label](h.tabs.Selected().Content) {
+			if strings.HasPrefix(l.Text, "12 rows") {
+				return true
+			}
+		}
+		return false
+	})
+	shot("3c-where")
+	h.s.Commands().Run("data.where")
 
 	h.s.OpenQuery(h.conn.ID)
 	ed := find[*view.Editor](h.tabs.Selected().Content)[0]

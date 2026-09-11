@@ -47,6 +47,14 @@ type BrowseOptions struct {
 	// Sorts are applied in order (FR-3.3).
 	Sorts []Sort
 
+	// Where is a condition the person typed, in the source's query language
+	// (FR-3.6), ANDed with Filters. Unlike a filter's values it is not bound:
+	// it is the person's own SQL, like a query tab's. The source takes it only
+	// as one condition, never a second statement or a comment that runs on
+	// past it, and refuses it if the statement it makes would change
+	// anything. A source with no query language refuses it (REQ-DRV-3).
+	Where string
+
 	// Offset and Limit window the result. Limit of 0 means the source's
 	// default page size; the grid always supplies one, because NFR-P11
 	// forbids unbounded reads.
@@ -166,11 +174,12 @@ type Countable interface {
 // filter picklist (FR-3.4).
 type DistinctLister interface {
 	// Distinct returns up to limit distinct values of a column among the
-	// rows the filters select, most frequent first, so a list cut short keeps
-	// the values most rows have. NULL is a value like any other and comes back
-	// as nil. Each value must work as an OpIn operand on the same column: the
+	// rows opt's Filters and Where select (its projection, sorting and paging
+	// do not apply), most frequent first, so a list cut short keeps the
+	// values most rows have. NULL is a value like any other and comes back as
+	// nil. Each value must work as an OpIn operand on the same column: the
 	// picklist filters with exactly what it was given.
-	Distinct(ctx context.Context, ref model.ObjectRef, column string, filters []Filter, limit int) ([]DistinctValue, error)
+	Distinct(ctx context.Context, ref model.ObjectRef, column string, opt BrowseOptions, limit int) ([]DistinctValue, error)
 }
 
 // DistinctValue is one entry of a filter picklist.
