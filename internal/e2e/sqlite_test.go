@@ -30,7 +30,7 @@ func sqliteJourney(t *testing.T) journey {
 	return journey{
 		conn: store.SavedConnection{Name: "local", Driver: "sqlite", Database: path},
 		path: []model.ObjectRef{
-			model.NewRef(model.KindFolder, "main", "tables"),
+			model.ClassRef(model.NewRef(model.KindDatabase, "main"), model.KindTable),
 			model.NewRef(model.KindTable, "main", "people"),
 		},
 		table: "people",

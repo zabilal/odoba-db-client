@@ -66,7 +66,7 @@ func mysqlJourney(t *testing.T, name, portEnv string, port int) journey {
 		secrets: map[string]string{"password": pass},
 		path: []model.ObjectRef{
 			model.NewRef(model.KindDatabase, myDB),
-			model.NewRef(model.KindFolder, myDB, "tables"),
+			model.ClassRef(model.NewRef(model.KindDatabase, myDB), model.KindTable),
 			model.NewRef(model.KindTable, myDB, "people"),
 		},
 		table: myDB + ".people",

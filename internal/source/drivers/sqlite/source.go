@@ -119,6 +119,7 @@ func (s *sqliteSource) Capabilities() capability.Capabilities {
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindFolder: true, model.KindTable: true, model.KindView: true, model.KindColumn: true,
+			model.KindIndex: true, model.KindTrigger: true,
 		},
 	}
 }

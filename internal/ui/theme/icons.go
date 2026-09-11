@@ -35,6 +35,9 @@ const (
 	IconNamePartition     fyne.ThemeIconName = "ikigai:partition"
 	IconNameConsumerGroup fyne.ThemeIconName = "ikigai:consumergroup"
 	IconNameCluster       fyne.ThemeIconName = "ikigai:cluster"
+	IconNameTrigger       fyne.ThemeIconName = "ikigai:trigger"
+	IconNameSequence      fyne.ThemeIconName = "ikigai:sequence"
+	IconNameType          fyne.ThemeIconName = "ikigai:type"
 	// IconNamePin marks a pinned tab.
 	IconNamePin fyne.ThemeIconName = "ikigai:pin"
 )
@@ -134,4 +137,17 @@ var customIcons = map[fyne.ThemeIconName]fyne.Resource{
 			`<circle cx="3.8" cy="11.6" r="1.8"/>`+
 			`<circle cx="12.2" cy="11.6" r="1.8"/>`+
 			`<path d="M6.8 5.2l-2 4.8"/><path d="M9.2 5.2l2 4.8"/><path d="M5.6 11.6h4.8"/>`),
+
+	// A bolt: code that fires when something happens.
+	IconNameTrigger: svgIcon("trigger.svg",
+		`<path d="M9.2 2.4 4.4 9h3.4l-1 4.6L11.6 7H8.2z"/>`),
+
+	// A number sign: values drawn one after another.
+	IconNameSequence: svgIcon("sequence.svg",
+		`<path d="M3 5.8h10"/><path d="M3 10.2h10"/><path d="M6.6 2.6 5.4 13.4"/><path d="M10.6 2.6 9.4 13.4"/>`),
+
+	// A T in a frame: a type of value.
+	IconNameType: svgIcon("type.svg",
+		`<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.2"/>`+
+			`<path d="M5.4 5.6h5.2"/><path d="M8 5.6v5.2"/>`),
 }

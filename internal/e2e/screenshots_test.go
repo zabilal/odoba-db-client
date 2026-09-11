@@ -62,7 +62,7 @@ func TestScreenshots(t *testing.T) {
 
 	// Walk the sidebar to the table and open it.
 	ids := []string{explorerview.ConnectionID(h.conn.ID),
-		explorerview.NodeID(h.conn.ID, model.NewRef(model.KindFolder, "main", "tables")),
+		explorerview.NodeID(h.conn.ID, model.ClassRef(model.NewRef(model.KindDatabase, "main"), model.KindTable)),
 		explorerview.NodeID(h.conn.ID, model.NewRef(model.KindTable, "main", "people"))}
 	parent := explorer.RootID
 	for _, id := range ids {

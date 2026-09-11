@@ -23,16 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T1.42 (object classes per source, from capability descriptors).
-           Then the partial ones: T1.27, T1.28, T1.31, T1.58, T1.65. T1.14's
-           scroll position waits on Fyne's table reporting its offset.
+NEXT TASK: the partial Phase 1 tasks: T1.27, T1.28, T1.31, T1.58, T1.65.
+           T1.14's scroll position waits on Fyne's table reporting its
+           offset.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — native file dialogs and notifications (T1.3,
-           ADR-0023). Before it: split panes (T1.5, ADR-0011 §19), tabs
+LAST DONE: 2026-09-11 — object classes from the model (T1.42, ADR-0024).
+           Before it: native file dialogs and notifications (T1.3,
+           ADR-0023), split panes (T1.5, ADR-0011 §19), tabs
            dragged on a tab bar of our own (T1.4), the task centre (T1.10),
            shortcuts changed in the Keyboard Shortcuts panel (T1.8), one
            copy to a data directory (T1.1), gates for NFR-P1 to P6 (T1.73),
@@ -276,7 +277,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 1.E Object explorer
 
 - [x] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
-- [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
+- [x] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4 — *the classes are one list in internal/model (kind, label, order), and a class folder's key is the kind it holds. Drivers only count and list; conformance walks the tree and fails a folder that is not the model's class, holds an undeclared kind, is misnamed, or holds another kind. PostgreSQL adds Indexes, Triggers and Types, MySQL/MariaDB Indexes, Triggers and Routines, SQLite Indexes and Triggers; an index or trigger is named with its table. Constraints stay in a table's structure (ADR-0024)*
 - [x] **T1.43** Fuzzy filter matching on full path → FR-2.3 — *⇧⌘F filters loaded objects by a fuzzy match on their full path, listed in the tree's place; a table opens, anything else is shown in the tree; unopened connections are named, not searched (ADR-0018)*
 - [x] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *right-clicking a node selects it and shows its commands (ADR-0011 §13); Open Structure (⌥⌘O) shows a read-only structure tab (§14); Script As writes SELECT, INSERT or UPDATE from Describe and the dialect into a new query tab (§15). CREATE scripts are T3.7's; rename, drop and truncate belong with the table designer (3.A)*
 - [x] **T1.45** Lazy cancellable row-count/size badges → FR-2.5 — *read the first time a row is drawn, four at a time with a timeout, remembered (none included), and cancelled when their branch closes (ADR-0020)*

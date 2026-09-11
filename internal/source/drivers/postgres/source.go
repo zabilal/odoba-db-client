@@ -245,6 +245,9 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			model.KindColumn:           true,
 			model.KindRoutine:          true,
 			model.KindSequence:         true,
+			model.KindIndex:            true,
+			model.KindTrigger:          true,
+			model.KindUserType:         true,
 		},
 	}
 }

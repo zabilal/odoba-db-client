@@ -21,6 +21,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
@@ -188,16 +189,7 @@ func checkIntrospection(t *testing.T, target Target) {
 
 	caps := src.Capabilities()
 	for _, n := range roots {
-		if n.Label == "" {
-			t.Errorf("node %v has an empty label", n.Ref)
-		}
-		if n.Ref.IsZero() {
-			t.Errorf("node %q has a zero ref and cannot be addressed", n.Label)
-		}
-		if !caps.Supports(n.Ref.Kind) {
-			t.Errorf("node %v has kind %q not declared in Capabilities.Objects",
-				n.Ref, n.Ref.Kind)
-		}
+		checkNode(t, caps, n)
 	}
 
 	// Expanding a node that claims children must return something or a clear
@@ -215,6 +207,81 @@ func checkIntrospection(t *testing.T, target Target) {
 		}
 		break
 	}
+	for _, p := range walkTree(ctx, src, caps, roots, 1) {
+		t.Error(p)
+	}
+}
+
+func checkNode(t *testing.T, caps capability.Capabilities, n model.Node) {
+	for _, p := range nodeProblems(caps, n) {
+		t.Error(p)
+	}
+}
+
+// nodeProblems is what is wrong with one node of the tree. It must be
+// addressable, named and of a declared kind; and a folder must be an object
+// class the model knows (model.ClassNode), holding a declared kind, under
+// the model's name for it (FR-2.2, REQ-DB-4).
+func nodeProblems(caps capability.Capabilities, n model.Node) []string {
+	var out []string
+	if n.Label == "" {
+		out = append(out, fmt.Sprintf("node %v has an empty label", n.Ref))
+	}
+	if n.Ref.IsZero() {
+		out = append(out, fmt.Sprintf("node %q has a zero ref and cannot be addressed", n.Label))
+	}
+	if !caps.Supports(n.Ref.Kind) {
+		out = append(out, fmt.Sprintf("node %v has kind %q not declared in Capabilities.Objects", n.Ref, n.Ref.Kind))
+	}
+	if n.Ref.Kind != model.KindFolder {
+		return out
+	}
+	switch k, ok := model.ClassOf(n.Ref); {
+	case !ok:
+		out = append(out, fmt.Sprintf("folder %v is no object class the model knows; build it with model.ClassNode", n.Ref))
+	case !caps.Supports(k):
+		out = append(out, fmt.Sprintf("class %v holds %q, which Capabilities.Objects does not declare", n.Ref, k))
+	case n.Label != model.ClassLabel(k):
+		out = append(out, fmt.Sprintf("class %v is called %q, where the model calls it %q", n.Ref, n.Label, model.ClassLabel(k)))
+	}
+	return out
+}
+
+// childLister is the part of a source walkTree needs.
+type childLister interface {
+	Children(ctx context.Context, ref model.ObjectRef) ([]model.Node, error)
+}
+
+// walkTree expands the tree a few levels down, a few nodes to a level, and
+// says what it finds wrong: in each node, as nodeProblems does, and in a
+// class holding objects of another kind.
+func walkTree(ctx context.Context, src childLister, caps capability.Capabilities, nodes []model.Node, level int) []string {
+	const levels, perLevel = 4, 4
+	if level >= levels {
+		return nil
+	}
+	var out []string
+	expanded := 0
+	for _, n := range nodes {
+		if !n.HasChildren || expanded == perLevel {
+			continue
+		}
+		expanded++
+		kids, err := src.Children(ctx, n.Ref)
+		if err != nil {
+			out = append(out, fmt.Sprintf("Children(%v): %v", n.Ref, err))
+			continue
+		}
+		class, isClass := model.ClassOf(n.Ref)
+		for _, k := range kids {
+			out = append(out, nodeProblems(caps, k)...)
+			if isClass && k.Ref.Kind != class {
+				out = append(out, fmt.Sprintf("class %v holds %v, of kind %q", n.Ref, k.Ref, k.Ref.Kind))
+			}
+		}
+		out = append(out, walkTree(ctx, src, caps, kids, level+1)...)
+	}
+	return out
 }
 
 func checkBrowse(t *testing.T, target Target) {

@@ -178,6 +178,7 @@ func TestIconsCoverEveryBrowsableObjectKind(t *testing.T) {
 		IconNameColumn, IconNameIndex, IconNamePrimaryKey, IconNameForeignKey,
 		IconNameRoutine, IconNameCollection, IconNameKey,
 		IconNameTopic, IconNamePartition, IconNameConsumerGroup, IconNameCluster,
+		IconNameTrigger, IconNameSequence, IconNameType,
 	}
 	for _, n := range required {
 		if _, ok := customIcons[n]; !ok {
