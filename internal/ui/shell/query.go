@@ -305,8 +305,9 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	q := t.query
 	m := grid.NewModel(rs)
 	g := grid.NewTableGridWith(t.ctx, m, s.colours(), s.d.Run, s.d.Delay)
-	g.OnSelectCell = s.sync // the Edit menu follows the selection
+	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) } // the Edit menu and the viewer follow it
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
+	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	count := widget.NewLabel("Loading rows…")
 	count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
@@ -321,7 +322,9 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	m.OnError = func(err error) {
 		s.d.Run(func() { count.SetText("Could not load rows: " + err.Error()) })
 	}
-	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, count, nil, nil, g.View()))
+	holder := container.NewStack(g.View())
+	t.hold(g, holder)
+	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, count, nil, nil, holder))
 	q.results.Append(item)
 	if len(q.sets) == 0 {
 		q.results.Select(item)

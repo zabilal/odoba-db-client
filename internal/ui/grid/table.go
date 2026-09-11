@@ -67,7 +67,10 @@ type TableGrid struct {
 	// OnSelectCell hears that the selected cell changed.
 	OnSelectCell func()
 	// OnCopy is asked to copy the selection, by ⌘C on the focused grid.
-	OnCopy     func()
+	OnCopy func()
+	// OnSpace is asked to show or hide the cell viewer, by Space on the
+	// focused grid, as Quick Look does.
+	OnSpace    func()
 	filterable bool
 	filters    []string
 	filterErr  []bool

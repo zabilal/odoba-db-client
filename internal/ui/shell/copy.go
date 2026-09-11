@@ -31,7 +31,7 @@ func (s *Shell) activeGrid() *grid.TableGrid {
 		return nil
 	}
 	for _, g := range t.query.grids {
-		if holds(shown.Content, g.View()) {
+		if holds(shown.Content, g.View()) || holds(shown.Content, t.holders[g]) {
 			return g
 		}
 	}

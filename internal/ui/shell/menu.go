@@ -45,6 +45,7 @@ const (
 	cmdCopyJSON       = "grid.copyJSON"
 	cmdCopyMarkdown   = "grid.copyMarkdown"
 	cmdCopyInsert     = "grid.copyInsert"
+	cmdCellViewer     = "grid.viewer"
 	cmdFind           = "edit.find"
 	cmdFindReplace    = "edit.findReplace"
 	cmdFindNext       = "edit.findNext"
@@ -95,7 +96,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), separator,
+		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 	}},
 	{"Connection", []menuEntry{

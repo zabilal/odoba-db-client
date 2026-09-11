@@ -71,8 +71,12 @@ func (t *gridTable) FocusLost() {
 }
 
 // TypedKey lets the arrow keys move the selection, as in a spreadsheet; with
-// ⇧ held they stretch it.
+// ⇧ held they stretch it. Space asks for the cell viewer.
 func (t *gridTable) TypedKey(e *fyne.KeyEvent) {
+	if e.Name == fyne.KeySpace && t.g.OnSpace != nil {
+		t.g.OnSpace()
+		return
+	}
 	t.stepping = true
 	t.Table.TypedKey(e)
 	t.stepping = false
