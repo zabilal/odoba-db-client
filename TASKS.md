@@ -29,12 +29,12 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — coverage past NFR-Q2's 70%: internal/source at 100%
-           (T1.76). Before it: explorer badges (T1.45), exporting the
-           selection (T1.71), T1.44's context actions, favourites (T1.46),
-           buttons with words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts (T1.9),
-           side panels (T1.77), the session (T1.14), autosave (T1.15),
-           contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — a performance gate for each of NFR-P1 to P6 (T1.73,
+           ADR-0021). Before it: coverage past 70% (T1.76), explorer badges
+           (T1.45), exporting the selection (T1.71), T1.44's context actions,
+           favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
+           ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
+           autosave (T1.15), contained driver panics (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
            ports accept TCP, servers never reply. Each time, the next gate
            that could reach them ran the tagged suites over everything since;
@@ -313,7 +313,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 1.I Quality
 
-- [ ] **T1.73** Benchmarks asserting NFR-P1…P6 in CI → NFR-Q3
+- [x] **T1.73** Benchmarks asserting NFR-P1…P6 in CI → NFR-Q3 — *a gate for each, timing the application's own CPU work against a fraction of its budget: P1 91 ms of 200, P2 4.3 ms of 500, P3 0.46 ms of 100, P4 and P5 the Phase 0 gates, P6 the 2–5 MB of heap five connections add, of 100; not under -race. True frame rate, time to a window on screen and resident memory need an attended session (ADR-0021)*
 - [x] **T1.74** E2E test: **J1** (zero to first result) — *internal/e2e: J1 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [x] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2 — *`internal/source` 100% (from 57.5%), `internal/source/capability` 100% (from none), `internal/source/sqlscript` 89.3%, `internal/model` 87.4%. There is no `internal/sqlgen`: statement text lives in each driver's dialect and in `sqlscript`. The new tests check behaviour, among it that a connection error hides a URL's password (NFR-S2)*
