@@ -158,6 +158,7 @@ func TestWhatExportWritesIsReadBack(t *testing.T) {
 		{export.NDJSON, NDJSON, []model.Row{{model.Decimal("1"), model.Decimal("12.50"), model.JSON(`{"k":[1,2]}`), rows[0][3]}, {model.Decimal("2"), nil, nil, ""}}},
 		{export.CSV, CSV, []model.Row{{"1", "12.50", `{"k": [1, 2]}`, rows[0][3]}, {"2", nil, nil, nil}}}, // text; an empty string reads back as NULL
 		{export.TSV, TSV, []model.Row{{"1", "12.50", `{"k": [1, 2]}`, rows[0][3]}, {"2", nil, nil, nil}}},
+		{export.XLSX, XLSX, []model.Row{{model.Decimal("1"), model.Decimal("12.50"), `{"k": [1, 2]}`, rows[0][3]}, {model.Decimal("2"), nil, nil, ""}}},
 	} {
 		var b bytes.Buffer
 		if err := export.Write(&b, cols, rows, export.Options{Format: c.out, Header: true}); err != nil {
@@ -293,5 +294,45 @@ func TestADateFormatIsTold(t *testing.T) {
 	}
 	if !builtInDate(14) || !builtInDate(22) || !builtInDate(47) || builtInDate(0) || builtInDate(23) {
 		t.Error("the built-in date formats are 14 to 22 and 45 to 47")
+	}
+}
+
+func TestAWorkbookIsReadBackWhole(t *testing.T) {
+	cols := []model.ColumnDef{
+		{Name: "note", Type: model.DataType{Class: model.TypeString}}, {Name: "day", Type: model.DataType{Class: model.TypeDate}},
+		{Name: "at", Type: model.DataType{Class: model.TypeTimestamp, TimeZone: true}}, {Name: "ok", Type: model.DataType{Class: model.TypeBool}},
+	}
+	note := "a\x01b\r\nc_x0041_d  "
+	day := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	at := time.Date(2026, 9, 10, 12, 30, 15, 250e6, time.UTC)
+	var b bytes.Buffer
+	if err := export.Write(&b, cols, []model.Row{{note, day, at, true}}, export.Options{Format: export.XLSX, Header: true}); err != nil {
+		t.Fatal(err)
+	}
+	_, read, err := readAll(t, b.Bytes(), Options{Format: XLSX, Header: true})
+	if err != nil || len(read) != 1 {
+		t.Fatalf("%v %v", err, read)
+	}
+	r := read[0]
+	if r[0] != note || !r[1].(time.Time).Equal(day) || !r[2].(time.Time).Equal(at) || r[3] != true {
+		t.Errorf("text with what XML cannot hold, a date, an instant to the millisecond, a boolean: %q", r)
+	}
+}
+
+func TestExcelsEscapesAreRead(t *testing.T) {
+	if got := unescape("a_x0001_b_x005F_x0041_c_x12_d_xZZZZ_e_x0041xf"); got != "a\x01b_x0041_c_x12_d_xZZZZ_e_x0041xf" {
+		t.Errorf("%q", got)
+	}
+}
+
+func TestASharedStringsEscapesAreRead(t *testing.T) {
+	data := workbook(t, map[string]string{
+		"xl/workbook.xml":            `<workbook ` + mainNS + `><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": rels,
+		"xl/sharedStrings.xml":       `<sst ` + mainNS + `><si><t>a_x0001_b_x005F_x0041_</t></si></sst>`,
+		"xl/worksheets/sheet1.xml":   `<worksheet ` + mainNS + `><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>`,
+	})
+	if _, read, err := readAll(t, data, Options{Format: XLSX}); err != nil || len(read) != 1 || read[0][0] != "a\x01b_x0041_" {
+		t.Errorf("a shared string's escapes: %v %q", err, read)
 	}
 }

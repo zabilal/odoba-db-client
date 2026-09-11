@@ -172,7 +172,7 @@ func (s *Shell) showExport() {
 	header := widget.NewCheck("Column names as the first line", nil)
 	header.SetChecked(true)
 	format.OnChanged = func(string) {
-		if f := formats[format.SelectedIndex()]; f == export.CSV || f == export.TSV {
+		if headerApplies(formats[format.SelectedIndex()]) {
 			header.Enable()
 		} else {
 			header.Disable() // JSON names every value already
@@ -190,13 +190,26 @@ func (s *Shell) showExport() {
 				return
 			}
 			src = pickSource(rows, src, sel)
-			opt := export.Options{Format: formats[format.SelectedIndex()], Header: header.Checked}
+			opt := exportOptions(formats[format.SelectedIndex()], header.Checked, src.name)
 			ext := opt.Format.Extension()
 			s.d.Files.Save(s.win, filedlg.Options{
 				Message: fmt.Sprintf("Export “%s” as %s", src.name, opt.Format), Name: fileName(src.name) + "." + ext,
 				Extensions: []string{ext}, Kind: opt.Format.String(), Accept: "Export",
 			}, func(path string, err error) { s.exportTo(t, src, opt, path, err) })
 		}, s.win).Show()
+}
+
+// headerApplies reports whether a format can begin with the column names:
+// CSV and TSV as their first line, a workbook as its first row. JSON names
+// every value already, and a Markdown table always has its header.
+func headerApplies(f export.Format) bool {
+	return f == export.CSV || f == export.TSV || f == export.XLSX
+}
+
+// exportOptions are an export's options as its form says; a workbook's sheet
+// takes the name of what is exported (ADR-0055).
+func exportOptions(f export.Format, header bool, name string) export.Options {
+	return export.Options{Format: f, Header: header, Sheet: name}
 }
 
 // exportTo exports to the file the save dialog chose (FR-15.5). The file is
