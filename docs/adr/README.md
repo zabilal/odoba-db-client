@@ -50,3 +50,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0043](0043-master-and-detail.md) | Master and detail | Accepted |
 | [0044](0044-reading-the-files-an-import-takes.md) | Reading the files an import takes | Accepted |
 | [0045](0045-finding-what-a-file-is.md) | Finding what a file is | Accepted |
+| [0046](0046-mapping-a-files-columns-to-a-tables.md) | Mapping a file's columns to a table's | Accepted |
