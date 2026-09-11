@@ -29,12 +29,12 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — explorer badges read as their rows are drawn, four at a
-           time and cancelled when their branch closes (T1.45, ADR-0020).
-           Before it: exporting the selection (T1.71), T1.44's context actions,
-           favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
-           ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
-           autosave (T1.15), contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — coverage past NFR-Q2's 70%: internal/source at 100%
+           (T1.76). Before it: explorer badges (T1.45), exporting the
+           selection (T1.71), T1.44's context actions, favourites (T1.46),
+           buttons with words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts (T1.9),
+           side panels (T1.77), the session (T1.14), autosave (T1.15),
+           contained driver panics (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
            ports accept TCP, servers never reply. Each time, the next gate
            that could reach them ran the tagged suites over everything since;
@@ -316,7 +316,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T1.73** Benchmarks asserting NFR-P1…P6 in CI → NFR-Q3
 - [x] **T1.74** E2E test: **J1** (zero to first result) — *internal/e2e: J1 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
-- [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
+- [x] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2 — *`internal/source` 100% (from 57.5%), `internal/source/capability` 100% (from none), `internal/source/sqlscript` 89.3%, `internal/model` 87.4%. There is no `internal/sqlgen`: statement text lives in each driver's dialect and in `sqlscript`. The new tests check behaviour, among it that a connection error hides a URL's password (NFR-S2)*
 - [x] **T1.77** Panels, not modals (UX principle 4): History and Saved Queries open as modal dialogs that hide the data; make them panels or popovers — *both open in a side panel beside the tabs, one at a time, toggled by their commands with a tick in the menu; Escape or Close shuts it, and opening an entry leaves it open (ADR-0011 §11)*
 - [x] **T1.78** Every button has words, not an icon alone (UX principle 13: a button with no text has no name to be read out) — *the sidebar's New, the error band's and the cell viewer's Close, and Saved Queries' Delete; a test walks the window for any button with no words (ADR-0006 addendum)*
 
