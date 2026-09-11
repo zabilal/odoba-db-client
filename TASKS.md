@@ -23,8 +23,8 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.11 (a value set across a selection; one value pasted over a
-           selection already fills it), then T2.12. What is open in Phase 1
+NEXT TASK: T2.12 (a form view, one record laid out vertically), then T2.13
+           (FK navigation). What is open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
 [~] tasks: T1.14 partly done; its line says what is open.
@@ -32,8 +32,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a block of TSV or CSV pasted into the grid (T2.10,
-           ADR-0037). Before it: a query's result edited in its grid,
+LAST DONE: 2026-09-11 — one value set across a selection, whole columns
+           too (T2.11, ADR-0038). Before it: a block of TSV or CSV pasted into
+           the grid (T2.10, ADR-0037), a query's result edited in its grid,
            committed to its table and read again (T2.9, ADR-0036, ADR-0035),
            row identity (T2.8, ADR-0034), changes reverted, and asked about before
            they are lost (T2.7, ADR-0033), changes reviewed and committed (T2.5,
@@ -359,7 +360,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7 — *SQLite knows a table by its primary key, or else its rowid, which the browse then selects; a statement changing more than one row fails as one changing none does (ADR-0034); a table with no key says why, and Choose a Key… edits it by the columns picked*
 - [x] **T2.9** Editable query results when mapping to one updatable table → FR-4.8 — *a result's columns say their table and their name there, and a result reading one table with its key among the columns is known by that key, on PostgreSQL and SQLite; MySQL's driver keeps the table to itself (ADR-0035). Such a result, of a statement that only reads, is edited in its grid, committed to its table on a connection of its own, and read again on the tab's session; running again asks first (ADR-0036)*
 - [x] **T2.10** Paste TSV/CSV block into the grid → FR-4.10 — *read by its shape, written from the active cell as pending changes; one value fills a selection; begun on a new row it adds new rows; ⌘V, or Edit ▸ Paste Cells (ADR-0037)*
-- [ ] **T2.11** Bulk set-column-value across selection → FR-4.11
+- [x] **T2.11** Bulk set-column-value across selection → FR-4.11 — *Set Value… writes one value into every selected cell, as each column reads it; it, Set to NULL and one value pasted share one fill, which reads the rows a selection reaches, those not loaded too, up to Copy's limit (ADR-0038)*
 
 ## 2.B Form view & navigation
 

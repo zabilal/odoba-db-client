@@ -35,6 +35,7 @@ func TestInsertRowAddsANewRowAtTheTop(t *testing.T) {
 	}
 	tb.grid.Select(grid.CellID{Row: 0, Col: 0}, grid.CellID{Row: 0, Col: 1})
 	fx.s.run(cmdSetNull)
+	pump(t, fx.q, func() bool { return !strings.Contains(tb.footer.Text, "Setting…") })
 	if got := tb.ed.pending.Added()[0]; got[0] != (model.Default{}) || got[1] != nil {
 		t.Errorf("a new row's cell set to NULL; its id cannot be: %v", got)
 	}

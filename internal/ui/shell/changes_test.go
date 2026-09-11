@@ -53,6 +53,7 @@ func TestSetToNULLChangesTheSelectedCellsThatCanBeNULL(t *testing.T) {
 	tb.grid.Select(grid.CellID{Row: 1, Col: 0}, grid.CellID{Row: 1, Col: 1})
 	tb.grid.ToggleCell(grid.CellID{Row: 3, Col: 1})
 	fx.s.run(cmdSetNull)
+	pump(t, fx.q, func() bool { return !strings.Contains(tb.footer.Text, "Setting…") })
 	for _, r := range []int{1, 3} {
 		row, _ := tb.model.Row(tb.ctx, int64(r))
 		if v, ok := tb.ed.pending.Value(row, 1); !ok || v != nil {
@@ -65,7 +66,7 @@ func TestSetToNULLChangesTheSelectedCellsThatCanBeNULL(t *testing.T) {
 	if row, _ := tb.model.Row(tb.ctx, 2); tb.ed.pending.State(row) != 0 {
 		t.Error("a row between the cells selected is not changed")
 	}
-	if !strings.Contains(tb.footer.Text, "2 pending changes") || !strings.Contains(tb.footer.Text, "id cannot be NULL") {
+	if !strings.Contains(tb.footer.Text, "2 pending changes") || !strings.Contains(tb.footer.Text, "the first not set: id: cannot be NULL") {
 		t.Errorf("the footer counts the changes and says what was not changed: %q", tb.footer.Text)
 	}
 }

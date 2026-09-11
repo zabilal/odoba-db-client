@@ -60,6 +60,7 @@ const (
 	cmdEditCell       = "grid.editCell"
 	cmdEditValue      = "grid.editValue"
 	cmdSetNull        = "grid.setNull"
+	cmdSetValue       = "grid.setValue"
 	cmdInsertRow      = "grid.insertRow"
 	cmdDuplicateRows  = "grid.duplicateRows"
 	cmdDeleteRows     = "grid.deleteRows"
@@ -126,7 +127,7 @@ var menuBar = []struct {
 	{"Edit", []menuEntry{
 		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev), separator,
 		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
-		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), separator,
+		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), item(cmdSetValue), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
 		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,
 		item(cmdChooseKey),
