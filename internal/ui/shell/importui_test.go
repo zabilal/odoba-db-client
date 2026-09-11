@@ -398,7 +398,7 @@ func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 	}
 	before, reads := len(loadsSoFar()), browsesSoFar()
 	test.Tap(p.load)
-	if !p.load.Disabled() || !p.dry.Disabled() || !p.mode.Disabled() {
+	if !p.load.Disabled() || !p.dry.Disabled() || !p.mode.Disabled() || !p.batch.Disabled() || !p.policy.Disabled() {
 		t.Error("one thing at a time")
 	}
 	if p.dryRun(); len(fx.s.runningTasks(nil)) != 1 {
@@ -418,7 +418,7 @@ func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 		t.Error("an import says when it has stopped writing, as quitting waits for it")
 	}
 	loads := loadsSoFar()[before:]
-	if len(loads) != 1 || strings.Join(loads[0].columns, ",") != "id,name" || fmt.Sprint(loads[0].rows) != "[[1 first] [2 <nil>]]" || !reflect.DeepEqual(loads[0].opt, source.LoadOptions{}) {
+	if len(loads) != 1 || strings.Join(loads[0].columns, ",") != "id,name" || fmt.Sprint(loads[0].rows) != "[[1 first] [2 <nil>]]" || !reflect.DeepEqual(loads[0].opt, source.LoadOptions{BatchSize: 500}) {
 		t.Errorf("the rows loaded as the table's values, added to its rows: %+v", loads)
 	}
 	pump(t, fx.q, func() bool { return browsesSoFar() > reads })
@@ -526,6 +526,9 @@ func TestWhatAnImportLeftWrittenIsWorded(t *testing.T) {
 		{transfer.Loaded{Written: 2}, nil, false, true, taskDone, "Replaced the rows of items with 2 rows."},
 		{transfer.Loaded{Written: 2}, nil, true, true, taskDone, "Replaced the rows of items with 2 rows."},
 		{transfer.Loaded{}, context.Canceled, true, true, taskCancelled, "Cancelled. The table is as it was."},
+		{transfer.Loaded{Written: 2, Left: 1}, nil, false, false, taskDone, "Imported 2 rows into items. 1 row was left out."},
+		{transfer.Loaded{Written: 3, Left: 1500}, nil, false, false, taskDone, "Imported 3 rows into items. 1,500 rows were left out."},
+		{transfer.Loaded{Left: 3}, errors.New("gone"), false, true, taskFailed, "Not imported: gone. The table is as it was."},
 	} {
 		if state, say := importEnd(c.l, c.err, c.stopped, "items", transfer.LoadOptions{Replace: c.replace}); state != c.state || say != c.want {
 			t.Errorf("%+v: %v %q", c, state, say)
@@ -606,5 +609,72 @@ func TestATableWithNoKeyHasNoRowsUpdatedByOne(t *testing.T) {
 	_, p := importing(t, fx, "name,id\nfirst,1\n")
 	if !reflect.DeepEqual(p.mode.Options, []string{modeAdd, modeReplace}) {
 		t.Errorf("%v", p.mode.Options)
+	}
+}
+
+func TestRowsThatWouldNotGoInAreLeftOutAndListed(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\nfirst,1\nsecond,x\nthird,3\nfourth,4\n")
+	if p.policy.Selected != policyStop || p.batch.Text != "500" || p.most.Text != "100" || !p.most.Disabled() || p.tabs.Items[1].Text != "Problems" {
+		t.Errorf("rows a transaction and a stop, unless told: %q %q", p.policy.Selected, p.batch.Text)
+	}
+	p.policy.SetSelected(policySkip)
+	failWrite.Store(3) // the third row the table is given: the file's fourth
+	t.Cleanup(func() { failWrite.Store(0) })
+	before := len(loadsSoFar())
+	test.Tap(p.load)
+	k := lastTaskEnds(t, fx)
+	if k.status != "Imported 2 rows into items. 2 rows were left out." || it.footer.Text != k.status ||
+		p.tabs.SelectedIndex() != 1 || p.summary.Text != "2 rows left out of the import." {
+		t.Errorf("task %q, summary %q", k.status, p.summary.Text)
+	}
+	pump(t, fx.q, func() bool { _, ok := p.checked.Model().Row(it.ctx, 1); return ok })
+	first, _ := p.checked.Model().Row(it.ctx, 0)
+	second, _ := p.checked.Model().Row(it.ctx, 1)
+	if fmt.Sprint(first) != "[2 id x not a whole number]" || fmt.Sprint(second) != "[4   fakesql: duplicate key]" {
+		t.Errorf("each row left out, by its place in the file, and why: %v %v", first, second)
+	}
+	if loads := loadsSoFar(); len(loads) != before+1 || loads[before].opt.OnError != "skip" || loads[before].opt.BatchSize != 500 {
+		t.Errorf("%+v", loads[before:])
+	}
+	failWrite.Store(0)
+	p.policy.SetSelected(policyCollect)
+	if p.most.Disabled() {
+		t.Error("the most is asked for when collecting")
+	}
+	p.most.SetText("1")
+	test.Tap(p.load)
+	if k := lastTaskEnds(t, fx); k.status != "Imported 3 rows into items. 1 row was left out." {
+		t.Errorf("collecting leaves out up to the most: %q", k.status)
+	}
+	failWrite.Store(2) // the file's third row, past the most
+	test.Tap(p.load)
+	if k := lastTaskEnds(t, fx); k.status != "Stopped at row 3: fakesql: duplicate key. Nothing was written. 1 row was left out." {
+		t.Errorf("collecting stops at the row after the most: %q", k.status)
+	}
+}
+
+func TestAMostThatIsNoNumberIsSaidWhereItIsTyped(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\nfirst,1\n")
+	p.batch.SetText("0")
+	if test.Tap(p.load); len(fx.s.tasks) != 0 || it.footer.Text != "Rows a transaction must be a whole number from 1 to 100,000." || p.batch.Validate() == nil {
+		t.Errorf("%d tasks, %q", len(fx.s.tasks), it.footer.Text)
+	}
+	if p.batch.SetText("100001"); p.batch.Validate() == nil {
+		t.Error("rows a transaction has a most too")
+	}
+	p.batch.SetText("20")
+	p.policy.SetSelected(policyCollect)
+	p.most.SetText("some")
+	if test.Tap(p.load); len(fx.s.tasks) != 0 || it.footer.Text != "The most rows left out must be a whole number from 1 to 1,000,000." {
+		t.Errorf("%d tasks, %q", len(fx.s.tasks), it.footer.Text)
+	}
+	p.most.SetText("5")
+	if test.Tap(p.load); !p.most.Disabled() {
+		t.Error("the most is not changed while an import runs")
+	}
+	if k := lastTaskEnds(t, fx); k.state != taskDone || loadsSoFar()[len(loadsSoFar())-1].opt.BatchSize != 20 {
+		t.Errorf("%v %q", k.state, k.status)
 	}
 }

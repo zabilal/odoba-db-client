@@ -244,12 +244,13 @@ func loadsSoFar() []fakeLoad {
 
 // LoadRows keeps the rows a load gives it, as the guard allows, committing
 // 500 rows at a time as the drivers do; failWrite, when not 0, is the row
-// refused.
+// refused, by its place among those it is given, and left out when told.
 func (f fakeSource) LoadRows(ctx context.Context, _ model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
 	if err := f.guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
 		return 0, err
 	}
 	var got []model.Row
+	given := 0
 	committed := func() int64 {
 		if opt.Truncate {
 			return 0
@@ -264,8 +265,13 @@ func (f fakeSource) LoadRows(ctx context.Context, _ model.ObjectRef, columns []s
 		if err != nil {
 			return committed(), err
 		}
-		if at := int(failWrite.Load()); at > 0 && len(got)+1 == at {
-			return committed(), &source.LoadError{Row: int64(at), Err: errors.New("fakesql: duplicate key")}
+		if given++; given == int(failWrite.Load()) {
+			e := &source.LoadError{Row: int64(given), Err: errors.New("fakesql: duplicate key")}
+			if opt.OnError != "skip" {
+				return committed(), e
+			}
+			opt.Skipped(e)
+			continue
 		}
 		got = append(got, r)
 	}
