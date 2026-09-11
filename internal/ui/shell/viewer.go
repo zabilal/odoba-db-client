@@ -91,7 +91,7 @@ func (s *Shell) newViewer(ctx context.Context, g *grid.TableGrid, holder *fyne.C
 	v.code.ShowLineNumbers = true
 	v.codeBox = container.NewScroll(v.code)
 	copyIt := widget.NewButtonWithIcon("Copy Value", fynetheme.ContentCopyIcon(), v.copyValue)
-	closeIt := widget.NewButtonWithIcon("", fynetheme.CancelIcon(), v.hide)
+	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), v.hide)
 	copyIt.Importance, closeIt.Importance = widget.LowImportance, widget.LowImportance
 	head := container.NewBorder(nil, nil, nil, container.NewHBox(copyIt, closeIt), container.NewVBox(v.title, v.meta))
 	panel := container.NewBorder(head, nil, nil, nil, container.NewStack(v.textBox, v.codeBox))

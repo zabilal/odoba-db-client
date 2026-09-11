@@ -318,6 +318,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.75** E2E test: **J3** (write and iterate on a query) — *internal/e2e: J3 on PostgreSQL, MySQL, MariaDB and SQLite*
 - [ ] **T1.76** Coverage ≥70% on `internal/source`, `internal/sqlgen`, `internal/model` → NFR-Q2
 - [x] **T1.77** Panels, not modals (UX principle 4): History and Saved Queries open as modal dialogs that hide the data; make them panels or popovers — *both open in a side panel beside the tabs, one at a time, toggled by their commands with a tick in the menu; Escape or Close shuts it, and opening an entry leaves it open (ADR-0011 §11)*
+- [x] **T1.78** Every button has words, not an icon alone (UX principle 13: a button with no text has no name to be read out) — *the sidebar's New, the error band's and the cell viewer's Close, and Saved Queries' Delete; a test walks the window for any button with no words (ADR-0006 addendum)*
 
 ### ✅ Phase 1 exit: J1 and J3 complete end to end on all three platforms
 

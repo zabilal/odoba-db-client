@@ -116,3 +116,16 @@ or lightened on dark, until it reads on the content, the window and its
 own tint. The selection follows the accent, as macOS's does. Where Apple's
 colours fall short of AA, accessibility wins (UX principle 13). A test
 holds every accent, in both appearances, to every accent pair.
+
+## Addendum (2026-09-11): buttons carry words
+
+A button with only an icon has no name for a screen reader to read out,
+and Fyne gives no other way to name one. So every button the app makes
+carries a word: the sidebar's New, the side panel's, error band's and cell
+viewer's Close, and Saved Queries' Delete. The icon stays beside the word
+where it helps. Where the HIG would draw a bare glyph, a × to close or a +
+to add, accessibility wins (UX principle 13). A test walks the window, in
+two scenes that between them show the app's panels, bars and lists, and
+fails on any visible button with no words. Fyne's own tab bars are the one
+exception: they draw a "…" menu the app cannot name, so the test walks
+what the tabs hold and not the bar.

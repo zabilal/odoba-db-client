@@ -50,7 +50,7 @@ func (s *Shell) newErrorBar() *errorBar {
 	})
 	b.action.Importance = widget.HighImportance
 	copyIt := widget.NewButtonWithIcon("Copy", fynetheme.ContentCopyIcon(), b.copyAll)
-	closeIt := widget.NewButtonWithIcon("", fynetheme.CancelIcon(), b.dismiss)
+	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), b.dismiss)
 	b.more.Importance, copyIt.Importance, closeIt.Importance = widget.LowImportance, widget.LowImportance, widget.LowImportance
 	icon := widget.NewIcon(fynetheme.NewErrorThemedResource(fynetheme.ErrorIcon()))
 	row := container.NewBorder(nil, nil, icon, container.NewHBox(b.action, b.more, copyIt, closeIt), b.message)
