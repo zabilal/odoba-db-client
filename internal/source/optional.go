@@ -28,12 +28,17 @@ type LoadOptions struct {
 	// BatchSize is the source's commit granularity; 0 selects its default.
 	BatchSize int
 
-	// OnError selects the failure policy: "abort", "skip" or "collect".
+	// OnError selects the failure policy: "abort" (or empty), which stops at
+	// a row refused; "skip", which leaves it out and goes on; or "collect",
+	// which leaves out up to MaxErrors rows and stops at the next.
 	OnError string
 
-	// MaxErrors caps collected errors before aborting, for the "collect"
-	// policy that feeds the import dry-run report (FR-10.5).
+	// MaxErrors caps the rows the "collect" policy leaves out. It must be
+	// given with it.
 	MaxErrors int
+
+	// Skipped, when given, is told of each row left out, as it is.
+	Skipped func(*LoadError)
 
 	// Truncate empties the target first. Always a guarded operation.
 	Truncate bool

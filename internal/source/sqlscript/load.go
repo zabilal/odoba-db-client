@@ -65,7 +65,9 @@ type Tx struct {
 // row's transaction is rolled back and those before it stay, unless the
 // load was emptying the table, which is then as it was. With Keys, a row
 // whose key is taken updates the row there, where the dialect can say how
-// (Upserter). Only the "abort" error policy is taken so far.
+// (Upserter). With the "skip" or "collect" policy, each row is written in a
+// savepoint, so that a row refused is left out and the load goes on, and
+// Skipped is told of it (ADR-0053).
 func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target model.ObjectRef, columns []string,
 	rows model.RowStream, opt source.LoadOptions, begin func() (Tx, error)) (int64, error) {
 	if err := guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
@@ -74,8 +76,10 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 	switch {
 	case opt.Truncate && !opt.Confirmed:
 		return 0, source.ErrConfirmationRequired
-	case opt.OnError != "" && opt.OnError != "abort":
+	case opt.OnError != "" && opt.OnError != "abort" && opt.OnError != "skip" && opt.OnError != "collect":
 		return 0, fmt.Errorf("sqlscript: the %q error policy is not supported", opt.OnError)
+	case opt.OnError == "collect" && opt.MaxErrors <= 0:
+		return 0, errors.New("sqlscript: collecting refused rows needs the most to collect")
 	case len(columns) == 0:
 		return 0, errors.New("sqlscript: a load names no columns")
 	case len(opt.Keys) > 0 && opt.Truncate:
@@ -100,7 +104,8 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 			return 0, err
 		}
 	}
-	var committed, open, at int64 // rows committed, rows not yet, and rows read
+	skipping := opt.OnError == "skip" || opt.OnError == "collect"
+	var committed, open, at, left int64 // rows committed, rows not yet, rows read, and rows left out
 	for {
 		row, err := rows.Next(ctx)
 		if errors.Is(err, io.EOF) {
@@ -111,9 +116,26 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 			return committed, err
 		}
 		at++
-		if err := insertRow(d, table, columns, row, upsert, tx); err != nil {
+		refused, err := error(nil), error(nil)
+		if skipping {
+			refused, err = insertAside(d, table, columns, row, upsert, tx)
+		} else {
+			refused = insertRow(d, table, columns, row, upsert, tx)
+		}
+		if err != nil {
 			_ = tx.Rollback()
-			return committed, &source.LoadError{Row: at, Err: err}
+			return committed, err
+		}
+		if refused != nil && skipping && (opt.OnError == "skip" || left < int64(opt.MaxErrors)) {
+			left++
+			if opt.Skipped != nil {
+				opt.Skipped(&source.LoadError{Row: at, Err: refused})
+			}
+			continue
+		}
+		if refused != nil {
+			_ = tx.Rollback()
+			return committed, &source.LoadError{Row: at, Err: refused}
 		}
 		if open++; open < size || opt.Truncate {
 			continue
@@ -173,6 +195,24 @@ func insertRow(d source.Dialect, table string, columns []string, row model.Row, 
 		err = fmt.Errorf("%d rows added, where the row was one", n)
 	}
 	return err
+}
+
+// insertAside writes one row in a savepoint, so that a row refused can be
+// left out and the transaction go on: PostgreSQL aborts a transaction at a
+// failed statement, and every engine here rolls back to a savepoint. The
+// savepoint is released either way, so that none pile up. It says why the
+// row was refused, and, as err, a savepoint that failed.
+func insertAside(d source.Dialect, table string, columns []string, row model.Row, upsert string, tx Tx) (refused, err error) {
+	if _, err := tx.Exec(source.Statement{SQL: "SAVEPOINT ikigai_row"}); err != nil {
+		return nil, err
+	}
+	if refused = insertRow(d, table, columns, row, upsert, tx); refused != nil {
+		if _, err := tx.Exec(source.Statement{SQL: "ROLLBACK TO SAVEPOINT ikigai_row"}); err != nil {
+			return nil, err
+		}
+	}
+	_, err = tx.Exec(source.Statement{SQL: "RELEASE SAVEPOINT ikigai_row"})
+	return refused, err
 }
 
 // LoadSQL loads rows on a database/sql connection. See LoadWith.

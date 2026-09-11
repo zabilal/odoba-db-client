@@ -15,8 +15,8 @@ import (
 // checkLoader imports rows into the Writable table (FR-10.6, ADR-0050,
 // ADR-0052): a batch a transaction, a row the server refuses stopping it
 // with the batches before it kept, emptying the table first in one
-// transaction whole, a row whose key is taken updating the row there, and
-// the guard asked first. It runs last, as it leaves rows behind.
+// transaction whole, a row whose key is taken updating the row there, rows
+// refused left out when told, and the guard asked first. It runs last, as it leaves rows behind.
 func checkLoader(t *testing.T, target Target) {
 	if target.Writable.IsZero() {
 		t.Skip("no Writable target configured")
@@ -74,6 +74,21 @@ func checkLoader(t *testing.T, target Target) {
 	want = "[10 TEN <nil>] [11 eleven <nil>] [12 twelve <nil>] [13 thirteen <nil>] [20 a <nil>] [21 b <nil>]"
 	if got := tableRows(t, src, ref); got != want {
 		t.Errorf("after an upsert, the row with its key updated and the other added: %s", got)
+	}
+
+	// A row refused is left out when told, and the load goes on (ADR-0053).
+	var left []int64
+	skip := source.LoadOptions{BatchSize: 2, OnError: "skip", Skipped: func(e *source.LoadError) { left = append(left, e.Row) }}
+	if n, err := load(l, skip, row(20, "again"), row(30, "thirty"), row(31, "thirty-one")); err != nil || n != 2 || len(left) != 1 || left[0] != 1 {
+		t.Errorf("a row refused, left out: %v %d, left out %v", err, n, left)
+	}
+	n, err = load(l, source.LoadOptions{OnError: "collect", MaxErrors: 1}, row(40, "forty"), row(20, "again"), row(21, "again"))
+	if !errors.As(err, &le) || le.Row != 3 || n != 0 {
+		t.Errorf("collecting stops at the row after the most left out: %v %d", err, n)
+	}
+	want = "[10 TEN <nil>] [11 eleven <nil>] [12 twelve <nil>] [13 thirteen <nil>] [20 a <nil>] [21 b <nil>] [30 thirty <nil>] [31 thirty-one <nil>]"
+	if got := tableRows(t, src, ref); got != want {
+		t.Errorf("after rows left out, and a load that stopped: %s", got)
 	}
 
 	if target.OpenGuarded == nil {
