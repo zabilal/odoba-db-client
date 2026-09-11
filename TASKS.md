@@ -23,15 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the grid: Copy as INSERT (T1.52), the cell viewer (T1.53), column
-           resize and hide (T1.48), type-aware rendering (T1.50); then Phase 1's
-           other [~].
-[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44, T1.52 partly done; each line says what is open.
+NEXT TASK: the grid: the cell viewer (T1.53), column resize and hide (T1.48),
+           type-aware rendering (T1.50); then Phase 1's other [~].
+[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — Copy As CSV, JSON and Markdown, after cell selection and
-           ⌘C (T1.51, T1.52 in part, ADR-0016).
+LAST DONE: 2026-09-11 — Copy as INSERT: literals that read back as their values
+           on every engine (T1.52, ADR-0016).
 ```
 
 **Phase 0 findings so far**
@@ -275,7 +274,7 @@ LAST DONE: 2026-09-11 — Copy As CSV, JSON and Markdown, after cell selection a
 - [x] **T1.49** Server-side multi-column sort → FR-3.3 — *header click cycles, ⇧-click adds a key; the server re-sorts; stale pages from the old order are dropped (ADR-0016)*
 - [ ] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7 — *rows are plain for now: cell-width stripes read as blocks; full-width stripes need a scroll-synced background (ADR-0011 §6)*
 - [x] **T1.51** Cell/range/row/column selection → FR-3.7 — *click, ⇧-click, ⌘-click, arrows and ⇧-arrows; Select Row/Column/All Cells; the grid keeps blocks of cells (ADR-0016)*
-- [~] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7 — *TSV (⌘C, Edit › Copy Cells) and Edit › Copy As CSV, JSON and Markdown are done: exact values, up to 100,000 rows; INSERT is open*
+- [x] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7 — *⌘C and Edit › Copy Cells (TSV); Edit › Copy As CSV, JSON, Markdown and INSERT; exact values, up to 100,000 rows; INSERT literals round-trip on every engine (ADR-0016)*
 - [ ] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9
 - [x] **T1.54** Per-column filters with distinct-value picklist and operators → FR-3.4 — *right-click a title, or View › Filter by Values…; counted values from the server, searchable; IN or NOT IN by the shorter side; the listed values are sent as typed, the notation shown (ADR-0016)*
 - [x] **T1.55** Compact filter-row DSL (`>100`, `!=x`, `a,b,c`, `~regex`, `NULL`) → FR-3.5 — *a field under each header; parsed in internal/app/filterexpr and checked against the column's type; applied on the server; failures marked and explained (ADR-0016)*

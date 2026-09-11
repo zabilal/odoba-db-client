@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.51, T1.52 (in part), T1.54–T1.56 (and the rest of T1.48–T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.51, T1.52, T1.54–T1.56 (and T1.48, T1.50, T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -196,7 +196,25 @@ skipped would misstate one. Markdown, now an export format too, right-aligns
 number columns, escapes `|` and line breaks so each value keeps to its cell,
 and writes NULL as `_NULL_`, apart from the text "NULL".
 
+**Copy as INSERT writes literals, and each reads back as its value.** Copy
+As › INSERT, on a table's rows, writes one INSERT a row into the table they
+came from, rows whole as Copy As writes them. The statements are for a
+person to keep or run elsewhere, so the values cannot travel beside the SQL
+as they do in statements this application runs. Each dialect writes them as
+literals through `source.RowScripter`, and a value it cannot write
+faithfully is an error, not a guess. PostgreSQL gets typed NaN and infinity,
+`'\x…'::bytea`, a date, a wall time or a time with its offset as the column
+says, and arrays cast to the column's type. MySQL doubles quotes, but text
+holding a backslash goes as `_utf8mb4 X'…'`, because what a backslash means
+depends on `sql_mode`. SQLite gets 1 and 0 for booleans, and times in the
+layout its date functions read. Tests read rows from a table, write them
+into a twin through the generated INSERTs, and read them back unchanged, on
+PostgreSQL, MySQL, MariaDB and SQLite. Writing them found that PostgreSQL
+`time` values lost their fractional seconds when read; they now keep them.
+A query's result has no one table to insert into, so it does not offer
+INSERT.
+
 ## Not decided here
 
-Copy as INSERT (T1.52), the cell viewer (T1.53), and
+The cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.

@@ -41,6 +41,18 @@ type Dialect interface {
 	BuildBrowse(ref model.ObjectRef, opt BrowseOptions) (Statement, error)
 }
 
+// RowScripter is an optional Dialect refinement: it writes rows as the
+// INSERT statements that would add them, for Copy as INSERT (FR-3.7).
+//
+// Values are written as literals, not bound: the text is for a person to
+// read, keep, or run elsewhere, so it cannot carry its values beside it the
+// way a statement this application runs does (NFR-S6). Each literal must
+// read back, on the same engine, as the value it was written from. A value
+// that cannot be written so is an error, never an approximation.
+type RowScripter interface {
+	InsertRows(ref model.ObjectRef, cols []model.ColumnDef, rows []model.Row) (string, error)
+}
+
 // ScriptStatement is one statement located within a script.
 type ScriptStatement struct {
 	Text string
