@@ -176,9 +176,9 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 			j.dlg.Hide()
 			switch {
 			case err == nil:
-				t.footer.SetText(fmt.Sprintf("Exported %s to %s", rowCount(p.Rows, true), dest))
+				s.say(t, fmt.Sprintf("Exported %s to %s", rowCount(p.Rows, true), dest))
 			case errors.Is(err, context.Canceled):
-				t.footer.SetText("Export cancelled; the partial file was removed")
+				s.say(t, "Export cancelled; the partial file was removed")
 			default:
 				dialog.ShowError(formError("The export failed, and the partial file was removed: "+err.Error()), s.win)
 			}

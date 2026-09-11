@@ -52,8 +52,9 @@ func TestExportWritesTheWholeTable(t *testing.T) {
 	if !strings.HasPrefix(out.String(), "id,name\n0,item 0\n") {
 		t.Errorf("starts %q", out.String()[:min(30, out.Len())])
 	}
-	if tb.footer.Text != "Exported 250 rows to items.csv" {
-		t.Errorf("footer %q", tb.footer.Text)
+	fx.s.showCount(tb) // as a page loading, or the count landing, would
+	if !strings.HasSuffix(tb.footer.Text, "Exported 250 rows to items.csv") {
+		t.Errorf("footer %q; the count must not wipe what the export said", tb.footer.Text)
 	}
 }
 

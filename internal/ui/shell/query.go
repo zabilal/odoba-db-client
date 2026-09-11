@@ -305,6 +305,8 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	q := t.query
 	m := grid.NewModel(rs)
 	g := grid.NewTableGridWith(t.ctx, m, s.colours(), s.d.Run, s.d.Delay)
+	g.OnSelectCell = s.sync // the Edit menu follows the selection
+	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	count := widget.NewLabel("Loading rows…")
 	count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {

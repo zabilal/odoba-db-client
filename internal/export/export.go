@@ -142,6 +142,25 @@ func Copy(ctx context.Context, dst io.Writer, src model.RowStream, opt Options, 
 	return p, nil
 }
 
+// Write formats rows already in hand, as Copy formats a stream: for copying
+// cells to the clipboard (FR-3.7), where the rows are few and in memory.
+func Write(dst io.Writer, cols []model.ColumnDef, rows []model.Row, opt Options) error {
+	bw := bufio.NewWriter(dst)
+	w, err := newWriter(bw, cols, opt)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := w.row(r); err != nil {
+			return err
+		}
+	}
+	if err := w.end(); err != nil {
+		return err
+	}
+	return bw.Flush()
+}
+
 type rowWriter interface {
 	row(model.Row) error
 	end() error
@@ -199,6 +218,10 @@ func (d *delimited) end() error {
 	d.csv.Flush()
 	return d.csv.Error()
 }
+
+// Text writes one value as export writes it: exactly, with decimals as
+// their digits and bytes as hex. NULL is empty.
+func Text(v any, col model.ColumnDef) string { return text(v, col, "") }
 
 // text renders a value for CSV and TSV.
 func text(v any, col model.ColumnDef, null string) string {

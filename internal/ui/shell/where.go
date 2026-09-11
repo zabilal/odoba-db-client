@@ -127,7 +127,7 @@ func (b *whereBar) clear() {
 	b.apply()
 }
 
-func (b *whereBar) copySQL() { b.s.win.Clipboard().SetContent(b.sql.Text) }
+func (b *whereBar) copySQL() { b.s.app.Clipboard().SetContent(b.sql.Text) }
 
 // refresh shows the statement the grid now runs, and why the last change
 // failed, if it did.

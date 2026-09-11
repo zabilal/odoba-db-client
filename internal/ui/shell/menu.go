@@ -13,37 +13,41 @@ import (
 // Command IDs. They are stable: custom key bindings will be keyed on them
 // (FR-15.4).
 const (
-	cmdPalette      = "palette.show"
-	cmdConnNew      = "connection.new"
-	cmdConnEdit     = "connection.edit"
-	cmdConnDup      = "connection.duplicate"
-	cmdConnDelete   = "connection.delete"
-	cmdDisconnect   = "connection.disconnect"
-	cmdOpen         = "object.open"
-	cmdRefresh      = "explorer.refresh"
-	cmdReload       = "tab.reload"
-	cmdSidebar      = "view.sidebar"
-	cmdTabClose     = "tab.close"
-	cmdTabNext      = "tab.next"
-	cmdTabPrev      = "tab.previous"
-	cmdQueryNew     = "query.new"
-	cmdQueryRun     = "query.run"
-	cmdQueryRunAll  = "query.runAll"
-	cmdQueryStop    = "query.stop"
-	cmdHistory      = "query.history"
-	cmdQuerySave    = "query.save"
-	cmdQuerySaveAs  = "query.saveAs"
-	cmdOpenSaved    = "query.openSaved"
-	cmdExport       = "data.export"
-	cmdFilterValues = "data.filterValues"
-	cmdWhere        = "data.where"
-	cmdFind         = "edit.find"
-	cmdFindReplace  = "edit.findReplace"
-	cmdFindNext     = "edit.findNext"
-	cmdFindPrev     = "edit.findPrevious"
-	cmdAppearSystem = "appearance.system"
-	cmdAppearLight  = "appearance.light"
-	cmdAppearDark   = "appearance.dark"
+	cmdPalette        = "palette.show"
+	cmdConnNew        = "connection.new"
+	cmdConnEdit       = "connection.edit"
+	cmdConnDup        = "connection.duplicate"
+	cmdConnDelete     = "connection.delete"
+	cmdDisconnect     = "connection.disconnect"
+	cmdOpen           = "object.open"
+	cmdRefresh        = "explorer.refresh"
+	cmdReload         = "tab.reload"
+	cmdSidebar        = "view.sidebar"
+	cmdTabClose       = "tab.close"
+	cmdTabNext        = "tab.next"
+	cmdTabPrev        = "tab.previous"
+	cmdQueryNew       = "query.new"
+	cmdQueryRun       = "query.run"
+	cmdQueryRunAll    = "query.runAll"
+	cmdQueryStop      = "query.stop"
+	cmdHistory        = "query.history"
+	cmdQuerySave      = "query.save"
+	cmdQuerySaveAs    = "query.saveAs"
+	cmdOpenSaved      = "query.openSaved"
+	cmdExport         = "data.export"
+	cmdFilterValues   = "data.filterValues"
+	cmdWhere          = "data.where"
+	cmdCopyCells      = "grid.copy"
+	cmdSelectRow      = "grid.selectRow"
+	cmdSelectColumn   = "grid.selectColumn"
+	cmdSelectAllCells = "grid.selectAll"
+	cmdFind           = "edit.find"
+	cmdFindReplace    = "edit.findReplace"
+	cmdFindNext       = "edit.findNext"
+	cmdFindPrev       = "edit.findPrevious"
+	cmdAppearSystem   = "appearance.system"
+	cmdAppearLight    = "appearance.light"
+	cmdAppearDark     = "appearance.dark"
 )
 
 // menuEntry is one menu-bar item: a command, a separator (the zero value), or
@@ -82,7 +86,8 @@ var menuBar = []struct {
 		item(cmdTabClose),
 	}},
 	{"Edit", []menuEntry{
-		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev),
+		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev), separator,
+		item(cmdCopyCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells),
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,

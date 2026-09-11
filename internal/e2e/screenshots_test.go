@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -22,6 +23,14 @@ import (
 // reviewing the interface without a window server: the test driver draws the
 // real widget tree with the real theme. Opt in with IKIGAI_SCREENSHOTS=dir;
 // the ordinary test run writes nothing.
+// gridTable is what the grid's table can be found by: it selects cells,
+// and hears the modifiers of a click.
+type gridTable interface {
+	fyne.CanvasObject
+	Select(widget.TableCellID)
+	MouseDown(*desktop.MouseEvent)
+}
+
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("IKIGAI_SCREENSHOTS")
 	if dir == "" {
@@ -68,7 +77,16 @@ func TestScreenshots(t *testing.T) {
 	})
 	shot("3-table-rows")
 
-	find[*widget.Table](h.tabs.Selected().Content)[0].Select(widget.TableCellID{Row: 0, Col: 1})
+	// The grid's table is its own subclass of Fyne's, found by what it does.
+	tbl := find[gridTable](h.tabs.Selected().Content)[0]
+	tbl.MouseDown(&desktop.MouseEvent{})
+	tbl.Select(widget.TableCellID{Row: 1, Col: 0})
+	tbl.MouseDown(&desktop.MouseEvent{Modifier: fyne.KeyModifierShift})
+	tbl.Select(widget.TableCellID{Row: 4, Col: 1})
+	shot("3a-selection")
+
+	tbl.MouseDown(&desktop.MouseEvent{})
+	tbl.Select(widget.TableCellID{Row: 0, Col: 1})
 	h.s.Commands().Run("data.filterValues")
 	values := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
 	waitFor(t, h.q, "the value list", func() bool { return values.Length() > 0 })
