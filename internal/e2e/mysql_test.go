@@ -3,11 +3,13 @@
 package e2e
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -27,9 +29,13 @@ func mysqlJourney(t *testing.T, name, portEnv string, port int) journey {
 	}
 	pass := env("IKIGAI_MYSQL_PASSWORD", "ikigai")
 	dsn := fmt.Sprintf("root:%s@tcp(127.0.0.1:%d)/?multiStatements=true", pass, port)
+	// Bounded, as the app's own connect is: a server that accepts and never
+	// answers fails the suite in seconds, not at go test's ten minutes.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	db, err := sql.Open("mysql", dsn)
 	if err == nil {
-		err = db.Ping()
+		err = db.PingContext(ctx)
 	}
 	if err != nil {
 		if os.Getenv("IKIGAI_REQUIRE_MYSQL") != "" {
@@ -47,8 +53,10 @@ func mysqlJourney(t *testing.T, name, portEnv string, port int) journey {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		if c, err := sql.Open("mysql", dsn); err == nil {
-			c.Exec("DROP DATABASE IF EXISTS " + myDB)
+			c.ExecContext(ctx, "DROP DATABASE IF EXISTS "+myDB)
 			c.Close()
 		}
 	})
