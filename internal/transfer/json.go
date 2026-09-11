@@ -65,7 +65,7 @@ func openRecords(r io.Reader, array bool) (*records, error) {
 				rs.index[k] = len(rs.cols)
 				rs.cols = append(rs.cols, model.ColumnDef{Name: k, Type: model.DataType{Nullable: true}})
 			}
-			_, c := value(o.vals[i])
+			_, c := jsonValue(o.vals[i])
 			switch prev, ok := classes[k]; {
 			case c == model.TypeUnknown: // null says nothing of the column
 			case !ok:
@@ -145,17 +145,17 @@ func (rs *records) Next(ctx context.Context) (model.Row, error) {
 		if !ok {
 			return nil, fmt.Errorf("transfer: record %d has a key, %q, that the first %d records do not", rs.n, k, sniffRecords)
 		}
-		row[at], _ = value(o.vals[i])
+		row[at], _ = jsonValue(o.vals[i])
 	}
 	return row, nil
 }
 
 func (rs *records) Close() error { return nil }
 
-// value is a JSON value as a row holds it, and its class: a string as text,
+// jsonValue is a JSON value as a row holds it, and its class: a string as text,
 // a number as its digits, true and false, an object or array as JSON, and
 // null as NULL (of no class).
-func value(raw json.RawMessage) (any, model.TypeClass) {
+func jsonValue(raw json.RawMessage) (any, model.TypeClass) {
 	t := bytes.TrimSpace(raw)
 	switch {
 	case len(t) == 0 || string(t) == "null":

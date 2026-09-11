@@ -23,17 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.19 (column mapping, with type coercion), then T2.20 (a
-           dry-run preview listing error rows). What is open in Phase 1
+NEXT TASK: the rest of T2.19 (the import panel: a file's options and its
+           columns' mapping, with a preview), then T2.20 (a dry run). What is
+           open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
-[~] tasks: T1.14 partly done; its line says what is open.
+[~] tasks: T1.14 and T2.19 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a file's format, encoding, delimiter and header
-           found from it (T2.18, ADR-0045). Before it: the files an import
+LAST DONE: 2026-09-11 — a file's columns paired with a table's, and its
+           values made theirs (T2.19 in part, ADR-0046). Before it: a file's
+           format, encoding, delimiter and header found (T2.18, ADR-0045), the files an import
            takes read as rows (T2.17, ADR-0044), master
            and detail (T2.16, ADR-0043), a foreign key's value shown
            with its row's label (T2.15, ADR-0042), the rows that refer to a row shown
@@ -381,7 +383,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T2.17** Import readers: CSV/TSV/JSON/NDJSON/Excel → FR-10.4 — *`internal/transfer.Open` streams a file's rows: CSV and TSV as export writes them, JSON and NDJSON with their types, Excel with the standard library alone (ADR-0044)*
 - [x] **T2.18** Delimiter/encoding/header auto-detection → FR-10.4 — *`transfer.Detect` finds a file's format, encoding (UTF-8, UTF-16 with or without its mark, Windows-1252), delimiter and header from its first 64 KiB, for a person to correct (ADR-0045)*
-- [ ] **T2.19** Column mapping UI with type coercion → FR-10.5
+- [~] **T2.19** Column mapping UI with type coercion → FR-10.5 — *the mapping: `transfer.Suggest` pairs columns by name, `transfer.Coerce` makes values the table's types as typing a cell does, every failure said; a value's text is read by `internal/value`, moved out of the grid (ADR-0046). Open: the import panel*
 - [ ] **T2.20** **Dry-run preview listing error rows** → FR-10.5
 - [ ] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6
 - [ ] **T2.22** Batch size + error policy → FR-10.6
