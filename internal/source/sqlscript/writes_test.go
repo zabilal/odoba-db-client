@@ -85,12 +85,13 @@ func TestAChangeThatCannotBeWrittenWholeIsRefused(t *testing.T) {
 		id     model.RowIdentity
 		change source.RowChange
 	}{
-		"no key":          {model.RowIdentity{Kind: model.IdentityNone, Target: peopleRef}, source.RowChange{Kind: source.ChangeDelete, Key: []any{1}}},
-		"no key at all":   {model.RowIdentity{Kind: model.IdentityNone, Target: peopleRef}, source.RowChange{Kind: source.ChangeDelete}},
-		"a NULL key":      {byID, source.RowChange{Kind: source.ChangeDelete, Key: []any{nil}}},
-		"a short key":     {two, source.RowChange{Kind: source.ChangeDelete, Key: []any{1}}},
-		"an empty update": {byID, source.RowChange{Kind: source.ChangeUpdate, Key: []any{1}}},
-		"an unknown kind": {byID, source.RowChange{Kind: 9, Key: []any{1}}},
+		"no key":            {model.RowIdentity{Kind: model.IdentityNone, Target: peopleRef}, source.RowChange{Kind: source.ChangeDelete, Key: []any{1}}},
+		"no key at all":     {model.RowIdentity{Kind: model.IdentityNone, Target: peopleRef}, source.RowChange{Kind: source.ChangeDelete}},
+		"an update, no key": {model.RowIdentity{}, source.RowChange{Kind: source.ChangeUpdate, Key: []any{1}, Values: map[string]any{"a": 1}}},
+		"a NULL key":        {byID, source.RowChange{Kind: source.ChangeDelete, Key: []any{nil}}},
+		"a short key":       {two, source.RowChange{Kind: source.ChangeDelete, Key: []any{1}}},
+		"an empty update":   {byID, source.RowChange{Kind: source.ChangeUpdate, Key: []any{1}}},
+		"an unknown kind":   {byID, source.RowChange{Kind: 9, Key: []any{1}}},
 	} {
 		if p, err := PlanWrites(pgLike{}, source.Guard{}, source.Changeset{Target: peopleRef, Identity: c.id, Changes: []source.RowChange{c.change}}, ""); err == nil {
 			t.Errorf("%s: planned %v", name, p.Statements)
@@ -149,5 +150,17 @@ func TestWritesAskTheGuardWithTheirConsent(t *testing.T) {
 	p.Statements[0].Confirmed = false
 	if err := AllowWrites(source.Guard{Environment: source.EnvProduction}, p); !errors.Is(err, source.ErrConfirmationRequired) {
 		t.Errorf("production without consent: %v", err)
+	}
+}
+
+func TestNewRowsNeedNoKey(t *testing.T) {
+	add := source.RowChange{Kind: source.ChangeInsert, Values: map[string]any{"name": "a"}}
+	p, err := PlanWrites(pgLike{}, source.Guard{}, source.Changeset{Target: peopleRef, Changes: []source.RowChange{add, add}}, "DEFAULT VALUES")
+	if err != nil || len(p.Statements) != 2 || p.Statements[1].SQL != `INSERT INTO "s"."people" ("name") VALUES ($1)` {
+		t.Fatalf("rows added to a table with no key: %v %+v", err, p)
+	}
+	del := source.RowChange{Kind: source.ChangeDelete, Key: []any{1}}
+	if _, err := PlanWrites(pgLike{}, source.Guard{}, source.Changeset{Target: peopleRef, Changes: []source.RowChange{add, del}}, ""); err == nil {
+		t.Error("a row deleted beside them still needs its key")
 	}
 }

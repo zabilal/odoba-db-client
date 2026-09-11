@@ -53,3 +53,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0046](0046-mapping-a-files-columns-to-a-tables.md) | Mapping a file's columns to a table's | Accepted |
 | [0047](0047-the-import-panel.md) | The import panel | Accepted |
 | [0048](0048-the-dry-run.md) | The dry run | Accepted |
+| [0049](0049-writing-an-imports-rows.md) | Writing an import's rows | Accepted |

@@ -141,6 +141,20 @@ func checkWriter(t *testing.T, target Target) {
 	}
 	apply(t, source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(7)}}, source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(8)}})
 
+	// New rows need no key, as none addresses them: a file is imported into a
+	// table without one (ADR-0049).
+	keyless, err := w.Plan(ctx, source.Changeset{Target: ref, Changes: []source.RowChange{insert(9, "keyless", nil)}})
+	if err != nil {
+		t.Fatalf("new rows planned without a key: %v", err)
+	}
+	if out, err := w.Apply(ctx, keyless); err != nil || out.Err != nil || out.Applied != 1 {
+		t.Errorf("new rows written without a key: %v %+v", err, out)
+	}
+	if got := rows(t); got != "[1 uno 1] [3 three <nil>] [4 four <nil>] [9 keyless <nil>]" {
+		t.Errorf("after a row added without a key: %s", got)
+	}
+	apply(t, source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(9)}})
+
 	if target.OpenGuarded == nil {
 		return
 	}
