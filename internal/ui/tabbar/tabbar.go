@@ -48,11 +48,23 @@ type Tabs struct {
 	// OnMenu is called for a secondary tap on a tab, with where on the
 	// canvas it was.
 	OnMenu func(it *container.TabItem, at fyne.Position)
+	// MarkFor gives a tab's mark, or nil for none. It is asked each time
+	// the tab is drawn, so a mark follows what it stands for.
+	MarkFor func(*container.TabItem) *Mark
 
 	current int
 	chips   map[*container.TabItem]*chip
 	drag    *dragState
 	r       *renderer
+}
+
+// Mark is a word a tab carries before its title, on a fill of its own: a
+// connection's environment, as PROD on red (FR-1.7, UX principle 8). The
+// word is what makes it more than a colour, and a screen reader hears it
+// with the title.
+type Mark struct {
+	Label      string
+	Fill, Text color.Color
 }
 
 // dragState is a drag under way: the tab, how far it has gone, and where it
@@ -420,17 +432,32 @@ func (c *chip) MouseIn(*desktop.MouseEvent)    { c.hovered = true; c.Refresh() }
 func (c *chip) MouseMoved(*desktop.MouseEvent) {}
 func (c *chip) MouseOut()                      { c.hovered = false; c.Refresh() }
 
-// AccessibilityLabel is the tab's title.
-func (c *chip) AccessibilityLabel() string { return c.item.Text }
+func (c *chip) mark() *Mark {
+	if c.t.MarkFor == nil {
+		return nil
+	}
+	return c.t.MarkFor(c.item)
+}
+
+// AccessibilityLabel is the tab's title, and its mark's word.
+func (c *chip) AccessibilityLabel() string {
+	if m := c.mark(); m != nil {
+		return c.item.Text + ", " + m.Label
+	}
+	return c.item.Text
+}
 
 func (c *chip) AccessibilityRole() fyne.AccessibleRole { return fyne.AccessibleRoleButton }
 
 func (c *chip) CreateRenderer() fyne.WidgetRenderer {
 	r := &chipRenderer{c: c, bg: canvas.NewRectangle(color.Transparent), bar: canvas.NewRectangle(color.Transparent),
-		icon: canvas.NewImageFromResource(nil), label: widget.NewLabel("")}
+		icon: canvas.NewImageFromResource(nil), label: widget.NewLabel(""),
+		pill: canvas.NewRectangle(color.Transparent), word: canvas.NewText("", color.Transparent)}
 	r.icon.FillMode = canvas.ImageFillContain
 	r.label.Truncation = fyne.TextTruncateEllipsis
-	r.objs = []fyne.CanvasObject{r.bg, r.bar, r.icon, r.label, c.close}
+	r.word.TextStyle.Bold = true
+	r.word.Alignment = fyne.TextAlignCenter
+	r.objs = []fyne.CanvasObject{r.bg, r.bar, r.icon, r.pill, r.word, r.label, c.close}
 	r.Refresh()
 	return r
 }
@@ -442,6 +469,10 @@ type chipRenderer struct {
 	icon  *canvas.Image
 	label *widget.Label
 	objs  []fyne.CanvasObject
+	// pill and word draw the mark; m is the one drawn.
+	pill *canvas.Rectangle
+	word *canvas.Text
+	m    *Mark
 }
 
 func (r *chipRenderer) Objects() []fyne.CanvasObject { return r.objs }
@@ -455,12 +486,22 @@ func (r *chipRenderer) labelWidth() float32 {
 	return min(s.Width+2*th.Size(theme.SizeNameInnerPadding), maxLabel)
 }
 
+// pillSize is the mark's size: its word in caption bold, with room around.
+func (r *chipRenderer) pillSize() fyne.Size {
+	th := r.c.Theme()
+	s := fyne.MeasureText(r.m.Label, th.Size(theme.SizeNameCaptionText), fyne.TextStyle{Bold: true})
+	return fyne.NewSize(s.Width+th.Size(theme.SizeNameInnerPadding), s.Height+2)
+}
+
 func (r *chipRenderer) MinSize() fyne.Size {
 	th := r.c.Theme()
 	pad, icon := th.Size(theme.SizeNamePadding), th.Size(theme.SizeNameInlineIcon)
 	w := pad + r.labelWidth() + icon + pad
 	if r.c.item.Icon != nil {
 		w += icon
+	}
+	if r.m != nil {
+		w += r.pillSize().Width + pad
 	}
 	return fyne.NewSize(w, r.label.MinSize().Height+barHeight)
 }
@@ -478,6 +519,15 @@ func (r *chipRenderer) Layout(size fyne.Size) {
 		r.icon.Move(fyne.NewPos(x, (h-icon)/2))
 		x += icon
 	}
+	if r.m != nil {
+		ps := r.pillSize()
+		at := fyne.NewPos(x, (h-ps.Height)/2)
+		r.pill.Resize(ps)
+		r.pill.Move(at)
+		r.word.Resize(ps)
+		r.word.Move(at)
+		x += ps.Width + pad
+	}
 	r.label.Resize(fyne.NewSize(size.Width-x-icon-pad, h))
 	r.label.Move(fyne.NewPos(x, 0))
 	r.c.close.Resize(fyne.NewSquareSize(icon))
@@ -492,6 +542,15 @@ func (r *chipRenderer) Refresh() {
 	r.icon.Resource = c.item.Icon
 	setShown(r.icon, c.item.Icon != nil)
 	r.icon.Refresh()
+	r.m = c.mark()
+	if r.m != nil {
+		r.pill.FillColor, r.pill.CornerRadius = r.m.Fill, th.Size(theme.SizeNameSelectionRadius)
+		r.word.Text, r.word.Color, r.word.TextSize = r.m.Label, r.m.Text, th.Size(theme.SizeNameCaptionText)
+	}
+	setShown(r.pill, r.m != nil)
+	setShown(r.word, r.m != nil)
+	r.pill.Refresh()
+	r.word.Refresh()
 	switch {
 	case c.selected:
 		r.bg.FillColor = th.Color(theme.ColorNameInputBackground, v)

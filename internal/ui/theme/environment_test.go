@@ -82,3 +82,20 @@ func TestUnknownEnvironmentIsNeutralNotDangerous(t *testing.T) {
 		t.Errorf("unknown environment should fall back to local, got %q", got.Label)
 	}
 }
+
+func TestAnEnvironmentsBandCarriesLegibleText(t *testing.T) {
+	// A production tab's band says what it is, in the label colour on the
+	// Subtle tint. A tint that washed the words out would leave only colour.
+	th := New()
+	for _, p := range []struct {
+		dark bool
+		pal  Palette
+	}{{false, Light}, {true, Dark}} {
+		for _, name := range EnvironmentNames() {
+			e := th.Environment(name, p.dark)
+			if r := contrastRatio(p.pal.Label, e.Subtle); r < aaText {
+				t.Errorf("dark=%v %s: label on its band %.2f:1 (need %.1f:1)", p.dark, name, r, aaText)
+			}
+		}
+	}
+}

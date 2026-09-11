@@ -29,6 +29,7 @@ func (s *Shell) newPane() *tabbar.Tabs {
 	p.OnTapped = func(*container.TabItem) { s.workIn(p); s.sync() }
 	p.OnMove = s.dropTab
 	p.OnMenu = s.showTabMenu
+	p.MarkFor = s.tabMark
 	return p
 }
 
@@ -92,6 +93,10 @@ func (s *Shell) selectTab(t *tab) {
 
 // addTab opens a tab, selected, in the pane worked in.
 func (s *Shell) addTab(t *tab) {
+	if t.band == nil { // every tab says its environment (envband.go)
+		t.band = newEnvBand(s, t)
+		t.item.Content = container.NewBorder(t.band, nil, nil, nil, t.item.Content)
+	}
 	s.showTabs(true)
 	s.tabs.Append(t.item)
 	s.tabs.Select(t.item)

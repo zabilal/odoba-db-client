@@ -172,6 +172,9 @@ type tab struct {
 	// object's name.
 	structure bool
 	label     string
+	// band is across the top of the content, for a production tab
+	// (envband.go).
+	band *envBand
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -890,6 +893,7 @@ func (s *Shell) connectionSaved(id string, edited bool) {
 		s.disconnect(id)
 	}
 	s.Explorer.Refresh(explorer.RootID)
+	s.markTabs() // its environment may have changed under a tab still open
 	s.sync()
 }
 
