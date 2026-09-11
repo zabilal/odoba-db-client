@@ -30,8 +30,8 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — tabs move left and right, and pin (T1.4 in part,
-           ADR-0011).
+LAST DONE: 2026-09-11 — a driver's panic is contained: it fails the call, not
+           the application (T1.16, ADR-0017).
 ```
 
 **Phase 0 findings so far**
@@ -224,7 +224,7 @@ LAST DONE: 2026-09-11 — tabs move left and right, and pin (T1.4 in part,
 - [x] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6 — *uithread.Runner: UI work goes through an injected runner, tests drain a queue (ADR-0011)*
 - [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3
 - [ ] **T1.15** Autosave scratch buffers → NFR-R2
-- [ ] **T1.16** Per-connection panic isolation and recovery → NFR-R1
+- [x] **T1.16** Per-connection panic isolation and recovery → NFR-R1 — *a driver's panic becomes an error at every way into a driver, its stack in the log; the shell offers Disconnect to open the connection afresh (ADR-0017)*
 
 ## 1.B Persistence & store
 

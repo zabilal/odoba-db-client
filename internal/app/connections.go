@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/redact"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -334,8 +335,9 @@ type TestResult struct {
 // Test tries a connection, which may not be saved yet. typed holds whatever the
 // form contains. A secret not typed falls back to the vault, so testing a
 // saved connection does not mean typing its password again.
-func (c *Connections) Test(ctx context.Context, conn store.SavedConnection, typed map[string]string) TestResult {
+func (c *Connections) Test(ctx context.Context, conn store.SavedConnection, typed map[string]string) (res TestResult) {
 	start := time.Now()
+	defer panics.Catch("testing the connection", func(err error) { res = testFailure(err, start) })
 	drv, err := source.Lookup(conn.Driver)
 	if err != nil {
 		return TestResult{Kind: source.ConnectConfig, Hint: "no driver is installed for this kind of connection",
@@ -391,7 +393,8 @@ func (e *MissingSecretsError) Error() string {
 }
 
 // Open connects to a saved connection and starts watching its health.
-func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (*Live, error) {
+func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (_ *Live, err error) {
+	defer panics.Recover(&err, "opening the connection")
 	conn, ok := c.Get(id)
 	if !ok {
 		return nil, ErrNotFound

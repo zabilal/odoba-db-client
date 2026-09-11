@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
@@ -168,7 +169,15 @@ func (ss *pgSession) QueryMulti(ctx context.Context, script string, confirmed bo
 	out := make(chan source.ScriptResult, len(stmts))
 	go func() {
 		defer close(out)
+		current := 0
+		// A panic fails the statement it happened in, as its error: the
+		// buffer holds one more result than have been sent (NFR-R1).
+		defer panics.Catch("running a statement", func(err error) {
+			st := stmts[current]
+			out <- source.ScriptResult{Index: current, Offset: st.Offset, Statement: st.Text, Err: err}
+		})
 		for i, st := range stmts {
+			current = i
 			r := source.ScriptResult{Index: i, Offset: st.Offset, Statement: st.Text}
 			if err := ctx.Err(); err != nil {
 				r.Err = err
@@ -229,6 +238,7 @@ func (s *pgSource) QueryMulti(ctx context.Context, script string, confirmed bool
 	out := make(chan source.ScriptResult, cap(in))
 	go func() {
 		defer close(out)
+		defer panics.Catch("handing on results", func(error) { ss.Close() })
 		owned := false
 		for r := range in {
 			// Only a still-streaming result holds the connection; buffered

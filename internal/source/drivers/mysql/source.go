@@ -20,6 +20,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/source/tlsconf"
@@ -279,6 +280,7 @@ func (s *mysqlSource) QueryMulti(ctx context.Context, script string, confirmed b
 	out := make(chan source.ScriptResult, cap(in))
 	go func() {
 		defer close(out)
+		defer panics.Catch("handing on results", func(error) { ss.Close() })
 		owned := false
 		for r := range in {
 			if r.Result != nil && r.Result.Rows != nil {

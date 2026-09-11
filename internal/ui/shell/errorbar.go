@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -9,6 +10,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
@@ -123,3 +125,16 @@ func (b *errorBar) relayout() {
 
 // ShowError says that something failed, for callers outside the shell.
 func (s *Shell) ShowError(err error) { s.showError(err) }
+
+// crashed says, for an error that was a driver's panic, that the driver
+// failed, and offers to disconnect the connection so that it can be opened
+// afresh (NFR-R1). The application and every other connection carry on. It
+// reports whether the error was one.
+func (s *Shell) crashed(connID string, err error) bool {
+	var pe *panics.Error
+	if !errors.As(err, &pe) {
+		return false
+	}
+	s.showErrorWith(err, "Disconnect", func() { s.disconnect(connID) })
+	return true
+}

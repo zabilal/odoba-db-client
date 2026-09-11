@@ -499,7 +499,10 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		footer()
 	}
 	m.OnError = func(err error) {
-		s.d.Run(func() { t.footer.SetText("Could not load rows: " + err.Error()) })
+		s.d.Run(func() {
+			t.footer.SetText("Could not load rows: " + err.Error())
+			s.crashed(t.connID, err)
+		})
 	}
 	t.model, t.grid, t.browse = m, g, bs
 	t.want = bs.Options()
@@ -533,6 +536,7 @@ func (s *Shell) count(t *tab) {
 			}
 			if err != nil {
 				t.footer.SetText("Row count unavailable: " + err.Error())
+				s.crashed(t.connID, err)
 				return
 			}
 			s.showCount(t)

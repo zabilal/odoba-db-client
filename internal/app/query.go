@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
@@ -60,7 +61,8 @@ func NewQuerySession(ctx context.Context, live *Live, opt QueryOptions) (*QueryS
 	return newQuerySession(ctx, live.Source, live.ID, opt)
 }
 
-func newQuerySession(ctx context.Context, src source.Source, connID string, opt QueryOptions) (*QuerySession, error) {
+func newQuerySession(ctx context.Context, src source.Source, connID string, opt QueryOptions) (_ *QuerySession, err error) {
+	defer panics.Recover(&err, "opening a session")
 	qs := &QuerySession{}
 	switch s := src.(type) {
 	case source.Sessioner:
@@ -116,7 +118,8 @@ func (r StatementResult) ErrorOffset() (int, bool) {
 // confirmed is the user's consent to change data on a production connection.
 // Without it such a script is refused before any statement runs, with
 // source.ErrConfirmationRequired, so the caller can ask and run it again.
-func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) (<-chan StatementResult, error) {
+func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) (_ <-chan StatementResult, err error) {
+	defer panics.Recover(&err, "running the script")
 	qs.closeResults()
 	in, err := qs.q.QueryMulti(ctx, script, confirmed)
 	if err != nil {
@@ -125,6 +128,12 @@ func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) 
 	out := make(chan StatementResult, 1)
 	go func() {
 		defer close(out)
+		defer panics.Catch("handing on results", func(err error) {
+			select {
+			case out <- StatementResult{Err: err, Affected: -1}:
+			case <-ctx.Done():
+			}
+		})
 		for r := range in {
 			arrived := time.Now()
 			sr := StatementResult{Index: r.Index, Offset: byteOffset(script, r.Offset),
@@ -187,6 +196,7 @@ func (qs *QuerySession) record(sr StatementResult, arrived time.Time) {
 // byte offset too. ok is false when the source cannot split scripts, or the
 // script has no statements.
 func (qs *QuerySession) StatementAt(script string, offset int) (text string, start int, ok bool) {
+	defer panics.Catch("splitting the script", func(error) { text, start, ok = "", 0, false })
 	if qs.dialect == nil {
 		return "", 0, false
 	}
@@ -219,7 +229,8 @@ func byteOffset(s string, chars int) int {
 // Close ends the session and releases every result. Closing twice is
 // harmless, and must be: closing a tab and quitting can both reach it, and
 // releasing a pooled connection twice is not.
-func (qs *QuerySession) Close() error {
+func (qs *QuerySession) Close() (err error) {
+	defer panics.Recover(&err, "closing the session")
 	qs.mu.Lock()
 	if qs.closed {
 		qs.mu.Unlock()
@@ -292,6 +303,7 @@ func newResultSet(ctx context.Context, rs model.RowStream, max int) *ResultSet {
 }
 
 func (r *ResultSet) read(ctx context.Context, max int) {
+	defer panics.Catch("reading rows", r.fail) // outermost: it catches Close too
 	defer r.stream.Close()
 	batch := 0
 	for {
@@ -394,3 +406,17 @@ func (r *ResultSet) Err() error {
 // Close stops reading and releases the stream. Rows already read stay
 // available.
 func (r *ResultSet) Close() { r.cancel() }
+
+// fail ends the read with an error, as a failed Next would, unless it had
+// ended already.
+func (r *ResultSet) fail(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.done {
+		return
+	}
+	r.err, r.done = err, true
+	close(r.changed)
+	r.changed = make(chan struct{})
+	close(r.finished)
+}

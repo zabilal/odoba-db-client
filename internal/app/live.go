@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -154,7 +155,7 @@ func (l *Live) run() {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), l.cfg.PingTimeout)
-		err := l.Source.Ping(ctx)
+		err := l.ping(ctx)
 		cancel()
 
 		select {
@@ -228,7 +229,7 @@ func (l *Live) Close() error {
 	l.closeOnce.Do(func() {
 		close(l.stop)
 		<-l.done
-		l.closeErr = l.Source.Close()
+		l.closeErr = l.closeSource()
 		l.mu.Lock()
 		l.status = Status{State: StateClosed, Since: time.Now()}
 		subs := make([]func(Status), 0, len(l.subs))
@@ -242,4 +243,15 @@ func (l *Live) Close() error {
 		}
 	})
 	return l.closeErr
+}
+
+// ping asks the source whether it is alive. One whose driver panics is not.
+func (l *Live) ping(ctx context.Context) (err error) {
+	defer panics.Recover(&err, "checking the connection")
+	return l.Source.Ping(ctx)
+}
+
+func (l *Live) closeSource() (err error) {
+	defer panics.Recover(&err, "closing the connection")
+	return l.Source.Close()
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -132,7 +133,15 @@ func (ss *session) QueryMulti(ctx context.Context, script string, confirmed bool
 	out := make(chan source.ScriptResult, len(stmts))
 	go func() {
 		defer close(out)
+		current := 0
+		// A panic fails the statement it happened in, as its error: the
+		// buffer holds one more result than have been sent (NFR-R1).
+		defer panics.Catch("running a statement", func(err error) {
+			st := stmts[current]
+			out <- source.ScriptResult{Index: current, Offset: st.Offset, Statement: st.Text, Err: err}
+		})
 		for i, st := range stmts {
+			current = i
 			r := source.ScriptResult{Index: i, Offset: st.Offset, Statement: st.Text}
 			if err := ctx.Err(); err != nil {
 				r.Err = err

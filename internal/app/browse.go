@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -27,7 +28,8 @@ type BrowseSource struct {
 // NewBrowseSource opens an object for browsing. It reads one row up front,
 // because the grid needs the column shape before it fetches anything, and the
 // browse itself is the authority on what shape rows will have.
-func NewBrowseSource(ctx context.Context, src source.Source, ref model.ObjectRef, opt source.BrowseOptions) (*BrowseSource, error) {
+func NewBrowseSource(ctx context.Context, src source.Source, ref model.ObjectRef, opt source.BrowseOptions) (_ *BrowseSource, err error) {
+	defer panics.Recover(&err, "opening the rows")
 	probe := opt
 	probe.Offset, probe.Limit = 0, 1
 	rs, err := src.Browse(ctx, ref, probe)
@@ -70,7 +72,8 @@ func (b *BrowseSource) CanListValues() bool {
 // (FR-3.4), among the rows the other columns' filters and the typed WHERE
 // select. The column's own filter is left out: with it, the list could only
 // offer what is already picked.
-func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) ([]source.DistinctValue, error) {
+func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) (_ []source.DistinctValue, err error) {
+	defer panics.Recover(&err, "listing a column's values")
 	dl, ok := b.src.(source.DistinctLister)
 	if !ok || !b.CanListValues() {
 		return nil, errors.New("app: this source cannot list a column's values")
@@ -92,7 +95,8 @@ func (b *BrowseSource) CanScriptRows() bool {
 
 // InsertRows writes rows of this object as the INSERT statements that would
 // add them (FR-3.7). The dialect writes the values (ARCH-2).
-func (b *BrowseSource) InsertRows(cols []model.ColumnDef, rows []model.Row) (string, error) {
+func (b *BrowseSource) InsertRows(cols []model.ColumnDef, rows []model.Row) (_ string, err error) {
+	defer panics.Recover(&err, "writing INSERT statements")
 	rs, ok := b.src.(source.RowScripter)
 	if !ok {
 		return "", errors.New("app: this source cannot write rows as statements")
@@ -118,7 +122,8 @@ func (b *BrowseSource) Ref() model.ObjectRef { return b.ref }
 
 // Fetch reads one window of rows. The stream is always closed, whatever
 // happens, because each open stream holds a server connection.
-func (b *BrowseSource) Fetch(ctx context.Context, offset, limit int64) ([]model.Row, error) {
+func (b *BrowseSource) Fetch(ctx context.Context, offset, limit int64) (_ []model.Row, err error) {
+	defer panics.Recover(&err, "reading rows")
 	opt := b.opt
 	opt.Offset, opt.Limit = offset, limit
 	rs, err := b.src.Browse(ctx, b.ref, opt)
@@ -147,7 +152,8 @@ func (b *BrowseSource) Fetch(ctx context.Context, offset, limit int64) ([]model.
 // Count returns the total, or -1 when counting would cost a full scan. On a
 // ten-million-row table COUNT(*) is exactly that, and the grid pages
 // perfectly well without it; it just cannot draw a proportional scrollbar.
-func (b *BrowseSource) Count(ctx context.Context) (int64, error) {
+func (b *BrowseSource) Count(ctx context.Context) (_ int64, err error) {
+	defer panics.Recover(&err, "counting rows")
 	c, ok := b.src.(source.Countable)
 	if !ok || !b.src.Capabilities().Data.ExactCount {
 		return -1, nil
@@ -157,7 +163,8 @@ func (b *BrowseSource) Count(ctx context.Context) (int64, error) {
 
 // Statement returns the SQL behind this browse, for the grid to show
 // (UX principle 6, FR-3.6). False for sources with no statement language.
-func (b *BrowseSource) Statement() (source.Statement, bool) {
+func (b *BrowseSource) Statement() (st source.Statement, ok bool) {
+	defer panics.Catch("building the statement", func(error) { st, ok = source.Statement{}, false })
 	d, ok := b.src.(source.Dialect)
 	if !ok {
 		return source.Statement{}, false
