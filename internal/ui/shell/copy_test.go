@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
@@ -84,5 +85,41 @@ func TestTheSelectionCommandsFollowTheGrid(t *testing.T) {
 	}
 	if tb.grid.OnCopy == nil {
 		t.Error("⌘C on the grid should copy")
+	}
+}
+
+func copiedAs(t *testing.T, fx *fixture, tb *tab, f export.Format) string {
+	t.Helper()
+	fx.s.copyAs(tb.ctx, tb.grid, f)
+	pump(t, fx.q, func() bool {
+		st := fx.s.status.Text
+		return strings.HasPrefix(st, "Copied") || strings.HasPrefix(st, "Could not copy")
+	})
+	return fx.s.app.Clipboard().Content()
+}
+
+func TestCopyAsWritesWholeRowsWithTheirHeader(t *testing.T) {
+	fx, tb := openItems(t)
+	tb.grid.Select(grid.CellID{Row: 1, Col: 0}, grid.CellID{Row: 2, Col: 1})
+	if got := copiedAs(t, fx, tb, export.CSV); got != "id,name\n1,item 1\n2,item 2" {
+		t.Errorf("CSV %q", got)
+	}
+	if got := copiedAs(t, fx, tb, export.JSON); got != "[\n{\"id\":1,\"name\":\"item 1\"},\n{\"id\":2,\"name\":\"item 2\"}\n]" {
+		t.Errorf("JSON %q", got)
+	}
+	if got := copiedAs(t, fx, tb, export.Markdown); got != "| id | name |\n| ---: | --- |\n| 1 | item 1 |\n| 2 | item 2 |" {
+		t.Errorf("Markdown %q", got)
+	}
+	if got := fx.s.status.Text; got != "Copied 2 rows × 2 columns as Markdown" {
+		t.Errorf("status %q", got)
+	}
+}
+
+func TestCopyAsFillsTheCellsCopyLeavesBlank(t *testing.T) {
+	fx, tb := openItems(t)
+	tb.grid.Select(grid.CellID{Row: 0, Col: 0}, grid.CellID{Row: 0, Col: 0})
+	tb.grid.ToggleCell(grid.CellID{Row: 2, Col: 1})
+	if got := copiedAs(t, fx, tb, export.CSV); got != "id,name\n0,item 0\n2,item 2" {
+		t.Errorf("CSV %q; rows are written whole", got)
 	}
 }

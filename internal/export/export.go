@@ -27,6 +27,7 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -40,10 +41,11 @@ const (
 	TSV
 	JSON
 	NDJSON
+	Markdown
 )
 
 // Formats lists every format, in the order a menu offers them.
-func Formats() []Format { return []Format{CSV, TSV, JSON, NDJSON} }
+func Formats() []Format { return []Format{CSV, TSV, JSON, NDJSON, Markdown} }
 
 func (f Format) String() string {
 	switch f {
@@ -55,6 +57,8 @@ func (f Format) String() string {
 		return "JSON"
 	case NDJSON:
 		return "NDJSON"
+	case Markdown:
+		return "Markdown"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -68,6 +72,8 @@ func (f Format) Extension() string {
 		return "json"
 	case NDJSON:
 		return "ndjson"
+	case Markdown:
+		return "md"
 	}
 	return "csv"
 }
@@ -172,6 +178,8 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newDelimited(w, cols, opt)
 	case JSON, NDJSON:
 		return newJSONWriter(w, cols, opt.Format == JSON), nil
+	case Markdown:
+		return newMarkdown(w, cols), nil
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }
@@ -466,4 +474,59 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
 	return n, err
+}
+
+// markdown writes a table in GitHub's Markdown: a header, a rule that
+// right-aligns the number columns, and a line a row. A '|' in a value is
+// escaped and a line break becomes <br>, so each value stays in its cell.
+// NULL is written _NULL_, so it reads apart from the text "NULL" (UX
+// principle 7). A Markdown table always has its header, so Options.Header
+// does not apply.
+type markdown struct {
+	w    *bufio.Writer
+	cols []model.ColumnDef
+}
+
+func newMarkdown(w *bufio.Writer, cols []model.ColumnDef) *markdown {
+	names, rule := make([]string, len(cols)), make([]string, len(cols))
+	for i, c := range cols {
+		names[i], rule[i] = markdownCell(c.Name), "---"
+		switch c.Type.Class {
+		case model.TypeInteger, model.TypeFloat, model.TypeDecimal:
+			rule[i] = "---:"
+		}
+	}
+	m := &markdown{w: w, cols: cols}
+	m.line(names)
+	m.line(rule)
+	return m
+}
+
+func (m *markdown) line(cells []string) {
+	m.w.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+}
+
+func (m *markdown) row(r model.Row) error {
+	cells := make([]string, len(m.cols))
+	for i := range m.cols {
+		var v any
+		if i < len(r) {
+			v = r[i]
+		}
+		if v == nil {
+			cells[i] = "_NULL_"
+			continue
+		}
+		cells[i] = markdownCell(text(v, m.cols[i], ""))
+	}
+	m.line(cells)
+	return nil
+}
+
+func (m *markdown) end() error { return nil }
+
+func markdownCell(s string) string {
+	s = strings.ReplaceAll(s, "|", `\|`)
+	s = strings.ReplaceAll(s, "\r\n", "<br>")
+	return strings.ReplaceAll(s, "\n", "<br>")
 }

@@ -188,7 +188,15 @@ whatever has the focus. Copying uses the app's clipboard, not the window's:
 the window's is deprecated, and under the test driver it forgets what it is
 given.
 
+**Copy As writes whole rows.** Edit › Copy As offers CSV, JSON and
+Markdown, each with its header. Where ⌘C copies exactly the selected cells,
+these write every cell of the rows that have a selected cell, in the columns
+the selection covers. They describe rows, and a blank where the selection
+skipped would misstate one. Markdown, now an export format too, right-aligns
+number columns, escapes `|` and line breaks so each value keeps to its cell,
+and writes NULL as `_NULL_`, apart from the text "NULL".
+
 ## Not decided here
 
-Copy as CSV, JSON, Markdown and INSERT (T1.52), the cell viewer (T1.53), and
+Copy as INSERT (T1.52), the cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.
