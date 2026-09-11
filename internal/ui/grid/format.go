@@ -112,6 +112,8 @@ func Format(v any, col model.ColumnDef, loc *time.Location) Cell {
 		return temporalCell(x, col, loc)
 	case model.JSON:
 		return structuredCell(x)
+	case model.Geometry:
+		return clip(x.String(), CellStructured)
 	case []byte:
 		return binaryCell(x)
 	case []any:

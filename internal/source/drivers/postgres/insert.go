@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -66,6 +67,9 @@ func insertLiteral(v any, t model.DataType) (string, error) {
 		return quoteText(string(x))
 	case []byte:
 		return `'\x` + hex.EncodeToString(x) + `'::bytea`, nil
+	case model.Geometry:
+		// PostGIS reads extended WKB, which carries the SRID itself.
+		return `ST_GeomFromEWKB('\x` + hex.EncodeToString(ewkb(x)) + `'::bytea)`, nil
 	case time.Time:
 		switch {
 		case t.Class == model.TypeDate:
@@ -103,4 +107,26 @@ func quoteText(s string) (string, error) {
 		return "", errors.New("PostgreSQL text cannot hold a NUL character")
 	}
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'", nil
+}
+
+// ewkb writes a geometry as PostGIS's extended WKB: the WKB, with the SRID
+// flag set in its type and the SRID after it, in the WKB's own byte order.
+func ewkb(g model.Geometry) []byte {
+	b := g.WKB
+	if g.SRID == 0 || len(b) < 5 {
+		return b
+	}
+	var order binary.ByteOrder = binary.LittleEndian
+	if b[0] == 0 {
+		order = binary.BigEndian
+	}
+	t := order.Uint32(b[1:5])
+	if t&0x20000000 != 0 {
+		return b // it carries an SRID already
+	}
+	out := make([]byte, 9, len(b)+4)
+	out[0] = b[0]
+	order.PutUint32(out[1:5], t|0x20000000)
+	order.PutUint32(out[5:9], g.SRID)
+	return append(out, b[5:]...)
 }

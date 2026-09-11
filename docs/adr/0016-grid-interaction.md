@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.48–T1.56 (T1.50 in part) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.48–T1.56 · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -264,6 +264,23 @@ time with no zone, is shown exactly as stored. The first version moved every
 time into local time, which showed a timestamp without a zone at an hour it
 never had. The cell viewer follows the same rule.
 
+**Geometry is read, shown and written back exactly.** A spatial value
+arrives as `model.Geometry`: its spatial reference, and its shape as OGC
+well-known binary. Each driver turns its engine's form into it. MySQL sends
+a little-endian SRID followed by WKB. PostGIS sends extended WKB, as hex
+text, and its types are recognised by name, since the extension's OIDs are
+given out when it is installed. The grid, the cell viewer and every export
+format show a geometry as extended well-known text
+(`SRID=3857;POLYGON((0 0,4 0,…))`), each coordinate in the fewest digits
+that read back as the same number. A value that does not read as WKB is
+described by its size, never guessed at, and the reader refuses a count no
+bytes could hold, so a corrupt value cannot make it allocate without bound.
+Copy as INSERT writes MySQL's own form back in hex, as mysqldump does:
+`ST_GeomFromWKB` would read a geographic SRID's axes the other way round on
+MySQL 8. For PostGIS it writes extended WKB through `ST_GeomFromEWKB`. A
+round-trip test runs on MySQL and MariaDB. The test PostgreSQL has no
+PostGIS, so its side is tested on PostGIS's own bytes alone.
+
 ## Not decided here
 
-Geometry values (T1.50), which need a reader for each engine's binary form. Each will be added here as it lands.
+Nothing about reading the grid is open. Editing rows (Phase 2) will add its own decisions here. Each will be added here as it lands.

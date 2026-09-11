@@ -38,3 +38,17 @@ func TestMarkdownKeepsEachValueInItsCell(t *testing.T) {
 		t.Errorf("markdown\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestGeometryIsWrittenAsText(t *testing.T) {
+	point := []byte{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0, 0, 0, 0, 0, 0, 0, 0x40}
+	cols := []model.ColumnDef{{Name: "shape"}}
+	rows := []model.Row{{model.Geometry{SRID: 4326, WKB: point}}}
+	var b strings.Builder
+	if err := Write(&b, cols, rows, Options{Format: CSV}); err != nil || b.String() != "SRID=4326;POINT(1 2)\n" {
+		t.Errorf("CSV %q, %v", b.String(), err)
+	}
+	b.Reset()
+	if err := Write(&b, cols, rows, Options{Format: NDJSON}); err != nil || b.String() != `{"shape":"SRID=4326;POINT(1 2)"}`+"\n" {
+		t.Errorf("NDJSON %q, %v", b.String(), err)
+	}
+}

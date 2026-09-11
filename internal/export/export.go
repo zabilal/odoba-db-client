@@ -248,6 +248,8 @@ func text(v any, col model.ColumnDef, null string) string {
 		return string(x)
 	case model.JSON:
 		return string(x)
+	case model.Geometry:
+		return x.String()
 	case time.Time:
 		return formatTime(x, col.Type)
 	case []byte:
@@ -339,6 +341,8 @@ func (j *jsonWriter) value(v any, col model.ColumnDef) {
 		} else {
 			j.str(string(x))
 		}
+	case model.Geometry:
+		j.str(x.String())
 	case model.JSON:
 		// Compacted: a json column keeps the newlines it was typed with, and
 		// NDJSON is one record a line.

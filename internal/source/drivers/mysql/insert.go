@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,12 @@ func insertLiteral(v any, t model.DataType) (string, error) {
 		return quoteText(string(x)), nil
 	case []byte:
 		return "X'" + hex.EncodeToString(x) + "'", nil
+	case model.Geometry:
+		// MySQL's own form, a little-endian SRID and then WKB, as mysqldump
+		// writes geometry. Going through ST_GeomFromWKB instead would read a
+		// geographic SRID's axes in the other order on MySQL 8.
+		srid := binary.LittleEndian.AppendUint32(nil, x.SRID)
+		return "X'" + hex.EncodeToString(srid) + hex.EncodeToString(x.WKB) + "'", nil
 	case time.Time:
 		switch {
 		case x.IsZero() && t.Class == model.TypeDate:

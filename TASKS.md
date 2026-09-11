@@ -23,13 +23,16 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the grid: geometry values (T1.50); then Phase 1's other [~].
-[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44, T1.50 partly done; each line says what is open.
+NEXT TASK: Phase 1's other [~]: single instance (T1.1), tab reorder and pin
+           (T1.4), custom bindings (T1.8), a copyable error sheet (T1.11), an
+           accent choice (T1.12), and the explorer's context menu, structure
+           and script-as (T1.44).
+[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — full-width stripes, ellipses, and times shown as their
-           type says (T1.50 in part, ADR-0016).
+LAST DONE: 2026-09-11 — geometry shown as well-known text and written back
+           exactly; the grid cluster, T1.47–T1.56, is done (ADR-0016).
 ```
 
 **Phase 0 findings so far**
@@ -271,7 +274,7 @@ LAST DONE: 2026-09-11 — full-width stripes, ellipses, and times shown as their
 - [x] **T1.47** Windowed server-side fetch with bounded buffer → FR-3.1, NFR-P11 — *paged LRU model with MaxResidentPages; tables without a count grow as they are read (ADR-0011)*
 - [x] **T1.48** Column resize, reorder, hide/show, freeze left → FR-3.2 — *hide/show, move and freeze from View › Columns or a title's menu; a handle on each title sets the width, which the grid keeps for the column wherever it moves (ADR-0016)*
 - [x] **T1.49** Server-side multi-column sort → FR-3.3 — *header click cycles, ⇧-click adds a key; the server re-sorts; stale pages from the old order are dropped (ADR-0016)*
-- [~] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7 — *rows striped to the edge by a filler column; cut values end in an ellipsis; instants in local time with UTC on hover, dates and zone-less times as stored; NULL, booleans, JSON, bytes, arrays and enums were typed already (ADR-0016). Geometry is open*
+- [x] **T1.50** Type-aware cell renderers; NULL vs empty visually distinct → FR-3.8, UX-7 — *rows striped to the edge by a filler column; cut values end in an ellipsis; instants in local time with UTC on hover, dates and zone-less times as stored; geometry as extended WKT, round-tripped on MySQL and MariaDB and read from PostGIS's bytes (the test server has no PostGIS); NULL, booleans, JSON, bytes, arrays and enums typed (ADR-0016)*
 - [x] **T1.51** Cell/range/row/column selection → FR-3.7 — *click, ⇧-click, ⌘-click, arrows and ⇧-arrows; Select Row/Column/All Cells; the grid keeps blocks of cells (ADR-0016)*
 - [x] **T1.52** Copy as TSV/CSV/JSON/INSERT/Markdown → FR-3.7 — *⌘C and Edit › Copy Cells (TSV); Edit › Copy As CSV, JSON, Markdown and INSERT; exact values, up to 100,000 rows; INSERT literals round-trip on every engine (ADR-0016)*
 - [x] **T1.53** Expandable cell viewer (long text, JSON, XML, blob) → FR-3.9 — *View › Cell Viewer or Space: a panel beside the grid, following the selection; JSON indented exactly and coloured, bytes as a hex dump, times local and UTC; Copy Value copies all of it (ADR-0016)*

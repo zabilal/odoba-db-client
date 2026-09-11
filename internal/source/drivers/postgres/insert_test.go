@@ -59,3 +59,15 @@ func TestInsertRowsWritesOneStatementARow(t *testing.T) {
 		t.Errorf("%q, %v\nwant %q", got, err, want)
 	}
 }
+
+func TestGeometryIsWrittenAsExtendedWKB(t *testing.T) {
+	point := []byte{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0, 0, 0, 0, 0, 0, 0, 0x40} // POINT(1 2)
+	got, err := insertLiteral(model.Geometry{SRID: 4326, WKB: point}, model.DataType{})
+	want := `ST_GeomFromEWKB('\x0101000020e6100000000000000000f03f0000000000000040'::bytea)`
+	if err != nil || got != want {
+		t.Errorf("%s, %v\nwant %s", got, err, want)
+	}
+	if got, _ := insertLiteral(model.Geometry{WKB: point}, model.DataType{}); got != `ST_GeomFromEWKB('\x0101000000000000000000f03f0000000000000040'::bytea)` {
+		t.Errorf("SRID 0 needs no flag: %s", got)
+	}
+}

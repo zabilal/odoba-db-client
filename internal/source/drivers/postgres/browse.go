@@ -180,13 +180,7 @@ func (s *pgSource) lookupType(ctx context.Context, db string, oid uint32) (typeI
 		oid).Scan(&name, &typtype); err != nil {
 		return typeInfo{}, false
 	}
-	info := typeInfo{class: model.TypeUnknown, native: name}
-	switch typtype {
-	case "e":
-		info.class = model.TypeEnum
-	case "c":
-		info.class = model.TypeStruct
-	}
+	info := typeInfo{class: classOf(name, typtype), native: name}
 	s.typeNames.Store(key, info)
 	return info, true
 }
@@ -216,6 +210,12 @@ func (r *rowStream) Next(ctx context.Context) (model.Row, error) {
 	}
 	raw := r.rows.RawValues()
 	for i := range vals {
+		if r.cols[i].Type.Class == model.TypeGeometry && raw[i] != nil {
+			if g, err := pgGeometry(raw[i]); err == nil {
+				vals[i] = g
+				continue
+			}
+		}
 		if !rawText(r.oids[i]) {
 			vals[i] = normalize(vals[i])
 			continue
