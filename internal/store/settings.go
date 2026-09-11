@@ -37,6 +37,9 @@ type Settings struct {
 	Folders     []Folder          `json:"folders,omitempty"`
 	Connections []SavedConnection `json:"connections"`
 	Favorites   []Favorite        `json:"favorites,omitempty"`
+	// Bindings are the shortcuts a person changed, by command ID, in the
+	// form commands.Shortcut.String writes; "" is no shortcut (T1.8).
+	Bindings map[string]string `json:"bindings,omitempty"`
 }
 
 // EditorSettings are query-editor preferences.
@@ -321,6 +324,11 @@ func validate(s Settings) error {
 			return fmt.Errorf("store: %s is listed twice", where)
 		}
 		seen[f.Key()] = true
+	}
+	for id := range s.Bindings {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("store: a custom shortcut names no command")
+		}
 	}
 	return nil
 }

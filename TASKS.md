@@ -29,13 +29,14 @@ NEXT TASK: Phase 1's other [~]: dragging tabs (T1.4) and custom bindings (T1.8);
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — one copy to a data directory: a second asks the first to
-           come forward and gives way (T1.1, ADR-0022). Before it: gates for
-           NFR-P1 to P6 (T1.73), coverage past 70% (T1.76), explorer badges
-           (T1.45), exporting the selection (T1.71), T1.44's context actions,
-           favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
-           ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
-           autosave (T1.15), contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — custom shortcuts kept in the settings file and applied
+           to a rebuilt menu bar (T1.8 in part, ADR-0011 §16). Before it: one
+           copy to a data directory (T1.1), gates for NFR-P1 to P6 (T1.73),
+           coverage past 70% (T1.76), explorer badges (T1.45), exporting the
+           selection (T1.71), T1.44's context actions, favourites (T1.46),
+           buttons with words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts (T1.9),
+           side panels (T1.77), the session (T1.14), autosave (T1.15), panics
+           (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
            ports accept TCP, servers never reply. Each time, the next gate
            that could reach them ran the tagged suites over everything since;
@@ -225,7 +226,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
 - [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
 - [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
-- [~] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; customisable bindings open*
+- [~] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; a command's shortcut can be changed and is kept in the settings file, refused on a chord another command has, applied at startup and on the rebuilt menu bar (ADR-0011 §16); a way to change one in the Keyboard Shortcuts panel is open*
 - [x] **T1.9** Searchable shortcut reference sheet → FR-15.4 — *Help › Keyboard Shortcuts (⌘/) is a side panel listing every command with a shortcut, whether or not it can run just now, filtered by name, keywords or keys (ADR-0011 §12)*
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
 - [x] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; everything else is said in a band across the top of the window, dismissible and copyable, with an action where there is one; the modal error dialog is gone and a test keeps it gone (ADR-0011 §7)*

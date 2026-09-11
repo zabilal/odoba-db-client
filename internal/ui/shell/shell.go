@@ -208,6 +208,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.win.SetContent(container.NewBorder(s.errors.slot,
 		container.NewVBox(widget.NewSeparator(), s.status), nil, nil, s.split))
 
+	s.applyBindings() // before the menu bar, whose items carry the shortcuts
 	s.menu = s.buildMenu()
 	s.win.SetMainMenu(s.menu)
 	s.pal = palette.New(s.reg, s.win)
