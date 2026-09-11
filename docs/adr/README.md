@@ -49,3 +49,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0042](0042-a-keys-value-shown-with-its-label.md) | A foreign key's value shown with its row's label | Accepted |
 | [0043](0043-master-and-detail.md) | Master and detail | Accepted |
 | [0044](0044-reading-the-files-an-import-takes.md) | Reading the files an import takes | Accepted |
+| [0045](0045-finding-what-a-file-is.md) | Finding what a file is | Accepted |
