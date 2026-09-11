@@ -30,13 +30,15 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — Query History and Saved Queries open in a side panel
-           beside the tabs, not over them (T1.77, ADR-0011 §11). Before it:
-           the session comes back at the next start (T1.14, all but scroll
-           position), autosave (T1.15) and contained driver panics (T1.16).
-DOCKER:    Docker Desktop stopped answering for a while on 2026-09-11. Once it
-           answered again, the tagged suites passed on 4a64299, which holds
-           every commit made while it was down (c0d0769 onward).
+LAST DONE: 2026-09-11 — a searchable keyboard-shortcut reference on ⌘/ (T1.9,
+           ADR-0011 §12). Before it: History and Saved Queries as side panels
+           (T1.77), the session coming back at the next start (T1.14, all but
+           scroll position), autosave (T1.15), contained driver panics (T1.16).
+DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
+           ports accept TCP, servers never reply. The tagged suites passed on
+           df56e56; commits since (a8019b0 onward) have not had them. Restart
+           Docker (the owner's call; it also restarts gtmb-backend-*), then
+           run them.
 ```
 
 **Phase 0 findings so far**
@@ -222,7 +224,7 @@ DOCKER:    Docker Desktop stopped answering for a while on 2026-09-11. Once it
 - [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
 - [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
 - [~] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; customisable bindings open*
-- [ ] **T1.9** Searchable shortcut reference sheet → FR-15.4
+- [x] **T1.9** Searchable shortcut reference sheet → FR-15.4 — *Help › Keyboard Shortcuts (⌘/) is a side panel listing every command with a shortcut, whether or not it can run just now, filtered by name, keywords or keys (ADR-0011 §12)*
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
 - [x] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; everything else is said in a band across the top of the window, dismissible and copyable, with an action where there is one; the modal error dialog is gone and a test keeps it gone (ADR-0011 §7)*
 - [x] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; eight macOS accents from View › Accent Colour, derived so each passes AA in both appearances, persisted (ADR-0006 addendum)*

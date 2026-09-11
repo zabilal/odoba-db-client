@@ -246,6 +246,8 @@ func sc(key string, mods commands.Mod) commands.Shortcut {
 func (s *Shell) registerCommands() {
 	hasConn := func() bool { _, ok := s.selectedConn(); return ok }
 	for _, c := range append([]commands.Command{
+		{ID: cmdShortcuts, Category: "Help", Title: "Keyboard Shortcuts", Keywords: []string{"keys", "bindings", "reference", "cheat sheet"},
+			Shortcut: sc("/", commands.ModShortcut), Run: func() { s.togglePanel(panelShortcuts, func() { s.showShortcuts() }) }},
 		{ID: cmdPalette, Category: "View", Title: "Command Palette…", Keywords: []string{"actions", "commands"},
 			Shortcut: sc("K", commands.ModShortcut), Run: func() { s.pal.Show() }},
 		{ID: cmdConnNew, Category: "Connection", Title: "New Connection…", Keywords: []string{"add", "server", "database"},
@@ -848,6 +850,8 @@ func (s *Shell) checked(id string) bool {
 		return s.panelIs(panelHistory)
 	case cmdOpenSaved:
 		return s.panelIs(panelSaved)
+	case cmdShortcuts:
+		return s.panelIs(panelShortcuts)
 	}
 	if name, ok := strings.CutPrefix(id, accentPrefix); ok {
 		return s.d.Theme.Accent.String() == name
