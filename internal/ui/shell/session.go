@@ -93,8 +93,9 @@ func (s *Shell) restore() {
 			s.pin(opened[i], true)
 		}
 	}
+	s.resplit(last, opened)
 	if a := last.Active; a >= 0 && a < len(opened) && opened[a] != nil {
-		s.tabs.Select(opened[a].item)
+		s.selectTab(opened[a])
 	}
 	if err := errors.Join(problems...); err != nil {
 		s.showError(err)
@@ -277,16 +278,24 @@ func (s *Shell) sessionOf() localdb.Session {
 	size := s.win.Canvas().Size()
 	ss := localdb.Session{Width: size.Width, Height: size.Height, Sidebar: s.split.Offset, Active: -1}
 	ss.Expanded = s.Explorer.Expanded()
-	sel := s.tabs.Selected()
-	for _, it := range s.tabs.Items {
-		t := s.tabOf(it)
-		if t == nil {
-			continue
+	active := s.activeTab()
+	for i, p := range s.panes {
+		front := p.Selected()
+		for _, it := range p.Items {
+			t := s.tabOf(it)
+			if t == nil {
+				continue
+			}
+			if t == active {
+				ss.Active = len(ss.Tabs)
+			}
+			st := sessionTab(t)
+			st.Pane, st.Front = i, len(s.panes) > 1 && it == front
+			ss.Tabs = append(ss.Tabs, st)
 		}
-		if it == sel {
-			ss.Active = len(ss.Tabs)
-		}
-		ss.Tabs = append(ss.Tabs, sessionTab(t))
+	}
+	if s.paneSplit != nil {
+		ss.Split, ss.SplitOffset = s.splitDir, s.paneSplit.Offset
 	}
 	return ss
 }

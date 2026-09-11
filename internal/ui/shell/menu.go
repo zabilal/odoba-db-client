@@ -37,6 +37,10 @@ const (
 	cmdMoveTabRight   = "tab.moveRight"
 	cmdPinTab         = "tab.pin"
 	cmdTasks          = "window.tasks"
+	cmdSplitRight     = "window.splitRight"
+	cmdSplitDown      = "window.splitDown"
+	cmdMoveToPane     = "window.moveToOtherPane"
+	cmdJoinPanes      = "window.joinPanes"
 	cmdQueryNew       = "query.new"
 	cmdQueryRun       = "query.run"
 	cmdQueryRunAll    = "query.runAll"
@@ -126,7 +130,8 @@ var menuBar = []struct {
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
-		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator, item(cmdTasks)}},
+		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
+		item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
 	{"Help", []menuEntry{item(cmdShortcuts)}},
 }
 
@@ -171,6 +176,7 @@ func (s *Shell) menuItemsFor(entries []menuEntry) []*fyne.MenuItem {
 // through the registry, which re-checks Enabled: Fyne's own shortcut matching
 // fires a menu item's action even while the item is disabled.
 func (s *Shell) run(id string) {
+	s.followFocus() // a command acts in the pane the focus is in (panes.go)
 	if err := s.reg.Run(id); err != nil && !errors.Is(err, commands.ErrDisabled) {
 		s.d.Log.Error("running command", "id", id, "err", err)
 	}

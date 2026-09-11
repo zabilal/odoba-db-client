@@ -80,9 +80,15 @@ type Shell struct {
 	sidebar  fyne.CanvasObject
 	split    *container.Split
 	tabs     *tabbar.Tabs
-	empty    fyne.CanvasObject
-	status   *widget.Label
-	errors   *errorBar
+	// panes are the one or two panes of tabs (panes.go), and tabs the one
+	// worked in. paneBox holds the one, or the split between the two.
+	panes     []*tabbar.Tabs
+	paneBox   *fyne.Container
+	paneSplit *container.Split
+	splitDir  string
+	empty     fyne.CanvasObject
+	status    *widget.Label
+	errors    *errorBar
 	// taskButton, in the status bar, says while tasks run, and opens the
 	// Tasks panel (tasks.go). tasks is every task not cleared; taskView is
 	// the panel, current while it is open.
@@ -196,11 +202,9 @@ func New(a fyne.App, d Deps) *Shell {
 	s.Explorer.OnSelect = func(string) { s.sync() }
 	s.Explorer.OnExpand = s.sessionChanged
 
-	s.tabs = tabbar.New()
-	s.tabs.OnMove = s.dropTab
-	s.tabs.OnMenu = s.showTabMenu
-	s.tabs.CloseIntercept = s.requestClose
-	s.tabs.OnSelected = func(*container.TabItem) { s.sync() }
+	s.tabs = s.newPane()
+	s.panes = []*tabbar.Tabs{s.tabs}
+	s.paneBox = container.NewStack(s.tabs)
 	s.tabs.Hide()
 	s.empty = s.emptyState()
 
@@ -212,7 +216,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.taskButton.Hide()
 
 	s.sidebar = s.buildSidebar()
-	s.work = container.NewStack(s.empty, s.tabs)
+	s.work = container.NewStack(s.empty, s.paneBox)
 	s.right = container.NewStack(s.work)
 	s.split = container.NewHSplit(s.sidebar, s.right)
 	s.split.Offset = 0.24
@@ -367,6 +371,14 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return s.canMoveTab(1) }, Run: func() { s.moveTab(1) }},
 		{ID: cmdPinTab, Category: "Tab", Title: "Pin Tab", Keywords: []string{"keep", "stick"},
 			Enabled: func() bool { return s.activeTab() != nil }, Run: s.togglePin},
+		{ID: cmdSplitRight, Category: "Window", Title: "Split Right", Keywords: []string{"pane", "side by side", "compare", "two"},
+			Enabled: s.canSplit, Run: func() { s.splitPane(splitRight) }},
+		{ID: cmdSplitDown, Category: "Window", Title: "Split Down", Keywords: []string{"pane", "above", "below", "stack", "two"},
+			Enabled: s.canSplit, Run: func() { s.splitPane(splitDown) }},
+		{ID: cmdMoveToPane, Category: "Window", Title: "Move Tab to Other Pane", Keywords: []string{"pane", "split", "other side"},
+			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.moveToOtherPane},
+		{ID: cmdJoinPanes, Category: "Window", Title: "Join Panes", Keywords: []string{"unsplit", "close split", "merge", "one pane"},
+			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.joinPanes},
 		{ID: cmdTasks, Category: "Window", Title: "Tasks", Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
 			Run: func() { s.togglePanel(panelTasks, func() { s.showTasks() }) }},
 		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
@@ -523,7 +535,7 @@ func (s *Shell) selectionBrowsable() bool {
 func (s *Shell) OpenObject(connID string, n model.Node) {
 	key := view.NodeID(connID, n.Ref)
 	if t := s.tabFor(key); t != nil {
-		s.tabs.Select(t.item)
+		s.selectTab(t)
 		return
 	}
 
@@ -534,9 +546,7 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 	t.top = container.NewVBox()
 	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
-	s.showTabs(true)
-	s.tabs.Append(t.item)
-	s.tabs.Select(t.item)
+	s.addTab(t)
 	s.sync()
 
 	go func() {
@@ -712,7 +722,12 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 			break
 		}
 	}
-	s.tabs.Remove(it)
+	if p := s.paneOf(it); p != nil {
+		p.Remove(it)
+		if len(p.Items) == 0 {
+			s.closePane(p)
+		}
+	}
 	if len(s.open) == 0 {
 		s.showTabs(false)
 	}

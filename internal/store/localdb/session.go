@@ -15,6 +15,10 @@ type Session struct {
 	Sidebar       float64 // the sidebar's share of the window's width
 	Tabs          []SessionTab
 	Active        int // index into Tabs; -1 when no tab is selected
+	// Split is how the tabs were split into two panes, "right" or "down",
+	// and SplitOffset the first pane's share; both empty with one pane.
+	Split       string  `json:",omitempty"`
+	SplitOffset float64 `json:",omitempty"`
 	// Expanded is the explorer's open branches, by tree ID.
 	Expanded []string `json:",omitempty"`
 }
@@ -32,6 +36,10 @@ type SessionTab struct {
 	Kind         string
 	ConnectionID string
 	Pinned       bool `json:",omitempty"`
+	// Pane is 1 for a tab in the second pane, and Front marks the tab in
+	// front in its pane; both are unset with one pane.
+	Pane  int  `json:",omitempty"`
+	Front bool `json:",omitempty"`
 
 	RefKind string   `json:",omitempty"`
 	RefPath []string `json:",omitempty"`

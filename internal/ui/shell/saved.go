@@ -133,7 +133,9 @@ func (s *Shell) retitle(t *tab) {
 	}
 	if t.item.Text != text {
 		t.item.Text = text
-		s.tabs.Refresh()
+		if p := s.paneOf(t.item); p != nil {
+			p.Refresh()
+		}
 	}
 }
 
@@ -306,7 +308,7 @@ func (p *savedPanel) describe(sq localdb.SavedQuery) string {
 func (p *savedPanel) open(sq localdb.SavedQuery) {
 	defer p.list.UnselectAll() // the panel stays open, and the same query can be chosen again
 	if t := p.s.tabForSaved(sq.ID); t != nil {
-		p.s.tabs.Select(t.item)
+		p.s.selectTab(t)
 		return
 	}
 	if _, ok := p.s.d.Conns.Get(sq.ConnectionID); !ok {

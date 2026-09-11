@@ -23,17 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: split panes (T1.5). T1.14's scroll position waits on Fyne's table
-           reporting its offset.
+NEXT TASK: T1.3 (native file dialogs + notifications). T1.14's scroll
+           position waits on Fyne's table reporting its offset.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — tabs are dragged (T1.4, ADR-0011 §18), on a tab bar of
-           our own. Before it: the task centre (T1.10), shortcuts changed in
-           the Keyboard Shortcuts panel (T1.8), one copy to a data
-           directory (T1.1), gates for NFR-P1 to P6 (T1.73), coverage past 70%
-           (T1.76), explorer badges (T1.45), exporting the selection (T1.71),
+LAST DONE: 2026-09-11 — split panes (T1.5, ADR-0011 §19). Before it: tabs
+           dragged on a tab bar of our own (T1.4), the task centre (T1.10),
+           shortcuts changed in the Keyboard Shortcuts panel (T1.8), one
+           copy to a data directory (T1.1), gates for NFR-P1 to P6 (T1.73),
+           coverage past 70% (T1.76), explorer badges (T1.45), exporting the
+           selection (T1.71),
            T1.44's context actions, favourites (T1.46), buttons with words
            (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts (T1.9), side panels
            (T1.77), the session (T1.14), autosave (T1.15), panics (T1.16).
@@ -223,7 +224,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.2** Native menu bar → FR-15.5 — *built from the command registry; native on macOS (ADR-0011)*
 - [ ] **T1.3** Native file dialogs + notifications → FR-15.5
 - [x] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, reuse an open object's tab, move and pin from the Window menu (ADR-0011 §8); on a tab bar of our own (internal/ui/tabbar) a tab is dragged to a new place, kept among its kind, and a secondary tap opens its menu of commands. Tabs that do not fit scroll and are listed by All Tabs; the close control is named for a screen reader (ADR-0011 §18). Open: the row does not scroll while a tab is dragged past its edge*
-- [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
+- [x] **T1.5** Split panes (horizontal + vertical) → FR-15.2 — *Split Right and Split Down move the active tab into a second pane with its own tab bar; Move Tab to Other Pane and Join Panes, from the Window menu (and a tab's menu); a pane left empty closes. Commands act in the pane the focus moved into, or whose tab was last chosen; the session keeps each tab's pane and the split (ADR-0011 §19). Open: dragging a tab from one pane to the other*
 - [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
 - [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
 - [x] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; a command's shortcut is changed in the Keyboard Shortcuts panel, its modifiers ticked and key chosen, kept in the settings file, refused on a chord another command has with that command named, and applied at startup and on the rebuilt menu bar (ADR-0011 §16)*
