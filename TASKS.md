@@ -29,9 +29,9 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — exporting the grid's selection, offered by its size and
-           streamed a page at a time (T1.71, ADR-0013 addendum). Before it:
-           T1.44's context actions (context menu, Open Structure, Script As),
+LAST DONE: 2026-09-11 — explorer badges read as their rows are drawn, four at a
+           time and cancelled when their branch closes (T1.45, ADR-0020).
+           Before it: exporting the selection (T1.71), T1.44's context actions,
            favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
            ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
            autosave (T1.15), contained driver panics (T1.16).
@@ -273,7 +273,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
 - [x] **T1.43** Fuzzy filter matching on full path → FR-2.3 — *⇧⌘F filters loaded objects by a fuzzy match on their full path, listed in the tree's place; a table opens, anything else is shown in the tree; unopened connections are named, not searched (ADR-0018)*
 - [x] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *right-clicking a node selects it and shows its commands (ADR-0011 §13); Open Structure (⌥⌘O) shows a read-only structure tab (§14); Script As writes SELECT, INSERT or UPDATE from Describe and the dialect into a new query tab (§15). CREATE scripts are T3.7's; rename, drop and truncate belong with the table designer (3.A)*
-- [ ] **T1.45** Lazy cancellable row-count/size badges → FR-2.5
+- [x] **T1.45** Lazy cancellable row-count/size badges → FR-2.5 — *read the first time a row is drawn, four at a time with a timeout, remembered (none included), and cancelled when their branch closes (ADR-0020)*
 - [x] **T1.46** Pinned/favourite objects → FR-2.6 — *⌘D makes the selected table, view or collection a favourite, listed above the tree only when there are any; kept in the settings file and deleted with their connection (ADR-0019)*
 
 ## 1.F Data grid — read path (productionise W1)
