@@ -86,7 +86,10 @@ type TableGrid struct {
 	OnCopy func()
 	// OnSpace is asked to show or hide the cell viewer, by Space on the
 	// focused grid, as Quick Look does.
-	OnSpace    func()
+	OnSpace func()
+	// OnLayout is called after the columns' order, visibility, freezing or
+	// widths change.
+	OnLayout   func()
 	filterable bool
 	filters    []string
 	filterErr  []bool

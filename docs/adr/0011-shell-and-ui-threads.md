@@ -191,9 +191,15 @@ longer reads on its column's type, or a WHERE clause the source can no
 longer take. An object on a deleted connection stays closed; nothing unsaved
 goes with it.
 
+A table's column layout comes back too, by name: the order its columns are
+shown in, which are hidden, how many are frozen, and any width a person set.
+Only a layout someone changed is saved, so a column added since appears
+last and one dropped is simply not there; a width left alone follows the
+column's type, as it would in a new tab. A resize or move is saved within
+a second, as any other change is.
+
 Not yet restored: the grid's scroll position (Fyne's table keeps its offset
-to itself), column widths, order and visibility, and the explorer's
-expanded nodes.
+to itself) and the explorer's expanded nodes.
 
 ## Not decided here
 

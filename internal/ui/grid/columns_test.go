@@ -54,3 +54,38 @@ func TestColumnsHideMoveAndFreeze(t *testing.T) {
 		t.Errorf("%d columns shown after hiding them all; the last one stays", len(g.Shown()))
 	}
 }
+
+func TestSetLayoutPutsALayoutBack(t *testing.T) {
+	g := selectingGrid(t)
+	n := len(g.model.Columns())
+	g.SetLayout([]int{2, 0, 2, -1, n}, 5)
+	if got := g.Shown(); !reflect.DeepEqual(got, []int{2, 0}) || g.Frozen() != 2 {
+		t.Errorf("shown %v, frozen %d: repeats and columns out of range are skipped, and no more are frozen than shown",
+			got, g.Frozen())
+	}
+	before := g.Shown()
+	g.SetLayout([]int{-1, n}, 0)
+	if got := g.Shown(); !reflect.DeepEqual(got, before) {
+		t.Errorf("a layout naming no real column changed the grid: %v", got)
+	}
+	if g.Resized(0) {
+		t.Error("a column no one resized should not claim a width a person gave it")
+	}
+	g.ResizeColumn(0, g.ColumnWidth(0)+30)
+	if !g.Resized(0) {
+		t.Error("a resized column should say so")
+	}
+}
+
+func TestLayoutChangesAreReported(t *testing.T) {
+	g := selectingGrid(t)
+	n := 0
+	g.OnLayout = func() { n++ }
+	g.ResizeColumn(0, 150)
+	g.MoveColumn(1, -1)
+	g.HideColumn(2)
+	g.FreezeThrough(0)
+	if n < 4 {
+		t.Errorf("four layout changes reported %d times", n)
+	}
+}

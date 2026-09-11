@@ -65,4 +65,14 @@ func (g *TableGrid) ResizeColumn(col int, width float32) {
 		g.Table.SetColumnWidth(dc, g.widths[col])
 	}
 	g.fitFiller()
+	if g.OnLayout != nil {
+		g.OnLayout()
+	}
+}
+
+// Resized reports whether a model column has a width a person gave it,
+// rather than the one its type starts it with.
+func (g *TableGrid) Resized(col int) bool {
+	cols := g.model.Columns()
+	return col >= 0 && col < len(g.widths) && col < len(cols) && g.widths[col] != defaultWidth(cols[col])
 }

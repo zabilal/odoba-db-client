@@ -40,8 +40,22 @@ type SessionTab struct {
 	Sorts   []SessionSort     `json:",omitempty"`
 	Where   string            `json:",omitempty"`
 
+	// Columns are the table's columns as shown, left to right, each with
+	// the width a person gave it, if any. Hidden names the hidden ones, and
+	// Frozen is how many stay in view as the rest scroll. All are empty
+	// while the table is laid out as it first opened.
+	Columns []SessionColumn `json:",omitempty"`
+	Hidden  []string        `json:",omitempty"`
+	Frozen  int             `json:",omitempty"`
+
 	ScratchID string `json:",omitempty"`
 	SavedID   string `json:",omitempty"`
+}
+
+// SessionColumn is one column as shown. A zero Width is the column's own.
+type SessionColumn struct {
+	Name  string
+	Width float32 `json:",omitempty"`
 }
 
 // SessionSort is one column of a tab's sort.

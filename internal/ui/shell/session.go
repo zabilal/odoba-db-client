@@ -112,7 +112,7 @@ func (s *Shell) reopenTab(st localdb.SessionTab, scratches map[string]localdb.Sc
 		ref := model.NewRef(model.ObjectKind(st.RefKind), st.RefPath...)
 		s.OpenObject(st.ConnectionID, model.Node{Ref: ref, Label: st.Label, Browsable: true})
 		t := s.tabFor(view.NodeID(st.ConnectionID, ref))
-		if t != nil && (len(st.Filters) > 0 || len(st.Sorts) > 0 || st.Where != "") {
+		if t != nil && (len(st.Filters) > 0 || len(st.Sorts) > 0 || st.Where != "" || len(st.Columns) > 0) {
 			v := st
 			t.restore = &v
 		}
@@ -142,6 +142,9 @@ func (s *Shell) restoreView(t *tab, st localdb.SessionTab) {
 	index := make(map[string]int, len(cols))
 	for i, c := range cols {
 		index[c.Name] = i
+	}
+	if len(st.Columns) > 0 {
+		s.restoreLayout(t, st, index)
 	}
 	var lost []string
 	filtered := false
@@ -199,6 +202,54 @@ func (s *Shell) restoreView(t *tab, st localdb.SessionTab) {
 	s.refilter(t, t.grid.FilterTexts())
 }
 
+// restoreLayout puts back a table's column layout by name. A column that has
+// gone is simply not there, and one added since comes last, shown.
+func (s *Shell) restoreLayout(t *tab, st localdb.SessionTab, index map[string]int) {
+	var order []int
+	for _, sc := range st.Columns {
+		i, ok := index[sc.Name]
+		if !ok || slices.Contains(order, i) {
+			continue
+		}
+		order = append(order, i)
+		if sc.Width > 0 {
+			t.grid.ResizeColumn(i, sc.Width)
+		}
+	}
+	for i, c := range t.model.Columns() {
+		if !slices.Contains(order, i) && !slices.Contains(st.Hidden, c.Name) {
+			order = append(order, i)
+		}
+	}
+	t.grid.SetLayout(order, st.Frozen)
+}
+
+// layoutOf records a table's column layout, unless it is as the table first
+// opened: then a column added later simply appears.
+func layoutOf(g *grid.TableGrid, cols []model.ColumnDef, st *localdb.SessionTab) {
+	shown := g.Shown()
+	changed := g.Frozen() > 0 || len(shown) != len(cols)
+	for i, c := range shown {
+		changed = changed || c != i || g.Resized(c)
+	}
+	if !changed {
+		return
+	}
+	for _, c := range shown {
+		sc := localdb.SessionColumn{Name: cols[c].Name}
+		if g.Resized(c) {
+			sc.Width = g.ColumnWidth(c)
+		}
+		st.Columns = append(st.Columns, sc)
+	}
+	for i, c := range cols {
+		if !slices.Contains(shown, i) {
+			st.Hidden = append(st.Hidden, c.Name)
+		}
+	}
+	st.Frozen = g.Frozen()
+}
+
 // sessionOf is the window as it is now.
 func (s *Shell) sessionOf() localdb.Session {
 	size := s.win.Canvas().Size()
@@ -229,6 +280,7 @@ func sessionTab(t *tab) localdb.SessionTab {
 	switch {
 	case t.restore != nil: // not shown yet: keep what it is to show
 		st.Filters, st.Sorts, st.Where = t.restore.Filters, t.restore.Sorts, t.restore.Where
+		st.Columns, st.Hidden, st.Frozen = t.restore.Columns, t.restore.Hidden, t.restore.Frozen
 	case t.browse != nil:
 		opt := t.browse.Options()
 		for _, k := range opt.Sorts {
@@ -244,6 +296,7 @@ func sessionTab(t *tab) localdb.SessionTab {
 				st.Filters[cols[i].Name] = text
 			}
 		}
+		layoutOf(t.grid, cols, &st)
 	}
 	return st
 }

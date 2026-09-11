@@ -547,6 +547,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) }
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
+	g.OnLayout = s.sessionChanged // a resize or move is kept within a second
 	t.hold(g, t.body)
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
