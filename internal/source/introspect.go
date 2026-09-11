@@ -51,3 +51,13 @@ type Snapshotter interface {
 type Searcher interface {
 	SearchObjects(ctx context.Context, query string, limit int) ([]model.Node, error)
 }
+
+// Referrer is an optional Introspector refinement for sources whose tables
+// refer to one another. It lists the foreign keys of other tables that refer
+// to a table (FR-3.11), which the table's own description does not hold: a
+// key belongs to the table it is in.
+type Referrer interface {
+	// Referrers lists the keys that refer to the table at ref, each with the
+	// table it is in, in the order of those tables.
+	Referrers(ctx context.Context, ref model.ObjectRef) ([]model.Referrer, error)
+}

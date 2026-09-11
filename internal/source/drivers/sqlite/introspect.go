@@ -268,7 +268,16 @@ func (s *sqliteSource) foreignKeys(ctx context.Context, table string) ([]model.F
 		fk.Columns = append(fk.Columns, from)
 		fk.RefColumns = append(fk.RefColumns, to.String)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // before the next statement: a database may hold one connection
+	for i := range out {
+		if err := s.implicitKey(ctx, &out[i]); err != nil { // referrers.go
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // Badge has nothing to add: SQLite keeps no row estimates unless ANALYZE has

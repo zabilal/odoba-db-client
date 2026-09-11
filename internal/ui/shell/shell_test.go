@@ -144,6 +144,28 @@ func (f fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error
 	}
 	return tbl, nil
 }
+
+// Referrers, on a source with foreign keys, says notes (by name) and tags
+// (by id) refer to items, as widgets do by a column items do not have, and
+// items (by name) refer to parts.
+func (f fakeSource) Referrers(_ context.Context, ref model.ObjectRef) ([]model.Referrer, error) {
+	if !f.fkeys {
+		return nil, nil
+	}
+	key := func(from, col string) model.Referrer {
+		return model.Referrer{From: model.NewRef(model.KindTable, "main", from), Key: model.ForeignKey{
+			Columns: []string{col}, RefSchema: "main", RefTable: ref.Name(), RefColumns: []string{col}}}
+	}
+	switch ref.Name() {
+	case "items":
+		ghost := key("widgets", "ghost")
+		ghost.Key.RefColumns = []string{"missing"}
+		return []model.Referrer{key("notes", "name"), key("tags", "id"), ghost}, nil
+	case "parts":
+		return []model.Referrer{key("items", "name")}, nil
+	}
+	return nil, nil
+}
 func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
 	return model.Badge{}, false, nil
 }
