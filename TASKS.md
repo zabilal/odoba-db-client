@@ -24,15 +24,14 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
 NEXT TASK: Phase 1's other [~]: single instance (T1.1), tab reorder and pin
-           (T1.4), custom bindings (T1.8), a copyable error sheet (T1.11), an
-           accent choice (T1.12), and the explorer's context menu, structure
-           and script-as (T1.44).
-[~] tasks: T1.1, T1.4, T1.8, T1.11, T1.12, T1.44 partly done; each line says what is open.
+           (T1.4), custom bindings (T1.8), an accent choice (T1.12), and the
+           explorer's context menu, structure and script-as (T1.44).
+[~] tasks: T1.1, T1.4, T1.8, T1.12, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — geometry shown as well-known text and written back
-           exactly; the grid cluster, T1.47–T1.56, is done (ADR-0016).
+LAST DONE: 2026-09-11 — errors said in a band across the top of the window, not
+           a modal dialog (T1.11, ADR-0011).
 ```
 
 **Phase 0 findings so far**
@@ -220,7 +219,7 @@ LAST DONE: 2026-09-11 — geometry shown as well-known text and written back
 - [~] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; customisable bindings open*
 - [ ] **T1.9** Searchable shortcut reference sheet → FR-15.4
 - [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
-- [~] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; copyable error sheet open*
+- [x] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; everything else is said in a band across the top of the window, dismissible and copyable, with an action where there is one; the modal error dialog is gone and a test keeps it gone (ADR-0011 §7)*
 - [~] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; accent choice open*
 - [x] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6 — *uithread.Runner: UI work goes through an injected runner, tests drain a queue (ADR-0011)*
 - [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3

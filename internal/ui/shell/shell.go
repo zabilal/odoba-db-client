@@ -72,6 +72,7 @@ type Shell struct {
 	tabs     *container.DocTabs
 	empty    fyne.CanvasObject
 	status   *widget.Label
+	errors   *errorBar
 	pal      *palette.Palette
 
 	menu      *fyne.MainMenu
@@ -164,7 +165,8 @@ func New(a fyne.App, d Deps) *Shell {
 	s.sidebar = s.buildSidebar()
 	s.split = container.NewHSplit(s.sidebar, container.NewStack(s.empty, s.tabs))
 	s.split.Offset = 0.24
-	s.win.SetContent(container.NewBorder(nil,
+	s.errors = s.newErrorBar()
+	s.win.SetContent(container.NewBorder(s.errors.slot,
 		container.NewVBox(widget.NewSeparator(), s.status), nil, nil, s.split))
 
 	s.menu = s.buildMenu()
@@ -684,7 +686,7 @@ func (s *Shell) duplicateSelected() {
 		return
 	}
 	if _, err := s.d.Conns.Duplicate(id); err != nil {
-		dialog.ShowError(err, s.win)
+		s.showError(err)
 		return
 	}
 	s.Explorer.Refresh(explorer.RootID)
@@ -712,7 +714,7 @@ func (s *Shell) confirmDeleteSelected() {
 func (s *Shell) deleteConnection(id string) {
 	s.disconnect(id)
 	if err := s.d.Conns.Delete(id); err != nil {
-		dialog.ShowError(err, s.win)
+		s.showError(err)
 		return
 	}
 	s.Explorer.Refresh(explorer.RootID)

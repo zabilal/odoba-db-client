@@ -86,7 +86,7 @@ func (s *Shell) showExport() {
 			opt := export.Options{Format: formats[format.SelectedIndex()], Header: header.Checked}
 			save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
 				if err != nil {
-					dialog.ShowError(err, s.win)
+					s.showError(err)
 					return
 				}
 				if w == nil {
@@ -180,7 +180,7 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 			case errors.Is(err, context.Canceled):
 				s.say(t, "Export cancelled; the partial file was removed")
 			default:
-				dialog.ShowError(formError("The export failed, and the partial file was removed: "+err.Error()), s.win)
+				s.showError(formError("The export failed, and the partial file was removed: " + err.Error()))
 			}
 		})
 	}()

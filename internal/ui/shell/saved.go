@@ -107,11 +107,11 @@ func (s *Shell) storeQuery(t *tab, sq localdb.SavedQuery) {
 				if sq.Folder != "" {
 					where = "in “" + sq.Folder + "”"
 				}
-				dialog.ShowError(formError(fmt.Sprintf(
-					"A saved query named “%s” already exists %s. Choose another name.", sq.Name, where)), s.win)
+				s.showError(formError(fmt.Sprintf(
+					"A saved query named “%s” already exists %s. Choose another name.", sq.Name, where)))
 				return
 			case err != nil:
-				dialog.ShowError(err, s.win)
+				s.showError(err)
 				return
 			}
 			q.saved, q.title = got, got.Name
@@ -329,7 +329,8 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 				err := p.s.d.Saved.DeleteQuery(ctx, sq.ID)
 				p.s.d.Run(func() {
 					if err != nil {
-						dialog.ShowError(err, p.s.win)
+						// The panel covers the window, so its own line says it.
+						p.status.SetText("Could not delete “" + sq.Name + "”: " + err.Error())
 						return
 					}
 					if t := p.s.tabForSaved(sq.ID); t != nil {
