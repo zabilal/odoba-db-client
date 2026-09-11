@@ -123,7 +123,8 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 
 // QueryMulti runs a script. Every statement is checked against the guard
 // before any runs (source.Queryer).
-func (ss *session) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (ss *session) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts {
 		if err := ss.src.cfg.Guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
@@ -148,7 +149,7 @@ func (ss *session) QueryMulti(ctx context.Context, script string, confirmed bool
 				out <- r
 				return
 			}
-			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed})
+			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed, Named: opts.Named})
 			if r.Err == nil && r.Result.Rows != nil && i < len(stmts)-1 {
 				buf, truncated, err := buffer(ctx, r.Result.Rows, multiResultCap)
 				r.Result.Rows, r.Err = buf, err

@@ -23,17 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T1.65 (query parameters with a prompt panel), then T1.58
-           (highlighting for the MongoDB and Redis syntaxes, which waits on
-           those drivers). T1.14's scroll position waits on Fyne's table
-           reporting its offset.
+NEXT TASK: Phase 2, from changeset editing (T2.1 onwards). What is open
+           in Phase 1 waits on other work: T1.58 on the MongoDB and Redis
+           drivers, T1.14's scroll position on Fyne's table reporting its
+           offset.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a lost connection said on its row and tabs, with
-           Reconnect Now (T1.31, ADR-0011 §21). Before it: connection
+LAST DONE: 2026-09-11 — query parameters with a prompt panel (T1.65,
+           ADR-0026). Before it: a lost connection said on its row and
+           tabs, with Reconnect Now (T1.31, ADR-0011 §21), connection
            folders (T1.27, ADR-0025), the environment on every tab (T1.28,
            ADR-0011 §20), object classes from the model (T1.42,
            ADR-0024), native file dialogs and notifications (T1.3,
@@ -310,7 +311,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.62** Multi-statement scripts → multiple result tabs → FR-5.4 — *a result tab per result set, plus Messages*
 - [x] **T1.63** **Driver-level query cancellation** → FR-5.5, NFR-P9 — *Stop (⌘.) cancels the script and its streaming results; the session survives (ADR-0008)*
 - [x] **T1.64** Timing, rows affected, server messages pane → FR-5.6 — *per-statement timing and rows affected, a run summary, server messages*
-- [~] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7
+- [x] **T1.65** Query parameters with prompt panel and remembered values → FR-5.7 — *:name on every engine, found through the lexer; a script carries its values (QueryMulti's ScriptOptions), bound never interpolated: PostgreSQL $n, MySQL ?, SQLite natively. Before a script with parameters runs, a side panel asks for each with the value last given on the connection, or NULL; values are sent as typed, and history keeps the :name, never the value (ADR-0026). Open: positional ? and $1 are not asked for*
 - [x] **T1.66** Persistent searchable query history → FR-5.8 — *every statement recorded, redacted, with its outcome and row count; ⇧⌘H searches as you type and reopens it*
 - [x] **T1.67** Saved queries with folders → FR-5.9 — *⌘S names and saves, then saves in place; ⇧⌘S copies; ⇧⌘O filters, reopens or brings forward, deletes; edited tabs show • and ask before closing. Tab restore across restarts is still open*
 - [x] **T1.68** Map server errors back to editor position → FR-5.10 — *the rejected token is underlined and the caret moved to it; the message gives line and column; skipped if the text changed during the run*

@@ -94,12 +94,13 @@ func run() error {
 		saved   app.SavedQueryStore
 		scratch app.ScratchStore
 		session app.SessionStore
+		params  app.ParamStore
 	)
 	if db, err := localdb.Open(context.Background(), paths.DatabaseFile()); err != nil {
 		log.Warn("history, saved queries, autosave and the session unavailable", "err", err)
 	} else {
 		defer db.Close()
-		history, saved, scratch, session = db, db, db, db
+		history, saved, scratch, session, params = db, db, db, db, db
 	}
 
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
@@ -107,7 +108,7 @@ func run() error {
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 
 	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
-		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Theme: uitheme.New(), Log: log,
+		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Params: params, Theme: uitheme.New(), Log: log,
 	})
 	s.ShowNotice(notice)
 	w := s.Window()

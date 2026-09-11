@@ -70,6 +70,9 @@ type Deps struct {
 	GOOS string
 	// Files shows file dialogs. Nil means the platform's own.
 	Files filedlg.Chooser
+	// Params remembers the values given to query parameters. Nil asks with
+	// nothing filled in.
+	Params app.ParamStore
 }
 
 // Shell is one main window.
@@ -80,7 +83,9 @@ type Shell struct {
 	// away is whether the app is in the background, where long work that
 	// ends is told by a notification (notify.go).
 	away bool
-	reg  *commands.Registry
+	// lastParams is the Parameters panel last opened (params.go).
+	lastParams *paramsPanel
+	reg        *commands.Registry
 
 	Explorer *view.Explorer
 	sidebar  fyne.CanvasObject

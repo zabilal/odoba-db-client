@@ -13,6 +13,8 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/sqlscript"
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
 // multiResultCap bounds a non-final result of a script, which must be read
@@ -79,8 +81,9 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	if err := ss.src.cfg.Guard.Allow(access, stmt.Confirmed); err != nil {
 		return nil, err
 	}
-	if len(stmt.Named) > 0 {
-		return nil, errors.New("mysql: named parameters are not supported; use ?")
+	text, args, err := bindNamed(stmt)
+	if err != nil {
+		return nil, err
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -95,7 +98,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	stop := ss.watch(ctx)
 	run := context.WithoutCancel(ctx)
 	start := time.Now()
-	rows, err := ss.conn.QueryContext(run, stmt.SQL, stmt.Args...)
+	rows, err := ss.conn.QueryContext(run, text, args...)
 	if err != nil {
 		stop()
 		return nil, statementError(err, ctx)
@@ -143,9 +146,27 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	return &source.Result{Rows: stream, Affected: -1, Duration: time.Since(start)}, nil
 }
 
+// bindNamed rewrites :name parameters to ? (FR-5.7), a value to each use:
+// MySQL numbers its placeholders by place, so a name used twice is bound
+// twice.
+func bindNamed(stmt source.Statement) (string, []any, error) {
+	if len(stmt.Named) == 0 {
+		return stmt.SQL, stmt.Args, nil
+	}
+	if len(stmt.Args) > 0 {
+		return "", nil, errors.New("mysql: a statement cannot mix positional and named parameters")
+	}
+	sql, args, err := sqlscript.BindNamed(sqllex.MySQL, stmt.SQL, stmt.Named, func(int) string { return "?" }, false)
+	if err != nil {
+		return "", nil, fmt.Errorf("mysql: %w", err)
+	}
+	return sql, args, nil
+}
+
 // QueryMulti runs a script. Every statement is checked against the guard
 // before any runs (source.Queryer).
-func (ss *session) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (ss *session) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts {
 		if err := ss.src.cfg.Guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
@@ -170,7 +191,7 @@ func (ss *session) QueryMulti(ctx context.Context, script string, confirmed bool
 				out <- r
 				return
 			}
-			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed})
+			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed, Named: opts.Named})
 			if r.Err == nil && r.Result.Rows != nil && i < len(stmts)-1 {
 				buf, truncated, err := buffer(ctx, r.Result.Rows, multiResultCap)
 				r.Result.Rows, r.Err = buf, err

@@ -211,13 +211,17 @@ func (s *Shell) runQuery(all bool) {
 	if strings.TrimSpace(script) == "" {
 		return
 	}
-	s.execute(t, script, base, false)
+	if names := q.session.Params(script); len(names) > 0 {
+		s.askParams(t, script, base, names) // its Run runs the script
+		return
+	}
+	s.execute(t, script, base, source.ScriptOptions{})
 }
 
 // execute runs a script and shows each statement's result as it arrives.
 // base is where the script starts in the editor, for mapping errors back to
 // it (FR-5.10, T1.68).
-func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
+func (s *Shell) execute(t *tab, script string, base int, opts source.ScriptOptions) {
 	q := t.query
 	if q.run != nil {
 		q.run() // the previous run's rows, if any are still arriving
@@ -230,13 +234,13 @@ func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
 	s.sync()
 	start := time.Now()
 	go func() {
-		ch, err := q.session.Run(ctx, script, confirmed)
+		ch, err := q.session.Run(ctx, script, opts)
 		if err != nil {
 			s.d.Run(func() {
 				q.executing = false
 				cancel() // nothing ran, so nothing streams
 				if t.ctx.Err() == nil {
-					s.runRefused(t, script, base, err)
+					s.runRefused(t, script, base, opts, err)
 					s.sync()
 				}
 			})
@@ -272,7 +276,7 @@ func (s *Shell) execute(t *tab, script string, base int, confirmed bool) {
 // runRefused explains a script the session would not start. A production
 // write is not an error but a question: nothing has run, so asking and then
 // running it confirmed is safe (FR-4.9).
-func (s *Shell) runRefused(t *tab, script string, base int, err error) {
+func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOptions, err error) {
 	t.footer.SetText("")
 	switch {
 	case errors.Is(err, source.ErrConfirmationRequired):
@@ -281,7 +285,8 @@ func (s *Shell) runRefused(t *tab, script string, base int, err error) {
 			fmt.Sprintf("This script changes data on “%s”, which is marked Production. Nothing has run yet.", c.Name),
 			func(yes bool) {
 				if yes {
-					s.execute(t, script, base, true)
+					opts.Confirmed = true // the values given still go with it
+					s.execute(t, script, base, opts)
 				} else {
 					t.footer.SetText("Not run")
 				}

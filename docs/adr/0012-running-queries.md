@@ -63,5 +63,5 @@ chords, and a shell test refuses any menu binding to one of them.
 ## Not decided here
 
 Error positions in the editor (T1.68; each run carries its base offset for
-it), parameters (T1.65), history (T1.66), saved queries (T1.67) and an
-open-transaction indicator (FR-5.14).
+it), parameters (T1.65, ADR-0026), history (T1.66), saved queries (T1.67)
+and an open-transaction indicator (FR-5.14).

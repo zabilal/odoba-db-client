@@ -268,12 +268,12 @@ func (s *mysqlSource) Query(ctx context.Context, stmt source.Statement) (*source
 
 // QueryMulti runs a script on a session of its own, released when the
 // script ends or, if its last result is still streaming, when that closes.
-func (s *mysqlSource) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (s *mysqlSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
 	ss, err := s.Session(ctx)
 	if err != nil {
 		return nil, err
 	}
-	in, err := ss.QueryMulti(ctx, script, confirmed)
+	in, err := ss.QueryMulti(ctx, script, opts)
 	if err != nil {
 		ss.Close()
 		return nil, err

@@ -75,6 +75,7 @@ func (f fakeSource) Session(context.Context) (source.Session, error) {
 type fakeSession struct {
 	guard  source.Guard
 	closed atomic.Bool
+	named  atomic.Pointer[map[string]any] // the values the last script was run with
 }
 
 func (fs *fakeSession) Handle() string { return "1" }
@@ -99,7 +100,9 @@ func (fs *fakeSession) Query(context.Context, source.Statement) (*source.Result,
 	return nil, fmt.Errorf("not in this test")
 }
 
-func (fs *fakeSession) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	confirmed := opts.Confirmed
+	fs.named.Store(&opts.Named)
 	stmts := fakeSource{}.SplitScript(script)
 	for _, st := range stmts {
 		if err := fs.guard.Allow(fakeSource{}.Classify(st.Text), confirmed); err != nil {
