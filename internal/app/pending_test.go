@@ -170,6 +170,23 @@ func TestADuplicateHasTheRowsValuesButNotItsKey(t *testing.T) {
 	}
 }
 
+func TestAColumnRenamedIsWrittenByItsNameInTheTable(t *testing.T) {
+	cols := []model.ColumnDef{{Name: "key", OriginColumn: "id"}, {Name: "label", OriginColumn: "name"}, {Name: "score"}}
+	p, err := NewPending(cols, byID)
+	if err != nil {
+		t.Fatalf("a key renamed is still the key: %v", err)
+	}
+	if err := p.Set(model.Row{int64(1), "ann", 3.5}, 1, "anne"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Set(model.Row{int64(1), "ann", 3.5}, 2, 4.0); err != nil {
+		t.Fatal(err)
+	}
+	if got := changes(p.Changeset(false)); got != "[update [1] map[name:anne score:4]]" {
+		t.Errorf("changeset %s", got)
+	}
+}
+
 func TestANewRowsColumnGoesBackToNotGiven(t *testing.T) {
 	p := newPending(t)
 	i := p.Add()

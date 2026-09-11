@@ -87,6 +87,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	ss.cancel = cancel
 	ss.cancelMu.Unlock()
 
+	info := ss.columnInfo(stmt.SQL) // where each column is read from, asked before it runs
 	start := time.Now()
 	rows, err := ss.conn.QueryContext(qctx, stmt.SQL, args...)
 	if err != nil {
@@ -116,6 +117,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		cancel()
 		return nil, statementError(err)
 	}
+	ss.src.resultOrigins(ctx, stream, info) // origins.go
 	stream.onClose = cancel
 	ss.open = stream
 	return &source.Result{Rows: stream, Affected: -1, Duration: time.Since(start)}, nil

@@ -23,18 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.9 (query results edited when they map to one table,
-           FR-4.8), then T2.10 (a pasted block). What is
+NEXT TASK: the rest of T2.9 (a query's result edited in its grid and
+           committed to its table), then T2.10 (a pasted block). What is
            open in Phase 1 waits on other work: T1.58 on the MongoDB and
            Redis drivers, T1.14's scroll position on Fyne.
-[~] tasks: T1.14 partly done; its line says what is open.
+[~] tasks: T1.14 and T2.9 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — row identity: SQLite by its key or rowid, one
-           row a statement, and Choose a Key… for a table with none
-           (T2.8, ADR-0034). Before it: changes reverted, and asked about before
+LAST DONE: 2026-09-11 — a query's columns say where they come from, and
+           a result reading one table is known by its key (T2.9 in part,
+           ADR-0035). Before it: row identity (T2.8, ADR-0034), changes reverted, and asked about before
            they are lost (T2.7, ADR-0033), changes reviewed and committed (T2.5,
            T2.6, ADR-0031, ADR-0032), rows inserted, duplicated and
            deleted (T2.4, ADR-0030), cells edited in place and in the cell
@@ -356,7 +356,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.6** Transactional commit; full rollback + offending row on failure → FR-4.5 — *the drivers' side: a plan applied in one transaction, a statement refused or matching no row rolling it all back and named; the guard asked first (ADR-0031). Commit from the review; written, the changes go and the rows are read again; failed, the change is named and its row selected (ADR-0032)*
 - [x] **T2.7** Revert cell / row / entire changeset → FR-4.6 — *Revert Cells and Revert Rows on the selection (a new row's column back to DEFAULT, a new row taken out), Discard All Changes… asking first; closing a tab or quitting with changes asks (ADR-0033)*
 - [x] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7 — *SQLite knows a table by its primary key, or else its rowid, which the browse then selects; a statement changing more than one row fails as one changing none does (ADR-0034); a table with no key says why, and Choose a Key… edits it by the columns picked*
-- [ ] **T2.9** Editable query results when mapping to one updatable table → FR-4.8
+- [~] **T2.9** Editable query results when mapping to one updatable table → FR-4.8 — *the drivers' side: a result's columns say their table and their name there, and a result reading one table with its key among the columns is known by that key, on PostgreSQL and SQLite; MySQL's driver keeps the table to itself (ADR-0035). Open: editing a result in its grid*
 - [ ] **T2.10** Paste TSV/CSV block into the grid → FR-4.10
 - [ ] **T2.11** Bulk set-column-value across selection → FR-4.11
 

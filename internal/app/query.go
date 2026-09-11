@@ -355,6 +355,16 @@ func (r *ResultSet) Done() <-chan struct{} { return r.finished }
 // Columns describes every row.
 func (r *ResultSet) Columns() []model.ColumnDef { return r.cols }
 
+// Identity is how the result's rows are told apart, to be edited (FR-4.8,
+// ADR-0035): a table's key, where the source found every column in that one
+// table and its key among them; otherwise none.
+func (r *ResultSet) Identity() model.RowIdentity {
+	if id, ok := r.stream.(model.Identified); ok {
+		return id.Identity()
+	}
+	return model.RowIdentity{Kind: model.IdentityNone}
+}
+
 // Fetch returns up to limit rows from offset, waiting for them to arrive.
 // Fewer than limit means the result ended there.
 func (r *ResultSet) Fetch(ctx context.Context, offset, limit int64) ([]model.Row, error) {

@@ -74,6 +74,7 @@ func Run(t *testing.T, target Target) {
 		{"Where", checkWhere},
 		{"ReadOnlyGuard", checkReadOnlyGuard},
 		{"Writer", checkWriter},
+		{"EditableResults", checkEditableResults},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
 	}
 

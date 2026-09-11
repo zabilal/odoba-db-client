@@ -86,6 +86,11 @@ type Query struct {
 
 	// Transactions reports explicit transaction control (FR-5.14).
 	Transactions bool
+
+	// EditableResults reports that a query's result says where its columns
+	// were read from, and is known by a table's key when every column comes
+	// from that one table and its key is among them (FR-4.8, ADR-0035).
+	EditableResults bool
 }
 
 // Data describes grid capabilities.

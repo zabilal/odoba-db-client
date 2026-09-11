@@ -39,3 +39,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0032](0032-reviewing-and-committing-changes.md) | Reviewing and committing changes | Accepted |
 | [0033](0033-reverting-changes.md) | Reverting changes, and asking before they are lost | Accepted |
 | [0034](0034-row-identity.md) | Row identity | Accepted |
+| [0035](0035-where-a-querys-columns-come-from.md) | Where a query's columns come from | Accepted |

@@ -243,6 +243,46 @@ func TestTheTreeListsEachClassOfASchema(t *testing.T) {
 	}
 }
 
+func TestAQueryResultSaysWhereItsColumnsCameFrom(t *testing.T) {
+	src := openSource(t, false)
+	if !src.Capabilities().Query.EditableResults {
+		t.Error("PostgreSQL says where a result's columns come from, and claims it")
+	}
+	ctx := context.Background()
+	ss, err := src.Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	query := func(q string) (model.RowIdentity, []model.ColumnDef) {
+		t.Helper()
+		res, err := ss.Query(ctx, source.Statement{SQL: q})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, cols := res.Rows.(model.Identified).Identity(), res.Rows.Columns()
+		drain(t, res.Rows)
+		return id, cols
+	}
+	id, cols := query(`SELECT id, status AS s FROM ikigai_it.orders ORDER BY id LIMIT 2`)
+	if id.Kind != model.IdentityPrimaryKey || len(id.Columns) != 1 || id.Columns[0] != "id" || !id.Target.Equal(ordersRef) {
+		t.Errorf("a query of one table, its key among the columns, is known by it: %+v", id)
+	}
+	if cols[1].Name != "s" || cols[1].OriginColumn != "status" || !cols[1].Origin.Equal(ordersRef) {
+		t.Errorf("a column renamed says its name in the table: %+v", cols[1])
+	}
+	id, cols = query(`SELECT o.id, n.note FROM ikigai_it.orders o JOIN ikigai_it.order_notes n ON n.order_id = o.id`)
+	if id.Kind != model.IdentityNone || cols[1].Origin.Name() != "order_notes" {
+		t.Errorf("a join is no one table's, though each column says where it is from: %+v %+v", id, cols)
+	}
+	if id, cols := query(`SELECT a FROM ikigai_it.nopk LIMIT 1`); id.Kind != model.IdentityNone || cols[0].OriginColumn != "a" {
+		t.Errorf("a table with no primary key gives none: %+v %+v", id, cols)
+	}
+	if id, _ := query(`SELECT id, total * 2 AS twice FROM ikigai_it.orders LIMIT 1`); id.Kind != model.IdentityNone {
+		t.Error("a computed column makes the result no one table's")
+	}
+}
+
 func TestConformance(t *testing.T) {
 	requirePG(t)
 	conformance.Run(t, conformance.Target{
