@@ -523,8 +523,7 @@ func TestReadOnlyKeepsLegitimateSessionState(t *testing.T) {
 
 func TestQueryMultiRefusesWholeScriptUpFront(t *testing.T) {
 	ro := openSource(t, true)
-	if _, err := ro.QueryMulti(context.Background(),
-		"SELECT 1; DELETE FROM ikigai_it.orders", false); !errors.Is(err, source.ErrReadOnly) {
+	if _, err := ro.QueryMulti(context.Background(), "SELECT 1; DELETE FROM ikigai_it.orders", source.ScriptOptions{}); !errors.Is(err, source.ErrReadOnly) {
 		t.Errorf("want the script refused before running, got %v", err)
 	}
 }
@@ -539,7 +538,8 @@ func TestScriptRunsOnOneConnection(t *testing.T) {
 		CREATE TEMP TABLE tt (a int);
 		INSERT INTO tt VALUES (1), (2);
 		SELECT * FROM tt ORDER BY a;
-		SELECT count(*) FROM tt`, false)
+		SELECT count(*) FROM tt`, source.ScriptOptions{})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,6 +588,29 @@ func TestNamedParameters(t *testing.T) {
 	rows := drain(t, res.Rows)
 	if rows[0][0] != int64(42) || rows[0][1] != ":n is not a param" {
 		t.Errorf("got %v", rows[0])
+	}
+}
+
+func TestNamedParametersInAScriptBindAsTyped(t *testing.T) {
+	// The prompt panel's values are text, as typed: the server makes of them
+	// what each parameter's place needs (FR-5.7).
+	src := openSource(t, false)
+	ch, err := src.QueryMulti(context.Background(),
+		"SELECT :n::int + 1 AS next; SELECT id FROM ikigai_it.orders WHERE id = :id; SELECT 1 AS plain",
+		source.ScriptOptions{Named: map[string]any{"n": "41", "id": "7", "unused": "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for r := range ch {
+		if r.Err != nil {
+			t.Fatalf("%q: %v", r.Statement, r.Err)
+		}
+		rows := drain(t, r.Result.Rows)
+		got = append(got, fmt.Sprint(rows[0][0]))
+	}
+	if strings.Join(got, " ") != "42 7 1" {
+		t.Errorf("got %q, want 42 7 1", got)
 	}
 }
 

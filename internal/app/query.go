@@ -12,6 +12,8 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/sqlscript"
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
@@ -115,13 +117,14 @@ func (r StatementResult) ErrorOffset() (int, bool) {
 // ctx governs the rows as well as the statements: each result keeps reading
 // after the script has finished, until ctx is cancelled or the next Run.
 //
-// confirmed is the user's consent to change data on a production connection.
-// Without it such a script is refused before any statement runs, with
-// source.ErrConfirmationRequired, so the caller can ask and run it again.
-func (qs *QuerySession) Run(ctx context.Context, script string, confirmed bool) (_ <-chan StatementResult, err error) {
+// opts.Confirmed is the user's consent to change data on a production
+// connection. Without it such a script is refused before any statement runs,
+// with source.ErrConfirmationRequired, so the caller can ask and run it
+// again. opts.Named are the values of its named parameters (Params).
+func (qs *QuerySession) Run(ctx context.Context, script string, opts source.ScriptOptions) (_ <-chan StatementResult, err error) {
 	defer panics.Recover(&err, "running the script")
 	qs.closeResults()
-	in, err := qs.q.QueryMulti(ctx, script, confirmed)
+	in, err := qs.q.QueryMulti(ctx, script, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +191,14 @@ func (qs *QuerySession) record(sr StatementResult, arrived time.Time) {
 		defer cancel()
 		_, _ = qs.hist.AddHistory(ctx, e)
 	}()
+}
+
+// Params are a script's named parameters, :name, in the order each is first
+// used: what to ask for before it runs (FR-5.7). A name inside a string or a
+// comment, or a PostgreSQL cast, is none. History keeps the script as it was
+// written, so the values asked for are never recorded.
+func (qs *QuerySession) Params(script string) []string {
+	return sqlscript.Names(sqllex.DialectFor(qs.entry.Language), script)
 }
 
 // StatementAt is the statement of a script that contains a byte offset: what

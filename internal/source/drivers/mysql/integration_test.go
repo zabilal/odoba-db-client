@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +219,31 @@ func TestReadOnlyIsRefusedByTheServerToo(t *testing.T) {
 	})
 }
 
+func TestNamedParametersInAScriptBindAsTyped(t *testing.T) {
+	// The prompt panel's values are text, as typed (FR-5.7). A name used
+	// twice is bound twice: MySQL's ? are numbered by place.
+	each(t, func(t *testing.T, srv server) {
+		s := open(t, srv, source.Guard{})
+		ch, err := s.QueryMulti(context.Background(),
+			"SELECT :a + :a AS twice; SELECT name FROM ikigai_it.people WHERE id = :id; SELECT 1 AS plain",
+			source.ScriptOptions{Named: map[string]any{"a": "21", "id": "7", "unused": "x"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for r := range ch {
+			if r.Err != nil {
+				t.Fatalf("%q: %v", r.Statement, r.Err)
+			}
+			rows := drain(t, r.Result.Rows)
+			got = append(got, fmt.Sprint(rows[0][0]))
+		}
+		if strings.Join(got, " ") != "42 person 7 1" {
+			t.Errorf("got %q, want 42, person 7 and 1", got)
+		}
+	})
+}
+
 func TestTheTreeListsEachClassOfADatabase(t *testing.T) {
 	each(t, func(t *testing.T, srv server) {
 		s := open(t, srv, source.Guard{})
@@ -297,7 +323,8 @@ CREATE PROCEDURE ikigai_it.bump() BEGIN
   SELECT score FROM ikigai_it.people WHERE id = 1;
 END //
 DELIMITER ;
-CALL ikigai_it.bump();`, false)
+CALL ikigai_it.bump();`, source.ScriptOptions{})
+
 		if err != nil {
 			t.Fatal(err)
 		}

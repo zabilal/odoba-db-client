@@ -201,12 +201,12 @@ func (s *sqliteSource) Query(ctx context.Context, stmt source.Statement) (*sourc
 
 // QueryMulti runs a script on a session of its own, released when the script
 // ends or, if its last result is still streaming, when that result closes.
-func (s *sqliteSource) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (s *sqliteSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
 	ss, err := s.Session(ctx)
 	if err != nil {
 		return nil, err
 	}
-	in, err := ss.QueryMulti(ctx, script, confirmed)
+	in, err := ss.QueryMulti(ctx, script, opts)
 	if err != nil {
 		ss.Close()
 		return nil, err

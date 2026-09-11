@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/sqlscript"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
@@ -158,7 +158,8 @@ func (ss *pgSession) Query(ctx context.Context, stmt source.Statement) (*source.
 // QueryMulti runs a script's statements in order on this one connection,
 // which is what makes SET and temporary tables carry from one statement to
 // the next. It stops at the first error.
-func (ss *pgSession) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (ss *pgSession) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts {
 		if err := ss.src.cfg.Guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
@@ -184,7 +185,7 @@ func (ss *pgSession) QueryMulti(ctx context.Context, script string, confirmed bo
 				out <- r
 				return
 			}
-			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed})
+			r.Result, r.Err = ss.Query(ctx, source.Statement{SQL: st.Text, Confirmed: confirmed, Named: opts.Named})
 			if r.Err == nil && r.Result.Rows != nil && i < len(stmts)-1 {
 				// The next statement needs this connection, which cannot hold
 				// two open results, so a non-final result is buffered — up to
@@ -225,12 +226,12 @@ func (s *pgSource) Query(ctx context.Context, stmt source.Statement) (*source.Re
 
 // QueryMulti runs a script on a connection of its own — one connection for
 // the whole script, never one per statement.
-func (s *pgSource) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (s *pgSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
 	ss, err := s.openSession(ctx)
 	if err != nil {
 		return nil, err
 	}
-	in, err := ss.QueryMulti(ctx, script, confirmed)
+	in, err := ss.QueryMulti(ctx, script, opts)
 	if err != nil {
 		ss.Close()
 		return nil, err
@@ -342,39 +343,12 @@ func bindNamed(stmt source.Statement) (string, []any, error) {
 	if len(stmt.Args) > 0 {
 		return "", nil, errors.New("postgres: a statement cannot mix positional and named parameters")
 	}
-	lx := sqllex.NewLexer(sqllex.PostgreSQL)
-	var st sqllex.State
-	var sb strings.Builder
-	var args []any
-	index := map[string]int{}
-
-	for li, line := range strings.Split(stmt.SQL, "\n") {
-		if li > 0 {
-			sb.WriteByte('\n')
-		}
-		toks, next := lx.LexLine(line, st)
-		for _, tk := range toks {
-			text := line[tk.Start:tk.End]
-			if tk.Kind == sqllex.TokParameter && strings.HasPrefix(text, ":") {
-				name := text[1:]
-				n, seen := index[name]
-				if !seen {
-					v, ok := stmt.Named[name]
-					if !ok {
-						return "", nil, fmt.Errorf("postgres: no value supplied for :%s", name)
-					}
-					args = append(args, v)
-					n = len(args)
-					index[name] = n
-				}
-				sb.WriteString("$" + strconv.Itoa(n))
-				continue
-			}
-			sb.WriteString(text)
-		}
-		st = next
+	sql, args, err := sqlscript.BindNamed(sqllex.PostgreSQL, stmt.SQL, stmt.Named,
+		func(n int) string { return "$" + strconv.Itoa(n) }, true)
+	if err != nil {
+		return "", nil, fmt.Errorf("postgres: %w", err)
 	}
-	return sb.String(), args, nil
+	return sql, args, nil
 }
 
 // statementError lifts a server error into the contract's form, carrying the

@@ -100,7 +100,8 @@ func (ss *scriptSession) Query(context.Context, source.Statement) (*source.Resul
 	return nil, errors.New("not here")
 }
 
-func (ss *scriptSession) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
+func (ss *scriptSession) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts { // every statement is checked before any runs
 		if err := ss.src.guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
@@ -181,13 +182,23 @@ func collect(t *testing.T, ch <-chan StatementResult) []StatementResult {
 	}
 }
 
+func TestParamsAreTheScriptsNamesInOrderOnce(t *testing.T) {
+	qs, err := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := qs.Params("SELECT :a, ':b' AS lit, :c, :a"); fmt.Sprint(got) != "[a c]" {
+		t.Errorf("Params = %q; a string holds no parameter, and a name is asked for once", got)
+	}
+}
+
 func TestRunDeliversEachStatementInOrder(t *testing.T) {
 	src := &scriptSource{}
 	qs, err := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := qs.Run(context.Background(), "rows 3; update t; fail", false)
+	ch, err := qs.Run(context.Background(), "rows 3; update t; fail", source.ScriptOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +221,7 @@ func TestRunDeliversEachStatementInOrder(t *testing.T) {
 func TestFetchWaitsForRowsAndShortMeansTheEnd(t *testing.T) {
 	src := &scriptSource{}
 	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
-	ch, _ := qs.Run(context.Background(), "slow 300", false)
+	ch, _ := qs.Run(context.Background(), "slow 300", source.ScriptOptions{})
 	rs := collect(t, ch)[0].Rows
 	if n, _ := rs.Count(context.Background()); n != -1 {
 		t.Errorf("count %d while rows are still arriving; it must be unknown", n)
@@ -240,9 +251,9 @@ func TestResultsStopAtTheCap(t *testing.T) {
 func TestANewRunReleasesThePreviousResults(t *testing.T) {
 	src := &scriptSource{}
 	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
-	ch, _ := qs.Run(context.Background(), "slow 100000", false)
+	ch, _ := qs.Run(context.Background(), "slow 100000", source.ScriptOptions{})
 	collect(t, ch)
-	ch, _ = qs.Run(context.Background(), "rows 1", false)
+	ch, _ = qs.Run(context.Background(), "rows 1", source.ScriptOptions{})
 	collect(t, ch)
 	deadline := time.Now().Add(2 * time.Second)
 	for !src.streams[0].closed.Load() {
@@ -259,13 +270,13 @@ func TestANewRunReleasesThePreviousResults(t *testing.T) {
 func TestProductionWritesNeedConfirmationBeforeAnythingRuns(t *testing.T) {
 	src := &scriptSource{guard: source.Guard{Environment: source.EnvProduction}}
 	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
-	if _, err := qs.Run(context.Background(), "rows 1; update t", false); !errors.Is(err, source.ErrConfirmationRequired) {
+	if _, err := qs.Run(context.Background(), "rows 1; update t", source.ScriptOptions{}); !errors.Is(err, source.ErrConfirmationRequired) {
 		t.Fatalf("err %v", err)
 	}
 	if len(src.streams) != 0 {
 		t.Fatal("a statement ran before the script was confirmed")
 	}
-	ch, err := qs.Run(context.Background(), "rows 1; update t", true)
+	ch, err := qs.Run(context.Background(), "rows 1; update t", source.ScriptOptions{Confirmed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +288,7 @@ func TestProductionWritesNeedConfirmationBeforeAnythingRuns(t *testing.T) {
 func TestCloseEndsTheSession(t *testing.T) {
 	src := &scriptSource{}
 	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
-	ch, _ := qs.Run(context.Background(), "slow 100000", false)
+	ch, _ := qs.Run(context.Background(), "slow 100000", source.ScriptOptions{})
 	rs := collect(t, ch)[0].Rows
 	qs.Close()
 	if !qs.session.(*scriptSession).closed.Load() {
@@ -312,8 +323,8 @@ type plainSource struct{ scriptSource }
 
 func (p *plainSource) Session() {} // shadows Sessioner with a different signature
 
-func (p *plainSource) QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan source.ScriptResult, error) {
-	return (&scriptSession{src: &p.scriptSource}).QueryMulti(ctx, script, confirmed)
+func (p *plainSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+	return (&scriptSession{src: &p.scriptSource}).QueryMulti(ctx, script, opts)
 }
 func (p *plainSource) Query(context.Context, source.Statement) (*source.Result, error) {
 	return nil, errors.New("not here")
@@ -324,7 +335,7 @@ func TestSourcesWithoutSessionsStillRun(t *testing.T) {
 	if err != nil || qs.session != nil {
 		t.Fatalf("session %v, %v", qs.session, err)
 	}
-	ch, err := qs.Run(context.Background(), "rows 2", false)
+	ch, err := qs.Run(context.Background(), "rows 2", source.ScriptOptions{})
 	if err != nil || len(collect(t, ch)) != 1 {
 		t.Fatalf("run: %v", err)
 	}
@@ -353,7 +364,7 @@ func TestOffsetsAreBytesEvenAfterNonASCIIText(t *testing.T) {
 	if got, start, _ := qs.StatementAt(script, second+1); got != "rows 2;" || start != second {
 		t.Errorf("caret in the second statement → %q at %d, want byte %d", got, start, second)
 	}
-	ch, _ := qs.Run(context.Background(), script, false)
+	ch, _ := qs.Run(context.Background(), script, source.ScriptOptions{})
 	if res := collect(t, ch); len(res) != 2 || res[1].Offset != second {
 		t.Errorf("second result's offset is not byte %d: %+v", second, res)
 	}
@@ -400,7 +411,7 @@ func (m *memHistory) wait(t *testing.T, n int) map[string]localdb.HistoryEntry {
 func TestEveryStatementIsRecordedWithItsOutcome(t *testing.T) {
 	h := &memHistory{}
 	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{History: h, Database: "sales"})
-	ch, _ := qs.Run(context.Background(), "rows 3; update t; fail", false)
+	ch, _ := qs.Run(context.Background(), "rows 3; update t; fail", source.ScriptOptions{})
 	collect(t, ch)
 	got := h.wait(t, 3)
 	if e := got["rows 3;"]; e.Rows != 3 || e.ConnectionID != "c1" || e.Database != "sales" || e.Error != "" {
@@ -417,7 +428,7 @@ func TestEveryStatementIsRecordedWithItsOutcome(t *testing.T) {
 func TestAStoppedQueryIsStillRecordedWithoutAnError(t *testing.T) {
 	h := &memHistory{}
 	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{History: h})
-	ch, _ := qs.Run(context.Background(), "slow 100000", false)
+	ch, _ := qs.Run(context.Background(), "slow 100000", source.ScriptOptions{})
 	collect(t, ch)
 	qs.Close()
 	e := h.wait(t, 1)["slow 100000"]
@@ -431,7 +442,7 @@ func TestErrorOffsetPointsAtTheTokenInTheScript(t *testing.T) {
 	// offset is bytes within the script. "éé" makes the two disagree.
 	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{})
 	script := "rows 1; select éé oops;"
-	ch, _ := qs.Run(context.Background(), script, false)
+	ch, _ := qs.Run(context.Background(), script, source.ScriptOptions{})
 	res := collect(t, ch)
 	if len(res) != 2 {
 		t.Fatalf("%d results", len(res))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -179,7 +180,7 @@ func TestFilters(t *testing.T) {
 
 func run(t *testing.T, ss source.Session, script string) []source.ScriptResult {
 	t.Helper()
-	ch, err := ss.QueryMulti(context.Background(), script, false)
+	ch, err := ss.QueryMulti(context.Background(), script, source.ScriptOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,6 +244,28 @@ func TestNamedParameters(t *testing.T) {
 	}
 	if got := drain(t, res.Rows); len(got) != 1 || got[0][0] != "person 7" {
 		t.Errorf("%v", got)
+	}
+}
+
+func TestNamedParametersInAScriptBindAsTyped(t *testing.T) {
+	// The prompt panel's values are text, as typed (FR-5.7); a statement is
+	// given only the values it uses.
+	s := open(t, fixture(t), source.Guard{})
+	ch, err := s.QueryMulti(context.Background(), "SELECT name FROM people WHERE id = :id; SELECT :id + 1; SELECT 1",
+		source.ScriptOptions{Named: map[string]any{"id": "7", "unused": "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for r := range ch {
+		if r.Err != nil {
+			t.Fatalf("%q: %v", r.Statement, r.Err)
+		}
+		rows := drain(t, r.Result.Rows)
+		got = append(got, fmt.Sprint(rows[0][0]))
+	}
+	if strings.Join(got, " ") != "person 7 8 1" {
+		t.Errorf("got %q, want person 7, 8 and 1", got)
 	}
 }
 

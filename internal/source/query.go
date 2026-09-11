@@ -26,14 +26,16 @@ type Queryer interface {
 	// finishes or ctx is cancelled. Streaming them rather than collecting them
 	// lets the UI show the first result while later statements still run.
 	//
-	// confirmed carries explicit consent for a mutating script on a
+	// opts.Confirmed carries explicit consent for a mutating script on a
 	// production connection (FR-4.9). Without it such a script could never be
-	// confirmed, and so never run at all.
+	// confirmed, and so never run at all. opts.Named are the values of the
+	// script's :name parameters, given with every statement: each binds those
+	// it uses (FR-5.7).
 	//
 	// Every statement is checked against the Guard before any of them runs.
 	// Refusing the fourth statement after the first three have executed would
 	// leave the user in a state they did not choose.
-	QueryMulti(ctx context.Context, script string, confirmed bool) (<-chan ScriptResult, error)
+	QueryMulti(ctx context.Context, script string, opts ScriptOptions) (<-chan ScriptResult, error)
 }
 
 // Sessioner is an optional Queryer refinement for sources whose statements
@@ -74,6 +76,16 @@ type Statement struct {
 	// Confirmed records explicit user consent for a mutating statement on a
 	// production connection (FR-4.9).
 	Confirmed bool
+}
+
+// ScriptOptions is how a script is run (Queryer.QueryMulti).
+type ScriptOptions struct {
+	// Confirmed is the user's consent to change data on a production
+	// connection (FR-4.9).
+	Confirmed bool
+	// Named are the values of the script's :name parameters (FR-5.7). Every
+	// statement is given them all, and binds those it uses.
+	Named map[string]any
 }
 
 // Result is the outcome of one statement.
