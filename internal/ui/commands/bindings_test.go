@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -9,6 +10,7 @@ func TestAShortcutReadsBackAsWritten(t *testing.T) {
 	for _, sc := range []Shortcut{
 		{Key: "K", Mods: ModShortcut}, {Key: "Slash", Mods: ModShortcut},
 		{Key: "F", Mods: ModShortcut | ModShift | ModAlt | ModControl}, {Key: "F5"}, {},
+		{Key: "+", Mods: ModShortcut}, {Key: "=", Mods: ModShortcut | ModShift}, {Key: "/", Mods: ModAlt},
 	} {
 		if got, err := ParseShortcut(sc.String()); err != nil || got != sc {
 			t.Errorf("%+v wrote %q, read back %+v, %v", sc, sc.String(), got, err)
@@ -17,10 +19,13 @@ func TestAShortcutReadsBackAsWritten(t *testing.T) {
 	if got := (Shortcut{Key: "F", Mods: ModShift | ModShortcut}).String(); got != "Shift+Shortcut+F" {
 		t.Errorf("wrote %q", got)
 	}
-	for _, bad := range []string{"Shift+", "+", "Hyper+K", "Shift+Shift+K", "Shift+Page Up"} {
+	for _, bad := range []string{"Shift+", "Hyper+K", "Shift+Shift+K", "Shift+Page Up", "Shortcut+A+B"} {
 		if _, err := ParseShortcut(bad); err == nil {
 			t.Errorf("%q should not read as a shortcut", bad)
 		}
+	}
+	if _, err := ParseShortcut("Hyper+K"); err == nil || !strings.Contains(err.Error(), `"Hyper" is not a modifier`) {
+		t.Errorf("the unknown modifier should be named: %v", err)
 	}
 }
 

@@ -66,32 +66,39 @@ func (s Shortcut) String() string {
 }
 
 // ParseShortcut reads a chord String wrote. The empty string is no shortcut.
+// Modifiers are taken off the front and the rest is the key, so that the
+// "+" key itself reads back: "Shortcut++".
 func ParseShortcut(text string) (Shortcut, error) {
 	if text == "" {
 		return Shortcut{}, nil
 	}
-	parts := strings.Split(text, "+")
-	key := parts[len(parts)-1]
-	if key == "" || strings.ContainsAny(key, " \t") {
-		return Shortcut{}, fmt.Errorf("commands: %q names no key", text)
-	}
 	var s Shortcut
-	for _, p := range parts[:len(parts)-1] {
+	rest := text
+	for {
 		var m Mod
 		for _, n := range modNames {
-			if n.name == p {
+			if strings.HasPrefix(rest, n.name+"+") {
 				m = n.mod
+				rest = rest[len(n.name)+1:]
+				break
 			}
 		}
-		switch {
-		case m == 0:
-			return Shortcut{}, fmt.Errorf("commands: %q: %q is not a modifier", text, p)
-		case s.Mods&m != 0:
-			return Shortcut{}, fmt.Errorf("commands: %q names %s twice", text, p)
+		if m == 0 {
+			break
+		}
+		if s.Mods&m != 0 {
+			return Shortcut{}, fmt.Errorf("commands: %q names a modifier twice", text)
 		}
 		s.Mods |= m
 	}
-	s.Key = key
+	switch {
+	case rest == "" || strings.ContainsAny(rest, " \t"):
+		return Shortcut{}, fmt.Errorf("commands: %q names no key", text)
+	case rest != "+" && strings.Contains(rest, "+"):
+		name, _, _ := strings.Cut(rest, "+")
+		return Shortcut{}, fmt.Errorf("commands: %q: %q is not a modifier", text, name)
+	}
+	s.Key = rest
 	return s, nil
 }
 
