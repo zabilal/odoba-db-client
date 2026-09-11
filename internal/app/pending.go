@@ -212,6 +212,14 @@ func (p *Pending) SetAdded(i, col int, v any) error {
 	return nil
 }
 
+// UnsetAdded takes a new row's column back to not given, so the server
+// gives it its default.
+func (p *Pending) UnsetAdded(i, col int) {
+	if i >= 0 && i < len(p.added) {
+		delete(p.added[i].values, col)
+	}
+}
+
 // RemoveAdded drops a new row, which nothing had written.
 func (p *Pending) RemoveAdded(i int) {
 	if i >= 0 && i < len(p.added) {

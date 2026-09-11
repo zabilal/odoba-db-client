@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -144,14 +145,22 @@ func stopWarning(run []*task, doing string) string {
 }
 
 // requestQuit closes the window, which quits, as the close button and Quit
-// do: first asking, if tasks are running, since quitting stops them.
+// do: first asking, if tasks are running or changes are not committed,
+// since quitting stops the one and loses the other.
 func (s *Shell) requestQuit() {
-	run := s.runningTasks(nil)
-	if len(run) == 0 {
+	run, pending := s.runningTasks(nil), s.pendingAll()
+	if len(run) == 0 && pending == 0 {
 		s.win.Close()
 		return
 	}
-	d := dialog.NewConfirm("Stop and Quit?", stopWarning(run, "Quitting"), func(yes bool) {
+	title, why := "Quit and Discard Changes?", ""
+	if pending > 0 {
+		why = discardText(pending)
+	}
+	if len(run) > 0 {
+		title, why = "Stop and Quit?", strings.TrimSpace(why+" "+stopWarning(run, "Quitting"))
+	}
+	d := dialog.NewConfirm(title, why, func(yes bool) {
 		if yes {
 			s.win.Close()
 		}

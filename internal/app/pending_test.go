@@ -170,6 +170,21 @@ func TestADuplicateHasTheRowsValuesButNotItsKey(t *testing.T) {
 	}
 }
 
+func TestANewRowsColumnGoesBackToNotGiven(t *testing.T) {
+	p := newPending(t)
+	i := p.Add()
+	if err := p.SetAdded(i, 1, "cat"); err != nil {
+		t.Fatal(err)
+	}
+	p.SetAdded(i, 2, 1.5)
+	p.UnsetAdded(i, 1)
+	p.UnsetAdded(9, 1)
+	p.UnsetAdded(-1, 1)
+	if got := fmt.Sprint(p.Added()); got != "[[DEFAULT DEFAULT 1.5]]" {
+		t.Errorf("%s", got)
+	}
+}
+
 func TestEachChangeSaysWhichRowItIsTo(t *testing.T) {
 	p := newPending(t)
 	ann, bob := model.Row{int64(1), "ann", 3.5}, model.Row{int64(2), "bob", 1.0}

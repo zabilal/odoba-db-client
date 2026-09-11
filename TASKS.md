@@ -23,8 +23,8 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.7 (revert a cell, a row or everything, and ask before a
-           tab with changes closes), then T2.8 (SQLite's rowid). What is
+NEXT TASK: T2.8 (row identity: SQLite's browse returning its rowid, and
+           a key nominated for rows with none, FR-4.7), then T2.9. What is
            open in Phase 1 waits on other work: T1.58 on the MongoDB and
            Redis drivers, T1.14's scroll position on Fyne.
 [~] tasks: T1.14 partly done; its line says what is open.
@@ -32,9 +32,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — changes reviewed and committed from the grid
-           (T2.5, T2.6, ADR-0032), on the drivers' plans (ADR-0031).
-           Before it: rows inserted, duplicated and
+LAST DONE: 2026-09-11 — changes reverted by cell, row or all, and
+           asked about before a tab closes or the app quits (T2.7,
+           ADR-0033). Before it: changes reviewed and committed (T2.5,
+           T2.6, ADR-0031, ADR-0032), rows inserted, duplicated and
            deleted (T2.4, ADR-0030), cells edited in place and in the cell
            viewer (T2.3, ADR-0029), pending changes marked in the grid (T2.2,
            ADR-0028), the pending changeset (T2.1, ADR-0027),
@@ -352,7 +353,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.4** Insert / delete / duplicate row → FR-4.2 — *new rows shown first, held in grid.Model before the rows read, so every index counts them; a column not given is DEFAULT (model.Default), left out of the INSERT; Insert Row selects the new row's first cell; Duplicate Rows copies all but the key; Delete Rows marks rows read and takes out new ones (ADR-0030)*
 - [x] **T2.5** **Statement preview before commit, always** → FR-4.4, UX-6 — *the drivers' side: sqlscript.PlanWrites renders a changeset as bound UPDATE, DELETE and INSERT statements, a line describing each, refusing what it cannot write whole, on PostgreSQL, MySQL, MariaDB and SQLite (ADR-0031). Review Changes shows every statement, its SQL and its values, before anything runs; production asks again (ADR-0032)*
 - [x] **T2.6** Transactional commit; full rollback + offending row on failure → FR-4.5 — *the drivers' side: a plan applied in one transaction, a statement refused or matching no row rolling it all back and named; the guard asked first (ADR-0031). Commit from the review; written, the changes go and the rows are read again; failed, the change is named and its row selected (ADR-0032)*
-- [ ] **T2.7** Revert cell / row / entire changeset → FR-4.6
+- [x] **T2.7** Revert cell / row / entire changeset → FR-4.6 — *Revert Cells and Revert Rows on the selection (a new row's column back to DEFAULT, a new row taken out), Discard All Changes… asking first; closing a tab or quitting with changes asks (ADR-0033)*
 - [ ] **T2.8** Row-identity detection; refuse edit without a key, offer to nominate one → FR-4.7 — *found in T2.1: an ordinary SQLite table's identity is its rowid, which its browse does not return, so app.Pending refuses it*
 - [ ] **T2.9** Editable query results when mapping to one updatable table → FR-4.8
 - [ ] **T2.10** Paste TSV/CSV block into the grid → FR-4.10

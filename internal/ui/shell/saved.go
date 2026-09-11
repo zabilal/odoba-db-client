@@ -155,14 +155,18 @@ func (s *Shell) requestClose(it *container.TabItem) {
 		return
 	}
 	dirty := t.query != nil && t.query.dirty && strings.TrimSpace(t.query.editor.Document().Text()) != ""
-	run := s.runningTasks(t)
-	if !dirty && len(run) == 0 {
+	run, pending := s.runningTasks(t), pendingIn(t)
+	if !dirty && len(run) == 0 && pending == 0 {
 		s.closeTab(it)
 		return
 	}
 	title, why := "Close Without Saving?", ""
 	if dirty {
 		why = fmt.Sprintf("“%s” has changes that are not saved.", t.query.title)
+	}
+	if pending > 0 {
+		title = "Close and Discard Changes?"
+		why = fmt.Sprintf("“%s” has %s not committed, which closing discards.", t.item.Text, changesText(pending))
 	}
 	if len(run) > 0 {
 		title = "Stop and Close?"
