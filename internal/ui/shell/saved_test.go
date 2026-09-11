@@ -66,8 +66,7 @@ func TestSaveAsCopiesAndDuplicateNamesAreRefused(t *testing.T) {
 	p.name.SetText("a")
 	p.dlg.Submit()
 	pump(t, fx.q, func() bool {
-		top := fx.s.win.Canvas().Overlays().Top()
-		return top != nil && strings.Contains(labelText(top), "already exists")
+		return fx.s.errors.shown() && strings.Contains(fx.s.errors.message.Text, "already exists")
 	})
 	if tb2.query.saved.ID != "" || len(savedList(fx)) != 2 {
 		t.Error("a duplicate name was saved")

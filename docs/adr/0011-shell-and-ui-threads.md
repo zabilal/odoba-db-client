@@ -128,6 +128,18 @@ Its first run found six problems, one of them a crash:
 - **The tree used arrows** for disclosure, and now uses the chevrons the
   design system asks for (ADR-0006).
 
+## 7. An error is a band across the top of the window
+
+An error that is not a form's own answer is said in a band across the top
+of the window, over the sidebar and the tabs alike (FR-15.7): its first line, an action where there is one, Details for the
+rest, Copy for all of it, and a close button. It replaces Fyne's error
+dialog, which was modal, covered the data and could not be copied, against
+UX principle 4. A later error replaces an earlier one, and the band
+re-divides the window as it opens, as the WHERE bar does (ADR-0016). An
+error inside a panel that covers the window, such as Saved Queries, is said
+in that panel, where it can be seen. A test fails if the modal error dialog
+comes back.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

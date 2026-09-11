@@ -94,6 +94,7 @@ var textPairs = []pair{
 	{"Danger/Window", fDanger, fWindow, aaText},
 	{"Danger/Sidebar", fDanger, fSidebar, aaText}, // a filter that failed, in the grid header
 	{"Danger/DangerSubtle", fDanger, fDangerSubtle, aaText},
+	{"Label/DangerSubtle", fLabel, fDangerSubtle, aaText}, // the error bar's message
 	{"Warning/Content", fWarning, fContent, aaText},
 	{"Warning/Window", fWarning, fWindow, aaText},
 	{"Warning/WarningSubtle", fWarning, fWarningSubtle, aaText},

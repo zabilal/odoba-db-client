@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"errors"
 	"image"
 	"image/png"
 	"os"
@@ -147,4 +148,7 @@ func TestScreenshots(t *testing.T) {
 	h.q.Flush()
 	h.w.Canvas().Capture()
 	shot("7-dark")
+
+	h.s.ShowError(errors.New("The export failed, and the partial file was removed: open /exports/people.csv: permission denied"))
+	shot("8-error")
 }

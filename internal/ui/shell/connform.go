@@ -81,7 +81,7 @@ type connForm struct {
 func (s *Shell) showConnectionForm(id string) *connForm {
 	f, err := newConnForm(s, id)
 	if err != nil {
-		dialog.ShowError(err, s.win)
+		s.showError(err)
 		return nil
 	}
 	f.show()
