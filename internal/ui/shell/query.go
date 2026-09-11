@@ -103,9 +103,7 @@ func (s *Shell) newQueryTab(connID string) *tab {
 		}
 	}
 	s.open = append(s.open, t)
-	s.showTabs(true)
-	s.tabs.Append(t.item)
-	s.tabs.Select(t.item)
+	s.addTab(t)
 	q.editor.Focus()
 	s.sync()
 	return t

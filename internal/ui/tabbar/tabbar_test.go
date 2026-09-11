@@ -298,3 +298,14 @@ func TestARenamedTabShowsItsNewName(t *testing.T) {
 		t.Errorf("the tab reads %q", l.Text)
 	}
 }
+
+func TestATapIsReportedEvenOnTheSelectedTab(t *testing.T) {
+	tabs, its := shown(t, 600, "one", "two")
+	var tapped []string
+	tabs.OnTapped = func(it *container.TabItem) { tapped = append(tapped, it.Text) }
+	test.Tap(tabs.chips[its[0]])
+	test.Tap(tabs.chips[its[1]])
+	if !slices.Equal(tapped, []string{"one", "two"}) || tabs.Selected() != its[1] {
+		t.Errorf("told of %v, %v selected", tapped, tabs.Selected().Text)
+	}
+}

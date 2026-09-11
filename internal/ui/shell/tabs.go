@@ -7,6 +7,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
+
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
@@ -51,7 +53,7 @@ func (s *Shell) moveTab(delta int) {
 	items := slices.Clone(s.tabs.Items)
 	i := slices.Index(items, t.item)
 	items[i], items[i+delta] = items[i+delta], items[i]
-	s.setTabs(items, t.item)
+	s.setTabs(s.tabs, items, t.item)
 }
 
 // togglePin pins the active tab, which then comes last among the pinned
@@ -65,45 +67,50 @@ func (s *Shell) togglePin() {
 // pin pins a tab or unpins it. A pinned tab joins the end of the pinned
 // ones; an unpinned one goes first among the rest.
 func (s *Shell) pin(t *tab, on bool) {
+	p := s.paneOf(t.item)
+	if p == nil {
+		return
+	}
 	t.pinned = on
-	items := s.tabsBut(t.item)
+	items := s.tabsBut(p, t.item)
 	t.item.Icon = nil
 	if t.pinned {
 		t.item.Icon = s.app.Settings().Theme().Icon(uitheme.IconNamePin)
 	}
-	s.setTabs(slices.Insert(items, s.pinnedAmong(items), t.item), t.item)
+	s.setTabs(p, slices.Insert(items, s.pinnedAmong(items), t.item), t.item)
 }
 
 // dropTab puts a dragged tab where it was dropped, kept among the tabs of
 // its kind, and selects it.
 func (s *Shell) dropTab(it *container.TabItem, to int) {
-	t := s.tabOf(it)
-	if t == nil {
+	t, p := s.tabOf(it), s.paneOf(it)
+	if t == nil || p == nil {
 		return
 	}
-	items := s.tabsBut(it)
+	items := s.tabsBut(p, it)
 	lo, hi := s.pinnedAmong(items), len(items)
 	if t.pinned {
 		lo, hi = 0, lo
 	}
-	s.setTabs(slices.Insert(items, min(max(to, lo), hi), it), it)
+	s.setTabs(p, slices.Insert(items, min(max(to, lo), hi), it), it)
 }
 
 // tabMenu is a tab's context menu, made of commands (ADR-0011 §13). They
 // act on the selected tab, so the tab is selected first.
 func (s *Shell) tabMenu(it *container.TabItem) *fyne.Menu {
-	s.tabs.Select(it)
-	s.sync()
-	return fyne.NewMenu("", s.popupItems([]string{cmdPinTab, "", cmdMoveTabLeft, cmdMoveTabRight, "", cmdTabClose})...)
+	if t := s.tabOf(it); t != nil {
+		s.selectTab(t)
+	}
+	return fyne.NewMenu("", s.popupItems([]string{cmdPinTab, "", cmdMoveTabLeft, cmdMoveTabRight, cmdMoveToPane, "", cmdTabClose})...)
 }
 
 func (s *Shell) showTabMenu(it *container.TabItem, at fyne.Position) {
 	widget.ShowPopUpMenuAtPosition(s.tabMenu(it), s.win.Canvas(), at)
 }
 
-// tabsBut is the tabs in order without it.
-func (s *Shell) tabsBut(it *container.TabItem) []*container.TabItem {
-	return slices.DeleteFunc(slices.Clone(s.tabs.Items), func(o *container.TabItem) bool { return o == it })
+// tabsBut is pane p's tabs in order without it.
+func (s *Shell) tabsBut(p *tabbar.Tabs, it *container.TabItem) []*container.TabItem {
+	return slices.DeleteFunc(slices.Clone(p.Items), func(o *container.TabItem) bool { return o == it })
 }
 
 // pinnedAmong counts the pinned tabs among items.
@@ -117,8 +124,10 @@ func (s *Shell) pinnedAmong(items []*container.TabItem) int {
 	return n
 }
 
-func (s *Shell) setTabs(items []*container.TabItem, selected *container.TabItem) {
-	s.tabs.SetItems(items)
-	s.tabs.Select(selected)
+// setTabs puts pane p's tabs in a new order, selects one, and works in p.
+func (s *Shell) setTabs(p *tabbar.Tabs, items []*container.TabItem, selected *container.TabItem) {
+	p.SetItems(items)
+	p.Select(selected)
+	s.workIn(p)
 	s.sync()
 }

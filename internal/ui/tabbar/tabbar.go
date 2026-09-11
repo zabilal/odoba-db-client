@@ -36,6 +36,9 @@ type Tabs struct {
 
 	// OnSelected is called when a tab becomes the selected one.
 	OnSelected func(*container.TabItem)
+	// OnTapped is called when a tab is tapped, after it is selected, even
+	// if it was selected already: a tap says which tab bar is in use.
+	OnTapped func(*container.TabItem)
 	// CloseIntercept is called when a tab's close control is pressed. When
 	// it is nil, the tab is removed.
 	CloseIntercept func(*container.TabItem)
@@ -397,7 +400,12 @@ func newChip(t *Tabs, it *container.TabItem) *chip {
 	return c
 }
 
-func (c *chip) Tapped(*fyne.PointEvent) { c.t.Select(c.item) }
+func (c *chip) Tapped(*fyne.PointEvent) {
+	c.t.Select(c.item)
+	if c.t.OnTapped != nil {
+		c.t.OnTapped(c.item)
+	}
+}
 
 func (c *chip) TappedSecondary(e *fyne.PointEvent) {
 	if c.t.OnMenu != nil {

@@ -98,9 +98,12 @@ func TestATabsMenuIsMadeOfCommands(t *testing.T) {
 		}
 	}
 	title := func(id string) string { cmd, _ := fx.s.reg.Get(id); return cmd.Title }
-	want := []string{title(cmdPinTab), title(cmdMoveTabLeft), title(cmdMoveTabRight), title(cmdTabClose)}
+	want := []string{title(cmdPinTab), title(cmdMoveTabLeft), title(cmdMoveTabRight), title(cmdMoveToPane), title(cmdTabClose)}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatalf("menu %v, want %v", labels, want)
+	}
+	if !items[title(cmdMoveToPane)].Disabled {
+		t.Error("with one pane there is no other to move to")
 	}
 	if !items[title(cmdMoveTabRight)].Disabled || items[title(cmdMoveTabLeft)].Disabled {
 		t.Error("the last tab can move left, not right")

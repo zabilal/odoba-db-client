@@ -36,7 +36,7 @@ func (s *Shell) openSelectedStructure() {
 func (s *Shell) OpenStructure(connID string, n model.Node) *tab {
 	key := structureKey(connID, n.Ref)
 	if t := s.tabFor(key); t != nil {
-		s.tabs.Select(t.item)
+		s.selectTab(t)
 		return t
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -45,9 +45,7 @@ func (s *Shell) OpenStructure(connID string, n model.Node) *tab {
 	t.footer.Importance = widget.LowImportance
 	t.item = container.NewTabItem("Structure: "+n.Label, container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
-	s.showTabs(true)
-	s.tabs.Append(t.item)
-	s.tabs.Select(t.item)
+	s.addTab(t)
 	s.sync()
 
 	go func() {

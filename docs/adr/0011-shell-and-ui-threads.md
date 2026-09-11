@@ -349,6 +349,31 @@ buttons: a word on every tab's close control would not fit.
 Not done: the row does not scroll while a tab is dragged past its edge, so a
 tab going to a place out of view goes by All Tabs or by command.
 
+## 19. Two panes of tabs
+
+The tabs can be split into two panes, side by side (Split Right) or one
+above the other (Split Down), each with its own tab bar (FR-15.2, T1.5).
+Splitting moves the active tab into the new pane, so it needs a second tab
+to leave behind: an object has one tab, and a pane is never empty. Move Tab
+to Other Pane moves a tab across, after the tabs of its kind there. A pane
+left with no tab closes, and Join Panes puts the second pane's tabs after
+the first's, pinned with the pinned. The commands are in the Window menu,
+and Move Tab to Other Pane is in a tab's menu too.
+
+Commands act on the pane worked in: the one holding the keyboard's focus,
+or else the one whose tab was last chosen, so ⌘C copies from the grid a
+person last clicked in, whichever pane holds it. The pane is found by where
+the focused widget is, since Fyne cannot say which container holds a
+widget. Choosing a tab in one pane lets go of a focus left in the other, so
+the keyboard and the work are never in different panes. The menu's enabled
+items follow the pane worked in as of the last change, and a command checks
+again as it runs.
+
+The session keeps each tab's pane, the tab in front in each, the split's
+direction and the first pane's share, and puts them back at the next start.
+
+Not done: a tab is not dragged from one pane to the other.
+
 ## Not decided here
 
 Single-instance handling is ADR-0022's.
