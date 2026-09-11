@@ -150,6 +150,26 @@ a pin, and a tab moves only among the tabs of its own kind; new tabs open
 after the pinned ones. Fyne's tab bar cannot be dragged, so moving is by
 command. Dragging a tab needs a tab bar of our own, and is open.
 
+## 9. Unsaved query text is kept as it is typed
+
+A query tab's text that is saved nowhere else is written to the local
+database within a second of an edit (NFR-R2). Writes are throttled, not
+debounced, so steady typing is still kept every second. The text lives in
+the key-value table under `scratch/`, one entry per tab. One goroutine
+writes the entries in turn, the latest word on each replacing any not yet
+written, so text forgotten after a save is never written back by a slower,
+earlier write.
+
+Saving forgets the text, as does closing the tab on purpose or deleting its
+connection, whose dialog says the tabs close. Quitting and a disconnect keep
+it, and so does a crash, up to the last second. At the next start each kept
+buffer reopens as a tab on its connection, still marked unsaved, and edits
+to a saved query still save in place. Text whose connection has gone
+reopens in a tab that does not connect and says why: it is never thrown
+away unseen. An unreadable entry is left where it is and named, and a
+failed write is said once in the error band. Only unsaved query text comes
+back at the next start; the rest of the session (T1.14) does not yet.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

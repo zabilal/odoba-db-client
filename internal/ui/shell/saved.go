@@ -117,6 +117,7 @@ func (s *Shell) storeQuery(t *tab, sq localdb.SavedQuery) {
 			q.saved, q.title = got, got.Name
 			q.dirty = q.editor.Document().Revision() != rev // edits made while saving are not in it
 			s.retitle(t)
+			s.keep(t) // forgotten, unless edits made while saving need keeping
 			t.footer.SetText(fmt.Sprintf("Saved “%s”", got.Name))
 		})
 	}()
@@ -336,6 +337,7 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 					if t := p.s.tabForSaved(sq.ID); t != nil {
 						t.query.saved, t.query.dirty = localdb.SavedQuery{}, true
 						p.s.retitle(t)
+						p.s.keep(t) // its text is now saved nowhere else
 					}
 					p.load()
 				})

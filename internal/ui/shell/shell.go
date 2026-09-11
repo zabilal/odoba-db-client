@@ -48,6 +48,11 @@ type Deps struct {
 	History app.HistoryStore
 	// Saved keeps named queries. Nil turns saving off.
 	Saved app.SavedQueryStore
+	// Scratch keeps query text saved nowhere else through a crash or a quit.
+	// Nil turns autosave off. Autosave is how soon an edit is kept; zero
+	// means autosaveDelay.
+	Scratch  app.ScratchStore
+	Autosave time.Duration
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -80,6 +85,10 @@ type Shell struct {
 
 	open    []*tab
 	queries int // numbers query tabs
+
+	scratch        *scratchWriter // nil without a scratch store
+	autosave       time.Duration
+	autosaveWarned bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -178,6 +187,14 @@ func New(a fyne.App, d Deps) *Shell {
 	d.WS.OnStatus(func(string, app.Status) { d.Run(s.sync) })
 	a.Settings().AddListener(func(fyne.Settings) { d.Run(s.recolour) })
 	s.win.SetOnClosed(s.shutdown)
+	s.autosave = d.Autosave
+	if s.autosave <= 0 {
+		s.autosave = autosaveDelay
+	}
+	if d.Scratch != nil {
+		s.scratch = newScratchWriter(d.Scratch, func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
+		go s.reopenScratches()
+	}
 	s.sync()
 	return s
 }
@@ -609,9 +626,19 @@ func (s *Shell) activeTabLoaded() bool {
 	return t != nil && t.model != nil
 }
 
-func (s *Shell) closeTab(it *container.TabItem) {
+// closeTab closes a tab the user closed: unsaved text in it is forgotten.
+func (s *Shell) closeTab(it *container.TabItem) { s.removeTab(it, false) }
+
+// removeTab closes a tab. keep holds on to its unsaved text, which reopens
+// at the next start: the app is closing the tab, not the user.
+func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 	for i, t := range s.open {
 		if t.item == it {
+			if keep {
+				s.keep(t)
+			} else {
+				s.forgetScratch(t)
+			}
 			t.cancel()
 			if q := t.query; q != nil && q.session != nil {
 				go q.session.Close() // may wait on the network; never on the UI goroutine
@@ -627,10 +654,10 @@ func (s *Shell) closeTab(it *container.TabItem) {
 	s.sync()
 }
 
-func (s *Shell) closeTabsOf(connID string) {
+func (s *Shell) closeTabsOf(connID string, keep bool) {
 	for _, t := range append([]*tab(nil), s.open...) {
 		if t.connID == connID {
-			s.closeTab(t.item)
+			s.removeTab(t.item, keep)
 		}
 	}
 }
@@ -724,7 +751,7 @@ func (s *Shell) confirmDeleteSelected() {
 }
 
 func (s *Shell) deleteConnection(id string) {
-	s.disconnect(id)
+	s.release(id, false) // its tabs close on purpose: the dialog said so
 	if err := s.d.Conns.Delete(id); err != nil {
 		s.showError(err)
 		return
@@ -735,9 +762,13 @@ func (s *Shell) deleteConnection(id string) {
 
 // disconnect closes a connection and every tab using it, and collapses its
 // tree node so that nothing reconnects until the user expands it again.
-func (s *Shell) disconnect(id string) {
+// Unsaved query text in those tabs reopens at the next start.
+func (s *Shell) disconnect(id string) { s.release(id, true) }
+
+// release is disconnect, keeping unsaved query text or not.
+func (s *Shell) release(id string, keep bool) {
 	s.closeSessions(func(t *tab) bool { return t.connID == id }) // before the pool: see shutdown
-	s.closeTabsOf(id)
+	s.closeTabsOf(id, keep)
 	if _, open := s.d.WS.Get(id); open {
 		if err := s.d.WS.Disconnect(id); err != nil {
 			s.d.Log.Warn("disconnecting", "connection", id, "err", err)
@@ -823,6 +854,14 @@ func (s *Shell) recolour() {
 const shutdownWait = 3 * time.Second
 
 func (s *Shell) shutdown() {
+	// Unsaved query text first, while the tabs still hold it. It reopens at
+	// the next start (NFR-R3).
+	for _, t := range s.open {
+		s.keep(t)
+	}
+	if s.scratch != nil && !s.scratch.close(shutdownWait) {
+		s.d.Log.Warn("unsaved query text still being written at exit")
+	}
 	s.cancel()
 	// Query sessions first. Each holds a pooled connection, and a pool will
 	// not close while any are out: closing connections first hung quitting

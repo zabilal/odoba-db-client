@@ -216,6 +216,7 @@ type fixture struct {
 	settings     *store.SettingsFile
 	settingsPath string
 	hist         *localdb.DB
+	deps         Deps
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -235,9 +236,11 @@ func newFixture(t *testing.T) *fixture {
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
-	s := New(a, Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Run: q.Run, GOOS: "darwin"})
+	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist,
+		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin"}
+	s := New(a, d)
 	t.Cleanup(s.shutdown)
-	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist}
+	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist, deps: d}
 }
 
 func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {
