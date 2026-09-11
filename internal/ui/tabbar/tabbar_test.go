@@ -2,6 +2,7 @@ package tabbar
 
 import (
 	"fmt"
+	"image/color"
 	"slices"
 	"testing"
 
@@ -38,6 +39,42 @@ func texts(its []*container.TabItem) []string {
 		out[i] = it.Text
 	}
 	return out
+}
+
+func TestAMarkIsDrawnBeforeTheTitleInWordsAndColour(t *testing.T) {
+	tabs, its := shown(t, 800, "orders", "people")
+	red := color.NRGBA{R: 0xC4, G: 0x1E, B: 0x18, A: 0xFF}
+	c := tabs.chipFor(its[0])
+	before := c.MinSize().Width
+	tabs.MarkFor = func(it *container.TabItem) *Mark {
+		if it == its[0] {
+			return &Mark{Label: "PROD", Fill: red, Text: color.White}
+		}
+		return nil
+	}
+	tabs.Refresh()
+	r := test.WidgetRenderer(c).(*chipRenderer)
+	if !r.pill.Visible() || !r.word.Visible() || r.word.Text != "PROD" || r.pill.FillColor != red || r.word.Color != color.White {
+		t.Fatalf("mark shown %v, saying %q in %v on %v", r.pill.Visible(), r.word.Text, r.word.Color, r.pill.FillColor)
+	}
+	if r.label.Position().X < r.pill.Position().X+r.pill.Size().Width {
+		t.Errorf("the title at %v overlaps the mark at %v, %v wide", r.label.Position(), r.pill.Position(), r.pill.Size().Width)
+	}
+	if c.MinSize().Width <= before {
+		t.Error("the mark should make room for itself, not squeeze the title")
+	}
+	if got := c.AccessibilityLabel(); got != "orders, PROD" {
+		t.Errorf("a screen reader hears %q", got)
+	}
+	o := tabs.chipFor(its[1])
+	if or := test.WidgetRenderer(o).(*chipRenderer); or.pill.Visible() || or.word.Visible() || o.AccessibilityLabel() != "people" {
+		t.Error("a tab with no mark shows none")
+	}
+	tabs.MarkFor = nil
+	tabs.Refresh()
+	if r.pill.Visible() || r.word.Visible() || c.MinSize().Width != before {
+		t.Error("a mark that goes leaves the tab as it was")
+	}
 }
 
 // drag drags c by dx, as the driver would in two steps, and lets it go.

@@ -36,18 +36,21 @@ var _ fyne.Theme = (*Theme)(nil)
 // New returns a theme following the system appearance.
 func New() *Theme { return &Theme{} }
 
-// PaletteFor returns the palette for a Fyne variant, honouring an explicit
-// Appearance override and wearing the Accent.
-func (t *Theme) PaletteFor(v fyne.ThemeVariant) Palette {
-	dark := v == ftheme.VariantDark
+// IsDark reports whether the theme draws dark for a Fyne variant, honouring
+// an explicit Appearance override.
+func (t *Theme) IsDark(v fyne.ThemeVariant) bool {
 	switch t.Appearance {
 	case AppearanceLight:
-		dark = false
+		return false
 	case AppearanceDark:
-		dark = true
+		return true
 	}
-	return accentPalette(t.Accent, dark)
+	return v == ftheme.VariantDark
 }
+
+// PaletteFor returns the palette for a Fyne variant, honouring an explicit
+// Appearance override and wearing the Accent.
+func (t *Theme) PaletteFor(v fyne.ThemeVariant) Palette { return accentPalette(t.Accent, t.IsDark(v)) }
 
 // Color maps a Fyne colour name onto the palette.
 func (t *Theme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {

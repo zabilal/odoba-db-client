@@ -374,6 +374,32 @@ direction and the first pane's share, and puts them back at the next start.
 
 Not done: a tab is not dragged from one pane to the other.
 
+## 20. The environment on every tab
+
+UX principle 8 asks that production carry a persistent colour treatment
+across every tab derived from it (FR-1.7, T1.28). The explorer already
+labelled each connection's environment. Now every tab on a connection
+with an environment carries the environment's word before its title, as a
+pill in its colours (PROD, white on red). The tab bar asks the shell for
+each tab's mark as it draws it (tabbar.Mark), and a screen reader hears the
+word with the title. A production tab, whether a table, a query or a
+structure, also has a band across the top of its content, which every tab
+gets as it is added. The band gives the word again, and a sentence saying
+what working there means. When the connection is read-only, the sentence
+says that statements that change data are refused. Other environments
+have no band, since only production is emphatic: if every environment
+shouted, none would.
+
+The mark and the band are read from the connection each time they are
+drawn. A change of appearance recolours them, and the theme now says
+whether it draws dark (Theme.IsDark), honouring an appearance chosen over
+the system's. Saving a connection redraws every tab's mark and band. An
+edited connection that is open closes its tabs, but one that failed to
+connect keeps its tab, and that tab takes the new environment. The band's
+words are in the label colour on the environment's Subtle tint, which a
+test holds to AA in both appearances. The word on the pill already met AA
+against its fill.
+
 ## Not decided here
 
 Single-instance handling is ADR-0022's.
