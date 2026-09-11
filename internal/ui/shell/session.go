@@ -287,7 +287,7 @@ func (s *Shell) sessionOf() localdb.Session {
 		front := p.Selected()
 		for _, it := range p.Items {
 			t := s.tabOf(it)
-			if t == nil {
+			if t == nil || t.imp != nil { // an import starts from a file chosen now
 				continue
 			}
 			if t == active {

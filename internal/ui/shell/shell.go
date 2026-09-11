@@ -191,6 +191,8 @@ type tab struct {
 	// (detail.go); detail is that panel, once shown.
 	center *fyne.Container
 	detail *detailPanel
+	// imp is an import's panel, where the tab is one (importui.go).
+	imp *importPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -483,6 +485,8 @@ func (s *Shell) registerCommands() {
 		{ID: cmdExport, Category: "Data", Title: "Export…", Keywords: []string{"csv", "json", "ndjson", "tsv", "save", "download"},
 			Shortcut: sc("E", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.exportSource() != nil },
 			Run: s.showExport},
+		{ID: cmdImport, Category: "Data", Title: "Import…", Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
+			Enabled: s.canImport, Run: s.showImport},
 		{ID: cmdFind, Category: "Edit", Title: "Find…", Keywords: []string{"search", "look for"},
 			Shortcut: sc("F", commands.ModShortcut), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(false) }) }},
 		{ID: cmdFindReplace, Category: "Edit", Title: "Find and Replace…", Keywords: []string{"substitute", "change"},
