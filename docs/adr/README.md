@@ -28,3 +28,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0021](0021-performance-gates.md) | Performance gates measure what CI can see | Accepted |
 | [0022](0022-one-copy-per-data.md) | One copy to a data directory | Accepted |
 | [0023](0023-native-file-dialogs-and-notifications.md) | The platform's own file dialogs, and notifications from the background | Accepted |
+| [0024](0024-object-classes.md) | Object classes are the model's | Accepted |

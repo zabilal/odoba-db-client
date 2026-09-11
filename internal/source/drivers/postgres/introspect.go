@@ -13,44 +13,36 @@ import (
 //
 //	database        [db]
 //	  schema        [db, schema]
-//	    folder      [db, schema, "tables" | "views" | "matviews" | "functions" | "sequences"]
+//	    class       [db, schema, kind]          model.ClassRef: "table", "index", …
 //	      object    [db, schema, name]          name(args) for routines
 //	        column  [db, schema, table, column]
+//	      trigger   [db, schema, table, trigger]
 //
 // Each level is one round trip, fetched only when the user expands a node.
 // Every name reaches the server as a bound parameter, never as statement text.
 
-const (
-	folderTables    = "tables"
-	folderViews     = "views"
-	folderMatViews  = "matviews"
-	folderFunctions = "functions"
-	folderSequences = "sequences"
-)
-
-var folderLabels = map[string]string{
-	folderTables:    "Tables",
-	folderViews:     "Views",
-	folderMatViews:  "Materialized Views",
-	folderFunctions: "Functions",
-	folderSequences: "Sequences",
+// relkinds maps a class to the pg_class.relkind values it lists. 'p' is a
+// partitioned table's parent, which the user thinks of as the table, and
+// 'I' its index.
+var relkinds = map[model.ObjectKind][]string{
+	model.KindTable:            {"r", "p"},
+	model.KindView:             {"v"},
+	model.KindMaterializedView: {"m"},
+	model.KindIndex:            {"i", "I"},
+	model.KindSequence:         {"S"},
 }
 
-// relkinds maps a folder to the pg_class.relkind values it lists. 'p' is a
-// partitioned table's parent, which the user thinks of as the table.
-var relkinds = map[string][]string{
-	folderTables:    {"r", "p"},
-	folderViews:     {"v"},
-	folderMatViews:  {"m"},
-	folderSequences: {"S"},
-}
+// userTypes picks a schema's own types out of pg_type: enums, domains,
+// ranges and free-standing composites. A table's row type, and the array
+// and multirange types made alongside others, are the system's.
+const userTypes = `(t.typtype IN ('e', 'd', 'r') OR (t.typtype = 'c' AND
+	(SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c'))`
 
-var folderKinds = map[string]model.ObjectKind{
-	folderTables:    model.KindTable,
-	folderViews:     model.KindView,
-	folderMatViews:  model.KindMaterializedView,
-	folderSequences: model.KindSequence,
-}
+// ownRoutines leaves out of pg_proc the functions the system makes for a
+// type, as a range type's constructors: they hang on the type by an
+// internal dependency, and go with it.
+const ownRoutines = `NOT EXISTS (SELECT 1 FROM pg_depend d
+	WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'i')`
 
 // Root lists the databases this user may connect to.
 //
@@ -129,8 +121,8 @@ func (s *pgSource) schemas(ctx context.Context, ref model.ObjectRef) ([]model.No
 }
 
 // folders returns only the object classes that actually contain something,
-// with exact counts as badges — one round trip for all five, so the counts are
-// free rather than a lazy fetch per folder.
+// with exact counts as badges — one round trip for all eight, so the counts
+// are free rather than a lazy fetch per class.
 func (s *pgSource) folders(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	if len(ref.Path) < 2 {
 		return nil, nil
@@ -139,51 +131,66 @@ func (s *pgSource) folders(ctx context.Context, ref model.ObjectRef) ([]model.No
 	if err != nil {
 		return nil, err
 	}
-	var tables, views, matviews, sequences, functions int64
+	var tables, views, matviews, indexes, sequences, routines, triggers, types int64
 	err = p.QueryRow(ctx, `
 		WITH ns AS (SELECT oid FROM pg_namespace WHERE nspname = $1)
 		SELECT
 		  count(*) FILTER (WHERE c.relkind IN ('r', 'p')),
 		  count(*) FILTER (WHERE c.relkind = 'v'),
 		  count(*) FILTER (WHERE c.relkind = 'm'),
+		  count(*) FILTER (WHERE c.relkind IN ('i', 'I')),
 		  count(*) FILTER (WHERE c.relkind = 'S'),
-		  (SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM ns))
+		  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = (SELECT oid FROM ns) AND `+ownRoutines+`),
+		  (SELECT count(*) FROM pg_trigger tg JOIN pg_class tc ON tc.oid = tg.tgrelid
+		   WHERE tc.relnamespace = (SELECT oid FROM ns) AND NOT tg.tgisinternal),
+		  (SELECT count(*) FROM pg_type t WHERE t.typnamespace = (SELECT oid FROM ns) AND `+userTypes+`)
 		FROM pg_class c WHERE c.relnamespace = (SELECT oid FROM ns)`,
-		ref.Path[1]).Scan(&tables, &views, &matviews, &sequences, &functions)
+		ref.Path[1]).Scan(&tables, &views, &matviews, &indexes, &sequences, &routines, &triggers, &types)
 	if err != nil {
 		return nil, err
 	}
-
-	counts := map[string]int64{
-		folderTables: tables, folderViews: views, folderMatViews: matviews,
-		folderFunctions: functions, folderSequences: sequences,
-	}
-	var out []model.Node
-	for _, f := range []string{folderTables, folderViews, folderMatViews, folderFunctions, folderSequences} {
-		if counts[f] == 0 {
-			continue
-		}
-		out = append(out, model.Node{
-			Ref:         model.NewRef(model.KindFolder, ref.Path[0], ref.Path[1], f),
-			Label:       folderLabels[f],
-			HasChildren: true,
-			Badge:       &model.Badge{Text: strconv.FormatInt(counts[f], 10), Exact: true},
-		})
-	}
-	return out, nil
+	return model.ClassNodes(ref, map[model.ObjectKind]int64{
+		model.KindTable: tables, model.KindView: views, model.KindMaterializedView: matviews,
+		model.KindIndex: indexes, model.KindTrigger: triggers, model.KindRoutine: routines,
+		model.KindSequence: sequences, model.KindUserType: types,
+	}), nil
 }
 
 func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	if len(ref.Path) < 3 {
 		return nil, nil
 	}
-	db, schema, folder := ref.Path[0], ref.Path[1], ref.Path[2]
+	db, schema := ref.Path[0], ref.Path[1]
+	kind, _ := model.ClassOf(ref) // a folder that is no class lists nothing
 	p, err := s.poolFor(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
 
-	if folder == folderFunctions {
+	switch kind {
+	case model.KindTrigger:
+		// A trigger's name is its table's own, so the table is in its path.
+		return named(ctx, p, func(name, table string) model.Node {
+			return model.Node{Ref: model.NewRef(model.KindTrigger, db, schema, table, name),
+				Label: model.OnTable(name, table), Attrs: map[string]string{"table": table}}
+		}, `
+			SELECT tg.tgname, tc.relname
+			FROM pg_trigger tg JOIN pg_class tc ON tc.oid = tg.tgrelid
+			JOIN pg_namespace n ON n.oid = tc.relnamespace
+			WHERE n.nspname = $1 AND NOT tg.tgisinternal ORDER BY 1, 2`, schema)
+	case model.KindUserType:
+		// The explorer shows a node's "type" beside it: enum, domain and so on.
+		return named(ctx, p, func(name, variety string) model.Node {
+			return model.Node{Ref: model.NewRef(model.KindUserType, db, schema, name), Label: name,
+				Attrs: map[string]string{"type": variety}}
+		}, `
+			SELECT t.typname, CASE t.typtype WHEN 'e' THEN 'enum' WHEN 'd' THEN 'domain'
+			                                 WHEN 'r' THEN 'range' ELSE 'composite' END
+			FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+			WHERE n.nspname = $1 AND `+userTypes+` ORDER BY 1`, schema)
+	}
+
+	if kind == model.KindRoutine {
 		// Routines are overloaded by argument list, so the signature is part
 		// of the name: two functions called f are otherwise indistinguishable.
 		rows, err := p.Query(ctx, `
@@ -191,7 +198,7 @@ func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]m
 			       CASE p.prokind WHEN 'p' THEN 'procedure' WHEN 'a' THEN 'aggregate'
 			                      WHEN 'w' THEN 'window' ELSE 'function' END
 			FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-			WHERE n.nspname = $1 ORDER BY 1`, schema)
+			WHERE n.nspname = $1 AND `+ownRoutines+` ORDER BY 1`, schema)
 		if err != nil {
 			return nil, err
 		}
@@ -210,13 +217,15 @@ func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]m
 		return out, rows.Err()
 	}
 
-	kinds, ok := relkinds[folder]
+	kinds, ok := relkinds[kind]
 	if !ok {
 		return nil, nil
 	}
 	rows, err := p.Query(ctx, `
-		SELECT c.relname, c.reltuples::bigint
+		SELECT c.relname, c.reltuples::bigint, COALESCE(tc.relname, '')
 		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		LEFT JOIN pg_index i ON i.indexrelid = c.oid
+		LEFT JOIN pg_class tc ON tc.oid = i.indrelid
 		WHERE n.nspname = $1 AND c.relkind::text = ANY($2::text[])
 		ORDER BY c.relname`, schema, kinds)
 	if err != nil {
@@ -224,13 +233,12 @@ func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]m
 	}
 	defer rows.Close()
 
-	kind := folderKinds[folder]
-	relational := kind != model.KindSequence
+	relational := kind == model.KindTable || kind == model.KindView || kind == model.KindMaterializedView
 	var out []model.Node
 	for rows.Next() {
-		var name string
+		var name, table string
 		var estimate int64
-		if err := rows.Scan(&name, &estimate); err != nil {
+		if err := rows.Scan(&name, &estimate, &table); err != nil {
 			return nil, err
 		}
 		node := model.Node{
@@ -239,6 +247,9 @@ func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]m
 			Browsable:   relational,
 			HasChildren: relational,
 		}
+		if table != "" { // an index, named with its table
+			node.Label, node.Attrs = model.OnTable(name, table), map[string]string{"table": table}
+		}
 		// reltuples comes back in the same row, so the badge costs nothing
 		// extra. It is -1 for a table that has never been analysed; no badge
 		// beats a wrong one.
@@ -246,6 +257,29 @@ func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]m
 			node.Badge = &model.Badge{Text: humanCount(estimate), Exact: false}
 		}
 		out = append(out, node)
+	}
+	return out, rows.Err()
+}
+
+// rowQuerier is the part of a pool named needs.
+type rowQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// named runs a query of name and detail pairs, making a node of each.
+func named(ctx context.Context, p rowQuerier, node func(name, detail string) model.Node, sql string, args ...any) ([]model.Node, error) {
+	rows, err := p.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Node
+	for rows.Next() {
+		var name, detail string
+		if err := rows.Scan(&name, &detail); err != nil {
+			return nil, err
+		}
+		out = append(out, node(name, detail))
 	}
 	return out, rows.Err()
 }

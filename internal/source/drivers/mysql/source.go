@@ -198,6 +198,7 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true, model.KindTable: true,
 			model.KindView: true, model.KindColumn: true,
+			model.KindIndex: true, model.KindTrigger: true, model.KindRoutine: true,
 		},
 	}
 }

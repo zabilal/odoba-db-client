@@ -218,6 +218,73 @@ func TestReadOnlyIsRefusedByTheServerToo(t *testing.T) {
 	})
 }
 
+func TestTheTreeListsEachClassOfADatabase(t *testing.T) {
+	each(t, func(t *testing.T, srv server) {
+		s := open(t, srv, source.Guard{})
+		ctx := context.Background()
+		for _, q := range []string{
+			`CREATE TRIGGER ikigai_it.people_seen BEFORE UPDATE ON ikigai_it.people FOR EACH ROW SET NEW.seen = NEW.seen`,
+			`CREATE FUNCTION ikigai_it.twice(x INT) RETURNS INT DETERMINISTIC RETURN x * 2`,
+			`CREATE INDEX name_score ON ikigai_it.people (name, score)`,
+		} {
+			if _, err := s.db.ExecContext(ctx, q); err != nil {
+				t.Fatalf("%s: %v", q, err)
+			}
+		}
+		db := model.NewRef(model.KindDatabase, "ikigai_it")
+		classes, err := s.Children(ctx, db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		count := map[model.ObjectKind]string{}
+		for _, c := range classes {
+			got = append(got, c.Label+" "+c.Badge.Text)
+			k, _ := model.ClassOf(c.Ref)
+			count[k] = c.Badge.Text
+		}
+		// Five indexes: each table's PRIMARY, orders_total, the one the
+		// foreign key made, and name_score over two columns.
+		if want := []string{"Tables 3", "Views 1", "Indexes 5", "Triggers 1", "Routines 1"}; fmt.Sprintf("%q", got) != fmt.Sprintf("%q", want) {
+			t.Fatalf("classes %q, want %q", got, want)
+		}
+		list := func(k model.ObjectKind) map[string]model.Node {
+			kids, err := s.Children(ctx, model.ClassRef(db, k))
+			if err != nil {
+				t.Fatalf("%s: %v", k, err)
+			}
+			if n := strconv.Itoa(len(kids)); count[k] != n {
+				t.Errorf("%s counted %s, and lists %s", k, count[k], n)
+			}
+			out := map[string]model.Node{}
+			for _, n := range kids {
+				if _, twice := out[n.Label]; twice {
+					t.Errorf("%s lists %q twice", k, n.Label)
+				}
+				out[n.Label] = n
+			}
+			return out
+		}
+		if v, ok := list(model.KindView)["adults"]; !ok || v.Badge != nil || !v.Browsable {
+			t.Errorf("view %+v; it has rows to browse, and no estimate of them", v)
+		}
+		idx := list(model.KindIndex)
+		pk, ok := idx["PRIMARY on people"]
+		if _, total := idx["orders_total on orders"]; !ok || !total || len(idx) != 5 ||
+			!pk.Ref.Equal(model.NewRef(model.KindIndex, "ikigai_it", "people", "PRIMARY")) {
+			t.Errorf("indexes %+v; each is named, and addressed, with its table", idx)
+		}
+		if trig, ok := list(model.KindTrigger)["people_seen on people"]; !ok || trig.Attrs["table"] != "people" ||
+			!trig.Ref.Equal(model.NewRef(model.KindTrigger, "ikigai_it", "people_seen")) {
+			t.Errorf("trigger %+v", trig)
+		}
+		if fn, ok := list(model.KindRoutine)["twice"]; !ok || fn.Attrs["kind"] != "function" ||
+			!fn.Ref.Equal(model.NewRef(model.KindRoutine, "ikigai_it", "function", "twice")) {
+			t.Errorf("routine %+v; a function and a procedure may share a name", fn)
+		}
+	})
+}
+
 func TestRowCountAndDelimitedScripts(t *testing.T) {
 	each(t, func(t *testing.T, srv server) {
 		s := open(t, srv, source.Guard{})

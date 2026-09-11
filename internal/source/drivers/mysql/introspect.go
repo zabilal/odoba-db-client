@@ -9,11 +9,6 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
-const (
-	folderTables = "tables"
-	folderViews  = "views"
-)
-
 var systemSchemas = map[string]bool{"information_schema": true, "mysql": true, "performance_schema": true, "sys": true}
 
 // Root is the server's databases. Each says whether it holds anything, so an
@@ -49,12 +44,13 @@ func (s *mysqlSource) Root(ctx context.Context) ([]model.Node, error) {
 func (s *mysqlSource) Children(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	switch ref.Kind {
 	case model.KindDatabase:
-		return s.folders(ctx, ref.Path[0])
+		return s.folders(ctx, ref)
 	case model.KindFolder:
-		if len(ref.Path) < 2 {
-			return nil, fmt.Errorf("mysql: incomplete reference %s", ref)
+		kind, ok := model.ClassOf(ref)
+		if !ok || len(ref.Path) < 2 {
+			return nil, fmt.Errorf("mysql: no such class %s", ref)
 		}
-		return s.objects(ctx, ref.Path[0], ref.Path[1])
+		return s.objects(ctx, ref.Path[0], kind)
 	case model.KindTable, model.KindView:
 		if len(ref.Path) < 2 {
 			return nil, fmt.Errorf("mysql: incomplete reference %s", ref)
@@ -73,49 +69,76 @@ func (s *mysqlSource) Children(ctx context.Context, ref model.ObjectRef) ([]mode
 	return nil, nil
 }
 
-func (s *mysqlSource) folders(ctx context.Context, db string) ([]model.Node, error) {
-	var tables, views int64
+// folders is a database's object classes that hold something (FR-2.2), with
+// exact counts, in one round trip.
+func (s *mysqlSource) folders(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
+	db := ref.Path[0]
+	var tables, views, indexes, triggers, routines int64
 	err := s.db.QueryRowContext(ctx, `SELECT
 		  COALESCE(SUM(TABLE_TYPE = 'BASE TABLE'), 0),
-		  COALESCE(SUM(TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')), 0)
-		FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?`, db).Scan(&tables, &views)
+		  COALESCE(SUM(TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')), 0),
+		  (SELECT COUNT(DISTINCT TABLE_NAME, INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ?),
+		  (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?),
+		  (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?)
+		FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?`, db, db, db, db).
+		Scan(&tables, &views, &indexes, &triggers, &routines)
 	if err != nil {
 		return nil, statementError(err, ctx)
 	}
-	var out []model.Node
-	for _, f := range []struct {
-		key, label string
-		n          int64
-	}{{folderTables, "Tables", tables}, {folderViews, "Views", views}} {
-		if f.n > 0 {
-			out = append(out, model.Node{Ref: model.NewRef(model.KindFolder, db, f.key), Label: f.label,
-				HasChildren: true, Badge: &model.Badge{Text: strconv.FormatInt(f.n, 10), Exact: true}})
-		}
-	}
-	return out, nil
+	return model.ClassNodes(ref, map[model.ObjectKind]int64{model.KindTable: tables, model.KindView: views,
+		model.KindIndex: indexes, model.KindTrigger: triggers, model.KindRoutine: routines}), nil
 }
 
-func (s *mysqlSource) objects(ctx context.Context, db, folder string) ([]model.Node, error) {
-	types, kind := "'BASE TABLE'", model.KindTable
-	if folder == folderViews {
-		types, kind = "'VIEW', 'SYSTEM VIEW'", model.KindView
+// classQueries list each class's objects as a name, a detail and a row
+// estimate: the detail is an index's or a trigger's table, or a routine's
+// type.
+var classQueries = map[model.ObjectKind]string{
+	model.KindTable: `SELECT TABLE_NAME, '', TABLE_ROWS FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+	model.KindView: `SELECT TABLE_NAME, '', NULL FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW') ORDER BY TABLE_NAME`,
+	model.KindIndex: `SELECT INDEX_NAME, TABLE_NAME, NULL FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = ? GROUP BY TABLE_NAME, INDEX_NAME ORDER BY INDEX_NAME, TABLE_NAME`,
+	model.KindTrigger: `SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, NULL FROM information_schema.TRIGGERS
+		WHERE TRIGGER_SCHEMA = ? ORDER BY TRIGGER_NAME`,
+	model.KindRoutine: `SELECT ROUTINE_NAME, LOWER(ROUTINE_TYPE), NULL FROM information_schema.ROUTINES
+		WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME, ROUTINE_TYPE`,
+}
+
+func (s *mysqlSource) objects(ctx context.Context, db string, kind model.ObjectKind) ([]model.Node, error) {
+	q, ok := classQueries[kind]
+	if !ok {
+		return nil, fmt.Errorf("mysql: no %s class", kind)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES
-		WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN (`+types+`) ORDER BY TABLE_NAME`, db)
+	rows, err := s.db.QueryContext(ctx, q, db)
 	if err != nil {
 		return nil, statementError(err, ctx)
 	}
 	defer rows.Close()
 	var out []model.Node
 	for rows.Next() {
-		var name string
+		var name, detail string
 		var est sql.NullInt64
-		if err := rows.Scan(&name, &est); err != nil {
+		if err := rows.Scan(&name, &detail, &est); err != nil {
 			return nil, err
 		}
-		n := model.Node{Ref: model.NewRef(kind, db, name), Label: name, HasChildren: true, Browsable: true}
-		if kind == model.KindTable && est.Valid {
-			n.Badge = &model.Badge{Text: compact(est.Int64)} // statistics, not a count
+		n := model.Node{Ref: model.NewRef(kind, db, name), Label: name}
+		switch kind {
+		case model.KindTable, model.KindView:
+			n.HasChildren, n.Browsable = true, true
+			if est.Valid {
+				n.Badge = &model.Badge{Text: compact(est.Int64)} // statistics, not a count
+			}
+		case model.KindIndex:
+			// Named per table: every table with a key has a PRIMARY.
+			n.Ref = model.NewRef(kind, db, detail, name)
+			n.Label, n.Attrs = model.OnTable(name, detail), map[string]string{"table": detail}
+		case model.KindTrigger:
+			n.Label, n.Attrs = model.OnTable(name, detail), map[string]string{"table": detail}
+		case model.KindRoutine:
+			// A procedure and a function may share a name.
+			n.Ref = model.NewRef(kind, db, detail, name)
+			n.Attrs = map[string]string{"kind": detail}
 		}
 		out = append(out, n)
 	}

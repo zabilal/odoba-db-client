@@ -4,52 +4,50 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
-const (
-	folderTables = "tables"
-	folderViews  = "views"
-)
-
 // userObjects excludes SQLite's own tables (sqlite_schema, sqlite_sequence,
-// sqlite_stat1): internals, not the user's data.
+// sqlite_stat1) and the indexes it makes for keys (sqlite_autoindex_…):
+// internals, not the user's.
 const userObjects = `name NOT LIKE 'sqlite\_%' ESCAPE '\'`
 
-// Root is the database's Tables and Views folders; a file is one database.
+// schemaTypes is the sqlite_schema type each class lists.
+var schemaTypes = map[model.ObjectKind]string{
+	model.KindTable: "table", model.KindView: "view", model.KindIndex: "index", model.KindTrigger: "trigger",
+}
+
+// Root is the database's object classes (FR-2.2); a file is one database.
 func (s *sqliteSource) Root(ctx context.Context) ([]model.Node, error) {
-	counts := map[string]int{}
+	counts := map[model.ObjectKind]int64{}
 	rows, err := s.db.QueryContext(ctx, `SELECT type, count(*) FROM sqlite_schema
-		WHERE type IN ('table', 'view') AND `+userObjects+` GROUP BY type`)
+		WHERE `+userObjects+` GROUP BY type`)
 	if err != nil {
 		return nil, statementError(err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var typ string
-		var n int
+		var n int64
 		if err := rows.Scan(&typ, &n); err != nil {
 			return nil, err
 		}
-		counts[typ] = n
+		for k, t := range schemaTypes {
+			if t == typ {
+				counts[k] = n
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	folder := func(key, label string, n int) model.Node {
-		return model.Node{Ref: model.NewRef(model.KindFolder, "main", key), Label: label,
-			HasChildren: n > 0, Badge: &model.Badge{Text: strconv.Itoa(n), Exact: true}}
-	}
-	// Empty folders are noise, as the other drivers agree; but an empty
-	// database still shows its Tables folder, so the tree does not look broken.
-	var out []model.Node
-	if counts["table"] > 0 || counts["view"] == 0 {
-		out = append(out, folder(folderTables, "Tables", counts["table"]))
-	}
-	if counts["view"] > 0 {
-		out = append(out, folder(folderViews, "Views", counts["view"]))
+	// Empty classes are noise, as the other drivers agree; but an empty
+	// database still shows its Tables, so the tree does not look broken.
+	db := model.NewRef(model.KindDatabase, "main")
+	out := model.ClassNodes(db, counts)
+	if len(out) == 0 {
+		out = []model.Node{model.ClassNode(db, model.KindTable, 0)}
 	}
 	return out, nil
 }
@@ -57,14 +55,12 @@ func (s *sqliteSource) Root(ctx context.Context) ([]model.Node, error) {
 func (s *sqliteSource) Children(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	switch ref.Kind {
 	case model.KindFolder:
-		if len(ref.Path) < 2 {
-			return nil, fmt.Errorf("sqlite: incomplete reference %s", ref)
+		kind, _ := model.ClassOf(ref)
+		typ, ok := schemaTypes[kind]
+		if !ok {
+			return nil, fmt.Errorf("sqlite: no such class %s", ref)
 		}
-		typ, kind := "table", model.KindTable
-		if ref.Path[1] == folderViews {
-			typ, kind = "view", model.KindView
-		}
-		rows, err := s.db.QueryContext(ctx, `SELECT name FROM sqlite_schema
+		rows, err := s.db.QueryContext(ctx, `SELECT name, tbl_name FROM sqlite_schema
 			WHERE type = ? AND `+userObjects+` ORDER BY name COLLATE NOCASE`, typ)
 		if err != nil {
 			return nil, statementError(err)
@@ -72,12 +68,17 @@ func (s *sqliteSource) Children(ctx context.Context, ref model.ObjectRef) ([]mod
 		defer rows.Close()
 		var out []model.Node
 		for rows.Next() {
-			var name string
-			if err := rows.Scan(&name); err != nil {
+			var name, table string
+			if err := rows.Scan(&name, &table); err != nil {
 				return nil, err
 			}
-			out = append(out, model.Node{Ref: model.NewRef(kind, "main", name), Label: name,
-				HasChildren: true, Browsable: true})
+			n := model.Node{Ref: model.NewRef(kind, "main", name), Label: name}
+			if kind == model.KindTable || kind == model.KindView {
+				n.HasChildren, n.Browsable = true, true
+			} else { // an index or a trigger, named with its table
+				n.Label, n.Attrs = model.OnTable(name, table), map[string]string{"table": table}
+			}
+			out = append(out, n)
 		}
 		return out, rows.Err()
 	case model.KindTable, model.KindView:

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -381,6 +383,45 @@ func TestDescribeAView(t *testing.T) {
 	vw, ok := v.(*model.View)
 	if !ok || len(vw.Columns) != 2 || !strings.Contains(vw.Definition, "WHERE id > 10") {
 		t.Errorf("%#v", v)
+	}
+}
+
+func TestTheTreeListsEachClassWithItsObjects(t *testing.T) {
+	path := fixture(t)
+	db, _ := sql.Open("sqlite", "file:"+path)
+	_, err := db.Exec(`CREATE TRIGGER people_seen AFTER UPDATE ON people BEGIN SELECT 1; END`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := open(t, path, source.Guard{})
+	ctx := context.Background()
+	roots, err := s.Root(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range roots {
+		got = append(got, n.Label+" "+n.Badge.Text)
+	}
+	// The indexes SQLite makes for keys (sqlite_autoindex_…) are not the user's.
+	if want := []string{"Tables 3", "Views 1", "Indexes 1", "Triggers 1"}; !slices.Equal(got, want) {
+		t.Fatalf("classes %q, want %q", got, want)
+	}
+	for class, want := range map[model.ObjectKind]model.Node{
+		model.KindIndex: {Ref: model.NewRef(model.KindIndex, "main", "orders_total"), Label: "orders_total on orders",
+			Attrs: map[string]string{"table": "orders"}},
+		model.KindTrigger: {Ref: model.NewRef(model.KindTrigger, "main", "people_seen"), Label: "people_seen on people",
+			Attrs: map[string]string{"table": "people"}},
+		model.KindView: {Ref: model.NewRef(model.KindView, "main", "adults"), Label: "adults", HasChildren: true, Browsable: true},
+	} {
+		kids, err := s.Children(ctx, model.ClassRef(model.NewRef(model.KindDatabase, "main"), class))
+		if err != nil || len(kids) != 1 || !reflect.DeepEqual(kids[0], want) {
+			t.Errorf("%s: %+v, %v; want %+v", class, kids, err, want)
+		}
+	}
+	if _, err := s.Children(ctx, model.NewRef(model.KindFolder, "main", "tables")); err == nil {
+		t.Error("a folder that is no class should be refused")
 	}
 }
 

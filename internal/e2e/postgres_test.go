@@ -69,7 +69,7 @@ func postgresJourney(t *testing.T) journey {
 		path: []model.ObjectRef{
 			model.NewRef(model.KindDatabase, db),
 			model.NewRef(model.KindSchema, db, pgSchema),
-			model.NewRef(model.KindFolder, db, pgSchema, "tables"),
+			model.ClassRef(model.NewRef(model.KindSchema, db, pgSchema), model.KindTable),
 			model.NewRef(model.KindTable, db, pgSchema, "people"),
 		},
 		table: pgSchema + ".people",

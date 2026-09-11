@@ -90,6 +90,16 @@ CREATE FUNCTION ikigai_it.write_probe() RETURNS int LANGUAGE sql
     AS $$ INSERT INTO ikigai_it.probe_log DEFAULT VALUES RETURNING 1 $$;
 CREATE FUNCTION ikigai_it.flip_read_only() RETURNS text LANGUAGE sql
     AS $$ SELECT set_config('default_transaction_read_only', 'off', false) $$;
+CREATE VIEW ikigai_it.paid AS SELECT id, total FROM ikigai_it.orders WHERE status = 'paid';
+CREATE MATERIALIZED VIEW ikigai_it.totals AS SELECT status, count(*) AS n FROM ikigai_it.orders GROUP BY status;
+CREATE FUNCTION ikigai_it.touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+CREATE TRIGGER probe_touch BEFORE UPDATE ON ikigai_it.probe_log FOR EACH ROW EXECUTE FUNCTION ikigai_it.touch();
+CREATE TYPE ikigai_it.mood AS ENUM ('calm', 'cross');
+CREATE DOMAIN ikigai_it.positive AS int CHECK (VALUE > 0);
+CREATE TYPE ikigai_it.pair AS (a int, b int);
+CREATE TYPE ikigai_it.span AS RANGE (subtype = int4);
+CREATE TABLE ikigai_it.order_notes (order_id bigint REFERENCES ikigai_it.orders (id), note text);
+CREATE TABLE ikigai_it.events (id int, at date, PRIMARY KEY (id, at)) PARTITION BY RANGE (at);
 ANALYZE ikigai_it.orders;
 `
 
@@ -157,6 +167,80 @@ func drain(t *testing.T, rs model.RowStream) []model.Row {
 }
 
 // --- the shared battery ------------------------------------------------------
+
+func TestTheTreeListsEachClassOfASchema(t *testing.T) {
+	s := openSource(t, false)
+	ctx := context.Background()
+	schema := model.NewRef(model.KindSchema, testConfig(false).Database, "ikigai_it")
+	classes, err := s.Children(ctx, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	count := map[model.ObjectKind]string{}
+	for _, c := range classes {
+		names = append(names, c.Label)
+		k, _ := model.ClassOf(c.Ref)
+		count[k] = c.Badge.Text
+	}
+	if got, want := strings.Join(names, ", "), "Tables, Views, Materialized Views, Indexes, Triggers, Routines, Sequences, Types"; got != want {
+		t.Fatalf("classes %q, want %q", got, want)
+	}
+	list := func(k model.ObjectKind) string {
+		kids, err := s.Children(ctx, model.ClassRef(schema, k))
+		if err != nil {
+			t.Fatalf("%s: %v", k, err)
+		}
+		if n := strconv.Itoa(len(kids)); count[k] != n {
+			t.Errorf("%s counted %s, and lists %s", k, count[k], n)
+		}
+		rows := k == model.KindTable || k == model.KindView || k == model.KindMaterializedView
+		var out []string
+		for _, n := range kids {
+			if n.Ref.Kind != k || n.Browsable != rows {
+				t.Errorf("%s holds %v, browsable %v", k, n.Ref, n.Browsable)
+			}
+			l := n.Label
+			if v := n.Attrs["type"]; v != "" {
+				l += " (" + v + ")"
+			}
+			out = append(out, l)
+		}
+		return strings.Join(out, ", ")
+	}
+	// Other tests add tables of their own to the schema, with their keys and
+	// sequences: those classes are checked for the fixture's alone. The
+	// foreign key's own triggers are the system's, as are the tables' row
+	// types and the arrays and multirange made beside each type.
+	for k, want := range map[model.ObjectKind]string{
+		model.KindView:             "paid",
+		model.KindMaterializedView: "totals",
+		model.KindTrigger:          "probe_touch on probe_log",
+		model.KindRoutine:          "flip_read_only(), touch(), write_probe()",
+		model.KindUserType:         "mood (enum), pair (composite), positive (domain), span (range)",
+	} {
+		if got := list(k); got != want {
+			t.Errorf("%s: %q, want %q", k, got, want)
+		}
+	}
+	// events is partitioned: its parent is the table, and its key the index.
+	for _, c := range []struct {
+		k    model.ObjectKind
+		want string
+	}{
+		{model.KindTable, "events"}, {model.KindIndex, "events_pkey on events"},
+		{model.KindIndex, "orders_pkey on orders"}, {model.KindSequence, "orders_id_seq"},
+	} {
+		if got := list(c.k); !strings.Contains(got, c.want) {
+			t.Errorf("%s: %q, want %q among them", c.k, got, c.want)
+		}
+	}
+	trig, _ := s.Children(ctx, model.ClassRef(schema, model.KindTrigger))
+	want := model.NewRef(model.KindTrigger, schema.Path[0], "ikigai_it", "probe_log", "probe_touch")
+	if len(trig) != 1 || !trig[0].Ref.Equal(want) || trig[0].Attrs["table"] != "probe_log" {
+		t.Errorf("a trigger is addressed by its table: %+v", trig)
+	}
+}
 
 func TestConformance(t *testing.T) {
 	requirePG(t)
