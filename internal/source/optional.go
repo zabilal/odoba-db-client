@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
@@ -39,6 +40,16 @@ type LoadOptions struct {
 
 	Confirmed bool
 }
+
+// LoadError is a load stopped at one of its rows: the row's place among the
+// rows given, from 1, and why. The row's transaction was rolled back.
+type LoadError struct {
+	Row int64
+	Err error
+}
+
+func (e *LoadError) Error() string { return fmt.Sprintf("row %d: %v", e.Row, e.Err) }
+func (e *LoadError) Unwrap() error { return e.Err }
 
 // Scriptable renders an object as the statements that would recreate it
 // (FR-2.4 "script as", FR-6.7).

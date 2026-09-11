@@ -191,7 +191,12 @@ func ApplyWith(plan *source.WritePlan, exec func(source.Statement) (int64, error
 	}
 	out.Applied = len(plan.Statements)
 	if err := commit(); err != nil {
-		out.Err = fmt.Errorf("the changes ran, but committing them failed, so the server may not have kept them: %w", err)
+		out.Err = commitFailed(err)
 	}
 	return out
+}
+
+// commitFailed says a transaction's statements ran, and its commit failed.
+func commitFailed(err error) error {
+	return fmt.Errorf("the changes ran, but committing them failed, so the server may not have kept them: %w", err)
 }

@@ -76,6 +76,7 @@ func Run(t *testing.T, target Target) {
 		{"Writer", checkWriter},
 		{"EditableResults", checkEditableResults},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
+		{"Loader", checkLoader},
 	}
 
 	for _, c := range checks {
@@ -153,6 +154,9 @@ func checkCapabilities(t *testing.T, target Target) {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")
 		}
+	}
+	if _, ok := src.(source.BulkLoader); ok != caps.Data.BulkLoad {
+		t.Errorf("Capabilities.Data.BulkLoad is %v, and implementing BulkLoader %v: the import would offer, or miss, the fast path", caps.Data.BulkLoad, ok)
 	}
 	if caps.Data.DistinctValues {
 		if _, ok := src.(source.DistinctLister); !ok {

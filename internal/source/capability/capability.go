@@ -111,6 +111,10 @@ type Data struct {
 	// earlier rows applied.
 	TransactionalWrite bool
 
+	// BulkLoad reports source.BulkLoader: rows imported many at a time
+	// (FR-10.6).
+	BulkLoad bool
+
 	// DistinctValues reports whether the source can enumerate a column's
 	// distinct values for the Excel-style filter picklist (FR-3.4).
 	DistinctValues bool
