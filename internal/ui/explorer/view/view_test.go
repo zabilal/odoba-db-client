@@ -423,3 +423,28 @@ func TestEnterOpensTheBestMatch(t *testing.T) {
 		t.Errorf("Enter should open the best match, opened %q", opened.Label)
 	}
 }
+
+func TestARightClickSelectsTheNodeAndAsksForItsMenu(t *testing.T) {
+	newApp(t)
+	l, saved := setup(t, "primary")
+	e := New(l, (&uithread.Queue{}).Run, 0)
+	e.Model.Children(explorer.RootID)
+	waitReal(t, e.Model, explorer.RootID)
+	conn := ConnectionID(saved[0].ID)
+	var asked string
+	e.OnMenu = func(id string, _ fyne.Position) { asked = id }
+	r := newNodeRow()
+	e.update(conn, r)
+	r.TappedSecondary(&fyne.PointEvent{})
+	if asked != conn || e.Selected() != conn {
+		t.Errorf("asked for %s with %s selected; a right-click should select the node, then ask for its menu",
+			debugID(asked), debugID(e.Selected()))
+	}
+	asked = ""
+	loading := e.Model.Children(conn)[0] // the connection has not loaded: a loading row
+	e.update(loading, r)
+	r.TappedSecondary(&fyne.PointEvent{})
+	if asked != "" {
+		t.Error("a loading row has no menu")
+	}
+}

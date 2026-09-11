@@ -230,6 +230,18 @@ and "⌘S" both find Save Query. It reads the command registry each time it
 opens, so bindings a person changes (T1.8) will show there with no more
 work. It is for reading: running a command is the palette's job.
 
+## 13. The explorer's context menu is made of commands
+
+Right-clicking a node in the explorer selects it and shows a menu of the
+commands that act on it (FR-2.4): Open Data, Favourite and Refresh for an
+object, and Edit, Duplicate, Refresh, Disconnect and Delete for a
+connection. Loading and error rows have none. The items are the registered
+commands, so their titles, shortcuts, ticks and disabled states are the
+menu bar's, worked out as the menu is made. They are not registered as
+the menu bar's items are, since `sync` keeps only those up to date, and a
+pop-up that took their place would leave the menu bar stale. A test holds
+that line.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

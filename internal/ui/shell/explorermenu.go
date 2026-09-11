@@ -1,0 +1,58 @@
+package shell
+
+import (
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
+)
+
+// showExplorerMenu shows a node's context menu where it was right-clicked
+// (FR-2.4, T1.44). The explorer has selected the node already, so the
+// commands in the menu, which act on the selection, act on it.
+func (s *Shell) showExplorerMenu(id string, at fyne.Position) {
+	if m := s.explorerMenu(id); m != nil {
+		widget.ShowPopUpMenuAtPosition(m, s.win.Canvas(), at)
+	}
+}
+
+// explorerMenu is a node's context menu. It is made of commands, so its
+// titles, shortcuts, ticks and disabled items are the menu bar's own. The
+// commands act on the selection, so the node is selected first: the menu
+// and what its commands would do then always agree, whoever asks for it.
+func (s *Shell) explorerMenu(id string) *fyne.Menu {
+	conn, ok := view.ConnectionOf(id)
+	if !ok {
+		return nil
+	}
+	s.Explorer.Tree.Select(id)
+	s.sync()
+	ids := []string{cmdOpen, cmdFavorite, "", cmdRefresh}
+	if id == view.ConnectionID(conn) {
+		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdDisconnect, "", cmdConnDelete}
+	}
+	return fyne.NewMenu("", s.popupItems(ids)...)
+}
+
+// popupItems makes menu items for commands, an empty ID a separator. They
+// are not registered: the menu bar's own items are the ones sync keeps up
+// to date, so a pop-up works its states out as it is made.
+func (s *Shell) popupItems(ids []string) []*fyne.MenuItem {
+	out := make([]*fyne.MenuItem, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			out = append(out, fyne.NewMenuItemSeparator())
+			continue
+		}
+		c, ok := s.reg.Get(id)
+		if !ok {
+			panic("shell: a pop-up menu names an unregistered command: " + id)
+		}
+		it := fyne.NewMenuItem(c.Title, func() { s.run(id) })
+		it.Shortcut = fyneShortcut(c.Shortcut)
+		it.Disabled = c.Enabled != nil && !c.Enabled()
+		it.Checked = s.checked(id)
+		out = append(out, it)
+	}
+	return out
+}
