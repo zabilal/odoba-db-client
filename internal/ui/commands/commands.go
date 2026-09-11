@@ -43,6 +43,58 @@ type Shortcut struct {
 // IsZero reports whether no shortcut is set.
 func (s Shortcut) IsZero() bool { return s.Key == "" }
 
+// modNames are the modifiers as String writes them, in the order it does.
+var modNames = []struct {
+	mod  Mod
+	name string
+}{{ModControl, "Control"}, {ModAlt, "Alt"}, {ModShift, "Shift"}, {ModShortcut, "Shortcut"}}
+
+// String writes the chord in a form that reads back the same on every
+// platform, for keeping in the settings file (T1.8): "Shift+Shortcut+F".
+// It is not for showing; Label is.
+func (s Shortcut) String() string {
+	if s.IsZero() {
+		return ""
+	}
+	var parts []string
+	for _, m := range modNames {
+		if s.Mods&m.mod != 0 {
+			parts = append(parts, m.name)
+		}
+	}
+	return strings.Join(append(parts, s.Key), "+")
+}
+
+// ParseShortcut reads a chord String wrote. The empty string is no shortcut.
+func ParseShortcut(text string) (Shortcut, error) {
+	if text == "" {
+		return Shortcut{}, nil
+	}
+	parts := strings.Split(text, "+")
+	key := parts[len(parts)-1]
+	if key == "" || strings.ContainsAny(key, " \t") {
+		return Shortcut{}, fmt.Errorf("commands: %q names no key", text)
+	}
+	var s Shortcut
+	for _, p := range parts[:len(parts)-1] {
+		var m Mod
+		for _, n := range modNames {
+			if n.name == p {
+				m = n.mod
+			}
+		}
+		switch {
+		case m == 0:
+			return Shortcut{}, fmt.Errorf("commands: %q: %q is not a modifier", text, p)
+		case s.Mods&m != 0:
+			return Shortcut{}, fmt.Errorf("commands: %q names %s twice", text, p)
+		}
+		s.Mods |= m
+	}
+	s.Key = key
+	return s, nil
+}
+
 // effective is the chord as a given platform actually receives it: off macOS,
 // Control and the shortcut modifier are one key.
 func (s Shortcut) effective(goos string) Shortcut {
@@ -143,13 +195,16 @@ var (
 
 // Registry holds every command. Safe for concurrent use.
 type Registry struct {
-	mu    sync.RWMutex
-	byID  map[string]*Command
-	order []string
+	mu       sync.RWMutex
+	byID     map[string]*Command
+	order    []string
+	defaults map[string]Shortcut // the shortcuts commands were registered with
 }
 
 // NewRegistry returns an empty registry.
-func NewRegistry() *Registry { return &Registry{byID: map[string]*Command{}} }
+func NewRegistry() *Registry {
+	return &Registry{byID: map[string]*Command{}, defaults: map[string]Shortcut{}}
+}
 
 // Register adds a command.
 //
@@ -172,23 +227,58 @@ func (r *Registry) Register(c Command) error {
 	if _, dup := r.byID[c.ID]; dup {
 		return fmt.Errorf("commands: %s is registered twice", c.ID)
 	}
-	if !c.Shortcut.IsZero() {
-		for _, goos := range []string{"darwin", "linux"} {
-			want := c.Shortcut.effective(goos)
-			for _, id := range r.order {
-				o := r.byID[id]
-				if !o.Shortcut.IsZero() && o.Shortcut.effective(goos) == want {
-					return fmt.Errorf("commands: %s and %s both use %s on %s",
-						id, c.ID, c.Shortcut.Label(goos), goos)
-				}
-			}
-		}
+	if err := r.clash(c.ID, c.Shortcut); err != nil {
+		return err
 	}
+	r.defaults[c.ID] = c.Shortcut
 	cp := c
 	cp.Keywords = append([]string(nil), c.Keywords...)
 	r.byID[c.ID] = &cp
 	r.order = append(r.order, c.ID)
 	return nil
+}
+
+// clash reports another command already on a chord, as macOS or another
+// platform sees it. Called with mu held.
+func (r *Registry) clash(id string, sc Shortcut) error {
+	if sc.IsZero() {
+		return nil
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		want := sc.effective(goos)
+		for _, oid := range r.order {
+			if oid == id {
+				continue
+			}
+			if o := r.byID[oid]; !o.Shortcut.IsZero() && o.Shortcut.effective(goos) == want {
+				return fmt.Errorf("commands: %s and %s both use %s on %s", oid, id, sc.Label(goos), goos)
+			}
+		}
+	}
+	return nil
+}
+
+// Rebind gives a command another shortcut, or none with the zero Shortcut
+// (T1.8). A chord another command has is refused, as Register refuses it.
+func (r *Registry) Rebind(id string, sc Shortcut) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.byID[id]
+	if !ok {
+		return ErrUnknown
+	}
+	if err := r.clash(id, sc); err != nil {
+		return err
+	}
+	c.Shortcut = sc
+	return nil
+}
+
+// Default is the shortcut a command was registered with.
+func (r *Registry) Default(id string) Shortcut {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaults[id]
 }
 
 // MustRegister is Register for startup wiring, where failure is a bug.

@@ -272,6 +272,25 @@ key; a table with none is matched on every column, and a comment in the
 script says so. A view is written only as SELECT, and a source with no
 query language cannot be scripted. Writing a CREATE statement is T3.7's.
 
+## 16. Custom shortcuts are kept, and the menu bar is rebuilt
+
+A command's shortcut can be changed (FR-15.4, T1.8). The registry's
+`Rebind` refuses a chord another command has, as macOS and other platforms
+each see it, which is the check `Register` makes at startup; each command
+keeps the shortcut it was registered with, to go back to. A change is kept
+in the settings file in a form that reads back the same on every platform,
+`Shift+Shortcut+F`, and one set back to its default leaves the file. The
+menu bar is rebuilt on every change, since its items are what make a
+shortcut work (§2). At startup the kept shortcuts are applied once every
+command is registered and before the menu bar is built. One that no longer
+fits, for a command that has gone, in a form that does not read, or on a
+chord another command now has, is said once and left in the file untouched,
+rather than dropped unseen.
+
+The way to change one, pressing the new keys in the Keyboard Shortcuts
+panel (§12), is still to come. On a Mac the native menu bar can take a
+chord before the application sees it, which that panel must allow for.
+
 ## Not decided here
 
 Dragging tabs (T1.4), custom key bindings (T1.8) and the task centre (T1.10)
