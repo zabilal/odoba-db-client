@@ -140,8 +140,8 @@ func runJ3(t *testing.T, j journey) {
 	if err := h.s.Commands().Run("query.history"); err != nil {
 		t.Fatalf("Query History: %v", err)
 	}
-	panel := h.w.Canvas().Overlays().Top()
-	test.Type(find[*widget.Entry](panel)[0], "people 40")
+	panel := h.s.Panel()
+	test.Type(find[textField](panel)[0], "people 40")
 	list := find[*widget.List](panel)[0]
 	waitFor(t, h.q, "the history search", func() bool { return list.Length() == 1 })
 	list.Select(0)
@@ -156,12 +156,22 @@ func runJ3(t *testing.T, j journey) {
 	if err := h.s.Commands().Run("query.openSaved"); err != nil {
 		t.Fatalf("Open Saved Query: %v", err)
 	}
-	saved := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
+	saved := find[*widget.List](h.s.Panel())[0]
 	waitFor(t, h.q, "the saved list", func() bool { return saved.Length() == 1 })
 	saved.Select(0)
 	if len(tabs.Items) != 2 || tabs.Selected().Text != "Tail of people" {
 		t.Errorf("%d tabs, selected %q; the saved query's open tab should come forward", len(tabs.Items), tabs.Selected().Text)
 	}
+}
+
+// textField is a field that takes focus and text. The side panels' search
+// fields are the shell's own entry type, not a widget.Entry, so they are
+// found by what they do. In a panel nothing else does both: labels take no
+// focus, and a list takes no text.
+type textField interface {
+	fyne.CanvasObject
+	fyne.Focusable
+	SetText(string)
 }
 
 // expand loads parent's children, as expanding it in the tree does, and waits

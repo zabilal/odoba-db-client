@@ -8,7 +8,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
@@ -26,11 +25,10 @@ const historySearchDelay = 150 * time.Millisecond
 // how J3 finds last week's query: type a few words of it, open it again.
 type historyPanel struct {
 	s       *Shell
-	search  *widget.Entry
+	search  *panelEntry
 	list    *widget.List
 	status  *widget.Label
 	entries []localdb.HistoryEntry
-	dlg     *dialog.CustomDialog
 	gen     int // drops a search that a newer one overtook
 	load    func()
 	now     func() time.Time
@@ -40,7 +38,7 @@ func (s *Shell) showHistory() *historyPanel {
 	if s.d.History == nil {
 		return nil
 	}
-	p := &historyPanel{s: s, search: widget.NewEntry(), status: widget.NewLabel(""), now: time.Now}
+	p := &historyPanel{s: s, search: s.newPanelEntry(), status: widget.NewLabel(""), now: time.Now}
 	p.search.SetPlaceHolder("Search statements")
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(
@@ -81,10 +79,7 @@ func (s *Shell) showHistory() *historyPanel {
 			p.open(p.entries[0])
 		}
 	}
-	p.dlg = dialog.NewCustom("Query History", "Close", container.NewBorder(p.search, p.status, nil, nil, p.list), s.win)
-	p.dlg.Resize(fyne.NewSize(720, 480))
-	p.dlg.Show()
-	s.win.Canvas().Focus(p.search)
+	s.openPanel(panelHistory, "Query History", container.NewBorder(p.search, p.status, nil, nil, p.list), p.search)
 	p.query()
 	return p
 }
@@ -137,11 +132,11 @@ func (p *historyPanel) open(e localdb.HistoryEntry) {
 		p.list.UnselectAll()
 		return
 	}
-	p.dlg.Hide()
 	if t := p.s.OpenQuery(e.ConnectionID); t != nil {
 		t.query.editor.Document().SetText(e.Statement)
 		t.query.editor.Refresh()
 	}
+	p.list.UnselectAll() // the panel stays open, and the same entry can be chosen again
 }
 
 func historyCount(n int, text string) string {

@@ -83,6 +83,10 @@ type Shell struct {
 	status   *widget.Label
 	errors   *errorBar
 	pal      *palette.Palette
+	// work is the tabs, or the empty state, and right holds work alone or
+	// beside the open side panel (panel.go).
+	work, right *fyne.Container
+	panel       *sidePanel
 
 	menu      *fyne.MainMenu
 	menuItems map[string]*fyne.MenuItem
@@ -189,7 +193,9 @@ func New(a fyne.App, d Deps) *Shell {
 	s.status.Importance = widget.LowImportance
 
 	s.sidebar = s.buildSidebar()
-	s.split = container.NewHSplit(s.sidebar, container.NewStack(s.empty, s.tabs))
+	s.work = container.NewStack(s.empty, s.tabs)
+	s.right = container.NewStack(s.work)
+	s.split = container.NewHSplit(s.sidebar, s.right)
 	s.split.Offset = 0.24
 	s.errors = s.newErrorBar()
 	s.win.SetContent(container.NewBorder(s.errors.slot,
@@ -337,9 +343,9 @@ func (s *Shell) registerCommands() {
 			Shortcut: sc("Return", commands.ModShortcut|commands.ModShift), Enabled: s.canRun, Run: func() { s.runQuery(true) }},
 		{ID: cmdQueryStop, Category: "Query", Title: "Stop", Keywords: []string{"cancel", "abort"},
 			Shortcut: sc(".", commands.ModShortcut), Enabled: s.running, Run: s.stopQuery},
-		{ID: cmdHistory, Category: "Query", Title: "Query History…", Keywords: []string{"recent", "past", "find", "search"},
+		{ID: cmdHistory, Category: "Query", Title: "Query History", Keywords: []string{"recent", "past", "find", "search"},
 			Shortcut: sc("H", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.History != nil },
-			Run: func() { s.showHistory() }},
+			Run: func() { s.togglePanel(panelHistory, func() { s.showHistory() }) }},
 		{ID: cmdQuerySave, Category: "Query", Title: "Save Query", Keywords: []string{"keep", "store"},
 			Shortcut: sc("S", commands.ModShortcut), Enabled: s.canSave, Run: s.saveQuery},
 		{ID: cmdQuerySaveAs, Category: "Query", Title: "Save Query As…", Keywords: []string{"copy", "duplicate"},
@@ -348,9 +354,9 @@ func (s *Shell) registerCommands() {
 					s.promptSave(t, true)
 				}
 			}},
-		{ID: cmdOpenSaved, Category: "Query", Title: "Open Saved Query…", Keywords: []string{"saved", "library", "load"},
+		{ID: cmdOpenSaved, Category: "Query", Title: "Saved Queries", Keywords: []string{"saved", "library", "load"},
 			Shortcut: sc("O", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.Saved != nil },
-			Run: func() { s.showSaved() }},
+			Run: func() { s.togglePanel(panelSaved, func() { s.showSaved() }) }},
 		{ID: cmdExport, Category: "Data", Title: "Export…", Keywords: []string{"csv", "json", "ndjson", "tsv", "save", "download"},
 			Shortcut: sc("E", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.exportSource() != nil },
 			Run: s.showExport},
@@ -838,6 +844,10 @@ func (s *Shell) checked(id string) bool {
 	case cmdPinTab:
 		t := s.activeTab()
 		return t != nil && t.pinned
+	case cmdHistory:
+		return s.panelIs(panelHistory)
+	case cmdOpenSaved:
+		return s.panelIs(panelSaved)
 	}
 	if name, ok := strings.CutPrefix(id, accentPrefix); ok {
 		return s.d.Theme.Accent.String() == name

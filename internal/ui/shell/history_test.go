@@ -49,8 +49,8 @@ func TestHistoryFindsAndReopensAStatement(t *testing.T) {
 	if got := fx.s.open[1].query.editor.Document().Text(); got != "rows 7;" {
 		t.Errorf("reopened %q", got)
 	}
-	if fx.s.win.Canvas().Overlays().Top() != nil {
-		t.Error("the history panel should close once an entry opens")
+	if fx.s.win.Canvas().Overlays().Top() != nil || fx.s.Panel() == nil {
+		t.Error("the history panel should stay open beside the tabs, over nothing")
 	}
 }
 
