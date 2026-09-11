@@ -138,8 +138,9 @@ func (s *Shell) retitle(t *tab) {
 }
 
 // requestClose closes a tab the user asked to close, first asking if it has
-// edits that are saved nowhere. Closes the app makes itself, as when a
-// connection is deleted, do not ask.
+// edits that are saved nowhere, or tasks running from it, which closing
+// stops. Closes the app makes itself, as when a connection is deleted, do
+// not ask.
 func (s *Shell) requestClose(it *container.TabItem) {
 	var t *tab
 	for _, o := range s.open {
@@ -147,17 +148,29 @@ func (s *Shell) requestClose(it *container.TabItem) {
 			t = o
 		}
 	}
-	if t == nil || t.query == nil || !t.query.dirty || strings.TrimSpace(t.query.editor.Document().Text()) == "" {
+	if t == nil {
 		s.closeTab(it)
 		return
 	}
-	d := dialog.NewConfirm("Close Without Saving?",
-		fmt.Sprintf("“%s” has changes that are not saved.", t.query.title),
-		func(yes bool) {
-			if yes {
-				s.closeTab(it)
-			}
-		}, s.win)
+	dirty := t.query != nil && t.query.dirty && strings.TrimSpace(t.query.editor.Document().Text()) != ""
+	run := s.runningTasks(t)
+	if !dirty && len(run) == 0 {
+		s.closeTab(it)
+		return
+	}
+	title, why := "Close Without Saving?", ""
+	if dirty {
+		why = fmt.Sprintf("“%s” has changes that are not saved.", t.query.title)
+	}
+	if len(run) > 0 {
+		title = "Stop and Close?"
+		why = strings.TrimSpace(why + " " + stopWarning(run, "Closing the tab"))
+	}
+	d := dialog.NewConfirm(title, why, func(yes bool) {
+		if yes {
+			s.closeTab(it)
+		}
+	}, s.win)
 	d.SetConfirmText("Close")
 	d.SetDismissText("Cancel")
 	d.SetConfirmImportance(widget.DangerImportance)

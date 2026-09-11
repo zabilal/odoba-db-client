@@ -36,6 +36,7 @@ const (
 	cmdMoveTabLeft    = "tab.moveLeft"
 	cmdMoveTabRight   = "tab.moveRight"
 	cmdPinTab         = "tab.pin"
+	cmdTasks          = "window.tasks"
 	cmdQueryNew       = "query.new"
 	cmdQueryRun       = "query.run"
 	cmdQueryRunAll    = "query.runAll"
@@ -125,7 +126,7 @@ var menuBar = []struct {
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
-		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab)}},
+		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator, item(cmdTasks)}},
 	{"Help", []menuEntry{item(cmdShortcuts)}},
 }
 

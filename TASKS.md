@@ -24,13 +24,14 @@ PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
 NEXT TASK: dragging tabs (T1.4), the last [~] with open work besides T1.14's
-           scroll; then the task centre (T1.10) and split panes (T1.5).
+           scroll; then split panes (T1.5).
 [~] tasks: T1.4, T1.14 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a shortcut is changed in the Keyboard Shortcuts panel,
-           which finishes T1.8 (ADR-0011 §16). Before it: one copy to a data
+LAST DONE: 2026-09-11 — the task centre (T1.10, ADR-0011 §17): an export runs
+           beside the window, not over it. Before it: shortcuts changed in
+           the Keyboard Shortcuts panel (T1.8), one copy to a data
            directory (T1.1), gates for NFR-P1 to P6 (T1.73), coverage past 70%
            (T1.76), explorer badges (T1.45), exporting the selection (T1.71),
            T1.44's context actions, favourites (T1.46), buttons with words
@@ -227,7 +228,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
 - [x] **T1.8** Keyboard binding map, platform-correct (⌘ vs Ctrl) → FR-15.4, UX-11 — *platform-correct chords on menu items; a command's shortcut is changed in the Keyboard Shortcuts panel, its modifiers ticked and key chosen, kept in the settings file, refused on a chord another command has with that command named, and applied at startup and on the rebuilt menu bar (ADR-0011 §16)*
 - [x] **T1.9** Searchable shortcut reference sheet → FR-15.4 — *Help › Keyboard Shortcuts (⌘/) is a side panel listing every command with a shortcut, whether or not it can run just now, filtered by name, keywords or keys (ADR-0011 §12)*
-- [ ] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5
+- [x] **T1.10** Task centre: background tasks, progress, cancel → FR-15.6, UX-5 — *exports run as tasks in a Tasks panel (Window › Tasks), not a sheet over the window: each says how far it has got and can be cancelled, and says how it ended until cleared; the status bar says while any runs and opens the panel. Closing a tab or quitting while one runs asks first, and quitting waits for a stopped export to remove its partial file (ADR-0011 §17). Long queries and imports join it as they come*
 - [x] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; everything else is said in a band across the top of the window, dismissible and copyable, with an action where there is one; the modal error dialog is gone and a test keeps it gone (ADR-0011 §7)*
 - [x] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; eight macOS accents from View › Accent Colour, derived so each passes AA in both appearances, persisted (ADR-0006 addendum)*
 - [x] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6 — *uithread.Runner: UI work goes through an injected runner, tests drain a queue (ADR-0011)*
