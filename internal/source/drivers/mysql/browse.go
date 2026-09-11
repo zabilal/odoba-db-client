@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -250,6 +251,11 @@ func normalize(v any, dt model.DataType) any {
 			return string(b)
 		case model.TypeString, model.TypeEnum, model.TypeTime, model.TypeUnknown:
 			return string(b)
+		case model.TypeGeometry:
+			// MySQL's own form: a little-endian SRID, then WKB.
+			if len(b) >= 5 {
+				return model.Geometry{SRID: binary.LittleEndian.Uint32(b[:4]), WKB: b[4:]}
+			}
 		case model.TypeInteger:
 			if n, err := strconv.ParseInt(string(b), 10, 64); err == nil {
 				return n

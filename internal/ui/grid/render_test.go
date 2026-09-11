@@ -113,3 +113,10 @@ func TestAResizeRefitsTheFillerWithNoLayoutToHelp(t *testing.T) {
 		t.Errorf("filler %v after a column grew by 50; want 250", g.fillerWidth)
 	}
 }
+
+func TestGeometryShowsAsWellKnownText(t *testing.T) {
+	point := []byte{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0, 0, 0, 0, 0, 0, 0, 0x40}
+	if c := Format(model.Geometry{SRID: 4326, WKB: point}, model.ColumnDef{}, time.UTC); c.Text != "SRID=4326;POINT(1 2)" {
+		t.Errorf("%q", c.Text)
+	}
+}

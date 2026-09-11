@@ -84,6 +84,8 @@ func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 		return jsonView(b, -1)
 	case []byte:
 		return hexView(x)
+	case model.Geometry:
+		return textView(x.String())
 	case time.Time:
 		return View{Kind: KindText, Text: timeText(x, col.Type, loc)}
 	case string:
