@@ -50,6 +50,7 @@ type QuerySession struct {
 	q       source.Queryer
 	session source.Session // nil when the source has no sessions
 	dialect source.Dialect // nil when the source cannot split scripts
+	src     source.Source  // writes a result's changes (ADR-0036)
 	hist    HistoryStore
 	entry   localdb.HistoryEntry // what every history entry shares
 
@@ -65,7 +66,7 @@ func NewQuerySession(ctx context.Context, live *Live, opt QueryOptions) (*QueryS
 
 func newQuerySession(ctx context.Context, src source.Source, connID string, opt QueryOptions) (_ *QuerySession, err error) {
 	defer panics.Recover(&err, "opening a session")
-	qs := &QuerySession{}
+	qs := &QuerySession{src: src}
 	switch s := src.(type) {
 	case source.Sessioner:
 		sess, err := s.Session(ctx)
@@ -223,6 +224,69 @@ func (qs *QuerySession) StatementAt(script string, offset int) (text string, sta
 	return stmts[i].Text, byteOffset(script, stmts[i].Offset), true
 }
 
+// Editable reports whether a result, made by stmt, can be edited in its
+// grid (FR-4.8, ADR-0036): the source writes rows, the result is known by a
+// key (ADR-0035), and the statement only reads, so that running it again
+// once the changes are written changes nothing more.
+func (qs *QuerySession) Editable(rs *ResultSet, stmt string) (ok bool) {
+	defer panics.Catch("classifying the statement", func(error) { ok = false })
+	_, writes := qs.src.(source.Writer)
+	return writes && rs.Identity().Editable() && qs.reads(stmt)
+}
+
+// reads reports whether a statement only reads, by the source's dialect. A
+// source with none cannot say, so nothing it runs is taken to read.
+func (qs *QuerySession) reads(stmt string) bool {
+	return qs.dialect != nil && qs.dialect.Classify(stmt) == source.AccessRead
+}
+
+// Plan renders a result's changes as the statements that would write them,
+// running nothing (FR-4.4).
+func (qs *QuerySession) Plan(ctx context.Context, cs source.Changeset) (_ *source.WritePlan, err error) {
+	defer panics.Recover(&err, "planning the changes")
+	w, ok := qs.src.(source.Writer)
+	if !ok {
+		return nil, errNoWrites
+	}
+	return w.Plan(ctx, cs)
+}
+
+// Apply writes a plan on a connection of its own, not the session's: a
+// transaction open on the session is neither joined nor ended by it
+// (ADR-0036).
+func (qs *QuerySession) Apply(ctx context.Context, plan *source.WritePlan) (_ *source.WriteOutcome, err error) {
+	defer panics.Recover(&err, "writing the changes")
+	w, ok := qs.src.(source.Writer)
+	if !ok {
+		return nil, errNoWrites
+	}
+	return w.Apply(ctx, plan)
+}
+
+// Reread runs a statement that only reads again, alone on the session, for
+// a result's rows as they are once its changes are written (ADR-0036). It
+// reads with the session's state, a search path or a temporary table, as
+// the statement did the first time. named are the values it was run with.
+// It is not recorded in history, which holds what the user ran; and like
+// any statement on the session, it ends a result whose rows are still
+// arriving.
+func (qs *QuerySession) Reread(ctx context.Context, stmt string, named map[string]any) (_ *ResultSet, err error) {
+	defer panics.Recover(&err, "reading the rows again")
+	if !qs.reads(stmt) {
+		return nil, errors.New("app: only a statement that reads is run again")
+	}
+	res, err := qs.q.Query(ctx, source.Statement{SQL: stmt, Named: named})
+	if err != nil {
+		return nil, err
+	}
+	if res.Rows == nil {
+		return nil, errors.New("app: the statement no longer returns rows")
+	}
+	rs := newResultSet(ctx, res.Rows, MaxResultRows)
+	qs.track(rs)
+	return rs, nil
+}
+
 // byteOffset converts a character offset, which is what sources report
 // (source.ScriptStatement), to a byte offset into s, which is what the editor
 // positions by. Mixing the two picks the wrong statement as soon as anything
@@ -359,10 +423,7 @@ func (r *ResultSet) Columns() []model.ColumnDef { return r.cols }
 // ADR-0035): a table's key, where the source found every column in that one
 // table and its key among them; otherwise none.
 func (r *ResultSet) Identity() model.RowIdentity {
-	if id, ok := r.stream.(model.Identified); ok {
-		return id.Identity()
-	}
-	return model.RowIdentity{Kind: model.IdentityNone}
+	return model.IdentityOf(r.stream)
 }
 
 // Fetch returns up to limit rows from offset, waiting for them to arrive.

@@ -93,8 +93,15 @@ func discardText(n int) string {
 	return fmt.Sprintf("%s not committed will be lost.", changesText(n))
 }
 
-// pendingIn is how many changes not committed a tab holds.
-func pendingIn(t *tab) int { return t.ed.changes() }
+// pendingIn is how many changes not committed a tab holds: a table's, or
+// its query's results'.
+func pendingIn(t *tab) int {
+	n := t.ed.changes()
+	if q := t.query; q != nil {
+		n += resultChanges(q)
+	}
+	return n
+}
 
 // pendingAll is how many changes not committed the open tabs hold.
 func (s *Shell) pendingAll() int {

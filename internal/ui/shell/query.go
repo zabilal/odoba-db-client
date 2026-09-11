@@ -31,6 +31,7 @@ type queryTab struct {
 	messages *widget.Label
 	sets     []*app.ResultSet
 	grids    []*grid.TableGrid
+	res      []*result // each result's count and editing, beside its grid (resultedit.go)
 	// executing is true while a script runs. run ends the latest run, and
 	// outlives it: a script finishes when every statement has returned a
 	// result, not when every row has arrived, and the rows keep streaming
@@ -40,6 +41,9 @@ type queryTab struct {
 	// runRev is the document's revision when the latest run began. Error
 	// positions map onto the text only if it has not changed since.
 	runRev uint64
+	// named are the values the latest run was given, to read a result of it
+	// again with.
+	named map[string]any
 
 	// saved is the saved query this tab edits; a zero ID means none yet.
 	saved localdb.SavedQuery
@@ -158,7 +162,7 @@ func (s *Shell) activeQuery() (*tab, *queryTab) {
 
 func (s *Shell) canRun() bool {
 	_, q := s.activeQuery()
-	return q != nil && q.session != nil && !q.executing
+	return q != nil && q.session != nil && !q.executing && !committing(q)
 }
 
 // running reports work Stop can end: a script still executing, or a result
@@ -193,12 +197,35 @@ func (s *Shell) stopQuery() {
 }
 
 // runQuery runs the selection, or else the statement at the caret; with all,
-// the whole script (FR-5.3).
+// the whole script (FR-5.3). A run replaces the results, so it asks first
+// when they hold changes not committed; none runs while they are written.
 func (s *Shell) runQuery(all bool) {
 	t, q := s.activeQuery()
-	if q == nil || q.session == nil || q.executing {
+	if q == nil || q.session == nil || q.executing || committing(q) {
 		return
 	}
+	n := resultChanges(q)
+	if n == 0 {
+		s.runIn(t, all)
+		return
+	}
+	d := dialog.NewConfirm("Run and Discard Changes?",
+		fmt.Sprintf("The results have %s not committed, which running again discards.", changesText(n)),
+		func(yes bool) {
+			if yes {
+				s.runIn(t, all)
+			}
+		}, s.win)
+	d.SetConfirmText("Run")
+	d.SetDismissText("Cancel")
+	d.SetConfirmImportance(widget.DangerImportance)
+	d.Show()
+}
+
+// runIn runs a query tab's selection, or else its statement at the caret;
+// with all, its whole script.
+func (s *Shell) runIn(t *tab, all bool) {
+	q := t.query
 	doc := q.editor.Document()
 	script, base := doc.Text(), 0
 	if !all {
@@ -229,6 +256,7 @@ func (s *Shell) execute(t *tab, script string, base int, opts source.ScriptOptio
 	ctx, cancel := context.WithCancel(t.ctx)
 	q.run, q.executing = cancel, true
 	q.runRev = q.editor.Document().Revision()
+	q.named = opts.Named
 	s.clearResults(q)
 	t.footer.SetText("Running…")
 	s.sync()
@@ -319,7 +347,7 @@ func (s *Shell) showResult(t *tab, r app.StatementResult, base int) {
 		s.note(q, msg)
 		q.results.SelectIndex(0)
 	case r.Rows != nil:
-		s.addResult(t, n, r.Rows)
+		s.addResult(t, n, r.Rows, r.Statement)
 	default:
 		s.note(q, fmt.Sprintf("Statement %d: %s in %s.", n, affectedText(r.Affected), took(r.Duration)))
 	}
@@ -329,8 +357,9 @@ func (s *Shell) showResult(t *tab, r app.StatementResult, base int) {
 }
 
 // addResult shows a result set in a grid of its own tab. The rows stream in
-// behind it; the count underneath says how many have arrived.
-func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
+// behind it; the count underneath says how many have arrived. stmt made it.
+// A result known by a table's key is edited there (resultedit.go).
+func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	q := t.query
 	m := grid.NewModel(rs)
 	g := grid.NewTableGridWith(t.ctx, m, s.colours(), s.d.Run, s.d.Delay)
@@ -338,11 +367,11 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
-	count := widget.NewLabel("Loading rows…")
-	count.Importance = widget.LowImportance
+	r := &result{rs: rs, stmt: stmt, named: q.named, count: widget.NewLabel("Loading rows…")}
+	r.count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
 		if t.ctx.Err() == nil {
-			count.SetText(resultCount(rs))
+			r.show()
 		}
 	})
 	m.OnPageLoaded = func(int64) {
@@ -350,16 +379,29 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 		update()
 	}
 	m.OnError = func(err error) {
-		s.d.Run(func() { count.SetText("Could not load rows: " + err.Error()) })
+		s.d.Run(func() { r.count.SetText("Could not load rows: " + err.Error()) })
+	}
+	var foot fyne.CanvasObject = r.count
+	switch {
+	case s.editsResult(t, rs, stmt):
+		s.editResult(t, r, g, m, update)
+		foot = container.NewBorder(nil, nil, nil, r.ed.review, r.count)
+	case s.saysUnkeyed(t, rs):
+		r.said = resultKeyText
 	}
 	holder := container.NewStack(g.View())
 	t.hold(g, holder)
-	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, count, nil, nil, holder))
+	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, foot, nil, nil, holder))
 	q.results.Append(item)
 	if len(q.sets) == 0 {
 		q.results.Select(item)
 	}
-	q.sets, q.grids = append(q.sets, rs), append(q.grids, g)
+	q.sets, q.grids, q.res = append(q.sets, rs), append(q.grids, g), append(q.res, r)
+	s.follow(t, rs, m, g, update)
+}
+
+// follow counts a result's rows once they are all in, and says so.
+func (s *Shell) follow(t *tab, rs *app.ResultSet, m *grid.Model, g *grid.TableGrid, update func()) {
 	go func() {
 		select {
 		case <-rs.Done():
@@ -379,7 +421,7 @@ func (s *Shell) clearResults(q *queryTab) {
 	}
 	q.results.SelectIndex(0)
 	q.messages.SetText("")
-	q.sets, q.grids = nil, nil
+	q.sets, q.grids, q.res = nil, nil, nil
 }
 
 func (s *Shell) note(q *queryTab, text string) {

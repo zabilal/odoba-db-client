@@ -114,6 +114,9 @@ func (b *BrowseSource) CanWhere() bool {
 // Columns describes every row.
 func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
 
+// errNoWrites refuses the changes of a source that does not write rows.
+var errNoWrites = errors.New("app: this source does not write rows")
+
 // Identity reports whether browsed rows can be addressed for editing.
 func (b *BrowseSource) Identity() model.RowIdentity { return b.identity }
 
@@ -123,7 +126,7 @@ func (b *BrowseSource) Plan(ctx context.Context, cs source.Changeset) (_ *source
 	defer panics.Recover(&err, "planning the changes")
 	w, ok := b.src.(source.Writer)
 	if !ok {
-		return nil, errors.New("app: this source does not write rows")
+		return nil, errNoWrites
 	}
 	return w.Plan(ctx, cs)
 }
@@ -134,7 +137,7 @@ func (b *BrowseSource) Apply(ctx context.Context, plan *source.WritePlan) (_ *so
 	defer panics.Recover(&err, "writing the changes")
 	w, ok := b.src.(source.Writer)
 	if !ok {
-		return nil, errors.New("app: this source does not write rows")
+		return nil, errNoWrites
 	}
 	return w.Apply(ctx, plan)
 }

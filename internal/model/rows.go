@@ -155,6 +155,15 @@ type Identified interface {
 	Identity() RowIdentity
 }
 
+// IdentityOf is how a stream's rows are told apart: its Identity, or none
+// for a stream that does not say.
+func IdentityOf(rs RowStream) RowIdentity {
+	if i, ok := rs.(Identified); ok {
+		return i.Identity()
+	}
+	return RowIdentity{Kind: IdentityNone}
+}
+
 // Counted is an optional RowStream refinement for sources that can report a
 // total cheaply, letting the UI show a real scrollbar rather than an estimate.
 type Counted interface {

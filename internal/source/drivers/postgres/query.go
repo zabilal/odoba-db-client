@@ -294,15 +294,21 @@ func (o *ownedStream) Close() error {
 	return err
 }
 
+// Identity is the result's: owning its connection does not change how its
+// rows are told apart (ADR-0036).
+func (o *ownedStream) Identity() model.RowIdentity { return model.IdentityOf(o.RowStream) }
+
 // sliceStream serves rows already in memory.
 type sliceStream struct {
 	cols []model.ColumnDef
 	rows []model.Row
 	i    int
+	id   model.RowIdentity // the result's, kept with its rows
 }
 
-func (s *sliceStream) Columns() []model.ColumnDef { return s.cols }
-func (s *sliceStream) Close() error               { return nil }
+func (s *sliceStream) Columns() []model.ColumnDef  { return s.cols }
+func (s *sliceStream) Close() error                { return nil }
+func (s *sliceStream) Identity() model.RowIdentity { return s.id }
 func (s *sliceStream) Next(ctx context.Context) (model.Row, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -317,7 +323,7 @@ func (s *sliceStream) Next(ctx context.Context) (model.Row, error) {
 // buffer reads up to n rows into memory and closes the source stream.
 func buffer(ctx context.Context, rs model.RowStream, n int) (model.RowStream, bool, error) {
 	defer rs.Close()
-	out := &sliceStream{cols: rs.Columns()}
+	out := &sliceStream{cols: rs.Columns(), id: model.IdentityOf(rs)}
 	for len(out.rows) <= n {
 		row, err := rs.Next(ctx)
 		if errors.Is(err, io.EOF) {
