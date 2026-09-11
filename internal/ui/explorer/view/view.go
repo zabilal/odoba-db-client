@@ -136,6 +136,10 @@ type Explorer struct {
 	OnOpen func(connID string, node model.Node)
 	// OnSelect is called on the UI goroutine when the selection changes.
 	OnSelect func(id string)
+	// OnMenu is called when a node is right-clicked, after it has been
+	// selected, with where the click was: the shell shows its context menu
+	// there (FR-2.4).
+	OnMenu func(id string, at fyne.Position)
 
 	// OnExpand is called on the UI goroutine when a branch opens or closes.
 	OnExpand func()
@@ -353,6 +357,7 @@ func (e *Explorer) activate(id string) {
 
 func (e *Explorer) update(id string, r *nodeRow) {
 	r.onDouble = func() { e.activate(id) }
+	r.onSecondary = func(at fyne.Position) { e.menu(id, at) }
 	it, st, _ := e.Model.Item(id)
 	if explorer.IsPlaceholder(id) {
 		r.placeholder(it.Label, st == explorer.Failed)
@@ -433,6 +438,8 @@ type nodeRow struct {
 	label    *canvas.Text
 	badge    *canvas.Text
 	onDouble func()
+	// onSecondary is a right-click, with where it was on the canvas.
+	onSecondary func(at fyne.Position)
 }
 
 func newNodeRow() *nodeRow {
@@ -447,6 +454,25 @@ func newNodeRow() *nodeRow {
 func (r *nodeRow) DoubleTapped(*fyne.PointEvent) {
 	if r.onDouble != nil {
 		r.onDouble()
+	}
+}
+
+// TappedSecondary asks for the node's context menu.
+func (r *nodeRow) TappedSecondary(e *fyne.PointEvent) {
+	if r.onSecondary != nil {
+		r.onSecondary(e.AbsolutePosition)
+	}
+}
+
+// menu selects a right-clicked node, so the commands in its menu act on it,
+// and asks for the menu. A loading or error row has none.
+func (e *Explorer) menu(id string, at fyne.Position) {
+	if explorer.IsPlaceholder(id) {
+		return
+	}
+	e.Tree.Select(id)
+	if e.OnMenu != nil {
+		e.OnMenu(id, at)
 	}
 }
 
