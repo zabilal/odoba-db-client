@@ -344,3 +344,47 @@ func TestModelCostIsIndependentOfResultSize(t *testing.T) {
 		t.Errorf("NFR-P13 violated: cost grew from %v to %v with result size", small, huge)
 	}
 }
+
+// TestGateP3FirstRowsDrawn times the part of NFR-P3 that happens after the
+// server has answered: the first 200 rows reaching the screen. Their page is
+// resident before the clock starts, as it is once the server has returned.
+// What is timed is the grid's own work: building itself, laying out and
+// drawing its first viewport. Driver decoding and the GPU are not in it, so
+// the budget is a third of NFR-P3's 300ms, leaving them the rest.
+//
+// NFR-P3 is about an application already running, so a first grid is drawn
+// before the clock starts: the process's first window pays once for loading
+// fonts and laying out each kind of widget, which is cold start's share
+// (NFR-P1), not this. Its time is logged, not held to this budget.
+func TestGateP3FirstRowsDrawn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("gate skipped in -short")
+	}
+	race.SkipTimingGate(t)
+	test.NewTempApp(t)
+
+	ctx := context.Background()
+	draw := func() time.Duration {
+		m := NewModel(NewSyntheticFetcher(200))
+		m.Row(ctx, 0)
+		deadline := time.Now().Add(5 * time.Second)
+		for m.Stats().ResidentPages < 1 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		start := time.Now()
+		g := NewTableGrid(ctx, m, theme.Light)
+		w := test.NewTempWindow(t, g.View())
+		w.Resize(fyne.NewSize(1440, 960))
+		g.Table.Refresh()
+		return time.Since(start)
+	}
+	cold := draw()
+	elapsed := draw()
+
+	t.Logf("P3: the process's first grid drawn in %v (cold start's share, not held here)", cold.Round(time.Microsecond))
+	t.Logf("P3: the first 200 rows drawn in %v", elapsed.Round(time.Microsecond))
+	const budget = 100 * time.Millisecond
+	if elapsed > budget {
+		t.Errorf("P3: drawing the first 200 rows took %v, over %v", elapsed, budget)
+	}
+}
