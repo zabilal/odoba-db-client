@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
 )
@@ -389,12 +391,13 @@ func browsesSoFar() int {
 func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 	fx, _ := itemsDescribed(t)
 	it, p := importing(t, fx, "name,id\nfirst,1\n,2\n")
-	if findButton(it.item.Content, "Dry Run") != p.dry || findButton(it.item.Content, "Import") != p.load || p.load.Importance != widget.HighImportance {
+	if findButton(it.item.Content, "Dry Run") != p.dry || findButton(it.item.Content, "Import") != p.load || p.load.Importance != widget.HighImportance ||
+		p.mode.Selected != modeAdd {
 		t.Error("Dry Run and Import are the panel's, Import the one to press")
 	}
-	before, reads := len(writtenPlans()), browsesSoFar()
+	before, reads := len(loadsSoFar()), browsesSoFar()
 	test.Tap(p.load)
-	if !p.load.Disabled() || !p.dry.Disabled() {
+	if !p.load.Disabled() || !p.dry.Disabled() || !p.mode.Disabled() {
 		t.Error("one thing at a time")
 	}
 	if p.dryRun(); len(fx.s.runningTasks(nil)) != 1 {
@@ -405,7 +408,7 @@ func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 	}
 	k := lastTaskEnds(t, fx)
 	if k.title != "Import people.csv into items" || k.state != taskDone || k.status != "Imported 2 rows into items." ||
-		it.footer.Text != k.status || p.load.Disabled() || p.dry.Disabled() {
+		it.footer.Text != k.status || p.load.Disabled() || p.dry.Disabled() || p.mode.Disabled() {
 		t.Errorf("task %q: %v %q, footer %q", k.title, k.state, k.status, it.footer.Text)
 	}
 	select {
@@ -413,9 +416,9 @@ func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 	default:
 		t.Error("an import says when it has stopped writing, as quitting waits for it")
 	}
-	plans := writtenPlans()[before:]
-	if len(plans) != 1 || len(plans[0].Statements) != 2 || plans[0].Statements[1].SQL != "0 [] map[id:2 name:<nil>]" || plans[0].Statements[0].Confirmed {
-		t.Errorf("the rows written as new rows, a batch a transaction: %+v", plans)
+	loads := loadsSoFar()[before:]
+	if len(loads) != 1 || strings.Join(loads[0].columns, ",") != "id,name" || fmt.Sprint(loads[0].rows) != "[[1 first] [2 <nil>]]" || loads[0].opt != (source.LoadOptions{}) {
+		t.Errorf("the rows loaded as the table's values, added to its rows: %+v", loads)
 	}
 	pump(t, fx.q, func() bool { return browsesSoFar() > reads })
 }
@@ -430,9 +433,9 @@ func TestProductionAsksBeforeImporting(t *testing.T) {
 	tb := fx.onlyTab(t)
 	pump(t, fx.q, func() bool { return tb.table != nil })
 	_, p := importing(t, fx, "name,id\nfirst,1\n")
-	before := len(writtenPlans())
+	before := len(loadsSoFar())
 	test.Tap(p.load)
-	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "“items” on “prod”, which is marked Production") || len(fx.s.tasks) != 0 {
+	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "go into “items” on “prod”, which is marked Production. Nothing") || len(fx.s.tasks) != 0 {
 		t.Fatalf("Import asks before writing to production: %q", text)
 	}
 	tapOnTop(t, fx, "Cancel")
@@ -441,9 +444,15 @@ func TestProductionAsksBeforeImporting(t *testing.T) {
 	}
 	test.Tap(p.load)
 	tapOnTop(t, fx, "Import")
-	if k := lastTaskEnds(t, fx); k.state != taskDone || len(writtenPlans()) != before+1 || !writtenPlans()[before].Statements[0].Confirmed {
+	if k := lastTaskEnds(t, fx); k.state != taskDone || len(loadsSoFar()) != before+1 || !loadsSoFar()[before].opt.Confirmed {
 		t.Errorf("the rows written carry the consent: %v %q", k.state, k.status)
 	}
+	p.mode.SetSelected(modeReplace)
+	test.Tap(p.load)
+	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "replace every row of “items” on “prod”, which is marked Production. If any") {
+		t.Errorf("replacing on production says both: %q", text)
+	}
+	tapOnTop(t, fx, "Cancel")
 }
 
 func TestAnImportStoppedSaysWhereAndWhatWasWritten(t *testing.T) {
@@ -491,27 +500,75 @@ func TestAnImportSaysHowLongIsLeftAndCanBeCancelled(t *testing.T) {
 
 func TestWhatAnImportLeftWrittenIsWorded(t *testing.T) {
 	for _, c := range []struct {
-		n      int64
-		undone bool
-		want   string
+		n    int64
+		want string
 	}{
-		{0, true, " Nothing was written."},
-		{1, true, " The first row was written, and none after."},
-		{1500, true, " The first 1,500 rows were written, and none after."},
-		{0, false, " The server could not undo the rows before it, so some may have been written."},
-		{500, false, " The first 500 rows were written; the server could not undo the rows after them, so some may have been too."},
+		{0, " Nothing was written."},
+		{1, " The first row was written, and none after."},
+		{1500, " The first 1,500 rows were written, and none after."},
 	} {
-		if got := wroteText(c.n, c.undone); got != c.want {
-			t.Errorf("%d %v: %q", c.n, c.undone, got)
+		if got := wroteText(c.n); got != c.want {
+			t.Errorf("%d: %q", c.n, got)
 		}
 	}
-	if _, say := importEnd(transfer.Loaded{Written: 3}, errors.New("gone"), false, "items"); say != "Not imported: gone. The first 3 rows were written, and none after." {
-		t.Errorf("%q", say)
+	for _, c := range []struct {
+		l       transfer.Loaded
+		err     error
+		stopped bool
+		replace bool
+		state   taskState
+		want    string
+	}{
+		{transfer.Loaded{Written: 3}, errors.New("gone"), false, false, taskFailed, "Not imported: gone. The first 3 rows were written, and none after."},
+		{transfer.Loaded{}, errors.New("gone"), false, true, taskFailed, "Not imported: gone. The table is as it was."},
+		{transfer.Loaded{Written: 1}, nil, false, false, taskDone, "Imported 1 row into items."},
+		{transfer.Loaded{Written: 2}, nil, false, true, taskDone, "Replaced the rows of items with 2 rows."},
+		{transfer.Loaded{Written: 2}, nil, true, true, taskDone, "Replaced the rows of items with 2 rows."},
+		{transfer.Loaded{}, context.Canceled, true, true, taskCancelled, "Cancelled. The table is as it was."},
+	} {
+		if state, say := importEnd(c.l, c.err, c.stopped, "items", c.replace); state != c.state || say != c.want {
+			t.Errorf("%+v: %v %q", c, state, say)
+		}
 	}
-	if _, say := importEnd(transfer.Loaded{}, &transfer.LoadError{Row: 2, Err: errors.New("dup")}, false, "items"); say != "Stopped at row 2: dup. The server could not undo the rows before it, so some may have been written." {
-		t.Errorf("%q", say)
+}
+
+func TestReplacingATablesRowsAsksAndLeavesItAsItWasOnFailure(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\nfirst,1\nsecond,2\n")
+	before := len(loadsSoFar())
+	p.mode.SetSelected(modeReplace)
+	test.Tap(p.load)
+	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "The rows of people.csv replace every row of “items”. If any of them would not go in, the table is left as it was.") ||
+		len(fx.s.tasks) != 0 {
+		t.Fatalf("replacing asks first, on any connection: %q", text)
 	}
-	if _, say := importEnd(transfer.Loaded{Written: 1}, nil, false, "items"); say != "Imported 1 row into items." {
-		t.Errorf("%q", say)
+	tapOnTop(t, fx, "Cancel")
+	if len(fx.s.tasks) != 0 {
+		t.Fatal("no replaces nothing")
+	}
+	test.Tap(p.load)
+	tapOnTop(t, fx, "Replace")
+	k := lastTaskEnds(t, fx)
+	if k.title != "Replace the rows of items with people.csv" || k.status != "Replaced the rows of items with 2 rows." || it.footer.Text != k.status {
+		t.Errorf("task %q: %q", k.title, k.status)
+	}
+	if loads := loadsSoFar(); len(loads) != before+1 || !loads[before].opt.Truncate || !loads[before].opt.Confirmed {
+		t.Errorf("the table emptied first, with the consent given: %+v", loads[before:])
+	}
+	failWrite.Store(2)
+	t.Cleanup(func() { failWrite.Store(0) })
+	test.Tap(p.load)
+	tapOnTop(t, fx, "Replace")
+	if k := lastTaskEnds(t, fx); k.state != taskFailed || k.status != "Stopped at row 2: fakesql: duplicate key. The table is as it was." {
+		t.Errorf("%v %q", k.state, k.status)
+	}
+}
+
+func TestAFileWithNoRowsIsNotImported(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\n")
+	p.mode.SetSelected(modeReplace)
+	if p.startImport(); len(fx.s.tasks) != 0 || fx.s.win.Canvas().Overlays().Top() != nil || it.footer.Text != "The file has no rows." {
+		t.Errorf("nothing to import, and no table emptied: %q", it.footer.Text)
 	}
 }

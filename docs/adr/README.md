@@ -55,3 +55,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0048](0048-the-dry-run.md) | The dry run | Accepted |
 | [0049](0049-writing-an-imports-rows.md) | Writing an import's rows | Accepted |
 | [0050](0050-loading-rows-in-bulk.md) | Loading rows in bulk | Accepted |
+| [0051](0051-adding-or-replacing-a-tables-rows.md) | Adding or replacing a table's rows | Accepted |
