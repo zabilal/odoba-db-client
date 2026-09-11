@@ -6,8 +6,12 @@ package explorer
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/ikigai-db/ikigai-db/internal/fuzzy"
 )
 
 // Item is one node.
@@ -236,6 +240,11 @@ func (m *Model) dropDescendants(id string) {
 func (m *Model) Path(id string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.pathLocked(id)
+}
+
+// pathLocked is Path, called with mu held.
+func (m *Model) pathLocked(id string) []string {
 	var out []string
 	for cur := id; cur != RootID; {
 		e, ok := m.entries[cur]
@@ -246,6 +255,63 @@ func (m *Model) Path(id string) []string {
 		cur = e.parent
 	}
 	return out
+}
+
+// PathSep joins a node's path, for the filter to match and to show.
+const PathSep = " / "
+
+// Hit is a node whose path matches a filter.
+type Hit struct {
+	ID    string
+	Path  []string // labels from the top of the tree down to the node
+	Score int
+}
+
+// SearchResult is what a search found. Unopened counts the top-level
+// branches, the connections, not yet loaded: nothing inside them was seen.
+type SearchResult struct {
+	Hits     []Hit
+	Unopened int
+}
+
+// Search matches query against the full path of every node loaded so far
+// (FR-2.3), so that "sales cust" finds the customers table in the sales
+// database. The best matches come first, at most limit of them. It loads
+// nothing: a filter that connected to every server to search it would be
+// slow and would surprise, so the result says what it could not see.
+func (m *Model) Search(query string, limit int) SearchResult {
+	var res SearchResult
+	if strings.TrimSpace(query) == "" {
+		return res
+	}
+	m.mu.Lock()
+	for id, e := range m.entries {
+		if id == RootID {
+			continue
+		}
+		if e.parent == RootID && e.item.HasChildren && e.status != Loaded {
+			res.Unopened++
+		}
+		path := m.pathLocked(id)
+		if score, _, ok := fuzzy.Match(query, strings.Join(path, PathSep)); ok {
+			res.Hits = append(res.Hits, Hit{ID: id, Path: path, Score: score})
+		}
+	}
+	m.mu.Unlock()
+	sort.Slice(res.Hits, func(a, b int) bool {
+		ha, hb := res.Hits[a], res.Hits[b]
+		if ha.Score != hb.Score {
+			return ha.Score > hb.Score
+		}
+		if len(ha.Path) != len(hb.Path) {
+			return len(ha.Path) < len(hb.Path)
+		}
+		return ha.ID < hb.ID
+	})
+	if limit > 0 && len(res.Hits) > limit {
+		res.Hits = res.Hits[:limit]
+	}
+	return res
 }
 
 func (m *Model) notify(id string) {

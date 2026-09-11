@@ -30,15 +30,16 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a searchable keyboard-shortcut reference on ⌘/ (T1.9,
-           ADR-0011 §12). Before it: History and Saved Queries as side panels
-           (T1.77), the session coming back at the next start (T1.14, all but
-           scroll position), autosave (T1.15), contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — ⇧⌘F filters the explorer by a fuzzy match on each
+           object's full path, over what is loaded (T1.43, ADR-0018). Before
+           it: the ⌘/ shortcut reference (T1.9), History and Saved Queries as
+           side panels (T1.77), the session coming back (T1.14, all but
+           scroll), autosave (T1.15), contained driver panics (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
-           ports accept TCP, servers never reply. The tagged suites passed on
-           df56e56; commits since (a8019b0 onward) have not had them. Restart
-           Docker (the owner's call; it also restarts gtmb-backend-*), then
-           run them.
+           ports accept TCP, servers never reply. Each time, the next gate
+           that could reach them ran the tagged suites over everything since;
+           T1.43's did, covering a8019b0 and d12cb5d. If it stays down,
+           restarting it is the owner's call (it also restarts gtmb-backend-*).
 ```
 
 **Phase 0 findings so far**
@@ -270,7 +271,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T1.41** Lazy virtualised tree on `widget.Tree` → FR-2.1
 - [ ] **T1.42** Object classes per source, driven by capability descriptors → FR-2.2, REQ-DB-4
-- [ ] **T1.43** Fuzzy filter matching on full path → FR-2.3
+- [x] **T1.43** Fuzzy filter matching on full path → FR-2.3 — *⇧⌘F filters loaded objects by a fuzzy match on their full path, listed in the tree's place; a table opens, anything else is shown in the tree; unopened connections are named, not searched (ADR-0018)*
 - [~] **T1.44** Context actions: open data, open structure, script as, refresh → FR-2.4 — *open data and refresh via menu and ⌘K; context menu, structure, script-as open*
 - [ ] **T1.45** Lazy cancellable row-count/size badges → FR-2.5
 - [ ] **T1.46** Pinned/favourite objects → FR-2.6

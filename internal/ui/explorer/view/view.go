@@ -4,6 +4,7 @@ package view
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"maps"
 	"slices"
@@ -142,7 +143,21 @@ type Explorer struct {
 	selected string
 	open     map[string]bool // the branches open
 	refresh  func()
+
+	// Filter narrows the sidebar to the objects whose path matches
+	// (FR-2.3, ADR-0018), listed in the tree's place.
+	Filter  *filterEntry
+	results *widget.List
+	note    *widget.Label
+	hits    []explorer.Hit
+	found   fyne.CanvasObject // the results and their note
+	body    *fyne.Container   // the tree, or found in its place
+	view    fyne.CanvasObject
+	search  func()
 }
+
+// searchLimit is how many matches the filter lists.
+const searchLimit = 200
 
 // New builds an explorer over a loader. run gets work onto the UI goroutine
 // (uithread.Fyne in production) and delay coalesces refreshes
@@ -169,9 +184,128 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 	// branches fill. Refreshing the widget from each callback is what
 	// corrupted the data grid's state in spike W1 (ADR-0002). Changes are
 	// coalesced into at most one queued refresh, run on the UI goroutine.
-	e.refresh = uithread.Coalesce(run, delay, func() { e.Tree.Refresh() })
+	// A filter's matches follow the tree as more of it loads, in the same
+	// one refresh.
+	e.refresh = uithread.Coalesce(run, delay, func() { e.Tree.Refresh(); e.runSearch() })
+	e.Filter = &filterEntry{}
+	e.Filter.ExtendBaseWidget(e.Filter)
+	e.Filter.SetPlaceHolder("Filter loaded objects")
+	e.note = widget.NewLabel("")
+	e.note.Importance = widget.LowImportance
+	e.note.Truncation = fyne.TextTruncateEllipsis
+	e.results = widget.NewList(
+		func() int { return len(e.hits) },
+		func() fyne.CanvasObject {
+			name := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+			name.Truncation = fyne.TextTruncateEllipsis
+			where := widget.NewLabel("")
+			where.Importance = widget.LowImportance
+			where.Truncation = fyne.TextTruncateEllipsis
+			return container.NewVBox(name, where)
+		},
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			if i >= len(e.hits) {
+				return
+			}
+			h, box := e.hits[i], o.(*fyne.Container)
+			box.Objects[0].(*widget.Label).SetText(h.Path[len(h.Path)-1])
+			box.Objects[1].(*widget.Label).SetText(strings.Join(h.Path[:len(h.Path)-1], explorer.PathSep))
+		})
+	e.results.OnSelected = func(i widget.ListItemID) {
+		if i < len(e.hits) {
+			e.choose(e.hits[i].ID)
+		}
+		e.results.UnselectAll()
+	}
+	e.found = container.NewBorder(nil, e.note, nil, nil, e.results)
+	e.body = container.NewStack(e.Tree)
+	e.view = container.NewBorder(e.Filter, nil, nil, nil, e.body)
+	e.search = uithread.Coalesce(run, delay, e.runSearch)
+	e.Filter.OnChanged = func(string) { e.search() }
+	e.Filter.OnSubmitted = func(string) {
+		if len(e.hits) > 0 {
+			e.choose(e.hits[0].ID)
+		}
+	}
 	e.Model.OnChange = func(string) { e.refresh() }
 	return e
+}
+
+// View is the explorer as the sidebar shows it: the filter above the tree.
+func (e *Explorer) View() fyne.CanvasObject { return e.view }
+
+// filterEntry is the explorer's filter field: Escape clears it.
+type filterEntry struct {
+	widget.Entry
+}
+
+func (f *filterEntry) TypedKey(k *fyne.KeyEvent) {
+	if k.Name == fyne.KeyEscape && f.Text != "" {
+		f.SetText("")
+		return
+	}
+	f.Entry.TypedKey(k)
+}
+
+// runSearch lists the filter's matches in the tree's place, or brings the
+// tree back once the filter is empty. It runs on the UI goroutine.
+func (e *Explorer) runSearch() {
+	text := strings.TrimSpace(e.Filter.Text)
+	if text == "" {
+		e.hits = nil
+		e.show(e.Tree)
+		return
+	}
+	res := e.Model.Search(text, searchLimit)
+	e.hits = res.Hits
+	e.results.Refresh()
+	e.note.SetText(searchNote(len(res.Hits), res.Unopened))
+	e.show(e.found)
+}
+
+func (e *Explorer) show(o fyne.CanvasObject) {
+	if len(e.body.Objects) == 1 && e.body.Objects[0] == o {
+		return
+	}
+	e.body.Objects = []fyne.CanvasObject{o}
+	e.body.Refresh()
+}
+
+// searchNote says how many objects matched, and which connections the
+// search could not look inside.
+func searchNote(n, unopened int) string {
+	var s string
+	switch n {
+	case 0:
+		s = "No loaded objects match"
+	case 1:
+		s = "1 match"
+	default:
+		s = fmt.Sprintf("%d matches", n)
+	}
+	switch unopened {
+	case 0:
+		return s + "."
+	case 1:
+		return s + ". Not searched: 1 connection not opened."
+	}
+	return s + fmt.Sprintf(". Not searched: %d connections not opened.", unopened)
+}
+
+// choose opens a matching table as a double-click would. Any other match
+// is shown in the tree: the filter clears and the match is selected, and
+// selecting it opens the branches above it, since the tree scrolls to what
+// it selects. TestChoosingAFolderShowsItInTheTree holds Fyne to that.
+func (e *Explorer) choose(id string) {
+	it, _, _ := e.Model.Item(id)
+	if d, ok := it.Data.(objItem); ok && d.Node.Browsable {
+		e.activate(id)
+		return
+	}
+	e.Filter.SetText("")
+	e.hits = nil
+	e.show(e.Tree)
+	e.Tree.Select(id)
 }
 
 // Refresh reloads a node's children, or the whole tree with explorer.RootID.
