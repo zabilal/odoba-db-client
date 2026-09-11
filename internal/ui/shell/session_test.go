@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 	"slices"
 	"strings"
 	"testing"
@@ -277,4 +278,57 @@ func TestQuittingBeforeATabShowsKeepsItsLayout(t *testing.T) {
 	if !ok || len(ss.Tabs) != 1 || !slices.Equal(ss.Tabs[0].Hidden, []string{"id"}) {
 		t.Errorf("session after a quick quit: %+v", ss)
 	}
+}
+
+func TestExpandedNodesComeBackOnlyWhereATabConnects(t *testing.T) {
+	fx := newFixture(t)
+	fx.s.autosave = time.Hour // so that only quitting saves it
+	c := fx.create(t, "db1", nil)
+	idle := fx.create(t, "db2", nil)
+	fx.s.OpenObject(c.ID, itemsNode)
+	pump(t, fx.q, func() bool { return tabNamed(fx.s, "items").browse != nil })
+	db := view.NodeID(c.ID, model.NewRef(model.KindDatabase, "main"))
+	for _, id := range []string{view.ConnectionID(c.ID), db, view.ConnectionID(idle.ID)} {
+		fx.s.Explorer.Tree.OpenBranch(id)
+	}
+	fx.s.shutdown()
+
+	s := fx.relaunch(t)
+	tr := s.Explorer.Tree
+	if !tr.IsBranchOpen(view.ConnectionID(c.ID)) || !tr.IsBranchOpen(db) {
+		t.Error("branches under a connection a reopened tab uses should open again")
+	}
+	if tr.IsBranchOpen(view.ConnectionID(idle.ID)) {
+		t.Error("a connection no tab needs should stay closed: opening it would connect to it")
+	}
+}
+
+func TestANodeClosedBeforeQuittingStaysClosed(t *testing.T) {
+	fx, tb := openItems(t)
+	fx.s.autosave = time.Hour
+	conn := view.ConnectionID(tb.connID)
+	db := view.NodeID(tb.connID, model.NewRef(model.KindDatabase, "main"))
+	fx.s.Explorer.Tree.OpenBranch(conn)
+	fx.s.Explorer.Tree.OpenBranch(db)
+	fx.s.Explorer.Tree.CloseBranch(db)
+	fx.s.shutdown()
+	s := fx.relaunch(t)
+	if !s.Explorer.Tree.IsBranchOpen(conn) || s.Explorer.Tree.IsBranchOpen(db) {
+		t.Errorf("open: connection %v, database %v; want the connection open and the database closed",
+			s.Explorer.Tree.IsBranchOpen(conn), s.Explorer.Tree.IsBranchOpen(db))
+	}
+}
+
+func TestExpandingIsKeptWithoutQuitting(t *testing.T) {
+	fx, tb := openItems(t)
+	pump(t, fx.q, func() bool { return fx.q.Flush() == 0 && !fx.s.sessionPending })
+	id := view.ConnectionID(tb.connID)
+	fx.s.Explorer.Tree.OpenBranch(id)
+	if !fx.s.sessionPending {
+		t.Fatal("expanding a branch should schedule a save of the session by itself")
+	}
+	pump(t, fx.q, func() bool {
+		ss, ok, _ := fx.hist.Session(context.Background())
+		return ok && slices.Contains(ss.Expanded, id)
+	})
 }

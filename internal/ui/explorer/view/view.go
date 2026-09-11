@@ -5,6 +5,8 @@ package view
 import (
 	"context"
 	"image/color"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -134,7 +136,11 @@ type Explorer struct {
 	// OnSelect is called on the UI goroutine when the selection changes.
 	OnSelect func(id string)
 
+	// OnExpand is called on the UI goroutine when a branch opens or closes.
+	OnExpand func()
+
 	selected string
+	open     map[string]bool // the branches open
 	refresh  func()
 }
 
@@ -149,6 +155,9 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 		func(bool) fyne.CanvasObject { return newNodeRow() },
 		func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { e.update(id, o.(*nodeRow)) },
 	)
+	e.open = map[string]bool{}
+	e.Tree.OnBranchOpened = func(id widget.TreeNodeID) { e.expanded(id, true) }
+	e.Tree.OnBranchClosed = func(id widget.TreeNodeID) { e.expanded(id, false) }
 	e.Tree.OnSelected = func(id widget.TreeNodeID) {
 		e.selected = id
 		if e.OnSelect != nil {
@@ -167,6 +176,21 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 
 // Refresh reloads a node's children, or the whole tree with explorer.RootID.
 func (e *Explorer) Refresh(id string) { e.Model.Refresh(id) }
+
+// expanded records a branch opening or closing.
+func (e *Explorer) expanded(id string, open bool) {
+	if open {
+		e.open[id] = true
+	} else {
+		delete(e.open, id)
+	}
+	if e.OnExpand != nil {
+		e.OnExpand()
+	}
+}
+
+// Expanded is the branches open, in order.
+func (e *Explorer) Expanded() []string { return slices.Sorted(maps.Keys(e.open)) }
 
 // Selected returns the selected node's ID.
 func (e *Explorer) Selected() string { return e.selected }
