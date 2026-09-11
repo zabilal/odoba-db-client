@@ -85,6 +85,21 @@ type badger interface {
 	Badge(ctx context.Context, connID string, ref model.ObjectRef) (model.Badge, bool, error)
 }
 
+// stater says how an open connection is, for its row (FR-1.15). The view's
+// Loader is one.
+type stater interface {
+	Status(connID string) (app.Status, bool)
+}
+
+// Status is an open connection's health. False for one not open.
+func (l *Loader) Status(connID string) (app.Status, bool) {
+	live, ok := l.WS.Get(connID)
+	if !ok {
+		return app.Status{}, false
+	}
+	return live.Status(), true
+}
+
 // sep joins the parts of a node ID. A path joined with "." would be
 // ambiguous: schema "a.b" with table "c" and schema "a" with table "b.c" would
 // share an ID, and expanding one would show the other's columns. The unit
@@ -209,6 +224,7 @@ type Explorer struct {
 	// and remembered, "none" included (FR-2.5). badges and waiting are the
 	// UI goroutine's.
 	badger  badger
+	stater  stater // how an open connection is, for its row
 	run     uithread.Runner
 	badges  map[string]fetched
 	waiting map[string]*fetch
@@ -236,6 +252,7 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 	e := &Explorer{Model: explorer.NewModel(l, 30*time.Second), run: run,
 		badges: map[string]fetched{}, waiting: map[string]*fetch{}, slots: make(chan struct{}, badgeWorkers)}
 	e.badger, _ = l.(badger)
+	e.stater, _ = l.(stater)
 	e.Tree = widget.NewTree(
 		func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) },
 		func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) },
@@ -387,6 +404,10 @@ func (e *Explorer) Refresh(id string) {
 	e.Model.Refresh(id)
 }
 
+// Redraw draws a node's row again without loading anything, as when its
+// connection is lost or comes back.
+func (e *Explorer) Redraw(id string) { e.Tree.RefreshItem(id) }
+
 // expanded records a branch opening or closing.
 func (e *Explorer) expanded(id string, open bool) {
 	if open {
@@ -440,7 +461,13 @@ func (e *Explorer) update(id string, r *nodeRow) {
 	case folderItem:
 		r.show(fynetheme.IconNameFolder, it.Label, folderBadge(d.Color))
 	case connItem:
-		r.show(uitheme.IconNameDatabase, it.Label, environmentBadge(d.Environment))
+		b := environmentBadge(d.Environment)
+		if e.stater != nil {
+			if st, open := e.stater.Status(d.ConnID); open && st.State == app.StateDisconnected {
+				b = badgeText{text: "Disconnected", emphatic: true} // in words, as well as colour
+			}
+		}
+		r.show(uitheme.IconNameDatabase, it.Label, b)
 	case objItem:
 		r.show(iconFor(d.Node.Ref.Kind), it.Label, e.badgeOf(id, d))
 	default:

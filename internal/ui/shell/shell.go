@@ -173,8 +173,9 @@ type tab struct {
 	structure bool
 	label     string
 	// band is across the top of the content, for a production tab
-	// (envband.go).
+	// (envband.go); lost is below it while the connection is lost (lost.go).
 	band *envBand
+	lost *lostBand
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -243,7 +244,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.win.SetMainMenu(s.menu)
 	s.pal = palette.New(s.reg, s.win)
 
-	d.WS.OnStatus(func(string, app.Status) { d.Run(s.sync) })
+	d.WS.OnStatus(func(id string, _ app.Status) { d.Run(func() { s.connectionStatus(id) }) })
 	a.Settings().AddListener(func(fyne.Settings) { d.Run(s.recolour) })
 	s.win.SetOnClosed(s.shutdown)
 	s.win.SetCloseIntercept(s.requestQuit) // Quit comes this way too
@@ -438,7 +439,7 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
 		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
-	}, append(s.accentCommands(), s.folderCommands()...)...) {
+	}, append(append(s.accentCommands(), s.folderCommands()...), s.lostCommands()...)...) {
 		s.reg.MustRegister(c)
 	}
 }

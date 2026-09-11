@@ -23,16 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T1.31 (auto-reconnect: the monitor and status bar exist; see
-           what is open), then T1.58, T1.65. T1.14's scroll position waits
-           on Fyne's table reporting its offset.
+NEXT TASK: T1.65 (query parameters with a prompt panel), then T1.58
+           (highlighting for the MongoDB and Redis syntaxes, which waits on
+           those drivers). T1.14's scroll position waits on Fyne's table
+           reporting its offset.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — connection folders in the explorer (T1.27,
-           ADR-0025). Before it: the environment on every tab (T1.28,
+LAST DONE: 2026-09-11 — a lost connection said on its row and tabs, with
+           Reconnect Now (T1.31, ADR-0011 §21). Before it: connection
+           folders (T1.27, ADR-0025), the environment on every tab (T1.28,
            ADR-0011 §20), object classes from the model (T1.42,
            ADR-0024), native file dialogs and notifications (T1.3,
            ADR-0023), split panes (T1.5, ADR-0011 §19), tabs
@@ -262,7 +264,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8 — *every tab on a connection with an environment carries its word on the tab bar in its colours (PROD on red), heard by a screen reader with the title; a production tab (table, query or structure) also has a band across its content saying what working there means, or that it is read-only. Both are read as they are drawn, so an appearance change or a saved connection redraws them (ADR-0011 §20)*
 - [x] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4 — *twice on every engine: guard classification, and the server or file opened read-only (ADR-0014, ADR-0015)*
 - [x] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3 — *internal/source/tlsconf, shared by the network drivers; verify-full by default*
-- [~] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15
+- [x] **T1.31** Auto-reconnect with backoff + explicit disconnected state → FR-1.15 — *the monitor retries with backoff (ADR-0010); a lost connection's row says Disconnected, each of its tabs has a band saying when and why it was lost and how many tries so far, and Reconnect Now (the band, the Connection menu, a connection's menu) tries at once. All of it goes when the connection comes back (ADR-0011 §21). Open: a query tab's session, lost with the connection, is not yet told it was reset (ADR-0010 follow-up)*
 
 ## 1.D Drivers — relational core
 

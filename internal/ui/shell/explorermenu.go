@@ -34,7 +34,7 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 	s.sync()
 	ids := []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, "", cmdRefresh}
 	if id == view.ConnectionID(conn) {
-		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdDisconnect, "", cmdConnDelete}
+		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdReconnect, cmdDisconnect, "", cmdConnDelete}
 	}
 	return fyne.NewMenu("", s.popupItems(ids)...)
 }
