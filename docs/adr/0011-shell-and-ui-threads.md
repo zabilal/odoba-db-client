@@ -198,8 +198,13 @@ last and one dropped is simply not there; a width left alone follows the
 column's type, as it would in a new tab. A resize or move is saved within
 a second, as any other change is.
 
-Not yet restored: the grid's scroll position (Fyne's table keeps its offset
-to itself) and the explorer's expanded nodes.
+The explorer's open nodes come back too, but only under connections an open
+tab is already using. Opening a connection's node connects to it, and
+starting the app should connect to nothing a tab does not need, so a
+connection left expanded without a tab comes back closed.
+
+Not yet restored: the grid's scroll position. Fyne's table keeps its offset
+to itself, so it can be set but not read.
 
 ## Not decided here
 

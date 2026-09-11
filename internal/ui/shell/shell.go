@@ -176,6 +176,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.Explorer = view.New(&view.Loader{Conns: d.Conns, WS: d.WS}, d.Run, d.Delay)
 	s.Explorer.OnOpen = s.OpenObject
 	s.Explorer.OnSelect = func(string) { s.sync() }
+	s.Explorer.OnExpand = s.sessionChanged
 
 	s.tabs = container.NewDocTabs()
 	s.tabs.CloseIntercept = s.requestClose

@@ -87,6 +87,7 @@ func (s *Shell) restore() {
 			s.reopenScratch(sc, saved[sc.SavedID])
 		}
 	}
+	s.reexpand(last.Expanded)
 	for i, st := range last.Tabs {
 		if st.Pinned && opened[i] != nil {
 			s.pin(opened[i], true)
@@ -97,6 +98,21 @@ func (s *Shell) restore() {
 	}
 	if err := errors.Join(problems...); err != nil {
 		s.showError(err)
+	}
+}
+
+// reexpand opens the explorer's branches as they were, but only under
+// connections an open tab is already using: expanding a connection connects
+// to it, and starting the app should connect to nothing a tab does not need.
+func (s *Shell) reexpand(ids []string) {
+	using := map[string]bool{}
+	for _, t := range s.open {
+		using[t.connID] = true
+	}
+	for _, id := range ids {
+		if c, ok := view.ConnectionOf(id); ok && using[c] {
+			s.Explorer.Tree.OpenBranch(id)
+		}
 	}
 }
 
@@ -254,6 +270,7 @@ func layoutOf(g *grid.TableGrid, cols []model.ColumnDef, st *localdb.SessionTab)
 func (s *Shell) sessionOf() localdb.Session {
 	size := s.win.Canvas().Size()
 	ss := localdb.Session{Width: size.Width, Height: size.Height, Sidebar: s.split.Offset, Active: -1}
+	ss.Expanded = s.Explorer.Expanded()
 	sel := s.tabs.Selected()
 	for _, it := range s.tabs.Items {
 		t := s.tabOf(it)

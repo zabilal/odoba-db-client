@@ -15,6 +15,8 @@ type Session struct {
 	Sidebar       float64 // the sidebar's share of the window's width
 	Tabs          []SessionTab
 	Active        int // index into Tabs; -1 when no tab is selected
+	// Expanded is the explorer's open branches, by tree ID.
+	Expanded []string `json:",omitempty"`
 }
 
 // Kinds of session tab.
