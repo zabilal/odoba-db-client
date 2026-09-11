@@ -177,6 +177,11 @@ type tab struct {
 	// when the last session ended, put back once they first show.
 	ref     model.ObjectRef
 	restore *localdb.SessionTab
+	// table is a table tab's description, for its foreign keys (fkeys.go):
+	// nil until read, and for anything but a table. then runs once the grid
+	// is attached: what a jump asked of a tab still opening.
+	table *model.Table
+	then  func()
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -348,6 +353,8 @@ func (s *Shell) registerCommands() {
 		{ID: cmdFormView, Category: "View", Title: "Form View", Keywords: []string{"record", "row", "vertical", "fields", "wide"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleForm},
+		{ID: cmdGoToReferenced, Category: "View", Title: "Go to Referenced Row", Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
+			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
 			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
 		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
@@ -680,6 +687,11 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		t.restore = nil
 		s.restoreView(t, *v)
 	}
+	if f := t.then; f != nil {
+		t.then = nil
+		f()
+	}
+	s.describe(t) // fkeys.go
 }
 
 // count fetches the row count in the background. Rows show before it

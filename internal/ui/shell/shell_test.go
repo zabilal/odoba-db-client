@@ -81,7 +81,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 		return nil, &source.ConnectError{Kind: source.ConnectUnreachable,
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
-	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", guard: cfg.Guard}, nil
+	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -102,6 +102,7 @@ func (otherFake) Open(context.Context, source.ConnectionConfig) (source.Source, 
 type fakeSource struct {
 	uncounted bool
 	unkeyed   bool // its rows cannot be told apart
+	fkeys     bool // its items refer to parts by name
 	guard     source.Guard
 }
 
@@ -125,18 +126,23 @@ func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 }
 func (fakeSource) Ping(context.Context) error { return pingErr() }
 func (fakeSource) Close() error               { logClose("source"); return nil }
-func (fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
+func (f fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
 	if ref.Name() == "boom" {
 		panic("fakesql: describing fell over")
 	}
-	return &model.Table{Name: ref.Name(), RowsEstimate: 41,
+	tbl := &model.Table{Name: ref.Name(), RowsEstimate: 41,
 		Columns: []model.Column{
 			{Name: "id", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}, Identity: true},
 			{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text", Nullable: true}, Default: "'x'", HasDefault: true},
 		},
 		PrimaryKey: &model.PrimaryKey{Name: "items_pkey", Columns: []string{"id"}},
 		Indexes:    []model.Index{{Name: "items_name", Columns: []model.IndexColumn{{Name: "name"}}}},
-	}, nil
+	}
+	if f.fkeys {
+		tbl.ForeignKeys = []model.ForeignKey{{Name: "items_part", Columns: []string{"name"},
+			RefSchema: "main", RefTable: "parts", RefColumns: []string{"name"}}}
+	}
+	return tbl, nil
 }
 func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
 	return model.Badge{}, false, nil

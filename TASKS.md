@@ -23,8 +23,8 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.13 (FK navigation: jump to the referenced row), then T2.14
-           (what points at this row). What is open in Phase 1
+NEXT TASK: T2.14 (what points at this row: rows of other tables that
+           refer to it), then T2.15. What is open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
 [~] tasks: T1.14 partly done; its line says what is open.
@@ -32,8 +32,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a row read down in a form view (T2.12, ADR-0039).
-           Before it: one value set across a selection, whole columns too
+LAST DONE: 2026-09-11 — a foreign key followed to the row it refers to
+           (T2.13, ADR-0040). Before it: a row read down in a form view
+           (T2.12, ADR-0039), one value set across a selection, whole columns too
            (T2.11, ADR-0038), a block of TSV or CSV pasted into
            the grid (T2.10, ADR-0037), a query's result edited in its grid,
            committed to its table and read again (T2.9, ADR-0036, ADR-0035),
@@ -366,7 +367,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.B Form view & navigation
 
 - [x] **T2.12** Form view — one record laid out vertically → FR-3.10 — *View ▸ Form View shows the active row in the grid's place, a field per column shown; Previous and Next Row move the grid; fields are typed into where the grid edits, changes said in words (ADR-0039)*
-- [ ] **T2.13** FK navigation: jump to referenced row → FR-3.11
+- [x] **T2.13** FK navigation: jump to referenced row → FR-3.11 — *a table's tab reads its foreign keys when it opens; View ▸ Go to Referenced Row opens the table a cell's key refers to, or its tab, filtered to that row in the filter row, other filters cleared (ADR-0040)*
 - [ ] **T2.14** Reverse FK navigation: "what points at this?" → FR-3.11
 - [ ] **T2.15** FK lookup labels rendered inline → FR-3.12
 - [ ] **T2.16** Master-detail nested grid → FR-3.13
