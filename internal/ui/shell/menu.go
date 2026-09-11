@@ -21,6 +21,7 @@ const (
 	cmdConnDelete     = "connection.delete"
 	cmdDisconnect     = "connection.disconnect"
 	cmdOpen           = "object.open"
+	cmdStructure      = "object.structure"
 	cmdFavorite       = "explorer.favorite"
 	cmdRefresh        = "explorer.refresh"
 	cmdReload         = "tab.reload"
@@ -114,7 +115,7 @@ var menuBar = []struct {
 		submenu("Accent Colour", accentIDs()...),
 	}},
 	{"Connection", []menuEntry{
-		item(cmdOpen), item(cmdFavorite), separator,
+		item(cmdOpen), item(cmdStructure), item(cmdFavorite), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
 		item(cmdDisconnect),
 	}},

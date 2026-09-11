@@ -124,8 +124,18 @@ func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 }
 func (fakeSource) Ping(context.Context) error { return nil }
 func (fakeSource) Close() error               { logClose("source"); return nil }
-func (fakeSource) Describe(context.Context, model.ObjectRef) (any, error) {
-	return nil, nil
+func (fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
+	if ref.Name() == "boom" {
+		panic("fakesql: describing fell over")
+	}
+	return &model.Table{Name: ref.Name(), RowsEstimate: 41,
+		Columns: []model.Column{
+			{Name: "id", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}, Identity: true},
+			{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text", Nullable: true}, Default: "'x'", HasDefault: true},
+		},
+		PrimaryKey: &model.PrimaryKey{Name: "items_pkey", Columns: []string{"id"}},
+		Indexes:    []model.Index{{Name: "items_name", Columns: []model.IndexColumn{{Name: "name"}}}},
+	}, nil
 }
 func (fakeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
 	return model.Badge{}, false, nil

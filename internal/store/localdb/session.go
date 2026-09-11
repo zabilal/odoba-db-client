@@ -21,8 +21,9 @@ type Session struct {
 
 // Kinds of session tab.
 const (
-	SessionObject = "object"
-	SessionQuery  = "query"
+	SessionObject    = "object"
+	SessionQuery     = "query"
+	SessionStructure = "structure"
 )
 
 // SessionTab is one tab. An object tab names its object and how its rows

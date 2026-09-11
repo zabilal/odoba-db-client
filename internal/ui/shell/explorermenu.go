@@ -27,7 +27,7 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 	}
 	s.Explorer.Tree.Select(id)
 	s.sync()
-	ids := []string{cmdOpen, cmdFavorite, "", cmdRefresh}
+	ids := []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdRefresh}
 	if id == view.ConnectionID(conn) {
 		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdDisconnect, "", cmdConnDelete}
 	}

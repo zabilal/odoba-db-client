@@ -242,6 +242,21 @@ the menu bar's items are, since `sync` keeps only those up to date, and a
 pop-up that took their place would leave the menu bar stale. A test holds
 that line.
 
+## 14. The structure tab shows what Describe returns
+
+Explorer › Open Structure (⌥⌘O, and in the explorer's context menu) opens
+a read-only tab for a table, view or collection (FR-2.4). It shows what the
+driver's Describe reports, through `app.Describe`, which contains a
+driver's panic as every other way into a driver does (ADR-0017). For a
+table that is its comment and estimated row count, then columns (type,
+null, default, identity, auto-increment or generation, comment), primary
+key, indexes, foreign keys, unique and check constraints, and triggers; for
+a view, its definition and columns. Sections with nothing in them are left
+out, and every cell can be selected and copied. Like a data tab, it opens
+at once and fills in when the description arrives, and it comes back with
+the session as a structure tab. Editing a structure is the table designer's
+(T3.x), and writing a CREATE statement from one is T3.7's.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

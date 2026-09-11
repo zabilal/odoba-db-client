@@ -133,6 +133,12 @@ func (s *Shell) reopenTab(st localdb.SessionTab, scratches map[string]localdb.Sc
 			t.restore = &v
 		}
 		return t
+	case localdb.SessionStructure:
+		if _, ok := s.d.Conns.Get(st.ConnectionID); !ok || st.RefKind == "" {
+			return nil
+		}
+		ref := model.NewRef(model.ObjectKind(st.RefKind), st.RefPath...)
+		return s.OpenStructure(st.ConnectionID, model.Node{Ref: ref, Label: st.Label, Browsable: true})
 	case localdb.SessionQuery:
 		if sc, ok := scratches[st.ScratchID]; ok && !used[sc.ID] {
 			used[sc.ID] = true
@@ -291,6 +297,10 @@ func sessionTab(t *tab) localdb.SessionTab {
 	st := localdb.SessionTab{ConnectionID: t.connID, Pinned: t.pinned}
 	if q := t.query; q != nil {
 		st.Kind, st.ScratchID, st.SavedID = localdb.SessionQuery, q.scratchID, q.saved.ID
+		return st
+	}
+	if t.structure {
+		st.Kind, st.RefKind, st.RefPath, st.Label = localdb.SessionStructure, string(t.ref.Kind), t.ref.Path, t.label
 		return st
 	}
 	st.Kind, st.RefKind, st.RefPath, st.Label = localdb.SessionObject, string(t.ref.Kind), t.ref.Path, t.item.Text
