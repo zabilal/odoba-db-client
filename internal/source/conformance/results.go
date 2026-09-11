@@ -12,7 +12,9 @@ import (
 // checkEditableResults queries the Writable table, a column renamed, and
 // expects the result to say where each column came from and to be known by
 // the table's key (FR-4.8, ADR-0035). A result with a computed column, or
-// without the key, is known by none.
+// without the key, is known by none. A result keeps its key read on a
+// connection of its own, and held in memory while the next statement of its
+// script runs (ADR-0036).
 func checkEditableResults(t *testing.T, target Target) {
 	if target.Writable.IsZero() {
 		t.Skip("no Writable target configured")
@@ -41,11 +43,7 @@ func checkEditableResults(t *testing.T, target Target) {
 			t.Fatalf("%v, rows %v", err, res)
 		}
 		defer res.Rows.Close()
-		var id model.RowIdentity
-		if i, ok := res.Rows.(model.Identified); ok {
-			id = i.Identity()
-		}
-		return id, res.Rows.Columns()
+		return model.IdentityOf(res.Rows), res.Rows.Columns()
 	}
 
 	id, cols := query(q("id") + ", " + q("name") + " AS " + q("label"))
@@ -60,5 +58,32 @@ func checkEditableResults(t *testing.T, target Target) {
 	}
 	if id, cols := query(q("name")); id.Kind != model.IdentityNone || len(cols) != 1 || cols[0].OriginColumn != "name" {
 		t.Errorf("without the key a result is known by none, though its column says where it is from: %+v %+v", id, cols)
+	}
+
+	sel := "SELECT " + q("id") + ", " + q("name") + " FROM " + d.QualifyRef(target.Writable)
+	if qr, ok := src.(source.Queryer); ok {
+		res, err := qr.Query(ctx, source.Statement{SQL: sel})
+		if err != nil || res.Rows == nil {
+			t.Fatalf("%v, rows %v", err, res)
+		}
+		if id := model.IdentityOf(res.Rows); !id.Editable() {
+			t.Errorf("a result read on a connection of its own keeps its key: %+v", id)
+		}
+		res.Rows.Close()
+	}
+	ch, err := ss.QueryMulti(ctx, sel+"; "+sel, source.ScriptOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []model.RowIdentity
+	for r := range ch {
+		if r.Err != nil || r.Result == nil || r.Result.Rows == nil {
+			t.Fatalf("statement %d: %v", r.Index, r.Err)
+		}
+		ids = append(ids, model.IdentityOf(r.Result.Rows))
+		r.Result.Rows.Close()
+	}
+	if len(ids) != 2 || !ids[0].Editable() || !ids[1].Editable() {
+		t.Errorf("each result of a script keeps its key, the first held in memory while the second runs: %+v", ids)
 	}
 }

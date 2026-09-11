@@ -22,7 +22,8 @@ import (
 )
 
 // The fake runs scripts of ";"-separated statements: "rows N", "slow N" (a
-// row a millisecond), "update …" (a write), "wait" (which holds the script
+// row a millisecond), "items" (the items table, known by its key), "joined"
+// (its rows, known by nothing), "update …" (a write), "wait" (which holds the script
 // until it is stopped) and anything else, which fails. Its offsets are
 // characters, as the source contract says.
 
@@ -96,8 +97,20 @@ func logClose(what string) {
 	closeLog.events = append(closeLog.events, what)
 	closeLog.Unlock()
 }
-func (fs *fakeSession) Query(context.Context, source.Statement) (*source.Result, error) {
-	return nil, fmt.Errorf("not in this test")
+
+// Query answers "items" alone, as a result read again once its changes are
+// written: ids 1 to 999, to be told from the rows first read, and more than
+// a page, so that only a count says how many. It counts them; failReread
+// makes them fail.
+func (fs *fakeSession) Query(_ context.Context, st source.Statement) (*source.Result, error) {
+	if !strings.HasPrefix(st.SQL, "items") {
+		return nil, fmt.Errorf("not in this test")
+	}
+	rereads.Add(1)
+	if failReread.Load() {
+		return nil, fmt.Errorf("fakesql: the table has gone")
+	}
+	return &source.Result{Rows: &sliceStream{next: 1, end: 1000, keyed: true}, Affected: -1}, nil
 }
 
 func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
@@ -126,6 +139,10 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts sourc
 			case "rows", "slow":
 				n, _ := strconv.Atoi(f[1])
 				r.Result = &source.Result{Rows: &slowStream{n: n, slow: f[0] == "slow"}, Affected: -1}
+			case "items":
+				r.Result = &source.Result{Rows: itemsResult(), Affected: -1}
+			case "joined":
+				r.Result = &source.Result{Rows: joinedStream{&sliceStream{end: 5}}, Affected: -1}
 			case "update":
 				r.Result = &source.Result{Affected: 3, Duration: 2 * time.Millisecond}
 			case "wait":

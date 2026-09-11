@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"slices"
 
 	"fyne.io/fyne/v2/widget"
 
@@ -12,8 +13,9 @@ import (
 
 // edits is one grid's editing (FR-4.1 to FR-4.8): its rows' pending
 // changes, the grid and model that show them, where they are written, and
-// how their state is said. A table tab has one. The Edit menu's commands
-// act on the edits of the grid in front (activeEdits).
+// how their state is said. A table tab has one, and so does each query
+// result that is edited (resultedit.go). The Edit menu's commands act on
+// the edits of the grid in front (activeEdits).
 type edits struct {
 	ctx     context.Context
 	connID  string
@@ -33,19 +35,29 @@ type edits struct {
 	reload func()
 }
 
-// rowWriter plans a changeset and applies a plan: a table's browse.
+// rowWriter plans a changeset and applies a plan: a table's browse, or a
+// query's session.
 type rowWriter interface {
 	Plan(ctx context.Context, cs source.Changeset) (*source.WritePlan, error)
 	Apply(ctx context.Context, plan *source.WritePlan) (*source.WriteOutcome, error)
 }
 
-// activeEdits is the editing of the grid in front, if it has any.
+// activeEdits is the editing of the grid in front, if it has any: a table
+// tab's, or a query result's.
 func (s *Shell) activeEdits() *edits {
 	t, g := s.activeTab(), s.activeGrid()
-	if t == nil || g == nil || t.ed == nil || t.ed.grid != g {
+	switch {
+	case t == nil || g == nil:
 		return nil
+	case t.query != nil:
+		if i := slices.Index(t.query.grids, g); i >= 0 {
+			return t.query.res[i].ed
+		}
+		return nil
+	case t.ed != nil && t.ed.grid == g:
+		return t.ed
 	}
-	return t.ed
+	return nil
 }
 
 // changes is how many rows have changes not yet committed.
@@ -60,6 +72,17 @@ func (e *edits) changes() int {
 // not being committed.
 func (e *edits) reviewable() bool {
 	return e.changes() > 0 && !e.committing
+}
+
+// showReview offers Review Changes… while changes are pending, and not
+// while they are being committed.
+func (e *edits) showReview() {
+	setShown(e.review, e.changes() > 0)
+	if e.committing {
+		e.review.Disable()
+	} else {
+		e.review.Enable()
+	}
 }
 
 // showAdded puts the pending new rows in the grid and says the changes.

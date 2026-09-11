@@ -713,12 +713,7 @@ func (s *Shell) showCount(t *tab) {
 		if n := e.changes(); n > 0 {
 			text += " · " + pendingText(n)
 		}
-		setShown(e.review, e.changes() > 0)
-		if e.committing {
-			e.review.Disable()
-		} else {
-			e.review.Enable()
-		}
+		e.showReview()
 	}
 	if t.said != "" {
 		text += " — " + t.said
