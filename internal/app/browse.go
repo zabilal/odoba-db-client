@@ -84,6 +84,22 @@ func (b *BrowseSource) Distinct(ctx context.Context, column string, limit int) (
 	return dl.Distinct(ctx, b.ref, column, source.BrowseOptions{Filters: others, Where: b.opt.Where}, limit)
 }
 
+// CanScriptRows reports whether rows can be copied as INSERT statements.
+func (b *BrowseSource) CanScriptRows() bool {
+	_, ok := b.src.(source.RowScripter)
+	return ok
+}
+
+// InsertRows writes rows of this object as the INSERT statements that would
+// add them (FR-3.7). The dialect writes the values (ARCH-2).
+func (b *BrowseSource) InsertRows(cols []model.ColumnDef, rows []model.Row) (string, error) {
+	rs, ok := b.src.(source.RowScripter)
+	if !ok {
+		return "", errors.New("app: this source cannot write rows as statements")
+	}
+	return rs.InsertRows(b.ref, cols, rows)
+}
+
 // CanWhere reports whether the grid can take a WHERE clause typed by the
 // person (FR-3.6): the source needs a query language to write it in.
 func (b *BrowseSource) CanWhere() bool {

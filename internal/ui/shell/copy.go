@@ -153,6 +153,30 @@ func (s *Shell) copyActiveAs(f export.Format) {
 	}
 }
 
+// copyInsert puts the rows that have a selected cell on the clipboard as
+// INSERT statements into the table they came from, rows whole as Copy As
+// writes them. The dialect writes the values (ARCH-2).
+func (s *Shell) copyInsert() {
+	t, g := s.activeTab(), s.activeGrid()
+	if t == nil || g == nil || !s.canCopyInsert() {
+		return
+	}
+	bs := t.browse
+	s.copySelection(t.ctx, g, " as INSERT", func(j copyJob, rows []model.Row) (string, int, error) {
+		out, defs := j.rows(rows, false)
+		text, err := bs.InsertRows(defs, out)
+		return strings.TrimSuffix(text, "\n"), len(out), err
+	})
+}
+
+// canCopyInsert reports whether the selection can be copied as INSERT: rows
+// of a table, from a source whose dialect writes them. A query's result has
+// no one table to insert into.
+func (s *Shell) canCopyInsert() bool {
+	t := s.activeTab()
+	return s.hasSelection() && t != nil && t.query == nil && t.browse != nil && t.browse.CanScriptRows()
+}
+
 func (s *Shell) copyCSV()      { s.copyActiveAs(export.CSV) }
 func (s *Shell) copyJSON()     { s.copyActiveAs(export.JSON) }
 func (s *Shell) copyMarkdown() { s.copyActiveAs(export.Markdown) }

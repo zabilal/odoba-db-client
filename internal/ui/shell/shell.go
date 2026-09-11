@@ -243,6 +243,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.hasSelection, Run: s.copyJSON},
 		{ID: cmdCopyMarkdown, Category: "Edit", Title: "Copy as Markdown", Keywords: []string{"clipboard", "table", "md"},
 			Enabled: s.hasSelection, Run: s.copyMarkdown},
+		{ID: cmdCopyInsert, Category: "Edit", Title: "Copy as INSERT", Keywords: []string{"clipboard", "sql", "statements"},
+			Enabled: s.canCopyInsert, Run: s.copyInsert},
 		{ID: cmdSelectRow, Category: "Edit", Title: "Select Row", Enabled: s.hasSelection,
 			Run: func() { s.onGrid((*grid.TableGrid).SelectRow) }},
 		{ID: cmdSelectColumn, Category: "Edit", Title: "Select Column", Enabled: s.hasSelection,

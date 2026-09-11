@@ -171,7 +171,11 @@ func normalize(v any) any {
 			return nil
 		}
 		d := time.Duration(x.Microseconds) * time.Microsecond
-		return fmt.Sprintf("%02d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
+		s := fmt.Sprintf("%02d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
+		if us := x.Microseconds % 1_000_000; us != 0 {
+			s += strings.TrimRight(fmt.Sprintf(".%06d", us), "0") // exact, as psql shows it
+		}
+		return s
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {

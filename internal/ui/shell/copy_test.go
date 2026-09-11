@@ -123,3 +123,23 @@ func TestCopyAsFillsTheCellsCopyLeavesBlank(t *testing.T) {
 		t.Errorf("CSV %q; rows are written whole", got)
 	}
 }
+
+func TestCopyAsInsertAsksTheDialect(t *testing.T) {
+	fx, tb := openItems(t)
+	c, _ := fx.s.reg.Get(cmdCopyInsert)
+	if c.Enabled() {
+		t.Error("with nothing selected there is nothing to copy")
+	}
+	tb.grid.Select(grid.CellID{Row: 1, Col: 0}, grid.CellID{Row: 2, Col: 1})
+	if !c.Enabled() {
+		t.Fatal("a table's rows can be copied as INSERT")
+	}
+	c.Run()
+	pump(t, fx.q, func() bool { return strings.HasPrefix(fx.s.status.Text, "Copied") })
+	if got := fx.s.app.Clipboard().Content(); got != "INSERT 2 [1 item 1];\nINSERT 2 [2 item 2];" {
+		t.Errorf("clipboard %q", got)
+	}
+	if got := fx.s.status.Text; got != "Copied 2 rows × 2 columns as INSERT" {
+		t.Errorf("status %q", got)
+	}
+}

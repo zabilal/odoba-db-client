@@ -156,6 +156,15 @@ func (fakeSource) Distinct(ctx context.Context, _ model.ObjectRef, _ string, _ s
 	return vals[:min(limit, len(vals))], nil
 }
 
+// InsertRows writes each row as a statement naming what it was given.
+func (fakeSource) InsertRows(_ model.ObjectRef, cols []model.ColumnDef, rows []model.Row) (string, error) {
+	var b strings.Builder
+	for _, r := range rows {
+		fmt.Fprintf(&b, "INSERT %d %v;\n", len(cols), r)
+	}
+	return b.String(), nil
+}
+
 // browses records every Browse, for tests that check what was asked for.
 var browses struct {
 	sync.Mutex
