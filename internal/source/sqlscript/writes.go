@@ -29,9 +29,10 @@ var ErrManyRows = errors.New("the key does not tell the rows apart")
 // row deleted is matched by its key; a new row names only the columns given,
 // or with none given is written as defaultRow says ("DEFAULT VALUES", or
 // MySQL's "() VALUES ()"). A changeset that cannot be written whole is
-// refused rather than planned in part.
+// refused rather than planned in part. New rows alone need no key, as no key
+// addresses them: a file is imported into a table without one (ADR-0049).
 func PlanWrites(d source.Dialect, guard source.Guard, cs source.Changeset, defaultRow string) (*source.WritePlan, error) {
-	if !cs.Identity.Editable() {
+	if !cs.Identity.Editable() && !insertsOnly(cs.Changes) {
 		return nil, errors.New("these rows have no key to tell them apart, so they cannot be written")
 	}
 	table := d.QualifyRef(cs.Target)
@@ -46,6 +47,16 @@ func PlanWrites(d source.Dialect, guard source.Guard, cs source.Changeset, defau
 		plan.Descriptions = append(plan.Descriptions, desc)
 	}
 	return plan, nil
+}
+
+// insertsOnly reports whether every change adds a row.
+func insertsOnly(changes []source.RowChange) bool {
+	for _, c := range changes {
+		if c.Kind != source.ChangeInsert {
+			return false
+		}
+	}
+	return true
 }
 
 // write renders one change, and says in a line what it does.

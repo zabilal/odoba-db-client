@@ -13,10 +13,13 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -27,8 +30,8 @@ import (
 // tab of its own says how the file is read, as found from it and for a
 // person to correct; which of its columns fills which of the table's; and
 // its first rows as the table would take them, with what would not go in;
-// and, on asking, what of the whole file would not go in. Writing the rows
-// is T2.21's.
+// and, on asking, what of the whole file would not go in; and then its rows
+// written into the table.
 
 // previewRows is how many of a file's rows the panel shows.
 const previewRows = 20
@@ -87,6 +90,12 @@ type importPanel struct {
 	checked  *grid.TableGrid
 	checks   int
 	running  *task
+
+	// The import itself: its button, the task writing the rows, and how
+	// many rows the file has, as the last dry run counted them, or -1.
+	load      *widget.Button
+	importing *task
+	known     int64
 }
 
 // canImport reports whether the tab in front is a table rows can be
@@ -193,6 +202,8 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	options := widget.NewForm(widget.NewFormItem("Format", p.format), widget.NewFormItem("Encoding", p.encoding),
 		widget.NewFormItem("Delimiter", p.comma), widget.NewFormItem("", p.header), widget.NewFormItem("Sheet", p.sheet))
 	p.dry = widget.NewButton("Dry Run", p.dryRun)
+	p.load = widget.NewButton("Import", p.startImport)
+	p.load.Importance = widget.HighImportance
 	p.summary = widget.NewLabel("")
 	p.summary.Wrapping = fyne.TextWrapWord
 	p.problems = container.NewStack()
@@ -201,7 +212,7 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.forget()
 	split := container.NewVSplit(container.NewVScroll(p.mapping), p.tabs)
 	split.Offset = 0.45
-	actions := container.NewHBox(layout.NewSpacer(), p.dry)
+	actions := container.NewHBox(layout.NewSpacer(), p.dry, p.load)
 	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, actions, nil, nil, split)}
 	t.item = container.NewTabItem("Import "+filepath.Base(f.Name())+" into "+into.item.Text,
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
@@ -446,8 +457,27 @@ func (p *importPanel) forget() {
 		p.s.stopTask(p.running)
 		p.running = nil
 	}
-	p.dry.Enable()
+	p.known = -1
+	p.buttons()
 	p.showChecked(dryRunIntro, nil)
+}
+
+// buttons offers Dry Run and Import while neither is under way.
+func (p *importPanel) buttons() {
+	idle := p.running == nil && p.importing == nil
+	setWidgetEnabled(p.dry, idle)
+	setWidgetEnabled(p.load, idle)
+}
+
+// refused says, of a mapping that gives no value to a column that needs one,
+// that every row would be refused.
+func (p *importPanel) refused(pairs []transfer.Pair) bool {
+	miss := transfer.Unfilled(p.cols, pairs)
+	if len(miss) > 0 {
+		p.showChecked("Every row would be refused: "+unfilledText(miss), nil)
+		p.tabs.SelectIndex(1)
+	}
+	return len(miss) > 0
 }
 
 // dryRun reads every row of the file as the import would write it, writing
@@ -455,13 +485,8 @@ func (p *importPanel) forget() {
 // go in is listed under Dry Run, with the row it is in.
 func (p *importPanel) dryRun() {
 	pairs, _ := p.pairList()
-	if len(pairs) == 0 || p.running != nil {
-		return // nothing to write, or a dry run is under way
-	}
-	if miss := transfer.Unfilled(p.cols, pairs); len(miss) > 0 {
-		p.showChecked("Every row would be refused: "+unfilledText(miss), nil)
-		p.tabs.SelectIndex(1)
-		return
+	if len(pairs) == 0 || p.running != nil || p.importing != nil || p.refused(pairs) {
+		return // nothing to write, something under way, or nothing would go in
 	}
 	s, t := p.s, p.t
 	to := map[string]model.ColumnDef{}
@@ -470,9 +495,9 @@ func (p *importPanel) dryRun() {
 	}
 	opt, seq := p.opt, p.checks
 	ctx, cancel := context.WithCancel(t.ctx)
-	p.dry.Disable()
 	k := s.startTask(t, "Dry run of "+filepath.Base(p.f.Name()), cancel)
 	p.running = k
+	p.buttons()
 	var mu sync.Mutex
 	var latest transfer.Checked
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
@@ -502,7 +527,7 @@ func (p *importPanel) dryRun() {
 				return
 			}
 			p.running = nil
-			p.dry.Enable()
+			p.buttons()
 			var say string
 			state := taskDone
 			switch {
@@ -511,7 +536,7 @@ func (p *importPanel) dryRun() {
 			case err != nil:
 				state, say = taskFailed, fmt.Sprintf("Could not read the file past %s: %v", nounCount(int(c.Rows), "row"), err)
 			default:
-				say = checkedSummary(c)
+				say, p.known = checkedSummary(c), c.Rows
 			}
 			s.endTask(k, state, say)
 			p.showChecked(say, c.Problems)
@@ -568,6 +593,135 @@ func (p *importPanel) showChecked(say string, problems []transfer.Problem) {
 		p.problems.Objects = []fyne.CanvasObject{p.checked.View()}
 	}
 	p.problems.Refresh()
+}
+
+// startImport writes the file's rows into the table (FR-10.6, ADR-0049). On
+// a production connection it asks first, as a commit does (FR-4.9): the
+// driver's own guard says whether it must, of a plan of no rows.
+func (p *importPanel) startImport() {
+	pairs, _ := p.pairList()
+	if len(pairs) == 0 || p.running != nil || p.importing != nil || p.refused(pairs) {
+		return
+	}
+	s, into := p.s, p.into
+	probe, err := into.browse.Plan(p.t.ctx, source.Changeset{Target: into.ref})
+	if err != nil {
+		s.showError(err)
+		return
+	}
+	if !probe.Guarded {
+		p.runImport(pairs, false)
+		return
+	}
+	c, _ := s.d.Conns.Get(into.connID)
+	d := dialog.NewConfirm("Import into Production?",
+		fmt.Sprintf("The rows of %s go into “%s” on “%s”, which is marked Production. Nothing has been written yet.",
+			filepath.Base(p.f.Name()), into.item.Text, c.Name),
+		func(yes bool) {
+			if yes {
+				p.runImport(pairs, true)
+			}
+		}, s.win)
+	d.SetConfirmText("Import")
+	d.SetDismissText("Cancel")
+	d.SetConfirmImportance(widget.DangerImportance)
+	d.Show()
+}
+
+// runImport writes the rows as a task in the task centre, reading the file
+// again from its start with the options and the mapping as they are. How
+// long is left is said where a dry run counted the rows (FR-10.7). The
+// table's tab reads its rows again once any are written.
+func (p *importPanel) runImport(pairs []transfer.Pair, confirmed bool) {
+	s, t, into := p.s, p.t, p.into
+	to := map[string]model.ColumnDef{}
+	for _, c := range p.to {
+		to[c.Name] = c
+	}
+	opt, total := p.opt, p.known
+	ctx, cancel := context.WithCancel(t.ctx)
+	k := s.startTask(t, "Import "+filepath.Base(p.f.Name())+" into "+into.item.Text, cancel)
+	p.importing = k
+	p.buttons()
+	var mu sync.Mutex
+	var latest transfer.Loaded
+	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
+		mu.Lock()
+		l := latest
+		mu.Unlock()
+		frac := -1.0
+		if total > 0 {
+			frac = min(1, float64(l.Written)/float64(total))
+		}
+		s.progressTask(k, exportStatus(export.Progress{Rows: l.Written, Elapsed: l.Elapsed}, total), frac)
+	})
+	go func() {
+		var l transfer.Loaded
+		rs, err := transfer.Open(p.f, p.size, opt)
+		if err == nil {
+			l, err = transfer.Load(ctx, rs, pairs, to, into.ref, into.browse, transfer.LoadOptions{Confirmed: confirmed},
+				func(l transfer.Loaded) {
+					mu.Lock()
+					latest = l
+					mu.Unlock()
+					update()
+				})
+			rs.Close()
+		}
+		close(k.finished)
+		s.d.Run(func() {
+			stopped := ctx.Err() != nil
+			cancel()
+			p.importing = nil
+			p.buttons()
+			if l.Written > 0 && into.ctx.Err() == nil {
+				s.reload(into)
+			}
+			state, say := importEnd(l, err, stopped, into.item.Text)
+			s.endTask(k, state, say)
+			t.footer.SetText(say)
+			if state == taskFailed {
+				s.showError(formError(say))
+			}
+		})
+	}()
+}
+
+// importEnd says how an import ended, and what it left written.
+func importEnd(l transfer.Loaded, err error, stopped bool, table string) (taskState, string) {
+	var le *transfer.LoadError
+	switch {
+	case stopped:
+		return taskCancelled, "Cancelled." + wroteText(l.Written, true)
+	case errors.As(err, &le):
+		return taskFailed, fmt.Sprintf("Stopped at row %s: %v.", group(le.Row), le.Err) + wroteText(l.Written, le.Undone)
+	case err != nil:
+		return taskFailed, "Not imported: " + err.Error() + "." + wroteText(l.Written, true)
+	}
+	return taskDone, fmt.Sprintf("Imported %s into %s.", nounCount(int(l.Written), "row"), table)
+}
+
+// wroteText says what an import that stopped left written: the batches
+// before the one it stopped in, and of that one nothing, unless the server
+// could not undo it.
+func wroteText(written int64, undone bool) string {
+	switch {
+	case !undone && written == 0:
+		return " The server could not undo the rows before it, so some may have been written."
+	case !undone:
+		return " " + firstWritten(written) + "; the server could not undo the rows after them, so some may have been too."
+	case written == 0:
+		return " Nothing was written."
+	}
+	return " " + firstWritten(written) + ", and none after."
+}
+
+// firstWritten says the first n rows were written.
+func firstWritten(n int64) string {
+	if n == 1 {
+		return "The first row was written"
+	}
+	return "The first " + group(n) + " rows were written"
 }
 
 // rowsFetcher serves rows held in memory, for a preview.
