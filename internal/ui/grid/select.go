@@ -132,14 +132,14 @@ func (g *TableGrid) ToggleCell(c CellID) {
 
 // SelectAll selects every cell.
 func (g *TableGrid) SelectAll() {
-	g.sel.All(len(g.model.Columns()))
+	g.sel.All(len(g.order))
 	g.selectionChanged()
 }
 
 // SelectRow selects every cell in the active cell's row.
 func (g *TableGrid) SelectRow() {
 	if c, ok := g.sel.Active(); ok {
-		g.sel.Row(c.Row, len(g.model.Columns()))
+		g.sel.Row(c.Row, len(g.order))
 		g.selectionChanged()
 	}
 }

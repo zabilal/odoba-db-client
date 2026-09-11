@@ -308,6 +308,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet) {
 	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) } // the Edit menu and the viewer follow it
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
+	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	count := widget.NewLabel("Loading rows…")
 	count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {

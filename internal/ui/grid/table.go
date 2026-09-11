@@ -44,6 +44,12 @@ type TableGrid struct {
 	sel   Selection
 	table *gridTable
 
+	// order is the model's columns in the order they are shown, which hiding
+	// and moving change; frozen is how many of them, from the left, stay in
+	// view as the rest scroll (FR-3.2). See columns.go.
+	order  []int
+	frozen int
+
 	// refresh is the coalesced refresh trigger. See ScheduleRefresh.
 	refresh func()
 
@@ -60,10 +66,9 @@ type TableGrid struct {
 	// OnFilter hears every column's filter text when one is submitted, on a
 	// grid with a filter row (SetFilterable).
 	OnFilter func(texts []string)
-	// OnPickValues opens a column's list of values (FR-3.4) at a point on
-	// screen; a right-click on the column's title asks for it there. Nil
-	// where the source cannot list.
-	OnPickValues func(col int, at fyne.Position)
+	// OnHeaderMenu is asked for a column's menu at a point on screen, by a
+	// right-click on the column's title. The column is the model's.
+	OnHeaderMenu func(col int, at fyne.Position)
 	// OnSelectCell hears that the selected cell changed.
 	OnSelectCell func()
 	// OnCopy is asked to copy the selection, by ⌘C on the focused grid.
@@ -198,6 +203,11 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 	g.widths = make([]float32, len(cols))
 	g.filters = make([]string, len(cols))
 	g.filterErr = make([]bool, len(cols))
+	g.order = make([]int, len(cols))
+	for i := range g.order {
+		g.order[i] = i
+	}
+	g.frozen = 1
 	for i, c := range cols {
 		g.widths[i] = defaultWidth(c)
 	}
@@ -210,7 +220,7 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 
 	// Freeze the first column. FR-3.2 asks for user-configurable pinning;
 	// this proves the mechanism exists and costs nothing extra to draw.
-	t.StickyColumnCount = 1
+	t.StickyColumnCount = g.frozen
 
 	for i, w := range g.widths {
 		t.SetColumnWidth(i, w)
@@ -242,7 +252,7 @@ func (g *TableGrid) length() (int, int) {
 		// cells and so never fetches anything.
 		n += PageSize
 	}
-	return int(n), len(g.model.Columns())
+	return int(n), len(g.order)
 }
 
 func (g *TableGrid) createCell() fyne.CanvasObject { return newCellWidget() }
@@ -256,10 +266,11 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 	}
 
 	cols := g.model.Columns()
-	if id.Col < 0 || id.Col >= len(cols) {
+	mc := g.ColumnAt(id.Col)
+	if mc < 0 || mc >= len(cols) {
 		return
 	}
-	col := cols[id.Col]
+	col := cols[mc]
 
 	row, loaded := g.model.Row(g.ctx, int64(id.Row))
 
@@ -267,8 +278,8 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 	switch {
 	case !loaded:
 		c = PendingCell()
-	case id.Col < len(row):
-		c = Format(row[id.Col], col, g.loc)
+	case mc < len(row):
+		c = Format(row[mc], col, g.loc)
 	default:
 		c = Cell{Text: "", Kind: CellNormal}
 	}
@@ -338,10 +349,10 @@ func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 			h.bg.FillColor = g.palette.SidebarBackground
 			h.bg.Refresh()
 		}
-		g.updateTitle(id.Col, h.title)
-		g.bindFilter(h.filter, id.Col)
+		g.updateTitle(g.ColumnAt(id.Col), h.title)
+		g.bindFilter(h.filter, g.ColumnAt(id.Col))
 	case *headerCell:
-		g.updateTitle(id.Col, h)
+		g.updateTitle(g.ColumnAt(id.Col), h)
 	}
 }
 
@@ -404,10 +415,10 @@ func defaultWidth(c model.ColumnDef) float32 {
 	}
 }
 
-// SelectedColumn is the selected cell's column, or -1.
+// SelectedColumn is the model column of the active cell, or -1.
 func (g *TableGrid) SelectedColumn() int {
 	if c, ok := g.sel.Active(); ok {
-		return c.Col
+		return g.ColumnAt(c.Col)
 	}
 	return -1
 }

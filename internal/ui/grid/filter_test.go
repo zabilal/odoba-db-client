@@ -143,15 +143,15 @@ func TestAFailedFilterMarksItsTitle(t *testing.T) {
 	}
 }
 
-func TestRightClickingATitleAsksForItsValues(t *testing.T) {
+func TestRightClickingATitleAsksForItsMenu(t *testing.T) {
 	g := filterableGrid(t)
 	h := header(t, g, 2)
 	h.title.TappedSecondary(&fyne.PointEvent{}) // nobody asked to hear: nothing happens
 	got, at := -1, fyne.Position{}
-	g.OnPickValues = func(col int, pos fyne.Position) { got, at = col, pos }
+	g.OnHeaderMenu = func(col int, pos fyne.Position) { got, at = col, pos }
 	h.title.TappedSecondary(&fyne.PointEvent{AbsolutePosition: fyne.NewPos(40, 60)})
 	if got != 2 || at != fyne.NewPos(40, 60) {
-		t.Errorf("asked for column %d's values at %v, want column 2 at the click", got, at)
+		t.Errorf("asked for column %d's menu at %v, want column 2 at the click", got, at)
 	}
 }
 

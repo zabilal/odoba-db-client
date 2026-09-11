@@ -46,6 +46,12 @@ const (
 	cmdCopyMarkdown   = "grid.copyMarkdown"
 	cmdCopyInsert     = "grid.copyInsert"
 	cmdCellViewer     = "grid.viewer"
+	cmdHideColumn     = "grid.hideColumn"
+	cmdShowColumns    = "grid.showColumns"
+	cmdMoveLeft       = "grid.moveLeft"
+	cmdMoveRight      = "grid.moveRight"
+	cmdFreeze         = "grid.freeze"
+	cmdUnfreeze       = "grid.unfreeze"
 	cmdFind           = "edit.find"
 	cmdFindReplace    = "edit.findReplace"
 	cmdFindNext       = "edit.findNext"
@@ -96,7 +102,8 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), separator,
+		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer),
+		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 	}},
 	{"Connection", []menuEntry{

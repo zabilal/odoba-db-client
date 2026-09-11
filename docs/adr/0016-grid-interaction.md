@@ -228,6 +228,19 @@ read for the viewer off the UI goroutine. What the viewer makes of a value
 is decided in `internal/ui/cellview`, which draws nothing and is tested
 without a window.
 
+**Columns can be hidden, moved and frozen, and keep their numbers.** The
+grid shows the model's columns in an order of its own (FR-3.2). View ›
+Columns, or a right-click on a title, hides a column, shows all again,
+moves one left or right, or freezes the columns up to one so they stay in
+view as the rest scroll. A right-click on a title now opens this menu, with
+Filter by Values… at its top where the source can list values. Sorts,
+filters and the active cell's column speak of the model's columns, since
+they are about the data. The selection speaks of shown columns, since a
+block is what a person sees, and Copy and the cell viewer translate it.
+Hiding or moving a column clears the selection, which no longer means what
+it did, but a moved column's active cell goes with it, so it can be moved
+again. A hidden column comes back after the column before it in the model.
+
 ## Not decided here
 
-Column resize, reorder and hide (T1.48), and type-aware rendering (T1.50). Each will be added here as it lands.
+Column widths the grid remembers (T1.48), and type-aware rendering (T1.50). Each will be added here as it lands.

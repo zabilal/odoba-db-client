@@ -121,17 +121,18 @@ func (v *cellViewer) follow() {
 	v.seq++
 	c, ok := v.g.Selection().Active()
 	cols := v.g.Model().Columns()
-	if !ok || c.Col >= len(cols) {
+	mc := v.g.ColumnAt(c.Col)
+	if !ok || mc < 0 || mc >= len(cols) {
 		v.has = false
 		v.title.SetText("No cell selected")
 		v.meta.SetText("Select a cell to see its whole value.")
 		v.render(cellview.View{Kind: cellview.KindText})
 		return
 	}
-	col := cols[c.Col]
+	col := cols[mc]
 	m := v.g.Model()
 	if row, loaded := m.Row(v.ctx, int64(c.Row)); loaded {
-		v.set(col, row, c.Col)
+		v.set(col, row, mc)
 		return
 	}
 	v.title.SetText(col.Name)
@@ -151,7 +152,7 @@ func (v *cellViewer) follow() {
 			if len(rows) > 0 {
 				row = rows[0]
 			}
-			v.set(col, row, c.Col)
+			v.set(col, row, mc)
 		})
 	}()
 }
