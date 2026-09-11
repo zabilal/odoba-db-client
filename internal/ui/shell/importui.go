@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -61,6 +62,14 @@ const (
 	modeUpsert  = "Update rows with the same key, add the rest"
 )
 
+// What a row that would not go in, or that the server refuses, does
+// (ADR-0054).
+const (
+	policyStop    = "Stop the import"
+	policySkip    = "Leave it out, and go on"
+	policyCollect = "Leave it out, up to a most"
+)
+
 // notImported is the choice of no file column for a table column.
 const notImported = "— not imported —"
 
@@ -106,6 +115,11 @@ type importPanel struct {
 	mode      *widget.RadioGroup
 	importing *task
 	known     int64
+
+	// How the rows are written: the rows a transaction, and what a row that
+	// would not go in does, up to a most left out.
+	batch, most *widget.Entry
+	policy      *widget.Select
 }
 
 // canImport reports whether the tab in front is a table rows can be
@@ -222,16 +236,26 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.mode.Horizontal = true
 	p.mode.Required = true
 	p.mode.SetSelected(modeAdd)
+	p.batch = widget.NewEntry()
+	p.batch.SetText("500") // the loaders' own
+	p.batch.Validator = wholeNumber(1, 100_000, "Rows a transaction")
+	p.most = widget.NewEntry()
+	p.most.SetText("100")
+	p.most.Validator = wholeNumber(1, 1_000_000, "The most rows left out")
+	p.policy = widget.NewSelect([]string{policyStop, policySkip, policyCollect}, func(string) { p.buttons() })
+	p.policy.SetSelected(policyStop)
 	p.summary = widget.NewLabel("")
 	p.summary.Wrapping = fyne.TextWrapWord
 	p.problems = container.NewStack()
 	p.tabs = container.NewAppTabs(container.NewTabItem("First Rows", p.preview),
-		container.NewTabItem("Dry Run", container.NewBorder(p.summary, nil, nil, nil, p.problems)))
+		container.NewTabItem("Problems", container.NewBorder(p.summary, nil, nil, nil, p.problems)))
 	p.forget()
 	split := container.NewVSplit(container.NewVScroll(p.mapping), p.tabs)
 	split.Offset = 0.45
+	writing := widget.NewForm(widget.NewFormItem("Rows a transaction", p.batch),
+		widget.NewFormItem("If a row would not go in", p.policy), widget.NewFormItem("The most rows left out", p.most))
 	actions := container.NewHBox(p.mode, layout.NewSpacer(), p.dry, p.load)
-	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, actions, nil, nil, split)}
+	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, container.NewVBox(writing, actions), nil, nil, split)}
 	t.item = container.NewTabItem("Import "+filepath.Base(f.Name())+" into "+into.item.Text,
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
@@ -486,6 +510,9 @@ func (p *importPanel) buttons() {
 	setWidgetEnabled(p.dry, idle)
 	setWidgetEnabled(p.load, idle)
 	setWidgetEnabled(p.mode, idle)
+	setWidgetEnabled(p.batch, idle)
+	setWidgetEnabled(p.policy, idle)
+	setWidgetEnabled(p.most, idle && p.policy.Selected == policyCollect)
 }
 
 // refused says, of a mapping that gives no value to a column that needs one,
@@ -637,6 +664,10 @@ func (p *importPanel) startImport() {
 			}
 		}
 	}
+	if err := p.writing(&opt); err != nil {
+		p.t.footer.SetText(err.Error())
+		return
+	}
 	replace := opt.Replace
 	probe, err := into.browse.Plan(p.t.ctx, source.Changeset{Target: into.ref})
 	if err != nil {
@@ -691,6 +722,16 @@ func (p *importPanel) runImport(pairs []transfer.Pair, opt transfer.LoadOptions)
 	p.buttons()
 	var mu sync.Mutex
 	var latest transfer.Loaded
+	var left []transfer.Problem // the rows left out, as many as are listed
+	if opt.OnError != "" {
+		opt.Skipped = func(e *transfer.LoadError) {
+			mu.Lock()
+			if len(left) < maxProblems {
+				left = append(left, problemOf(e))
+			}
+			mu.Unlock()
+		}
+	}
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
 		mu.Lock()
 		l := latest
@@ -726,6 +767,13 @@ func (p *importPanel) runImport(pairs []transfer.Pair, opt transfer.LoadOptions)
 			state, say := importEnd(l, err, stopped, into.item.Text, opt)
 			s.endTask(k, state, say)
 			t.footer.SetText(say)
+			if l.Left > 0 {
+				mu.Lock()
+				listed := left
+				mu.Unlock()
+				p.showChecked(leftSummary(l.Left, len(listed)), listed)
+				p.tabs.SelectIndex(1)
+			}
 			if state == taskFailed {
 				s.showError(formError(say))
 			}
@@ -733,9 +781,19 @@ func (p *importPanel) runImport(pairs []transfer.Pair, opt transfer.LoadOptions)
 	}()
 }
 
-// importEnd says how an import ended, and what it left written. One that
-// finished before a cancel reached it is said as done.
+// importEnd says how an import ended, what it left written, and how many
+// rows it left out; of a replace that failed, the table is as it was.
 func importEnd(l transfer.Loaded, err error, stopped bool, table string, opt transfer.LoadOptions) (taskState, string) {
+	state, say := importSaid(l, err, stopped, table, opt)
+	if l.Left > 0 && !(opt.Replace && err != nil) {
+		say += " " + leftOut(l.Left)
+	}
+	return state, say
+}
+
+// importSaid says how an import ended, and what it left written. One that
+// finished before a cancel reached it is said as done.
+func importSaid(l transfer.Loaded, err error, stopped bool, table string, opt transfer.LoadOptions) (taskState, string) {
 	kept := wroteText(l.Written)
 	if opt.Replace {
 		kept = " The table is as it was."
@@ -772,6 +830,63 @@ func firstWritten(n int64) string {
 		return "The first row was written"
 	}
 	return "The first " + group(n) + " rows were written"
+}
+
+// writing reads the rows a transaction and what a row that would not go in
+// does into opt, or says what is wrong with them.
+func (p *importPanel) writing(opt *transfer.LoadOptions) error {
+	if err := p.batch.Validate(); err != nil {
+		return err
+	}
+	opt.Batch, _ = strconv.Atoi(strings.TrimSpace(p.batch.Text))
+	switch p.policy.Selected {
+	case policySkip:
+		opt.OnError = "skip"
+	case policyCollect:
+		if err := p.most.Validate(); err != nil {
+			return err
+		}
+		opt.OnError = "collect"
+		opt.MaxErrors, _ = strconv.Atoi(strings.TrimSpace(p.most.Text))
+	}
+	return nil
+}
+
+// wholeNumber checks that an entry holds a whole number from lo to hi.
+func wholeNumber(lo, hi int, what string) fyne.StringValidator {
+	return func(s string) error {
+		if n, err := strconv.Atoi(strings.TrimSpace(s)); err != nil || n < lo || n > hi {
+			return fmt.Errorf("%s must be a whole number from %s to %s.", what, group(int64(lo)), group(int64(hi)))
+		}
+		return nil
+	}
+}
+
+// problemOf is a row left out, as the Problems tab lists it: a value that
+// would not go in by its column, or a row the server refused by why.
+func problemOf(e *transfer.LoadError) transfer.Problem {
+	var ce transfer.CellError
+	if errors.As(e.Err, &ce) {
+		return transfer.Problem{Row: e.Row, CellError: ce}
+	}
+	return transfer.Problem{Row: e.Row, CellError: transfer.CellError{Err: e.Err}}
+}
+
+// leftOut says how many rows an import left out.
+func leftOut(n int64) string {
+	if n == 1 {
+		return "1 row was left out."
+	}
+	return group(n) + " rows were left out."
+}
+
+// leftSummary heads the list of the rows an import left out.
+func leftSummary(n int64, listed int) string {
+	say := nounCount(int(n), "row") + " left out of the import."
+	if int64(listed) < n {
+		say += fmt.Sprintf(" The first %s are listed.", group(int64(listed)))
+	}
+	return say
 }
 
 // rowsFetcher serves rows held in memory, for a preview.

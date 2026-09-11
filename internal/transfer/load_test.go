@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ type fakeLoader struct {
 	opt     source.LoadOptions
 	rows    []model.Row
 	failAt  int64
+	refuse  []int64 // the rows, by their place among those it is given, it also refuses
 	err     error
 }
 
@@ -42,6 +44,7 @@ func (f *fakeLoader) LoadRows(ctx context.Context, target model.ObjectRef, colum
 		}
 		return int64(len(f.rows)) / size * size
 	}
+	var given int64
 	for {
 		r, err := rows.Next(ctx)
 		if errors.Is(err, io.EOF) {
@@ -50,8 +53,13 @@ func (f *fakeLoader) LoadRows(ctx context.Context, target model.ObjectRef, colum
 		if err != nil {
 			return committed(), err
 		}
-		if int64(len(f.rows))+1 == f.failAt {
-			return committed(), &source.LoadError{Row: f.failAt, Err: errDuplicate}
+		if given++; given == f.failAt || slices.Contains(f.refuse, given) {
+			e := &source.LoadError{Row: given, Err: errDuplicate}
+			if opt.OnError != "skip" {
+				return committed(), e
+			}
+			opt.Skipped(e)
+			continue
 		}
 		f.rows = append(f.rows, r)
 	}
@@ -152,5 +160,48 @@ func TestALoadTheSourceRefusesWritesNothing(t *testing.T) {
 	var le *LoadError
 	if l, err := load(t, context.Background(), itemsCSV("1,a", "2,b,c"), &fakeLoader{}, LoadOptions{}, nil); err == nil || errors.As(err, &le) || l.Rows != 1 {
 		t.Errorf("a file that cannot be read further is said as it is: %v %+v", err, l)
+	}
+}
+
+func TestRowsThatWouldNotGoInAreLeftOutWhenTold(t *testing.T) {
+	f := &fakeLoader{refuse: []int64{3}} // the third row it is given: the file's fourth
+	var told []string
+	opt := LoadOptions{OnError: "skip", Skipped: func(e *LoadError) { told = append(told, e.Error()) }}
+	l, err := load(t, context.Background(), itemsCSV("1,a", "x,b", "3,c", "4,d", "5,e"), f, opt, nil)
+	if err != nil || l.Rows != 5 || l.Written != 3 || l.Left != 2 || f.opt.OnError != "skip" {
+		t.Fatalf("%v %+v %+v", err, l, f.opt)
+	}
+	if !reflect.DeepEqual(told, []string{"row 2: id: not a whole number (x)", "row 4: duplicate key"}) {
+		t.Errorf("each row left out, by its place in the file: %v", told)
+	}
+	told = nil
+	f = &fakeLoader{refuse: []int64{1}}
+	if _, err := load(t, context.Background(), itemsCSV("1,a", "2,b", "x,c"), f, opt, nil); err != nil ||
+		!reflect.DeepEqual(told, []string{"row 1: duplicate key", "row 3: id: not a whole number (x)"}) {
+		t.Errorf("a row refused before one left out here: %v %v", err, told)
+	}
+	if l, err := load(t, context.Background(), itemsCSV("x,a", "2,b"), &fakeLoader{}, LoadOptions{OnError: "skip"}, nil); err != nil || l.Left != 1 || l.Written != 1 {
+		t.Errorf("left out with no one told: %v %+v", err, l)
+	}
+}
+
+func TestCollectingStopsAtTheRowAfterTheMost(t *testing.T) {
+	told := 0
+	opt := LoadOptions{OnError: "collect", MaxErrors: 1, Skipped: func(*LoadError) { told++ }}
+	var le *LoadError
+	l, err := load(t, context.Background(), itemsCSV("1,a", "x,b", "y,c", "4,d"), &fakeLoader{}, opt, nil)
+	if !errors.As(err, &le) || le.Row != 3 || told != 1 || l.Left != 1 {
+		t.Errorf("a value that would not go in, past the most: %v %d %+v", err, told, l)
+	}
+	told = 0
+	f := &fakeLoader{refuse: []int64{1, 2}}
+	l, err = load(t, context.Background(), itemsCSV("1,a", "2,b", "3,c"), f, opt, nil)
+	if !errors.As(err, &le) || le.Row != 2 || told != 1 || l.Left != 1 || len(f.rows) != 0 {
+		t.Errorf("a row refused, past the most: %v %d %+v %v", err, told, l, f.rows)
+	}
+	for _, bad := range []LoadOptions{{OnError: "collect"}, {OnError: "retry"}} {
+		if _, err := load(t, context.Background(), itemsCSV("1,a"), &fakeLoader{}, bad, nil); err == nil {
+			t.Errorf("%+v: taken", bad)
+		}
 	}
 }

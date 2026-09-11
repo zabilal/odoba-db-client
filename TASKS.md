@@ -23,19 +23,20 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the rest of T2.22 (the panel's batch size and error policy);
-           T2.21's new table waits on the table designer (3.A). What is
+NEXT TASK: T2.23 (an Excel export writer), then T2.24 (SQL INSERT,
+           Markdown, HTML and XML writers); T2.21's new table waits on the
+           table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
-[~] tasks: T1.14, T2.21 and T2.22 partly done; their lines say what is open.
+[~] tasks: T1.14 and T2.21 partly done; their lines say what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a row the server refuses can be left out and a
-           load go on, each row in a savepoint (T2.22's source side,
-           ADR-0053). Before it: an import updates the rows whose primary
+LAST DONE: 2026-09-11 — the import's rows a transaction and what a row
+           that would not go in does, the rows left out listed (T2.22,
+           ADR-0053, ADR-0054). Before it: an import updates the rows whose primary
            key is there already and adds the rest (ADR-0052); an import adds to a table's rows or replaces them,
            in one transaction, asked first (ADR-0051), through the bulk
            loader every SQL driver now has (ADR-0050); an import's rows written into its table, a
@@ -395,7 +396,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.19** Column mapping UI with type coercion → FR-10.5 — *the mapping: `transfer.Suggest` pairs columns by name, `transfer.Coerce` makes values the table's types as typing a cell does, every failure said; a value's text is read by `internal/value`, moved out of the grid (ADR-0046). File ▸ Import… opens a panel in a tab: the options as found, each table column's file column, the first 20 rows as the table would take them (ADR-0047)*
 - [x] **T2.20** **Dry-run preview listing error rows** → FR-10.5 — *Dry Run in the import panel reads every row as the import would write it, as a task in the task centre, and lists each value that would not go in by row, column and why; text past its column's length, and a column no file column fills, are said too (`transfer.Check`, `Unfilled`; ADR-0048)*
 - [~] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6 — *inserting done: Import in the panel writes the rows through each source's Writer, 500 rows a transaction, as a task that says how long is left after a dry run; new rows need no key (`transfer.Load`, ADR-0049). Every SQL driver loads rows in bulk, emptying the table first in one transaction (`source.BulkLoader`, `sqlscript.LoadWith`, ADR-0050). The import goes through it, adding rows or replacing the table's in one transaction, asked first (ADR-0051). Rows with a primary key already there are updated, the rest added: ON CONFLICT, or ON DUPLICATE KEY on MySQL and MariaDB (`LoadOptions.Keys`, `sqlscript.Upserter`, ADR-0052). Importing into a new table waits on the table designer's DDL and its preview (T3.1, T3.4, T3.7), as FR-6.4 asks that every structural change be previewed*
-- [~] **T2.22** Batch size + error policy → FR-10.6 — *every SQL driver leaves a refused row out when told, each row in a savepoint: skip, or collect up to a most (`LoadOptions.OnError`, `Skipped`; ADR-0053). The panel's batch size and policy, and its list of rows left out, to come*
+- [x] **T2.22** Batch size + error policy → FR-10.6 — *every SQL driver leaves a refused row out when told, each row in a savepoint: skip, or collect up to a most (`LoadOptions.OnError`, `Skipped`; ADR-0053). The panel asks the rows a transaction and what a row that would not go in does, checked where typed; the rows left out are listed in the Problems tab, by their place in the file (ADR-0054)*
 - [ ] **T2.23** Excel (xlsx) export writer → FR-10.1
 - [ ] **T2.24** SQL INSERT, Markdown, HTML, XML writers → FR-10.1
 
