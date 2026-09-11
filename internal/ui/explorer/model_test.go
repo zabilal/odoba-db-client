@@ -44,7 +44,7 @@ func (tr *tree) Load(ctx context.Context, parent Item) ([]Item, error) {
 	var out []Item
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("%s/%d", parent.ID, i)
-		out = append(out, Item{ID: id, Label: fmt.Sprintf("n%d%s", i, suffix), HasChildren: depth < 3})
+		out = append(out, Item{ID: id, Label: fmt.Sprintf("n%d%s", i, suffix), HasChildren: depth < 3, Connects: parent.ID == RootID})
 	}
 	return out, nil
 }
@@ -206,6 +206,37 @@ func TestPathGivesLabelsFromTheRoot(t *testing.T) {
 	waitLoaded(t, m, kids[0])
 	if got := m.Path(kids[0] + "/1"); len(got) != 2 || got[0] != "n0" || got[1] != "n1" {
 		t.Errorf("path = %q", got)
+	}
+}
+
+func TestAnEagerItemLoadsAsSoonAsItIsListed(t *testing.T) {
+	m := NewModel(LoaderFunc(func(_ context.Context, p Item) ([]Item, error) {
+		switch p.ID {
+		case RootID:
+			return []Item{{ID: "f", Label: "Folder", HasChildren: true, Eager: true}, {ID: "lazy", Label: "Lazy", HasChildren: true}}, nil
+		case "f":
+			return []Item{{ID: "c", Label: "conn", HasChildren: true, Connects: true}}, nil
+		}
+		return nil, nil
+	}), 0)
+	m.Children(RootID)
+	waitLoaded(t, m, RootID)
+	deadline := time.Now().Add(2 * time.Second)
+	for _, st, _ := m.Item("f"); st != Loaded; _, st, _ = m.Item("f") {
+		if time.Now().After(deadline) {
+			t.Fatal("the folder's children never loaded, though no one need ask")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if _, st, _ := m.Item("lazy"); st != Unloaded {
+		t.Error("an item not eager loaded unasked")
+	}
+	res := m.Search("conn", 0)
+	if len(res.Hits) != 1 || fmt.Sprint(res.Hits[0].Path) != "[Folder conn]" {
+		t.Errorf("hits %+v; the connection in the folder should be found, the folder in its path", res.Hits)
+	}
+	if res.Unopened != 1 {
+		t.Errorf("unopened %d; the connection inside the folder is not opened, and the lazy branch connects to nothing", res.Unopened)
 	}
 }
 

@@ -438,7 +438,7 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
 		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
-	}, s.accentCommands()...) {
+	}, append(s.accentCommands(), s.folderCommands()...)...) {
 		s.reg.MustRegister(c)
 	}
 }

@@ -111,6 +111,10 @@ func (s *Shell) reexpand(ids []string) {
 		using[t.connID] = true
 	}
 	for _, id := range ids {
+		if _, ok := view.FolderOf(id); ok { // opening a folder connects to nothing
+			s.Explorer.Tree.OpenBranch(id)
+			continue
+		}
 		if c, ok := view.ConnectionOf(id); ok && using[c] {
 			s.Explorer.Tree.OpenBranch(id)
 		}

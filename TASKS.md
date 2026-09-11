@@ -23,16 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T1.27 (connection folders: the app layer has them, the explorer
-           shows none). Then T1.31, T1.58, T1.65. T1.14's scroll position
-           waits on Fyne's table reporting its offset.
+NEXT TASK: T1.31 (auto-reconnect: the monitor and status bar exist; see
+           what is open), then T1.58, T1.65. T1.14's scroll position waits
+           on Fyne's table reporting its offset.
 [~] tasks: T1.14 partly done; its line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — the environment on every tab (T1.28, ADR-0011
-           §20). Before it: object classes from the model (T1.42,
+LAST DONE: 2026-09-11 — connection folders in the explorer (T1.27,
+           ADR-0025). Before it: the environment on every tab (T1.28,
+           ADR-0011 §20), object classes from the model (T1.42,
            ADR-0024), native file dialogs and notifications (T1.3,
            ADR-0023), split panes (T1.5, ADR-0011 §19), tabs
            dragged on a tab bar of our own (T1.4), the task centre (T1.10),
@@ -257,7 +258,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T1.24** Per-source connection forms with defaults → FR-1.2 — *descriptor-driven form, URL paste, test, keychain hints*
 - [x] **T1.25** Connection-string parser (`postgres://`, JDBC, `.pgpass`, `~/.my.cnf`) → FR-1.3
 - [x] **T1.26** Test connection with precise error classification → FR-1.4 — *every driver classifies connect failures (auth, no database, refused, unreachable, TLS) with a hint the form shows*
-- [~] **T1.27** Connection folders/groups with colour and icon → FR-1.6
+- [x] **T1.27** Connection folders/groups with colour and icon → FR-1.6 — *the explorer lists folders first, each holding its connections, listed at once so the filter finds a connection in a closed folder; a folder's colour is an accent, drawn as a dot beside its name as Finder marks a tag. New, Edit and Delete Folder from the Connection menu or a folder's own menu (deleting keeps the connections); a connection's form puts it in a folder, and a new one starts in the folder selected; open folders reopen (ADR-0025). Open: an icon of the user's choosing; dragging a connection into a folder*
 - [x] **T1.28** Environment tagging + persistent visual treatment across derived tabs → FR-1.7, UX-8 — *every tab on a connection with an environment carries its word on the tab bar in its colours (PROD on red), heard by a screen reader with the title; a production tab (table, query or structure) also has a band across its content saying what working there means, or that it is read-only. Both are read as they are drawn, so an appearance change or a saved connection redraws them (ADR-0011 §20)*
 - [x] **T1.29** **Read-only mode enforced in the Go layer** → FR-1.8, NFR-S4 — *twice on every engine: guard classification, and the server or file opened read-only (ADR-0014, ADR-0015)*
 - [x] **T1.30** TLS/SSL config incl. verify modes; verification on by default → FR-1.10, NFR-S3 — *internal/source/tlsconf, shared by the network drivers; verify-full by default*

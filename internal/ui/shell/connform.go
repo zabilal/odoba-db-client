@@ -64,15 +64,19 @@ type connForm struct {
 	drivers []source.Descriptor
 	desc    source.Descriptor
 
-	form     *widget.Form
-	name     *widget.Entry
-	driver   *widget.Select
-	url      *widget.Entry
-	inputs   map[string]*input
-	tls      *widget.Select
-	env      *widget.Select
-	readOnly *widget.Check
-	result   *widget.Label
+	form   *widget.Form
+	name   *widget.Entry
+	driver *widget.Select
+	url    *widget.Entry
+	inputs map[string]*input
+	tls    *widget.Select
+	env    *widget.Select
+	// folder is the folder the connection is in, and folderIDs its choices'
+	// folders, the first none.
+	folder    *widget.Select
+	folderIDs []string
+	readOnly  *widget.Check
+	result    *widget.Label
 
 	testBtn, cancelBtn, saveBtn *widget.Button
 
@@ -106,6 +110,9 @@ func newConnForm(s *Shell, id string) (*connForm, error) {
 			return nil, fmt.Errorf("this build does not include the %q driver", c.Driver)
 		}
 		f.base, f.desc = c, d
+	}
+	if id == "" { // a new connection goes in the folder selected, if one is
+		f.base.Folder, _ = s.selectedFolder()
 	}
 	f.build()
 	f.fill(f.base, nil)
@@ -147,6 +154,13 @@ func (f *connForm) build() {
 		env[i] = e.label
 	}
 	f.env = widget.NewSelect(env, nil)
+	folders := []string{"None"}
+	f.folderIDs = []string{""}
+	for _, fo := range f.s.d.Conns.Folders() {
+		folders = append(folders, fo.Name)
+		f.folderIDs = append(f.folderIDs, fo.ID)
+	}
+	f.folder = widget.NewSelect(folders, nil)
 	f.readOnly = widget.NewCheck("Read-only: refuse statements that change data", nil)
 	f.result = widget.NewLabel("")
 	f.result.Wrapping = fyne.TextWrapWord
@@ -195,6 +209,9 @@ func (f *connForm) layout() {
 	// Encryption in transit means nothing to a database that is a file.
 	if f.networked() {
 		items = append(items, widget.NewFormItem("Encryption", f.tls))
+	}
+	if len(f.folderIDs) > 1 { // with no folders, there is nothing to choose
+		items = append(items, widget.NewFormItem("Folder", f.folder))
 	}
 	items = append(items,
 		widget.NewFormItem("Environment", f.env),
@@ -257,6 +274,7 @@ func (f *connForm) fill(c store.SavedConnection, typed map[string]string) {
 	f.tls.SetSelectedIndex(tlsIndex(c.TLS.Mode))
 	f.env.SetSelectedIndex(envIndex(c.Environment))
 	f.readOnly.SetChecked(c.ReadOnly)
+	f.folder.SetSelectedIndex(max(0, slices.Index(f.folderIDs, c.Folder)))
 }
 
 // collect turns the form into a connection and the secrets typed into it.
@@ -317,6 +335,9 @@ func (f *connForm) collect() (store.SavedConnection, map[string]string, error) {
 		c.Environment = environments[i].value
 	}
 	c.ReadOnly = f.readOnly.Checked
+	if i := f.folder.SelectedIndex(); i >= 0 {
+		c.Folder = f.folderIDs[i]
+	}
 	return c, typed, nil
 }
 

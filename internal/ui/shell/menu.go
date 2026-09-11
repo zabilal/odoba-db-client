@@ -126,6 +126,7 @@ var menuBar = []struct {
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),
 		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
+		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
 		item(cmdDisconnect),
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},

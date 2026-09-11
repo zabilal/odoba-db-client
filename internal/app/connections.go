@@ -272,6 +272,23 @@ func (c *Connections) RenameFolder(id, name string) error {
 	})
 }
 
+// EditFolder renames a folder and sets its colour: an accent's name, or ""
+// for none (FR-1.6).
+func (c *Connections) EditFolder(id, name, color string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("app: a folder needs a name")
+	}
+	return c.settings.Update(func(s *store.Settings) error {
+		for i := range s.Folders {
+			if s.Folders[i].ID == id {
+				s.Folders[i].Name, s.Folders[i].Color = name, color
+				return nil
+			}
+		}
+		return ErrNotFound
+	})
+}
+
 // DeleteFolder removes a folder. Its connections move to the top level; they
 // are never deleted along with it.
 func (c *Connections) DeleteFolder(id string) error {

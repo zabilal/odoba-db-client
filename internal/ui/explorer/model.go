@@ -21,6 +21,13 @@ type Item struct {
 	ID          string
 	Label       string
 	HasChildren bool
+	// Eager asks for the item's children as soon as it is listed. They cost
+	// nothing to list, as a folder's connections, and the filter looks only
+	// at what is loaded.
+	Eager bool
+	// Connects marks an item whose children come from a server: until it is
+	// opened, the filter cannot look inside it, and says so.
+	Connects bool
 	// Data is whatever the loader needs to expand the item: a connection ID,
 	// an object reference.
 	Data any
@@ -134,6 +141,7 @@ func (m *Model) load(ctx context.Context, cancel context.CancelFunc, id string, 
 	defer cancel()
 	items, err := m.loader.Load(ctx, parent)
 
+	var eager []string
 	m.mu.Lock()
 	e, ok := m.entries[id]
 	if !ok || e.gen != gen {
@@ -157,11 +165,17 @@ func (m *Model) load(ctx context.Context, cancel context.CancelFunc, id string, 
 		for _, it := range items {
 			ids = append(ids, it.ID)
 			m.entries[it.ID] = &entry{item: it, parent: id}
+			if it.Eager {
+				eager = append(eager, it.ID)
+			}
 		}
 		e.status, e.err, e.children = Loaded, nil, ids
 	}
 	m.mu.Unlock()
 	m.notify(id)
+	for _, c := range eager {
+		m.Children(c) // starts its load
+	}
 }
 
 // Item returns a node, including the synthetic placeholders.
@@ -289,7 +303,7 @@ func (m *Model) Search(query string, limit int) SearchResult {
 		if id == RootID {
 			continue
 		}
-		if e.parent == RootID && e.item.HasChildren && e.status != Loaded {
+		if e.item.Connects && e.status != Loaded {
 			res.Unopened++
 		}
 		path := m.pathLocked(id)
