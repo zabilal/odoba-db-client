@@ -227,11 +227,13 @@ type fixture struct {
 	settingsPath string
 	hist         *localdb.DB
 	deps         Deps
+	files        *fakeFiles
+	app          *notedApp
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	a := test.NewTempApp(t)
+	a := &notedApp{App: test.NewTempApp(t)}
 	// Opened first so it closes last: history writes finish in the background.
 	hist, err := localdb.Open(context.Background(), filepath.Join(t.TempDir(), "ikigai.db"))
 	if err != nil {
@@ -246,11 +248,13 @@ func newFixture(t *testing.T) *fixture {
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
+	files := &fakeFiles{}
 	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist,
-		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin"}
+		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin", Files: files}
 	s := New(a, d)
 	t.Cleanup(s.shutdown)
-	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist, deps: d}
+	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist, deps: d,
+		files: files, app: a}
 }
 
 func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {

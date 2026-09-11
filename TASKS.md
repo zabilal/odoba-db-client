@@ -23,13 +23,16 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T1.3 (native file dialogs + notifications). T1.14's scroll
-           position waits on Fyne's table reporting its offset.
+NEXT TASK: T1.42 (object classes per source, from capability descriptors).
+           Then the partial ones: T1.27, T1.28, T1.31, T1.58, T1.65. T1.14's
+           scroll position waits on Fyne's table reporting its offset.
 [~] tasks: T1.14 partly done; its line says what is open.
-OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
+OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
+           the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — split panes (T1.5, ADR-0011 §19). Before it: tabs
+LAST DONE: 2026-09-11 — native file dialogs and notifications (T1.3,
+           ADR-0023). Before it: split panes (T1.5, ADR-0011 §19), tabs
            dragged on a tab bar of our own (T1.4), the task centre (T1.10),
            shortcuts changed in the Keyboard Shortcuts panel (T1.8), one
            copy to a data directory (T1.1), gates for NFR-P1 to P6 (T1.73),
@@ -222,7 +225,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T1.1** App entry, window lifecycle, single-instance handling — *window, lifecycle, startup wiring done; one copy to a data directory: a second copy asks the first to come forward and gives way, a crashed copy's socket is taken over, and a copy with its own data runs beside it (ADR-0022)*
 - [x] **T1.2** Native menu bar → FR-15.5 — *built from the command registry; native on macOS (ADR-0011)*
-- [ ] **T1.3** Native file dialogs + notifications → FR-15.5
+- [x] **T1.3** Native file dialogs + notifications → FR-15.5 — *internal/ui/filedlg asks the platform: a sheet on the window on macOS, comdlg32's dialog on Windows, the file chooser portal on Linux, and Fyne's own where there is none. Export saves through it, and a connection's file field has a Choose… that opens through it. Long work that ends while the app is in the background sends a notification: a task, or a query that ran 10 s or more. It names the work, never its statement or error (ADR-0023). Open: the Windows and Linux dialogs have been vetted but have never run*
 - [x] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, reuse an open object's tab, move and pin from the Window menu (ADR-0011 §8); on a tab bar of our own (internal/ui/tabbar) a tab is dragged to a new place, kept among its kind, and a secondary tap opens its menu of commands. Tabs that do not fit scroll and are listed by All Tabs; the close control is named for a screen reader (ADR-0011 §18). Open: the row does not scroll while a tab is dragged past its edge*
 - [x] **T1.5** Split panes (horizontal + vertical) → FR-15.2 — *Split Right and Split Down move the active tab into a second pane with its own tab bar; Move Tab to Other Pane and Join Panes, from the Window menu (and a tab's menu); a pane left empty closes. Commands act in the pane the focus moved into, or whose tab was last chosen; the session keeps each tab's pane and the split (ADR-0011 §19). Open: dragging a tab from one pane to the other*
 - [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3

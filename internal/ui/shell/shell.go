@@ -31,6 +31,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
+	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/palette"
 	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
@@ -67,6 +68,8 @@ type Deps struct {
 	Delay time.Duration
 	// GOOS picks platform shortcut labels. Empty means runtime.GOOS.
 	GOOS string
+	// Files shows file dialogs. Nil means the platform's own.
+	Files filedlg.Chooser
 }
 
 // Shell is one main window.
@@ -74,7 +77,10 @@ type Shell struct {
 	d   Deps
 	app fyne.App
 	win fyne.Window
-	reg *commands.Registry
+	// away is whether the app is in the background, where long work that
+	// ends is told by a notification (notify.go).
+	away bool
+	reg  *commands.Registry
 
 	Explorer *view.Explorer
 	sidebar  fyne.CanvasObject
@@ -182,6 +188,9 @@ func New(a fyne.App, d Deps) *Shell {
 	if d.Theme == nil {
 		d.Theme = uitheme.New()
 	}
+	if d.Files == nil {
+		d.Files = filedlg.Native{}
+	}
 	if d.Settings != nil {
 		d.Theme.Appearance = appearanceNamed(d.Settings.Get().Appearance)
 		d.Theme.Accent = uitheme.AccentNamed(d.Settings.Get().Accent)
@@ -191,6 +200,8 @@ func New(a fyne.App, d Deps) *Shell {
 	s := &Shell{d: d, app: a, reg: commands.NewRegistry(), menuItems: map[string]*fyne.MenuItem{}}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.registerCommands()
+	a.Lifecycle().SetOnExitedForeground(func() { s.away = true })
+	a.Lifecycle().SetOnEnteredForeground(func() { s.away = false })
 
 	s.win = a.NewWindow("Ikigai DB")
 	s.win.Resize(fyne.NewSize(1280, 800))

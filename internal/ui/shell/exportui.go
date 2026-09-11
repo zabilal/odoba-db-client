@@ -5,17 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
@@ -190,20 +191,31 @@ func (s *Shell) showExport() {
 			}
 			src = pickSource(rows, src, sel)
 			opt := export.Options{Format: formats[format.SelectedIndex()], Header: header.Checked}
-			save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-				if err != nil {
-					s.showError(err)
-					return
-				}
-				if w == nil {
-					return // the user closed the save dialog
-				}
-				uri := w.URI()
-				s.runExport(t, src, opt, w, uri.Name(), func() { _ = storage.Delete(uri) })
-			}, s.win)
-			save.SetFileName(fileName(src.name) + "." + opt.Format.Extension())
-			save.Show()
+			ext := opt.Format.Extension()
+			s.d.Files.Save(s.win, filedlg.Options{
+				Message: fmt.Sprintf("Export “%s” as %s", src.name, opt.Format), Name: fileName(src.name) + "." + ext,
+				Extensions: []string{ext}, Kind: opt.Format.String(), Accept: "Export",
+			}, func(path string, err error) { s.exportTo(t, src, opt, path, err) })
 		}, s.win).Show()
+}
+
+// exportTo exports to the file the save dialog chose (FR-15.5). The file is
+// created only now, and not at all if the tab closed while the dialog was
+// open: nothing is left to fill it.
+func (s *Shell) exportTo(t *tab, src *exportSrc, opt export.Options, path string, err error) *exportJob {
+	switch {
+	case err != nil:
+		s.showError(err)
+		return nil
+	case path == "" || t.ctx.Err() != nil:
+		return nil // the dialog was cancelled, or the tab has gone
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		s.showError(formError("The export could not create its file: " + err.Error()))
+		return nil
+	}
+	return s.runExport(t, src, opt, f, filepath.Base(path), func() { _ = os.Remove(path) })
 }
 
 // pickSource is the rows the export form's choice names: the selection if

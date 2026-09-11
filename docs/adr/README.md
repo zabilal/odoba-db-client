@@ -27,3 +27,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0020](0020-explorer-badges.md) | Badges are read as their rows are drawn | Accepted |
 | [0021](0021-performance-gates.md) | Performance gates measure what CI can see | Accepted |
 | [0022](0022-one-copy-per-data.md) | One copy to a data directory | Accepted |
+| [0023](0023-native-file-dialogs-and-notifications.md) | The platform's own file dialogs, and notifications from the background | Accepted |
