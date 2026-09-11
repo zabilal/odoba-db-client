@@ -41,10 +41,9 @@ func (h *headerCell) Cursor() desktop.Cursor {
 	return desktop.DefaultCursor
 }
 
-// TappedSecondary asks for the column's list of values, where the grid
-// offers one (OnPickValues).
+// TappedSecondary asks for the column's menu, at the click (OnHeaderMenu).
 func (h *headerCell) TappedSecondary(ev *fyne.PointEvent) {
-	if h.g.OnPickValues != nil && h.col >= 0 {
-		h.g.OnPickValues(h.col, ev.AbsolutePosition)
+	if h.g.OnHeaderMenu != nil && h.col >= 0 {
+		h.g.OnHeaderMenu(h.col, ev.AbsolutePosition)
 	}
 }

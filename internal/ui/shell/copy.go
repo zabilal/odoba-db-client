@@ -70,7 +70,8 @@ type copyJob struct {
 	sel    grid.Selection
 	first  int
 	cols   []model.ColumnDef
-	picked []int
+	shown  []int // the selection's columns, as shown
+	picked []int // the model's columns behind them
 }
 
 // copySelection reads the rows a selection reaches and puts what render
@@ -84,10 +85,10 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 	}
 	m := g.Model()
 	cols := m.Columns()
-	var picked []int
-	for _, c := range sel.Columns() {
-		if c < len(cols) {
-			picked = append(picked, c)
+	var shown, picked []int
+	for _, dc := range sel.Columns() {
+		if mc := g.ColumnAt(dc); mc >= 0 && mc < len(cols) {
+			shown, picked = append(shown, dc), append(picked, mc)
 		}
 	}
 	first, last := sel.Rows()
@@ -109,7 +110,7 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 			var text string
 			var n int
 			if err == nil {
-				text, n, err = render(copyJob{sel, first, cols, picked}, rows)
+				text, n, err = render(copyJob{sel, first, cols, shown, picked}, rows)
 			}
 			if err != nil {
 				s.status.SetText("Could not copy: " + err.Error())
@@ -193,7 +194,7 @@ func (j copyJob) rows(rows []model.Row, blanks bool) ([]model.Row, []model.Colum
 		}
 		o := make(model.Row, len(j.picked))
 		for k, c := range j.picked {
-			if c < len(r) && (!blanks || j.sel.Contains(row, c)) {
+			if c < len(r) && (!blanks || j.sel.Contains(row, j.shown[k])) {
 				o[k] = r[c]
 			}
 		}

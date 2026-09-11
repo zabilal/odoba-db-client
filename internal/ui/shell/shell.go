@@ -241,6 +241,20 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canWhere, Run: s.toggleWhere},
 		{ID: cmdCellViewer, Category: "View", Title: "Cell Viewer", Keywords: []string{"value", "inspect", "json", "expand"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: s.toggleViewer},
+		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
+			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
+		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
+			Enabled: func() bool { g := s.activeGrid(); return g != nil && g.Hidden() },
+			Run:     func() { s.onGrid((*grid.TableGrid).ShowAllColumns) }},
+		{ID: cmdMoveLeft, Category: "View", Title: "Move Column Left", Enabled: s.hasColumn,
+			Run: func() { s.onColumn(func(g *grid.TableGrid, c int) { g.MoveColumn(c, -1) }) }},
+		{ID: cmdMoveRight, Category: "View", Title: "Move Column Right", Enabled: s.hasColumn,
+			Run: func() { s.onColumn(func(g *grid.TableGrid, c int) { g.MoveColumn(c, 1) }) }},
+		{ID: cmdFreeze, Category: "View", Title: "Freeze Columns Through This One", Keywords: []string{"pin", "sticky"},
+			Enabled: s.hasColumn, Run: func() { s.onColumn((*grid.TableGrid).FreezeThrough) }},
+		{ID: cmdUnfreeze, Category: "View", Title: "Unfreeze Columns", Keywords: []string{"unpin"},
+			Enabled: func() bool { g := s.activeGrid(); return g != nil && g.Frozen() > 0 },
+			Run:     func() { s.onGrid((*grid.TableGrid).Unfreeze) }},
 		{ID: cmdCopyCells, Category: "Edit", Title: "Copy Cells", Keywords: []string{"clipboard", "tsv", "selection"},
 			Enabled: s.hasSelection, Run: s.copyActive},
 		{ID: cmdCopyCSV, Category: "Edit", Title: "Copy as CSV", Keywords: []string{"clipboard", "comma"},
@@ -483,9 +497,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }
 	g.SetFilterable(bs.CanFilter()) // before the grid is shown
 	g.OnFilter = func(texts []string) { s.refilter(t, texts) }
-	if bs.CanListValues() {
-		g.OnPickValues = func(col int, at fyne.Position) { s.showPicklist(t, col, at) }
-	}
+	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	// Filter by Values and the cell viewer follow the selected cell.
 	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) }
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
