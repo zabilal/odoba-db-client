@@ -149,6 +149,10 @@ type tab struct {
 	// when the last session ended, put back once they first show.
 	ref     model.ObjectRef
 	restore *localdb.SessionTab
+	// structure marks a structure tab (structure.go), and label is its
+	// object's name.
+	structure bool
+	label     string
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -274,6 +278,8 @@ func (s *Shell) registerCommands() {
 		{ID: cmdFavorite, Category: "Explorer", Title: "Favourite", Keywords: []string{"pin", "bookmark", "star", "favorite"},
 			Shortcut: sc("D", commands.ModShortcut), Enabled: func() bool { _, ok := s.selectedFavorite(); return ok },
 			Run: s.toggleFavorite},
+		{ID: cmdStructure, Category: "Explorer", Title: "Open Structure", Keywords: []string{"columns", "indexes", "keys", "schema", "describe"},
+			Shortcut: sc("O", commands.ModShortcut|commands.ModAlt), Enabled: s.selectionBrowsable, Run: s.openSelectedStructure},
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"slices"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -29,27 +30,27 @@ func TestTheExplorerMenuIsTheNodesCommands(t *testing.T) {
 	bar := fx.s.menuItems[cmdFavorite]
 
 	m := fx.s.explorerMenu(items)
-	want := []string{titleOf(fx, cmdOpen), titleOf(fx, cmdFavorite), "", titleOf(fx, cmdRefresh)}
-	if got := labels(m); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[3] != want[3] {
+	want := []string{titleOf(fx, cmdOpen), titleOf(fx, cmdStructure), titleOf(fx, cmdFavorite), "", titleOf(fx, cmdRefresh)}
+	if got := labels(m); !slices.Equal(got, want) {
 		t.Fatalf("a table's menu is %q, want %q", got, want)
 	}
 	if fx.s.menuItems[cmdFavorite] != bar {
 		t.Error("making a pop-up menu took over the menu bar's own item")
 	}
-	if m.Items[0].Disabled || m.Items[1].Checked {
-		t.Error("Open Data should be enabled, and Favourite not ticked yet")
+	if m.Items[0].Disabled || m.Items[1].Disabled || m.Items[2].Checked {
+		t.Error("Open Data and Open Structure should be enabled, and Favourite not ticked yet")
 	}
-	m.Items[1].Action()
+	m.Items[2].Action()
 	if len(fx.settings.Get().Favorites) != 1 {
 		t.Fatal("choosing Favourite in the menu should make the table a favourite")
 	}
-	if m = fx.s.explorerMenu(items); !m.Items[1].Checked {
+	if m = fx.s.explorerMenu(items); !m.Items[2].Checked {
 		t.Error("the next time, Favourite should be ticked")
 	}
 
 	dm := fx.s.explorerMenu(view.NodeID(c.ID, model.NewRef(model.KindDatabase, "main")))
-	if !dm.Items[0].Disabled || !dm.Items[1].Disabled {
-		t.Error("a database has no rows: Open Data and Favourite should be disabled in its menu, as on the menu bar")
+	if !dm.Items[0].Disabled || !dm.Items[1].Disabled || !dm.Items[2].Disabled {
+		t.Error("a database has no rows: Open Data, Open Structure and Favourite should be disabled in its menu, as on the menu bar")
 	}
 
 	cm := fx.s.explorerMenu(view.ConnectionID(c.ID))
