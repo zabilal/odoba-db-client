@@ -82,7 +82,7 @@ func TestRowsAreMadeTheTablesAndLoaded(t *testing.T) {
 	if err != nil || l.Rows != 1003 || l.Written != 1003 || l.Elapsed <= 0 {
 		t.Fatalf("%v %+v", err, l)
 	}
-	if !f.target.Equal(itemsRef) || !reflect.DeepEqual(f.columns, []string{"id", "name"}) || f.opt != (source.LoadOptions{BatchSize: 7, Confirmed: true}) {
+	if !f.target.Equal(itemsRef) || !reflect.DeepEqual(f.columns, []string{"id", "name"}) || !reflect.DeepEqual(f.opt, source.LoadOptions{BatchSize: 7, Confirmed: true}) {
 		t.Errorf("into the table, its columns named, as told: %v %v %+v", f.target, f.columns, f.opt)
 	}
 	if len(f.types) != 2 || f.types[0].Type.Class != model.TypeInteger || f.types[1].Name != "name" {
@@ -97,6 +97,10 @@ func TestRowsAreMadeTheTablesAndLoaded(t *testing.T) {
 	f = &fakeLoader{}
 	if _, err := load(t, context.Background(), itemsCSV("1,a"), f, LoadOptions{Replace: true, Confirmed: true}, nil); err != nil || !f.opt.Truncate {
 		t.Errorf("replacing empties the table first: %v %+v", err, f.opt)
+	}
+	f = &fakeLoader{}
+	if _, err := load(t, context.Background(), itemsCSV("1,a"), f, LoadOptions{Keys: []string{"id"}}, nil); err != nil || !reflect.DeepEqual(f.opt.Keys, []string{"id"}) {
+		t.Errorf("a row whose key is taken updates it: %v %+v", err, f.opt)
 	}
 }
 

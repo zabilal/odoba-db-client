@@ -23,6 +23,7 @@ func (pgLike) SplitScript(string) []source.ScriptStatement { return nil }
 func (pgLike) BuildBrowse(model.ObjectRef, source.BrowseOptions) (source.Statement, error) {
 	return source.Statement{}, nil
 }
+func (d pgLike) UpsertClause(keys, cols []string) string { return OnConflict(d, keys, cols) }
 
 var (
 	peopleRef = model.NewRef(model.KindTable, "db", "s", "people")

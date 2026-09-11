@@ -29,3 +29,7 @@ var _ source.BulkLoader = (*sqliteSource)(nil)
 func (s *sqliteSource) LoadRows(ctx context.Context, target model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
 	return sqlscript.LoadSQL(ctx, s.db, s, s.cfg.Guard, target, columns, rows, opt)
 }
+
+// UpsertClause writes a row whose key is taken over the row there, as ON
+// CONFLICT … DO UPDATE (ADR-0052).
+func (d dialect) UpsertClause(keys, cols []string) string { return sqlscript.OnConflict(d, keys, cols) }

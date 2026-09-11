@@ -23,20 +23,21 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: the rest of T2.21 (upserting, a new table), then T2.22
-           (batch size and error policy). What is
+NEXT TASK: T2.22 (batch size and error policy); T2.21's new table
+           waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
-[~] tasks: T1.14 partly done; its line says what is open.
+[~] tasks: T1.14 and T2.21 partly done; their lines say what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — an import adds to a table's rows or replaces
-           them, in one transaction, asked first (T2.21's replacing,
-           ADR-0051), through the bulk loader every SQL driver now has
-           (ADR-0050). Before it: an import's rows written into its table, a
+LAST DONE: 2026-09-11 — an import updates the rows whose primary key is
+           there already and adds the rest (T2.21's upserting, ADR-0052).
+           Before it: an import adds to a table's rows or replaces them,
+           in one transaction, asked first (ADR-0051), through the bulk
+           loader every SQL driver now has (ADR-0050); an import's rows written into its table, a
            batch a transaction, as a task (T2.21's inserting, ADR-0049); a
            dry run over a whole file to import, listing each value
            that would not go in (T2.20, ADR-0048); a
@@ -392,7 +393,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.18** Delimiter/encoding/header auto-detection → FR-10.4 — *`transfer.Detect` finds a file's format, encoding (UTF-8, UTF-16 with or without its mark, Windows-1252), delimiter and header from its first 64 KiB, for a person to correct (ADR-0045)*
 - [x] **T2.19** Column mapping UI with type coercion → FR-10.5 — *the mapping: `transfer.Suggest` pairs columns by name, `transfer.Coerce` makes values the table's types as typing a cell does, every failure said; a value's text is read by `internal/value`, moved out of the grid (ADR-0046). File ▸ Import… opens a panel in a tab: the options as found, each table column's file column, the first 20 rows as the table would take them (ADR-0047)*
 - [x] **T2.20** **Dry-run preview listing error rows** → FR-10.5 — *Dry Run in the import panel reads every row as the import would write it, as a task in the task centre, and lists each value that would not go in by row, column and why; text past its column's length, and a column no file column fills, are said too (`transfer.Check`, `Unfilled`; ADR-0048)*
-- [ ] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6 — *inserting done: Import in the panel writes the rows through each source's Writer, 500 rows a transaction, as a task that says how long is left after a dry run; new rows need no key (`transfer.Load`, ADR-0049). Every SQL driver loads rows in bulk, emptying the table first in one transaction (`source.BulkLoader`, `sqlscript.LoadWith`, ADR-0050). The import goes through it, adding rows or replacing the table's in one transaction, asked first (ADR-0051). Upsert and a new table to come*
+- [~] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6 — *inserting done: Import in the panel writes the rows through each source's Writer, 500 rows a transaction, as a task that says how long is left after a dry run; new rows need no key (`transfer.Load`, ADR-0049). Every SQL driver loads rows in bulk, emptying the table first in one transaction (`source.BulkLoader`, `sqlscript.LoadWith`, ADR-0050). The import goes through it, adding rows or replacing the table's in one transaction, asked first (ADR-0051). Rows with a primary key already there are updated, the rest added: ON CONFLICT, or ON DUPLICATE KEY on MySQL and MariaDB (`LoadOptions.Keys`, `sqlscript.Upserter`, ADR-0052). Importing into a new table waits on the table designer's DDL and its preview (T3.1, T3.4, T3.7), as FR-6.4 asks that every structural change be previewed*
 - [ ] **T2.22** Batch size + error policy → FR-10.6
 - [ ] **T2.23** Excel (xlsx) export writer → FR-10.1
 - [ ] **T2.24** SQL INSERT, Markdown, HTML, XML writers → FR-10.1

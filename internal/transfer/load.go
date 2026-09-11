@@ -22,9 +22,10 @@ type Loader interface {
 
 // LoadOptions say how rows are written.
 type LoadOptions struct {
-	Batch     int  // rows a transaction; 0 is the source's own
-	Confirmed bool // consent to write to production, or to replace (FR-4.9)
-	Replace   bool // empty the table first, all in one transaction
+	Batch     int      // rows a transaction; 0 is the source's own
+	Confirmed bool     // consent to write to production, or to replace (FR-4.9)
+	Replace   bool     // empty the table first, all in one transaction
+	Keys      []string // update the row whose key, in these columns, is taken
 }
 
 // Loaded is how far a load has got.
@@ -58,7 +59,7 @@ func Load(ctx context.Context, rs model.RowStream, pairs []Pair, to map[string]m
 	for i, p := range pairs {
 		names[i] = p.To
 	}
-	n, err := l.LoadRows(ctx, target, names, c, source.LoadOptions{BatchSize: opt.Batch, Truncate: opt.Replace, Confirmed: opt.Confirmed})
+	n, err := l.LoadRows(ctx, target, names, c, source.LoadOptions{BatchSize: opt.Batch, Truncate: opt.Replace, Keys: opt.Keys, Confirmed: opt.Confirmed})
 	var refused *source.LoadError
 	if errors.As(err, &refused) {
 		err = &LoadError{Row: refused.Row, Err: refused.Err} // the loader counts the rows as the file does

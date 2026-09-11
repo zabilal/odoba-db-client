@@ -187,3 +187,35 @@ func TestALoadIsGuardedAndSaysWhatStoppedIt(t *testing.T) {
 		t.Errorf("rows that stop coming: %v %d %v", err, n, l.events)
 	}
 }
+
+// noUpsert is a dialect that cannot write a row over another.
+type noUpsert struct{ source.Dialect }
+
+func TestAnUpsertUpdatesTheRowWhoseKeyIsTaken(t *testing.T) {
+	l := &txLog{affected: 2} // as MySQL says of a row updated
+	n, err := l.load(t, people(2), source.LoadOptions{Keys: []string{"id"}}, source.Guard{})
+	upsert := insertPerson + ` ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name"`
+	want := []string{"begin", upsert + " [1 p1]", upsert + " [2 p2]", "commit"}
+	if err != nil || n != 2 || strings.Join(l.events, "\n") != strings.Join(want, "\n") {
+		t.Errorf("%v %d:\n%s", err, n, strings.Join(l.events, "\n"))
+	}
+	if got := OnConflict(pgLike{}, []string{"a", "b"}, []string{"a", "c", "b", "d"}); got != ` ON CONFLICT ("a", "b") DO UPDATE SET "c" = EXCLUDED."c", "d" = EXCLUDED."d"` {
+		t.Errorf("the other columns updated, in order: %s", got)
+	}
+	if got := OnConflict(pgLike{}, []string{"id"}, []string{"id"}); got != ` ON CONFLICT ("id") DO NOTHING` {
+		t.Errorf("a row of its key alone left as it is: %s", got)
+	}
+	for name, c := range map[string]struct {
+		d   source.Dialect
+		opt source.LoadOptions
+	}{
+		"emptying the table too": {pgLike{}, source.LoadOptions{Keys: []string{"id"}, Truncate: true, Confirmed: true}},
+		"a key not loaded":       {pgLike{}, source.LoadOptions{Keys: []string{"email"}}},
+		"a source that cannot":   {noUpsert{pgLike{}}, source.LoadOptions{Keys: []string{"id"}}},
+	} {
+		l := &txLog{}
+		if _, err := LoadWith(context.Background(), c.d, source.Guard{}, peopleRef, []string{"id", "name"}, people(1), c.opt, l.begin); err == nil || len(l.events) != 0 {
+			t.Errorf("%s: %v %v", name, err, l.events)
+		}
+	}
+}

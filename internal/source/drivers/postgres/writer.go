@@ -61,3 +61,7 @@ func (s *pgSource) LoadRows(ctx context.Context, target model.ObjectRef, columns
 		}, nil
 	})
 }
+
+// UpsertClause writes a row whose key is taken over the row there, as ON
+// CONFLICT … DO UPDATE (ADR-0052).
+func (d dialect) UpsertClause(keys, cols []string) string { return sqlscript.OnConflict(d, keys, cols) }

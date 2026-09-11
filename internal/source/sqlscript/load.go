@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -16,6 +18,35 @@ import (
 // transactions of BatchSize rows. A load that empties the table first runs
 // in one transaction whole, so that one that fails leaves the table as it
 // was.
+
+// Upserter is a dialect that can write a row over the row already there
+// with its key (FR-10.6, ADR-0052).
+type Upserter interface {
+	// UpsertClause follows an INSERT of cols, so that a row whose keys are
+	// taken updates the row there from the row given.
+	UpsertClause(keys, cols []string) string
+}
+
+// OnConflict is PostgreSQL's and SQLite's upsert clause: a row whose keys
+// are taken updates the other columns of the row there from the row given,
+// or, with no other columns, leaves it as it is.
+func OnConflict(d source.Dialect, keys, cols []string) string {
+	quoted := make([]string, len(keys))
+	for i, k := range keys {
+		quoted[i] = d.QuoteIdentifier(k)
+	}
+	var sets []string
+	for _, c := range cols {
+		if !slices.Contains(keys, c) {
+			sets = append(sets, d.QuoteIdentifier(c)+" = EXCLUDED."+d.QuoteIdentifier(c))
+		}
+	}
+	head := " ON CONFLICT (" + strings.Join(quoted, ", ") + ") DO "
+	if len(sets) == 0 {
+		return head + "NOTHING"
+	}
+	return head + "UPDATE SET " + strings.Join(sets, ", ")
+}
 
 // DefaultLoadBatch is how many rows a load commits at a time, unless told.
 const DefaultLoadBatch = 500
@@ -32,8 +63,9 @@ type Tx struct {
 // the table asks for consent on any connection, as LoadOptions.Truncate
 // says. A row the server refuses stops it with a *source.LoadError: that
 // row's transaction is rolled back and those before it stay, unless the
-// load was emptying the table, which is then as it was. Only the "abort"
-// error policy is taken so far.
+// load was emptying the table, which is then as it was. With Keys, a row
+// whose key is taken updates the row there, where the dialect can say how
+// (Upserter). Only the "abort" error policy is taken so far.
 func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target model.ObjectRef, columns []string,
 	rows model.RowStream, opt source.LoadOptions, begin func() (Tx, error)) (int64, error) {
 	if err := guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
@@ -46,6 +78,12 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 		return 0, fmt.Errorf("sqlscript: the %q error policy is not supported", opt.OnError)
 	case len(columns) == 0:
 		return 0, errors.New("sqlscript: a load names no columns")
+	case len(opt.Keys) > 0 && opt.Truncate:
+		return 0, errors.New("sqlscript: a load cannot both empty a table and update its rows by key")
+	}
+	upsert, err := upsertClause(d, columns, opt.Keys)
+	if err != nil {
+		return 0, err
 	}
 	size := int64(opt.BatchSize)
 	if size <= 0 {
@@ -73,7 +111,7 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 			return committed, err
 		}
 		at++
-		if err := insertRow(d, table, columns, row, tx); err != nil {
+		if err := insertRow(d, table, columns, row, upsert, tx); err != nil {
 			_ = tx.Rollback()
 			return committed, &source.LoadError{Row: at, Err: err}
 		}
@@ -94,9 +132,29 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 	return committed + open, nil
 }
 
+// upsertClause is what follows each row's INSERT so that a row whose key is
+// taken updates the row there: nothing, when the load names no key.
+func upsertClause(d source.Dialect, columns, keys []string) (string, error) {
+	if len(keys) == 0 {
+		return "", nil
+	}
+	u, ok := d.(Upserter)
+	if !ok {
+		return "", errors.New("sqlscript: this source cannot update rows by key")
+	}
+	for _, k := range keys {
+		if !slices.Contains(columns, k) {
+			return "", fmt.Errorf("sqlscript: the key column %s is not loaded", k)
+		}
+	}
+	return u.UpsertClause(keys, columns), nil
+}
+
 // insertRow writes one row as a new row: its values, in the columns' order,
-// NULL where it is short.
-func insertRow(d source.Dialect, table string, columns []string, row model.Row, tx Tx) error {
+// NULL where it is short, followed by upsert. A row that adds other than one
+// row is refused, unless it may update one instead, which engines count
+// their own ways.
+func insertRow(d source.Dialect, table string, columns []string, row model.Row, upsert string, tx Tx) error {
 	vals := make(map[string]any, len(columns))
 	for i, c := range columns {
 		var v any
@@ -109,8 +167,9 @@ func insertRow(d source.Dialect, table string, columns []string, row model.Row, 
 	if err != nil {
 		return err
 	}
+	st.SQL += upsert
 	n, err := tx.Exec(st)
-	if err == nil && n != 1 {
+	if err == nil && upsert == "" && n != 1 {
 		err = fmt.Errorf("%d rows added, where the row was one", n)
 	}
 	return err
