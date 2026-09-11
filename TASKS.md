@@ -23,15 +23,15 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 1's other [~]: single instance (T1.1), tab reorder and pin
-           (T1.4), custom bindings (T1.8), and the explorer's context menu,
-           structure and script-as (T1.44).
+NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
+           custom bindings (T1.8), and the explorer's context menu, structure
+           and script-as (T1.44).
 [~] tasks: T1.1, T1.4, T1.8, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — an accent choice, each colour held to AA in both
-           appearances (T1.12, ADR-0006).
+LAST DONE: 2026-09-11 — tabs move left and right, and pin (T1.4 in part,
+           ADR-0011).
 ```
 
 **Phase 0 findings so far**
@@ -212,7 +212,7 @@ LAST DONE: 2026-09-11 — an accent choice, each colour held to AA in both
 - [~] **T1.1** App entry, window lifecycle, single-instance handling — *window, lifecycle, startup wiring done; single-instance open*
 - [x] **T1.2** Native menu bar → FR-15.5 — *built from the command registry; native on macOS (ADR-0011)*
 - [ ] **T1.3** Native file dialogs + notifications → FR-15.5
-- [~] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, and reuse an open object's tab; reorder and pin open*
+- [~] **T1.4** Doc-tab workspace with reorder and pin → FR-15.2 — *tabs close, cycle, reuse an open object's tab, move left and right, and pin, from the Window menu (ADR-0011 §8); dragging a tab is open: Fyne's tab bar cannot be dragged, so it needs one of our own*
 - [ ] **T1.5** Split panes (horizontal + vertical) → FR-15.2
 - [x] **T1.6** **Command palette (⌘K)** with fuzzy search + shortcut display → FR-15.1, UX-3
 - [x] **T1.7** Central command registry — every action registers once, surfaces in menu + palette + shortcut → FR-15.1, FR-15.4
