@@ -107,6 +107,9 @@ type tab struct {
 	picked    map[int]pick    // filters chosen from a column\'s picklist
 	top       *fyne.Container // above the grid: the WHERE bar, when shown
 	where     *whereBar
+	// said is what the last action said, such as where an export went. A
+	// table\'s footer keeps it beside the row count, as it keeps problem.
+	said string
 	// problem is the last sort or filter failure. The footer keeps showing
 	// it beside the row count until a re-browse succeeds.
 	problem string
@@ -232,6 +235,14 @@ func (s *Shell) registerCommands() {
 			}},
 		{ID: cmdWhere, Category: "Data", Title: "WHERE Clause", Keywords: []string{"sql", "condition", "filter", "statement"},
 			Enabled: s.canWhere, Run: s.toggleWhere},
+		{ID: cmdCopyCells, Category: "Edit", Title: "Copy Cells", Keywords: []string{"clipboard", "tsv", "selection"},
+			Enabled: s.hasSelection, Run: s.copyActive},
+		{ID: cmdSelectRow, Category: "Edit", Title: "Select Row", Enabled: s.hasSelection,
+			Run: func() { s.onGrid((*grid.TableGrid).SelectRow) }},
+		{ID: cmdSelectColumn, Category: "Edit", Title: "Select Column", Enabled: s.hasSelection,
+			Run: func() { s.onGrid((*grid.TableGrid).SelectColumn) }},
+		{ID: cmdSelectAllCells, Category: "Edit", Title: "Select All Cells", Keywords: []string{"everything"},
+			Enabled: func() bool { return s.activeGrid() != nil }, Run: func() { s.onGrid((*grid.TableGrid).SelectAll) }},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
@@ -462,6 +473,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		g.OnPickValues = func(col int, at fyne.Position) { s.showPicklist(t, col, at) }
 	}
 	g.OnSelectCell = s.sync // Filter by Values follows the selected cell
+	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
@@ -504,10 +516,25 @@ func (s *Shell) showCount(t *tab) {
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
 	}
+	if t.said != "" {
+		text += " — " + t.said
+	}
 	if t.problem != "" {
 		text += " — " + t.problem
 	}
 	t.footer.SetText(text)
+}
+
+// say puts what an action did in the tab's footer. A table's footer keeps it
+// beside the row count, which pages loading behind it would otherwise wipe;
+// a query tab has no count to lose it to.
+func (s *Shell) say(t *tab, text string) {
+	if t.model == nil {
+		t.footer.SetText(text)
+		return
+	}
+	t.said = text
+	s.showCount(t)
 }
 
 func (s *Shell) tabFailed(t *tab, err error) {

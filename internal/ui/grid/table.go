@@ -39,9 +39,10 @@ type TableGrid struct {
 	// (FR-4.3). Nil in the spike.
 	RowStates func(row int64) CellKind
 
-	// selection is a single anchor cell for now; range selection is FR-3.7
-	// and lands in Phase 1 proper.
-	selRow, selCol int
+	// sel is the selected cells (FR-3.7); table is the Table that hears the
+	// clicks and keys that change it.
+	sel   Selection
+	table *gridTable
 
 	// refresh is the coalesced refresh trigger. See ScheduleRefresh.
 	refresh func()
@@ -65,9 +66,11 @@ type TableGrid struct {
 	OnPickValues func(col int, at fyne.Position)
 	// OnSelectCell hears that the selected cell changed.
 	OnSelectCell func()
-	filterable   bool
-	filters      []string
-	filterErr    []bool
+	// OnCopy is asked to copy the selection, by ⌘C on the focused grid.
+	OnCopy     func()
+	filterable bool
+	filters    []string
+	filterErr  []bool
 }
 
 // SortKey is one column of a sort, by index into the grid's columns.
@@ -186,8 +189,6 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 		palette: pal,
 		loc:     time.Local,
 		ctx:     ctx,
-		selRow:  -1,
-		selCol:  -1,
 	}
 
 	cols := m.Columns()
@@ -198,7 +199,8 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 		g.widths[i] = defaultWidth(c)
 	}
 
-	t := widget.NewTable(g.length, g.createCell, g.UpdateCell)
+	g.table = newGridTable(g)
+	t := &g.table.Table
 	t.ShowHeaderRow = true
 	t.CreateHeader = g.createHeader
 	t.UpdateHeader = g.updateHeader
@@ -211,16 +213,12 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 		t.SetColumnWidth(i, w)
 	}
 
-	t.OnSelected = func(id widget.TableCellID) {
-		g.selRow, g.selCol = id.Row, id.Col
-		if g.OnSelectCell != nil {
-			g.OnSelectCell()
-		}
-	}
-
 	g.Table = t
 	g.bg = canvas.NewRectangle(pal.ContentBackground)
-	g.view = container.NewStack(g.bg, t)
+	// The grid's own table goes on screen, not the Table inside it: Fyne hands
+	// mouse events to the object in the tree, and only the grid's hears the
+	// modifiers of a click.
+	g.view = container.NewStack(g.bg, g.table)
 	g.refresh = uithread.Coalesce(run, delay, func() {
 		if g.Table != nil {
 			g.Table.Refresh()
@@ -312,7 +310,7 @@ func (g *TableGrid) foreground(k CellKind) color.Color {
 // stripes read as grey blocks rather than rows. Full-width stripes need a
 // background drawn in step with scrolling (T1.50).
 func (g *TableGrid) background(id widget.TableCellID) color.Color {
-	if id.Row == g.selRow {
+	if g.sel.Contains(id.Row, id.Col) {
 		return g.palette.SelectedUnemphasized
 	}
 	if g.RowStates != nil {
@@ -404,4 +402,9 @@ func defaultWidth(c model.ColumnDef) float32 {
 }
 
 // SelectedColumn is the selected cell's column, or -1.
-func (g *TableGrid) SelectedColumn() int { return g.selCol }
+func (g *TableGrid) SelectedColumn() int {
+	if c, ok := g.sel.Active(); ok {
+		return c.Col
+	}
+	return -1
+}

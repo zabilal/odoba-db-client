@@ -48,6 +48,10 @@ func TestAWhereClauseBrowsesAgainAndShowsTheStatement(t *testing.T) {
 	if !strings.Contains(b.sql.Text, "WHERE (id > 5)") {
 		t.Errorf("the statement shown is %q", b.sql.Text)
 	}
+	b.copySQL()
+	if got := fx.s.app.Clipboard().Content(); got != b.sql.Text {
+		t.Errorf("Copy put %q on the clipboard, not the statement", got)
+	}
 	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "filtered") })
 	tb.grid.ToggleSort(0, false)
 	tb.grid.SetFilterText(1, "item")

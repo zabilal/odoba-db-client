@@ -204,6 +204,35 @@ func (m *Model) Row(ctx context.Context, i int64) (row model.Row, loaded bool) {
 	return nil, false
 }
 
+// Read returns rows [from, to), from resident pages where it can and the
+// fetcher where it must, stopping early at the end of the data. Unlike Row it
+// blocks, so it runs off the UI goroutine: it is for copying a selection
+// (FR-3.7), which can reach rows never drawn. What it fetches is not kept, so
+// a large copy cannot evict the pages on screen.
+func (m *Model) Read(ctx context.Context, from, to int64) ([]model.Row, error) {
+	f := m.current()
+	var out []model.Row
+	for page := from / PageSize; page*PageSize < to; page++ {
+		m.mu.RLock()
+		rows, ok := m.pages[page]
+		m.mu.RUnlock()
+		if !ok {
+			var err error
+			if rows, err = f.Fetch(ctx, page*PageSize, PageSize); err != nil {
+				return nil, err
+			}
+		}
+		lo, hi := max(from-page*PageSize, 0), min(to-page*PageSize, int64(len(rows)))
+		if lo < hi {
+			out = append(out, rows[lo:hi]...)
+		}
+		if len(rows) < PageSize {
+			break // the end of the data
+		}
+	}
+	return out, nil
+}
+
 // Resident reports whether a row is available without a fetch. Used by the
 // renderers to decide between drawing a value and drawing a placeholder
 // without paying for the LRU bookkeeping Row does.

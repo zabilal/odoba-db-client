@@ -91,7 +91,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 				s.browsed(t)
 				return
 			}
-			t.browse, t.applied, t.filtered, t.problem = next, keys, texts, ""
+			t.browse, t.applied, t.filtered, t.problem, t.said = next, keys, texts, "", ""
 			t.grid.SetFilterErrors()
 			t.model.SetFetcher(next)
 			t.grid.ScheduleRefresh()

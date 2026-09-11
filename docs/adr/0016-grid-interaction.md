@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.54, T1.55, T1.56 (and T1.48–T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.51, T1.52 (in part), T1.54–T1.56 (and the rest of T1.48–T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -160,7 +160,35 @@ cannot know its height before it is laid out, so the statement's lines no
 longer wrap and scroll sideways instead. A test lays the tab out and checks
 that the bar ends where the grid begins.
 
+**Selection is blocks of cells, kept by the grid.** Fyne's table selects one
+cell and hears no modifier keys, so the grid keeps its own selection
+(FR-3.7): blocks of cells and an anchor. A click selects a cell; ⇧-click
+stretches the last block from the anchor; ⌘-click (Ctrl elsewhere) adds or
+removes a single cell; the arrow keys move the selection, and stretch it
+with ⇧. Select Row, Select Column and Select All Cells are in the Edit menu,
+and ⌘A selects everything. A whole column runs to the last row, even on a
+grid that has not counted its rows. The grid's table is a thin subclass: it
+notes the modifiers at mouse-down, and lets Fyne's own selected cell go after
+each click, so that a second click on the same cell is heard. That subclass
+must itself be what is on screen: Fyne hands mouse events to the object in
+the tree, and the first screenshot of a ⇧-click showed one cell selected,
+because the view held the Table inside the subclass. A test now checks what
+the view holds.
+
+**Copy puts tab-separated text on the clipboard.** ⌘C on a focused grid, or
+Edit › Copy Cells, copies the rows that have a selected cell, in order. Each
+row holds the columns any block covers, with cells outside the selection
+left empty, so the paste stays rectangular. One cell is copied as its bare
+text. Values are written as export writes them, exactly. Copy reads rows
+that were never drawn, off the UI goroutine, and does not keep them, so a
+large copy cannot evict what is on screen. It stops at 100,000 rows and says
+to export instead, because a clipboard holds everything at once. ⌘C and ⌘A
+are not on the menu bar, because the editor owns them too; each goes to
+whatever has the focus. Copying uses the app's clipboard, not the window's:
+the window's is deprecated, and under the test driver it forgets what it is
+given.
+
 ## Not decided here
 
-Selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
+Copy as CSV, JSON, Markdown and INSERT (T1.52), the cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.
