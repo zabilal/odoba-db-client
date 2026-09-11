@@ -72,14 +72,21 @@ func NewPending(cols []model.ColumnDef, id model.RowIdentity) (*Pending, error) 
 // every read of the same row.
 func (p *Pending) key(row model.Row) (string, []any) {
 	vals := make([]any, len(p.keyAt))
-	var b strings.Builder
 	for i, at := range p.keyAt {
 		if at < len(row) {
 			vals[i] = row[at]
 		}
-		fmt.Fprintf(&b, "%T\x1f%v\x1e", vals[i], vals[i])
 	}
-	return b.String(), vals
+	return keyString(vals), vals
+}
+
+// keyString is a key's values, with their types, as one string.
+func keyString(vals []any) string {
+	var b strings.Builder
+	for _, v := range vals {
+		fmt.Fprintf(&b, "%T\x1f%v\x1e", v, v)
+	}
+	return b.String()
 }
 
 // Set changes one cell of a row read. Set back to what the row holds, the
@@ -251,6 +258,24 @@ func (p *Pending) Added() []model.Row {
 
 // Len is how many rows are changed, added or deleted.
 func (p *Pending) Len() int { return len(p.order) + len(p.added) }
+
+// Change says which row the changeset's i'th change is to: a row read, by
+// its key, or a new row, by its place among the new rows.
+func (p *Pending) Change(i int) (key []any, added int, ok bool) {
+	switch {
+	case i >= 0 && i < len(p.order):
+		return p.rows[p.order[i]].key, -1, true
+	case i >= len(p.order) && i < p.Len():
+		return nil, i - len(p.order), true
+	}
+	return nil, -1, false
+}
+
+// IsRow reports whether a row read has a key, as Change gives it.
+func (p *Pending) IsRow(row model.Row, key []any) bool {
+	k, _ := p.key(row)
+	return k == keyString(key)
+}
 
 // Changeset is the changes as the source's writer takes them: each row read
 // by the key it had, an update with only the columns changed, so an edit to

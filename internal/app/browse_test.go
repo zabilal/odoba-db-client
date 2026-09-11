@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -57,6 +58,20 @@ func (b *browseFake) Browse(_ context.Context, ref model.ObjectRef, opt source.B
 	}
 	return &sliceRows{from: opt.Offset, to: end, closed: &b.closed,
 		id: model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: ref}}, nil
+}
+
+func TestASourceThatDoesNotWriteSaysSo(t *testing.T) {
+	ctx := context.Background()
+	b, err := NewBrowseSource(ctx, &browseFake{n: 10}, orders, source.BrowseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Plan(ctx, source.Changeset{}); err == nil || !strings.Contains(err.Error(), "does not write rows") {
+		t.Errorf("plan: %v", err)
+	}
+	if _, err := b.Apply(ctx, &source.WritePlan{}); err == nil || !strings.Contains(err.Error(), "does not write rows") {
+		t.Errorf("apply: %v", err)
+	}
 }
 
 type sliceRows struct {

@@ -280,6 +280,27 @@ func (m *Model) Resident(i int64) bool {
 	return ok
 }
 
+// Find is the first row read, among the pages in memory, that match
+// reports, as the grid counts rows (the new rows first). It fetches
+// nothing: a row not in memory is not found.
+func (m *Model) Find(match func(model.Row) bool) (int64, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	found := int64(-1)
+	for page, rows := range m.pages {
+		for i, r := range rows {
+			if at := page*PageSize + int64(i); match(r) && (found < 0 || at < found) {
+				found = at
+				break
+			}
+		}
+	}
+	if found < 0 {
+		return 0, false
+	}
+	return found + int64(len(m.added)), true
+}
+
 // Prefetch warms the pages covering [first,last] and their neighbours. The
 // grid calls this when the viewport moves, so that a steady scroll stays ahead
 // of the data rather than chasing it.
