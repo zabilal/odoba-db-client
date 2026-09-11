@@ -33,3 +33,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0026](0026-query-parameters.md) | Query parameters | Accepted |
 | [0027](0027-pending-changes.md) | Pending changes | Accepted |
 | [0028](0028-pending-changes-in-the-grid.md) | Pending changes in the grid | Accepted |
+| [0029](0029-cells-edited-in-place.md) | Cells edited in place | Accepted |
