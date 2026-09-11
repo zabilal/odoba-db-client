@@ -61,8 +61,18 @@ func TestOtherValuesAreShownWhole(t *testing.T) {
 		t.Error("NULL is shown as NULL, not as empty text")
 	}
 	when := time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)
-	if v := Prepare(when, model.ColumnDef{}, time.FixedZone("", 7200)); v.Text != "2024-05-06 09:08:09 +02:00\n2024-05-06 07:08:09 UTC" {
-		t.Errorf("time %q", v.Text)
+	plus2 := time.FixedZone("", 7200)
+	instant := model.ColumnDef{Type: model.DataType{Class: model.TypeTimestamp, TimeZone: true}}
+	if v := Prepare(when, instant, plus2); v.Text != "2024-05-06 09:08:09 +02:00\n2024-05-06 07:08:09 UTC" {
+		t.Errorf("an instant is shown local and in UTC: %q", v.Text)
+	}
+	wall := model.ColumnDef{Type: model.DataType{Class: model.TypeTimestamp}}
+	if v := Prepare(when, wall, plus2); v.Text != "2024-05-06 07:08:09" {
+		t.Errorf("a time with no zone is shown as stored: %q", v.Text)
+	}
+	date := model.ColumnDef{Type: model.DataType{Class: model.TypeDate}}
+	if v := Prepare(when, date, plus2); v.Text != "2024-05-06" {
+		t.Errorf("a date is a date: %q", v.Text)
 	}
 	if v := Prepare(model.Decimal("12345678901234567890.1234567890"), model.ColumnDef{}, time.UTC); v.Text != "12345678901234567890.1234567890" {
 		t.Errorf("decimal %q", v.Text)

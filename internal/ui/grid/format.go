@@ -67,6 +67,8 @@ const MaxCellRunes = 200
 type Cell struct {
 	Text string
 	Kind CellKind
+	// Hint is said when the pointer rests on the cell: an instant's UTC time.
+	Hint string
 	// Truncated reports that Text was cut at MaxCellRunes, so the renderer can
 	// draw an ellipsis affordance rather than implying the value ends there.
 	Truncated bool
@@ -136,8 +138,15 @@ func textCell(s string, col model.ColumnDef) Cell {
 }
 
 func temporalCell(t time.Time, col model.ColumnDef, loc *time.Location) Cell {
-	if loc != nil {
-		t = t.In(loc)
+	// A time from a column with a zone is an instant: shown in local time,
+	// with UTC on hover (FR-3.8). A time with no zone is shown as stored:
+	// moving it into local time would show an hour it never had.
+	var hint string
+	if col.Type.TimeZone {
+		hint = t.UTC().Format("2006-01-02 15:04:05") + " UTC"
+		if loc != nil {
+			t = t.In(loc)
+		}
 	}
 	var layout string
 	switch col.Type.Class {
@@ -150,7 +159,7 @@ func temporalCell(t time.Time, col model.ColumnDef, loc *time.Location) Cell {
 		// grid, and the full value is in the cell viewer.
 		layout = "2006-01-02 15:04:05"
 	}
-	return Cell{Text: t.Format(layout), Kind: CellTemporal}
+	return Cell{Text: t.Format(layout), Kind: CellTemporal, Hint: hint}
 }
 
 func structuredCell(raw []byte) Cell {
@@ -191,6 +200,15 @@ func binaryCell(b []byte) Cell {
 		sb.WriteString(" bytes")
 	}
 	return Cell{Text: sb.String(), Kind: CellBinary}
+}
+
+// shown is a cell's text as drawn: a value cut at MaxCellRunes ends in an
+// ellipsis, so it never passes for the whole.
+func shown(c Cell) string {
+	if c.Truncated {
+		return c.Text + "…"
+	}
+	return c.Text
 }
 
 // clip caps a value at MaxCellRunes without splitting a rune.

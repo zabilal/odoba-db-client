@@ -37,6 +37,11 @@ func (t *gridTable) MouseDown(e *desktop.MouseEvent) {
 // selected turns Fyne's one selected cell into the grid's selection, then
 // lets Fyne's go, so that a second click on the same cell is heard too.
 func (t *gridTable) selected(id widget.TableCellID) {
+	if t.g.ColumnAt(id.Col) < 0 { // the filler holds nothing to select
+		t.mod = 0
+		t.Unselect(id)
+		return
+	}
 	c := CellID{id.Row, id.Col}
 	switch {
 	case t.mod&fyne.KeyModifierShift != 0:
@@ -93,8 +98,8 @@ func (t *gridTable) TypedKey(e *fyne.KeyEvent) {
 }
 
 func (t *gridTable) highlighted(id widget.TableCellID) {
-	if !t.stepping {
-		return // the focus arriving, not a key
+	if !t.stepping || t.g.ColumnAt(id.Col) < 0 {
+		return // the focus arriving, not a key; or the filler
 	}
 	c := CellID{id.Row, id.Col}
 	if t.shift {

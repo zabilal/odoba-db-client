@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -31,6 +32,25 @@ type cellWidget struct {
 
 	rect  *canvas.Rectangle
 	label *canvas.Text
+
+	// hint is said when the pointer rests on the cell, through onHint.
+	hint   string
+	onHint func(text string, at fyne.Position)
+}
+
+// MouseIn asks for the cell's hint to be shown, and MouseOut for it to go.
+func (c *cellWidget) MouseIn(e *desktop.MouseEvent) {
+	if c.hint != "" && c.onHint != nil {
+		c.onHint(c.hint, e.AbsolutePosition)
+	}
+}
+
+func (c *cellWidget) MouseMoved(*desktop.MouseEvent) {}
+
+func (c *cellWidget) MouseOut() {
+	if c.onHint != nil {
+		c.onHint("", fyne.Position{})
+	}
 }
 
 func newCellWidget() *cellWidget {
