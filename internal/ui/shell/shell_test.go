@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -81,7 +82,8 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 		return nil, &source.ConnectError{Kind: source.ConnectUnreachable,
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
-	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys", guard: cfg.Guard}, nil
+	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys",
+		labels: cfg.Host == "labels", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -103,6 +105,7 @@ type fakeSource struct {
 	uncounted bool
 	unkeyed   bool // its rows cannot be told apart
 	fkeys     bool // its items refer to parts by name
+	labels    bool // its items refer to owners by id, and to parts by name
 	guard     source.Guard
 }
 
@@ -137,6 +140,11 @@ func (f fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error
 		},
 		PrimaryKey: &model.PrimaryKey{Name: "items_pkey", Columns: []string{"id"}},
 		Indexes:    []model.Index{{Name: "items_name", Columns: []model.IndexColumn{{Name: "name"}}}},
+	}
+	if f.labels {
+		tbl.ForeignKeys = []model.ForeignKey{
+			{Name: "items_owner", Columns: []string{"id"}, RefSchema: "main", RefTable: "owners", RefColumns: []string{"id"}},
+			{Name: "items_part", Columns: []string{"name"}, RefSchema: "main", RefTable: "parts", RefColumns: []string{"name"}}}
 	}
 	if f.fkeys {
 		tbl.ForeignKeys = []model.ForeignKey{{Name: "items_part", Columns: []string{"name"},
@@ -272,7 +280,47 @@ func (f fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Brow
 	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
 		end = opt.Offset + opt.Limit
 	}
-	return &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}, nil
+	rows := &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}
+	if len(opt.Columns) == 0 {
+		return rows, nil
+	}
+	p := &projected{RowStream: rows}
+	for _, name := range opt.Columns {
+		i := slices.IndexFunc(rows.Columns(), func(c model.ColumnDef) bool { return c.Name == name })
+		if i < 0 {
+			return nil, fmt.Errorf("fakesql: no column %q", name)
+		}
+		p.idx = append(p.idx, i)
+	}
+	return p, nil
+}
+
+// projected serves a stream's rows in the columns a browse named, in that
+// order, as a source does.
+type projected struct {
+	model.RowStream
+	idx []int
+}
+
+func (p *projected) Columns() []model.ColumnDef {
+	all := p.RowStream.Columns()
+	out := make([]model.ColumnDef, len(p.idx))
+	for i, j := range p.idx {
+		out[i] = all[j]
+	}
+	return out
+}
+
+func (p *projected) Next(ctx context.Context) (model.Row, error) {
+	r, err := p.RowStream.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(model.Row, len(p.idx))
+	for i, j := range p.idx {
+		out[i] = r[j]
+	}
+	return out, nil
 }
 
 type sliceStream struct {

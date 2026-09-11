@@ -184,6 +184,9 @@ type tab struct {
 	then  func()
 	// referrers are the keys of other tables that refer to it (referring.go).
 	referrers []model.Referrer
+	// labels are its keys' values' labels (labels.go), from the moment its
+	// grid is attached.
+	labels *valueLabels
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -654,9 +657,12 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 		}
 	})
 	// Coalesced, never a refresh per page: see grid.TableGrid.ScheduleRefresh.
-	m.OnPageLoaded = func(int64) {
+	// The labels are there before any page arrives.
+	t.labels = newValueLabels()
+	m.OnPageLoaded = func(page int64) {
 		g.ScheduleRefresh()
 		footer()
+		go s.readLabels(t, page) // labels.go
 	}
 	m.OnError = func(err error) {
 		s.d.Run(func() {
