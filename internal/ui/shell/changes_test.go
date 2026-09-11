@@ -34,7 +34,7 @@ func TestAnEditIsHeldAndCounted(t *testing.T) {
 
 func TestEditCellOpensAnEditorOnTheActiveCell(t *testing.T) {
 	fx, tb := loadedItems(t)
-	if fx.s.canEditCell() || fx.s.canSetNull() {
+	if fx.s.canEditCell() || fx.s.canChangeRows() {
 		t.Error("with no cell selected there is nothing to edit")
 	}
 	tb.grid.Select(grid.CellID{Row: 1, Col: 1}, grid.CellID{Row: 1, Col: 1})
@@ -89,7 +89,7 @@ func TestATableWithNoKeyHasNoChangesToShow(t *testing.T) {
 	fx.s.OpenObject(c.ID, itemsNode)
 	tb := fx.onlyTab(t)
 	pump(t, fx.q, func() bool { return tb.browse != nil })
-	if tb.pending != nil || tb.grid.Table.ShowHeaderColumn {
-		t.Error("rows that cannot be told apart are never edited, so nothing is marked")
+	if tb.pending != nil || tb.grid.Table.ShowHeaderColumn || fx.s.canInsert() {
+		t.Error("rows that cannot be told apart are never edited, so nothing is marked or added")
 	}
 }

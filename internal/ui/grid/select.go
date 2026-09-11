@@ -151,6 +151,11 @@ func (g *TableGrid) Select(from, to CellID) {
 	g.selectionChanged()
 }
 
+// GoTo selects one cell and scrolls it into view.
+func (g *TableGrid) GoTo(c CellID) {
+	g.table.Select(widget.TableCellID{Row: c.Row, Col: c.Col})
+}
+
 // ToggleCell adds a cell to the selection, or takes it out, as ⌘-click does.
 func (g *TableGrid) ToggleCell(c CellID) {
 	g.sel.Toggle(c)

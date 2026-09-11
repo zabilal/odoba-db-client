@@ -27,6 +27,9 @@ const (
 // Parse reads. NULL is empty. An instant is in local time, as the grid shows
 // it; a time with no zone is as stored.
 func EditText(v any, col model.ColumnDef, loc *time.Location) string {
+	if _, ok := v.(model.Default); ok {
+		return "" // a new row's column given nothing yet
+	}
 	t, ok := v.(time.Time)
 	if !ok {
 		return export.Text(v, col)

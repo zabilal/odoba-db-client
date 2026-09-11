@@ -45,6 +45,8 @@ type TableGrid struct {
 	// nothing. editing is the editor open, if any. See edit.go.
 	OnEdit  func(row model.Row, col int, v any) error
 	editing *edit
+	// OnEditAdded is asked the same of the model's i'th new row (FR-4.2).
+	OnEditAdded func(i, col int, v any) error
 
 	// sel is the selected cells (FR-3.7); table is the Table that hears the
 	// clicks and keys that change it.

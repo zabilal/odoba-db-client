@@ -79,6 +79,11 @@ type Model struct {
 	// from a count, so Invalidate must forget it.
 	derived bool
 
+	// added are new rows, not yet written, shown before the rows read
+	// (FR-4.2). Row, Read, Extent, Resident and Prefetch count them first;
+	// Total is the rows read alone. A new sort or filter keeps them.
+	added []model.Row
+
 	// OnPageLoaded is invoked, off the UI goroutine, when a page arrives.
 	// The UI must marshal its refresh onto the main goroutine itself.
 	OnPageLoaded func(page int64)
@@ -120,7 +125,21 @@ func (m *Model) SetFetcher(f Fetcher) {
 	m.Invalidate()
 }
 
-// Total returns the row count and whether it is known.
+// SetAdded sets the new rows shown before the rows read.
+func (m *Model) SetAdded(rows []model.Row) {
+	m.mu.Lock()
+	m.added = rows
+	m.mu.Unlock()
+}
+
+// Added is how many new rows come before the rows read.
+func (m *Model) Added() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.added)
+}
+
+// Total returns the count of the rows read, and whether it is known.
 func (m *Model) Total() (int64, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -150,15 +169,16 @@ func (m *Model) LoadCount(ctx context.Context) error {
 	return nil
 }
 
-// Extent is how many rows are known to exist: the total when final, else the
-// furthest row any fetch has reached so far.
+// Extent is how many rows are known to exist, the new ones first: the total
+// when final, else the furthest row any fetch has reached so far.
 func (m *Model) Extent() (n int64, final bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	k := int64(len(m.added))
 	if m.total >= 0 {
-		return m.total, true
+		return m.total + k, true
 	}
-	return m.seen, false
+	return m.seen + k, false
 }
 
 // noteReachLocked records how far a fetched page reached. A short page is the
@@ -182,10 +202,15 @@ func (m *Model) noteReachLocked(page int64, n int) {
 // visible cell of every frame — so it does no allocation and holds only a read
 // lock.
 func (m *Model) Row(ctx context.Context, i int64) (row model.Row, loaded bool) {
-	page := i / PageSize
-	within := int(i % PageSize)
-
 	m.mu.RLock()
+	k := int64(len(m.added))
+	if i < k {
+		row = m.added[i]
+		m.mu.RUnlock()
+		return row, true
+	}
+	i -= k
+	page, within := i/PageSize, int(i%PageSize)
 	rows, ok := m.pages[page]
 	m.mu.RUnlock()
 
@@ -210,8 +235,16 @@ func (m *Model) Row(ctx context.Context, i int64) (row model.Row, loaded bool) {
 // (FR-3.7), which can reach rows never drawn. What it fetches is not kept, so
 // a large copy cannot evict the pages on screen.
 func (m *Model) Read(ctx context.Context, from, to int64) ([]model.Row, error) {
-	f := m.current()
+	m.mu.RLock()
+	added := m.added
+	m.mu.RUnlock()
 	var out []model.Row
+	k := int64(len(added))
+	if from < k {
+		out = append(out, added[from:min(to, k)]...)
+	}
+	from, to = max(from-k, 0), to-k
+	f := m.current()
 	for page := from / PageSize; page*PageSize < to; page++ {
 		m.mu.RLock()
 		rows, ok := m.pages[page]
@@ -238,8 +271,12 @@ func (m *Model) Read(ctx context.Context, from, to int64) ([]model.Row, error) {
 // without paying for the LRU bookkeeping Row does.
 func (m *Model) Resident(i int64) bool {
 	m.mu.RLock()
-	_, ok := m.pages[i/PageSize]
-	m.mu.RUnlock()
+	defer m.mu.RUnlock()
+	k := int64(len(m.added))
+	if i < k {
+		return true
+	}
+	_, ok := m.pages[(i-k)/PageSize]
 	return ok
 }
 
@@ -247,7 +284,12 @@ func (m *Model) Resident(i int64) bool {
 // grid calls this when the viewport moves, so that a steady scroll stays ahead
 // of the data rather than chasing it.
 func (m *Model) Prefetch(ctx context.Context, first, last int64) {
-	lo := first/PageSize - prefetchRadius
+	k := int64(m.Added())
+	first, last = first-k, last-k
+	if last < 0 {
+		return // only new rows in view
+	}
+	lo := max(first, 0)/PageSize - prefetchRadius
 	if lo < 0 {
 		lo = 0
 	}

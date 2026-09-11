@@ -121,6 +121,12 @@ const (
 	RowAdded
 )
 
+// Default stands, in a new row not yet written, for a column given no value:
+// the store gives that column its default (FR-4.2).
+type Default struct{}
+
+func (Default) String() string { return "DEFAULT" }
+
 // Identified is an optional RowStream refinement exposing row identity.
 //
 // A stream that does not implement it is treated as read-only, which is the
