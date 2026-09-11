@@ -35,6 +35,8 @@ const (
 	IconNamePartition     fyne.ThemeIconName = "ikigai:partition"
 	IconNameConsumerGroup fyne.ThemeIconName = "ikigai:consumergroup"
 	IconNameCluster       fyne.ThemeIconName = "ikigai:cluster"
+	// IconNamePin marks a pinned tab.
+	IconNamePin fyne.ThemeIconName = "ikigai:pin"
 )
 
 // svgIcon wraps an SVG body in a 16x16 viewBox with shared stroke defaults.
@@ -46,6 +48,7 @@ func svgIcon(name, body string) fyne.Resource {
 }
 
 var customIcons = map[fyne.ThemeIconName]fyne.Resource{
+	IconNamePin: svgIcon("pin.svg", `<path d="M9.6 2.4 13.6 6.4 11.2 7.6 9.2 11.2 4.8 6.8 8.4 4.8z"/><path d="M7 9 2.8 13.2"/>`),
 	// Disclosure chevrons, as macOS draws them, rather than arrows
 	// (ADR-0006). Fyne's tree asks the theme for these two.
 	ftheme.IconNameNavigateNext: svgIcon("chevron-right.svg", `<path d="M6.2 3.4 10.8 8l-4.6 4.6"/>`),

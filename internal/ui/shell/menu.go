@@ -26,6 +26,9 @@ const (
 	cmdTabClose       = "tab.close"
 	cmdTabNext        = "tab.next"
 	cmdTabPrev        = "tab.previous"
+	cmdMoveTabLeft    = "tab.moveLeft"
+	cmdMoveTabRight   = "tab.moveRight"
+	cmdPinTab         = "tab.pin"
 	cmdQueryNew       = "query.new"
 	cmdQueryRun       = "query.run"
 	cmdQueryRunAll    = "query.runAll"
@@ -113,7 +116,8 @@ var menuBar = []struct {
 		item(cmdDisconnect),
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
-	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev)}},
+	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
+		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab)}},
 }
 
 func (s *Shell) buildMenu() *fyne.MainMenu {

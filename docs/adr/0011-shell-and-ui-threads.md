@@ -142,6 +142,14 @@ comes back. The band's tint is drawn, not themed, so an appearance change
 repaints it: the first version kept the dark tint under light-mode text,
 and could not be read.
 
+## 8. Tabs move and pin, by command
+
+Tabs move left and right, and pin, from the Window menu (FR-15.2). Pinned
+tabs stay together at the left, in the order they were pinned, marked with
+a pin, and a tab moves only among the tabs of its own kind; new tabs open
+after the pinned ones. Fyne's tab bar cannot be dragged, so moving is by
+command. Dragging a tab needs a tab bar of our own, and is open.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

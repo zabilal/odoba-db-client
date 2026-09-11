@@ -157,4 +157,9 @@ func TestScreenshots(t *testing.T) {
 	h.q.Flush()
 	h.w.Canvas().Capture()
 	shot("9-accent")
+
+	h.s.Commands().Run("tab.pin") // the query tab, which is in front
+	h.q.Flush()
+	h.w.Canvas().Capture()
+	shot("10-pinned")
 }

@@ -119,6 +119,7 @@ type tab struct {
 	// it beside the row count until a re-browse succeeds.
 	problem string
 	query   *queryTab // set only on query tabs
+	pinned  bool      // kept at the left, in the order pinned: see tabs.go
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -286,6 +287,12 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(1) }},
 		{ID: cmdTabPrev, Category: "Tab", Title: "Show Previous Tab", Shortcut: sc("[", commands.ModShortcut|commands.ModShift),
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(-1) }},
+		{ID: cmdMoveTabLeft, Category: "Tab", Title: "Move Tab Left", Keywords: []string{"reorder"},
+			Enabled: func() bool { return s.canMoveTab(-1) }, Run: func() { s.moveTab(-1) }},
+		{ID: cmdMoveTabRight, Category: "Tab", Title: "Move Tab Right", Keywords: []string{"reorder"},
+			Enabled: func() bool { return s.canMoveTab(1) }, Run: func() { s.moveTab(1) }},
+		{ID: cmdPinTab, Category: "Tab", Title: "Pin Tab", Keywords: []string{"keep", "stick"},
+			Enabled: func() bool { return s.activeTab() != nil }, Run: s.togglePin},
 		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
 			Shortcut: sc("T", commands.ModShortcut), Enabled: hasConn, Run: func() {
 				if id, ok := s.selectedConn(); ok {
@@ -772,6 +779,9 @@ func (s *Shell) checked(id string) bool {
 		return s.d.Theme.Appearance == uitheme.AppearanceLight
 	case cmdAppearDark:
 		return s.d.Theme.Appearance == uitheme.AppearanceDark
+	case cmdPinTab:
+		t := s.activeTab()
+		return t != nil && t.pinned
 	}
 	if name, ok := strings.CutPrefix(id, accentPrefix); ok {
 		return s.d.Theme.Accent.String() == name
