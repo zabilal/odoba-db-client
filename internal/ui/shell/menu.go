@@ -50,6 +50,7 @@ const (
 	cmdQuerySaveAs    = "query.saveAs"
 	cmdOpenSaved      = "query.openSaved"
 	cmdExport         = "data.export"
+	cmdImport         = "data.import"
 	cmdFilterValues   = "data.filterValues"
 	cmdWhere          = "data.where"
 	cmdCopyCells      = "grid.copy"
@@ -125,7 +126,7 @@ var menuBar = []struct {
 	{"File", []menuEntry{
 		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
-		item(cmdExport), separator,
+		item(cmdExport), item(cmdImport), separator,
 		item(cmdTabClose),
 	}},
 	{"Edit", []menuEntry{
