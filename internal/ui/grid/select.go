@@ -122,14 +122,18 @@ func (t *gridTable) highlighted(id widget.TableCellID) {
 	t.g.selectionChanged()
 }
 
-// TypedShortcut answers the shortcuts a focused grid owns. ⌘C and ⌘A are the
-// editor's too, so neither is on the menu bar, and each goes to whatever has
+// TypedShortcut answers the shortcuts a focused grid owns. ⌘C, ⌘V and ⌘A are
+// the editor's too, so neither is on the menu bar, and each goes to whatever has
 // the focus (view.Reserved).
 func (t *gridTable) TypedShortcut(s fyne.Shortcut) {
 	switch s.(type) {
 	case *fyne.ShortcutCopy:
 		if t.g.OnCopy != nil {
 			t.g.OnCopy()
+		}
+	case *fyne.ShortcutPaste:
+		if t.g.OnPaste != nil {
+			t.g.OnPaste()
 		}
 	case *fyne.ShortcutSelectAll:
 		t.g.SelectAll()

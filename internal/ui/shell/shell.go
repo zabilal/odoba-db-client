@@ -368,6 +368,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.hasSelection, Run: s.copyMarkdown},
 		{ID: cmdCopyInsert, Category: "Edit", Title: "Copy as INSERT", Keywords: []string{"clipboard", "sql", "statements"},
 			Enabled: s.canCopyInsert, Run: s.copyInsert},
+		{ID: cmdPasteCells, Category: "Edit", Title: "Paste Cells", Keywords: []string{"clipboard", "tsv", "csv", "spreadsheet", "fill"},
+			Enabled: s.canPaste, Run: s.pasteActive},
 		{ID: cmdSelectRow, Category: "Edit", Title: "Select Row", Enabled: s.hasSelection,
 			Run: func() { s.onGrid((*grid.TableGrid).SelectRow) }},
 		{ID: cmdSelectColumn, Category: "Edit", Title: "Select Column", Enabled: s.hasSelection,
@@ -657,6 +659,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	// Filter by Values and the cell viewer follow the selected cell.
 	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) }
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
+	g.OnPaste = func() { s.paste(editsFor(t, g)) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	g.OnLayout = s.sessionChanged // a resize or move is kept within a second
 	t.hold(g, t.body)

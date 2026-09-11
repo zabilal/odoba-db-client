@@ -93,6 +93,9 @@ type TableGrid struct {
 	OnSelectCell func()
 	// OnCopy is asked to copy the selection, by ⌘C on the focused grid.
 	OnCopy func()
+	// OnPaste is asked to paste the clipboard into the grid, by ⌘V on the
+	// focused grid.
+	OnPaste func()
 	// OnSpace is asked to show or hide the cell viewer, by Space on the
 	// focused grid, as Quick Look does.
 	OnSpace func()

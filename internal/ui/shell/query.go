@@ -365,6 +365,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	g := grid.NewTableGridWith(t.ctx, m, s.colours(), s.d.Run, s.d.Delay)
 	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) } // the Edit menu and the viewer follow it
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
+	g.OnPaste = func() { s.paste(editsFor(t, g)) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	r := &result{rs: rs, stmt: stmt, named: q.named, count: widget.NewLabel("Loading rows…")}

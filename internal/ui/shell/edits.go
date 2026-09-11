@@ -42,10 +42,12 @@ type rowWriter interface {
 	Apply(ctx context.Context, plan *source.WritePlan) (*source.WriteOutcome, error)
 }
 
-// activeEdits is the editing of the grid in front, if it has any: a table
-// tab's, or a query result's.
-func (s *Shell) activeEdits() *edits {
-	t, g := s.activeTab(), s.activeGrid()
+// activeEdits is the editing of the grid in front, if it has any.
+func (s *Shell) activeEdits() *edits { return editsFor(s.activeTab(), s.activeGrid()) }
+
+// editsFor is the editing of a tab's grid, if it has any: a table tab's, or
+// a query result's.
+func editsFor(t *tab, g *grid.TableGrid) *edits {
 	switch {
 	case t == nil || g == nil:
 		return nil
