@@ -279,7 +279,9 @@ A command's shortcut can be changed (FR-15.4, T1.8). The registry's
 each see it, which is the check `Register` makes at startup; each command
 keeps the shortcut it was registered with, to go back to. A change is kept
 in the settings file in a form that reads back the same on every platform,
-`Shift+Shortcut+F`, and one set back to its default leaves the file. The
+`Shift+Shortcut+F`, the `+` key included (`Shortcut++`): modifiers are read
+off the front and the rest is the key. One set back to its default leaves
+the file. The
 menu bar is rebuilt on every change, since its items are what make a
 shortcut work (§2). At startup the kept shortcuts are applied once every
 command is registered and before the menu bar is built. One that no longer
