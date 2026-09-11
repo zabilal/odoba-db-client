@@ -23,9 +23,9 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.24 (SQL INSERT, HTML and XML export writers; Markdown is
-           written already); T2.21's new table waits on the table designer
-           (3.A). What is
+NEXT TASK: T2.25 (the completion engine: keywords, schemas, tables,
+           functions) — paused here at the owner's word, 2026-09-11.
+           T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
            T1.14's scroll position on Fyne.
@@ -34,8 +34,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — an export can be an Excel workbook (T2.23,
-           ADR-0055). Before it: the import's rows a transaction and what a
+LAST DONE: 2026-09-11 — exports as SQL INSERT, HTML and XML (T2.24,
+           ADR-0056). Before it: an export can be an Excel workbook (T2.23,
+           ADR-0055); the import's rows a transaction and what a
            row that would not go in does, the rows left out listed (T2.22,
            ADR-0053, ADR-0054); an import updates the rows whose primary
            key is there already and adds the rest (ADR-0052); an import adds to a table's rows or replaces them,
@@ -399,7 +400,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [~] **T2.21** Modes: insert / upsert / replace / append-to-new-table → FR-10.6 — *inserting done: Import in the panel writes the rows through each source's Writer, 500 rows a transaction, as a task that says how long is left after a dry run; new rows need no key (`transfer.Load`, ADR-0049). Every SQL driver loads rows in bulk, emptying the table first in one transaction (`source.BulkLoader`, `sqlscript.LoadWith`, ADR-0050). The import goes through it, adding rows or replacing the table's in one transaction, asked first (ADR-0051). Rows with a primary key already there are updated, the rest added: ON CONFLICT, or ON DUPLICATE KEY on MySQL and MariaDB (`LoadOptions.Keys`, `sqlscript.Upserter`, ADR-0052). Importing into a new table waits on the table designer's DDL and its preview (T3.1, T3.4, T3.7), as FR-6.4 asks that every structural change be previewed*
 - [x] **T2.22** Batch size + error policy → FR-10.6 — *every SQL driver leaves a refused row out when told, each row in a savepoint: skip, or collect up to a most (`LoadOptions.OnError`, `Skipped`; ADR-0053). The panel asks the rows a transaction and what a row that would not go in does, checked where typed; the rows left out are listed in the Problems tab, by their place in the file (ADR-0054)*
 - [x] **T2.23** Excel (xlsx) export writer → FR-10.1 — *an export can be an Excel workbook, streamed with the standard library: strings inline, a number a number where Excel keeps its digits and text where not, dates as Excel's days with ISO formats, NULL an empty cell, a bold frozen header, the sheet named for what is exported; what a sheet cannot hold is refused, not cut; the import reads Excel's _xHHHH_ escapes (`export.XLSX`, ADR-0055)*
-- [ ] **T2.24** SQL INSERT, Markdown, HTML, XML writers → FR-10.1
+- [x] **T2.24** SQL INSERT, Markdown, HTML, XML writers → FR-10.1 — *Markdown was written already; SQL INSERT is written by the table's own source a row at a time, offered for a table's rows and its selection; HTML a page of one table, NULL reading apart unstyled, light and dark; XML a <row> of named <field>s, base64 where XML cannot hold a value (ADR-0056)*
 
 ## 2.D Query editor — stage 2
 

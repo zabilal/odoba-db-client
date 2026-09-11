@@ -25,11 +25,11 @@ func exportCSV(t *testing.T, fx *fixture, tb *tab, src *exportSrc) string {
 
 func TestExportTheSelectionAlone(t *testing.T) {
 	fx, tb := openItems(t)
-	if fx.s.selectionSource(tb.grid, "items") != nil {
+	if fx.s.selectionSource(tb.grid, &exportSrc{name: "items"}) != nil {
 		t.Error("with nothing selected there is no selection to export")
 	}
 	tb.grid.Select(grid.CellID{Row: 2, Col: 1}, grid.CellID{Row: 4, Col: 1}) // three rows of the name column
-	got := exportCSV(t, fx, tb, fx.s.selectionSource(tb.grid, "items"))
+	got := exportCSV(t, fx, tb, fx.s.selectionSource(tb.grid, &exportSrc{name: "items"}))
 	if got != "name\nitem 2\nitem 3\nitem 4\n" {
 		t.Errorf("exported %q, want the three selected cells of name", got)
 	}
@@ -41,7 +41,7 @@ func TestAWholeColumnSelectionStreamsToTheEnd(t *testing.T) {
 	t.Cleanup(func() { selectionPage = was })
 	fx, tb := openItems(t)
 	tb.grid.Select(grid.CellID{Row: 0, Col: 0}, grid.CellID{Row: grid.End, Col: 0})
-	src := fx.s.selectionSource(tb.grid, "items")
+	src := fx.s.selectionSource(tb.grid, &exportSrc{name: "items"})
 	if src.total != -1 {
 		t.Errorf("a selection to the end has no known total, got %d", src.total)
 	}

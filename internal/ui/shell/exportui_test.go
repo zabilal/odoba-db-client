@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
 // sink is an in-memory export destination.
@@ -138,7 +140,7 @@ func TestFileNameIsSafe(t *testing.T) {
 func TestAnExportCanBeAWorkbook(t *testing.T) {
 	fx, tb := openItems(t)
 	out := &sink{}
-	j := fx.s.runExport(tb, fx.s.exportSource(), exportOptions(export.XLSX, true, "items"), out, "items.xlsx", nil)
+	j := fx.s.runExport(tb, fx.s.exportSource(), exportOptions(export.XLSX, true, &exportSrc{name: "items"}), out, "items.xlsx", nil)
 	pump(t, fx.q, func() bool { return j.done })
 	if j.err != nil || !out.closed || !bytes.HasPrefix(out.Bytes(), []byte("PK")) || j.task.status != "Exported 250 rows to items.xlsx" {
 		t.Errorf("err %v, closed %v, starts %q, task %q", j.err, out.closed, out.Bytes()[:min(4, out.Len())], j.task.status)
@@ -151,7 +153,7 @@ func TestTheHeaderIsOfferedWhereAFormatHasOne(t *testing.T) {
 			t.Errorf("%v: header offered %v", f, !want)
 		}
 	}
-	if got := exportOptions(export.XLSX, true, "items"); got != (export.Options{Format: export.XLSX, Header: true, Sheet: "items"}) {
+	if got := exportOptions(export.XLSX, true, &exportSrc{name: "items"}); got.Format != export.XLSX || !got.Header || got.Name != "items" {
 		t.Errorf("a workbook's sheet takes the name of what is exported: %+v", got)
 	}
 }
@@ -250,5 +252,26 @@ func TestAWorkbookIsOfferedWithItsHeader(t *testing.T) {
 	}
 	if !strings.Contains(workbook, `<sheet name="`+tb.item.Text+`"`) {
 		t.Errorf("the sheet takes the tab's name: %s", workbook)
+	}
+}
+
+func TestATablesRowsExportAsItsInserts(t *testing.T) {
+	fx, tb := openItems(t)
+	src := fx.s.exportSource()
+	if src.inserts == nil || !slices.Contains(exportFormats(src), export.SQLInsert) {
+		t.Fatal("a table's rows can be written as its INSERT statements")
+	}
+	out := &sink{}
+	j := fx.s.runExport(tb, src, exportOptions(export.SQLInsert, false, src), out, "items.sql", nil)
+	pump(t, fx.q, func() bool { return j.done })
+	if j.err != nil || strings.Count(out.String(), "INSERT 2 ") != fakeRows || !strings.HasPrefix(out.String(), "INSERT 2 [0 item 0];\n") {
+		t.Errorf("err %v, starts %q", j.err, out.String()[:min(40, out.Len())])
+	}
+	if got := exportFormats(&exportSrc{name: "result"}); slices.Contains(got, export.SQLInsert) || len(got) != len(export.Formats())-1 || len(exportFormats(src)) != len(export.Formats()) {
+		t.Error("rows with no one table to insert into are not offered as INSERTs; a table's are offered every format")
+	}
+	tb.grid.Select(grid.CellID{Row: 2, Col: 1}, grid.CellID{Row: 4, Col: 1})
+	if sel := fx.s.selectionSource(tb.grid, src); sel == nil || sel.inserts == nil || sel.name != "items selection" {
+		t.Error("a selection of a table's rows is written as its INSERTs too")
 	}
 }

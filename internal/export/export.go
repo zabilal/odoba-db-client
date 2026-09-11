@@ -1,5 +1,5 @@
-// Package export writes rows out as CSV, TSV, JSON, NDJSON, Markdown or an
-// Excel workbook (FR-10.1). It
+// Package export writes rows out as CSV, TSV, JSON, NDJSON, Markdown, HTML,
+// XML, SQL INSERT statements or an Excel workbook (FR-10.1). It
 // streams, so memory stays flat however many rows there are (FR-10.3,
 // NFR-P11).
 //
@@ -44,10 +44,15 @@ const (
 	NDJSON
 	Markdown
 	XLSX
+	SQLInsert
+	HTML
+	XML
 )
 
 // Formats lists every format, in the order a menu offers them.
-func Formats() []Format { return []Format{CSV, TSV, XLSX, JSON, NDJSON, Markdown} }
+func Formats() []Format {
+	return []Format{CSV, TSV, XLSX, JSON, NDJSON, XML, HTML, Markdown, SQLInsert}
+}
 
 func (f Format) String() string {
 	switch f {
@@ -63,6 +68,12 @@ func (f Format) String() string {
 		return "Markdown"
 	case XLSX:
 		return "Excel"
+	case SQLInsert:
+		return "SQL INSERT"
+	case HTML:
+		return "HTML"
+	case XML:
+		return "XML"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -80,6 +91,12 @@ func (f Format) Extension() string {
 		return "md"
 	case XLSX:
 		return "xlsx"
+	case SQLInsert:
+		return "sql"
+	case HTML:
+		return "html"
+	case XML:
+		return "xml"
 	}
 	return "csv"
 }
@@ -93,8 +110,12 @@ type Options struct {
 	// Null is how CSV and TSV write NULL: empty unless set, which is what
 	// spreadsheets expect. JSON always writes null.
 	Null string
-	// Sheet names an Excel workbook's sheet: Sheet1 unless given.
-	Sheet string
+	// Name is what is exported: an Excel workbook's sheet, Sheet1 unless
+	// given, and an HTML page's title.
+	Name string
+	// Inserts writes rows as INSERT statements into the table they came
+	// from, in its source's dialect (ARCH-2); SQL INSERT needs it.
+	Inserts func(cols []model.ColumnDef, rows []model.Row) (string, error)
 }
 
 // Progress is how far an export has got.
@@ -191,6 +212,12 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newMarkdown(w, cols), nil
 	case XLSX:
 		return newXLSX(w, cols, opt)
+	case SQLInsert:
+		return newInserts(w, cols, opt)
+	case HTML:
+		return newHTML(w, cols, opt), nil
+	case XML:
+		return newXML(w, cols), nil
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }

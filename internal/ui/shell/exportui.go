@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,13 +27,17 @@ type exportSrc struct {
 	name  string // a file name to suggest, without its extension
 	rows  func() model.RowStream
 	total int64 // -1 when unknown, as for a PostgreSQL table
+	// inserts writes rows as INSERT statements into the table they came
+	// from, where they are a table's and its source writes them (ADR-0056).
+	inserts func([]model.ColumnDef, []model.Row) (string, error)
 }
 
 // selectionSource is the grid's selection as rows to export (FR-10.2): the
 // rows it reaches, with only its columns. It streams a page at a time, so a
 // selection reaching the last of a large table costs no more memory than a
-// page: Copy sends a selection past its limit here. Nil with no selection.
-func (s *Shell) selectionSource(g *grid.TableGrid, name string) *exportSrc {
+// page: Copy sends a selection past its limit here. It is written as INSERTs
+// where the rows it is of are. Nil with no selection.
+func (s *Shell) selectionSource(g *grid.TableGrid, of *exportSrc) *exportSrc {
 	sel := g.Selection()
 	cols, _, picked := selectionColumns(g)
 	if len(picked) == 0 {
@@ -48,7 +53,7 @@ func (s *Shell) selectionSource(g *grid.TableGrid, name string) *exportSrc {
 		end, total = -1, -1
 	}
 	m := g.Model()
-	return &exportSrc{name: name + " selection", total: total, rows: func() model.RowStream {
+	return &exportSrc{name: of.name + " selection", total: total, inserts: of.inserts, rows: func() model.RowStream {
 		return &selectionStream{m: m, cols: defs, picked: picked, next: int64(first), end: end}
 	}}
 }
@@ -130,7 +135,11 @@ func (s *Shell) exportSource() *exportSrc {
 		if !known {
 			total = -1
 		}
-		return &exportSrc{name: t.item.Text, rows: t.browse.Rows, total: total}
+		src := &exportSrc{name: t.item.Text, rows: t.browse.Rows, total: total}
+		if t.query == nil && t.browse.CanScriptRows() {
+			src.inserts = t.browse.InsertRows
+		}
+		return src
 	case t.query != nil:
 		q := t.query
 		i := q.results.SelectedIndex() - 1 // tab 0 is Messages
@@ -157,13 +166,13 @@ func (s *Shell) showExport() {
 	var sel *exportSrc
 	var rows *widget.RadioGroup
 	if g := s.activeGrid(); g != nil {
-		if sel = s.selectionSource(g, src.name); sel != nil {
+		if sel = s.selectionSource(g, src); sel != nil {
 			_, _, picked := selectionColumns(g)
 			rows = widget.NewRadioGroup([]string{allRows, describeSelection(sel, len(picked))}, nil)
 			rows.SetSelected(allRows)
 		}
 	}
-	formats := export.Formats()
+	formats := exportFormats(src)
 	names := make([]string, len(formats))
 	for i, f := range formats {
 		names[i] = f.String()
@@ -190,7 +199,7 @@ func (s *Shell) showExport() {
 				return
 			}
 			src = pickSource(rows, src, sel)
-			opt := exportOptions(formats[format.SelectedIndex()], header.Checked, src.name)
+			opt := exportOptions(formats[format.SelectedIndex()], header.Checked, src)
 			ext := opt.Format.Extension()
 			s.d.Files.Save(s.win, filedlg.Options{
 				Message: fmt.Sprintf("Export “%s” as %s", src.name, opt.Format), Name: fileName(src.name) + "." + ext,
@@ -206,10 +215,17 @@ func headerApplies(f export.Format) bool {
 	return f == export.CSV || f == export.TSV || f == export.XLSX
 }
 
-// exportOptions are an export's options as its form says; a workbook's sheet
-// takes the name of what is exported (ADR-0055).
-func exportOptions(f export.Format, header bool, name string) export.Options {
-	return export.Options{Format: f, Header: header, Sheet: name}
+// exportOptions are an export's options as its form says: what is exported
+// names a workbook's sheet and a page's title (ADR-0055), and writes its
+// INSERTs (ADR-0056).
+func exportOptions(f export.Format, header bool, src *exportSrc) export.Options {
+	return export.Options{Format: f, Header: header, Name: src.name, Inserts: src.inserts}
+}
+
+// exportFormats are the formats src is offered in: SQL INSERT only where its
+// rows' source writes them (ADR-0056).
+func exportFormats(src *exportSrc) []export.Format {
+	return slices.DeleteFunc(export.Formats(), func(f export.Format) bool { return f == export.SQLInsert && src.inserts == nil })
 }
 
 // exportTo exports to the file the save dialog chose (FR-15.5). The file is
