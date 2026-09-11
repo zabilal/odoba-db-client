@@ -50,7 +50,7 @@ func cellValue(t *testing.T, sheet, ref string) float64 {
 }
 
 func TestAWorkbookIsWrittenAsExcelReadsIt(t *testing.T) {
-	parts := unzipped(t, export(t, sample(), Options{Format: XLSX, Header: true, Sheet: "items: all [2026]"}))
+	parts := unzipped(t, export(t, sample(), Options{Format: XLSX, Header: true, Name: "items: all [2026]"}))
 	for _, name := range []string{"[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/styles.xml", "xl/worksheets/sheet1.xml"} {
 		if _, ok := parts[name]; !ok {
 			t.Errorf("no part %s", name)
@@ -90,7 +90,7 @@ func TestAWorkbookIsWrittenAsExcelReadsIt(t *testing.T) {
 	if !strings.Contains(parts["xl/styles.xml"], `formatCode="yyyy-mm-dd"`) || !strings.Contains(parts["xl/_rels/workbook.xml.rels"], `Target="worksheets/sheet1.xml"`) {
 		t.Error("the styles and the sheet are named")
 	}
-	if wb := unzipped(t, export(t, sample(), Options{Format: XLSX, Sheet: `R&D "q"`}))["xl/workbook.xml"]; !strings.Contains(wb, `name="R&amp;D &quot;q&quot;"`) {
+	if wb := unzipped(t, export(t, sample(), Options{Format: XLSX, Name: `R&D "q"`}))["xl/workbook.xml"]; !strings.Contains(wb, `name="R&amp;D &quot;q&quot;"`) {
 		t.Errorf("a sheet's name escaped as an attribute: %s", wb)
 	}
 	plain := unzipped(t, export(t, sample(), Options{Format: XLSX}))["xl/worksheets/sheet1.xml"]

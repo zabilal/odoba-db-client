@@ -213,13 +213,14 @@ func TestMemoryStaysFlat(t *testing.T) {
 		runtime.ReadMemStats(&m)
 		return m.HeapInuse
 	}
+	inserts := func([]model.ColumnDef, []model.Row) (string, error) { return "INSERT;\n", nil }
 	before := heap()
 	for _, f := range Formats() {
-		if _, err := Copy(context.Background(), io.Discard, &limited{max: 500000}, Options{Format: f}, nil); err != nil {
+		if _, err := Copy(context.Background(), io.Discard, &limited{max: 500000}, Options{Format: f, Inserts: inserts}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if grew := int64(heap()) - int64(before); grew > 16<<20 {
-		t.Errorf("heap grew %d MB over 2M exported rows; export must stream", grew>>20)
+		t.Errorf("heap grew %d MB over half a million rows in every format; export must stream", grew>>20)
 	}
 }

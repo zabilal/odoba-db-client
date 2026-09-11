@@ -63,7 +63,7 @@ func newXLSX(w io.Writer, cols []model.ColumnDef, opt Options) (*xlsx, error) {
 	for _, p := range []struct{ name, body string }{
 		{"[Content_Types].xml", contentTypes},
 		{"_rels/.rels", packageRels},
-		{"xl/workbook.xml", fmt.Sprintf(workbookPart, attrEscaper.Replace(sheetName(opt.Sheet)))},
+		{"xl/workbook.xml", fmt.Sprintf(workbookPart, attrEscaper.Replace(sheetName(opt.Name)))},
 		{"xl/_rels/workbook.xml.rels", workbookRels},
 		{"xl/styles.xml", stylesPart},
 	} {
