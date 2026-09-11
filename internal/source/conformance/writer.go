@@ -125,6 +125,22 @@ func checkWriter(t *testing.T, target Target) {
 		t.Errorf("after two plans that failed, nothing of them is left: %s", got)
 	}
 
+	// A key that does not tell two rows apart changes both, and so nothing.
+	apply(t, insert(7, "twin", nil), insert(8, "twin", nil))
+	byName := model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"name"}, Target: ref}
+	twin, err := w.Plan(ctx, source.Changeset{Target: ref, Identity: byName, Changes: []source.RowChange{
+		{Kind: source.ChangeUpdate, Key: []any{"twin"}, Values: map[string]any{"n": int64(2)}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := w.Apply(ctx, twin); err != nil || out.Err == nil || out.FailedAt != 0 || !out.RolledBack {
+		t.Errorf("a change matching two rows fails, and is undone: %v %+v", err, out)
+	}
+	if got := rows(t); got != "[1 uno 1] [3 three <nil>] [4 four <nil>] [7 twin <nil>] [8 twin <nil>]" {
+		t.Errorf("both rows as they were: %s", got)
+	}
+	apply(t, source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(7)}}, source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(8)}})
+
 	if target.OpenGuarded == nil {
 		return
 	}

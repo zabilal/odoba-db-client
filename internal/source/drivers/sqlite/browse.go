@@ -28,6 +28,18 @@ func (s *sqliteSource) Browse(ctx context.Context, ref model.ObjectRef, opt sour
 			return nil, statementError(err)
 		}
 		opt.Sorts = tiebreak(opt.Sorts, id.Columns)
+		if id.Kind == model.IdentityRowID && len(opt.Columns) == 0 {
+			// The rowid is none of the table's columns, so it is selected
+			// first: a row with no other key is written by it.
+			cols, err := s.columns(ctx, ref.Name())
+			if err != nil {
+				return nil, statementError(err)
+			}
+			opt.Columns = []string{"rowid"}
+			for _, c := range cols {
+				opt.Columns = append(opt.Columns, c.Name)
+			}
+		}
 	}
 	stmt, err := s.BuildBrowse(ref, opt)
 	if err != nil {
@@ -40,8 +52,9 @@ func (s *sqliteSource) Browse(ctx context.Context, ref model.ObjectRef, opt sour
 	return newRowStream(rows, ref, id)
 }
 
-// identity is how a table's rows are told apart: its rowid, or for a
-// WITHOUT ROWID table its primary key.
+// identity is how a table's rows are told apart: its primary key when it
+// has one, as a WITHOUT ROWID table always does, or else its rowid, which
+// Browse then selects (FR-4.7, ADR-0034).
 func (s *sqliteSource) identity(ctx context.Context, ref model.ObjectRef) (model.RowIdentity, error) {
 	key := ref.Name()
 	s.mu.Lock()
@@ -50,17 +63,12 @@ func (s *sqliteSource) identity(ctx context.Context, ref model.ObjectRef) (model
 	if ok {
 		return id, nil
 	}
-	var ddl sql.NullString
-	if err := s.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?`,
-		ref.Name()).Scan(&ddl); err != nil {
+	pk, err := s.primaryKey(ctx, ref.Name())
+	if err != nil {
 		return id, err
 	}
 	id = model.RowIdentity{Kind: model.IdentityRowID, Columns: []string{"rowid"}, Target: ref}
-	if strings.Contains(strings.ToUpper(ddl.String), "WITHOUT ROWID") {
-		pk, err := s.primaryKey(ctx, ref.Name())
-		if err != nil {
-			return id, err
-		}
+	if len(pk) > 0 {
 		id = model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: pk, Target: ref}
 	}
 	s.mu.Lock()

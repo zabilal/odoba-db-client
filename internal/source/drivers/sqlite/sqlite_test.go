@@ -155,6 +155,57 @@ func TestBrowsePagesDeterministicallyAndMapsTypes(t *testing.T) {
 	}
 }
 
+func TestATableIsWrittenByItsKeyOrElseItsRowid(t *testing.T) {
+	s := open(t, fixture(t), source.Guard{})
+	ctx := context.Background()
+	identity := func(name string) (model.RowIdentity, []model.ColumnDef, []model.Row) {
+		t.Helper()
+		rs, err := s.Browse(ctx, model.NewRef(model.KindTable, "main", name), source.BrowseOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, cols := rs.(model.Identified).Identity(), rs.Columns()
+		return id, cols, drain(t, rs)
+	}
+	for table, key := range map[string]string{"people": "id", "tags": "k"} {
+		if id, cols, _ := identity(table); id.Kind != model.IdentityPrimaryKey || !slices.Equal(id.Columns, []string{key}) || cols[0].Name == "rowid" {
+			t.Errorf("%s is known by its primary key: %+v", table, id)
+		}
+	}
+	for _, q := range []string{`CREATE TABLE loose (a TEXT, b INTEGER)`, `INSERT INTO loose VALUES ('x', 1), ('y', 2)`} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, cols, rows := identity("loose")
+	if id.Kind != model.IdentityRowID || cols[0].Name != "rowid" || cols[0].Type.Class != model.TypeInteger || len(cols) != 3 {
+		t.Fatalf("a table with no key is known by its rowid, selected first: %+v %+v", id, cols)
+	}
+	if len(rows) != 2 || rows[1][0] != int64(2) || rows[1][1] != "y" {
+		t.Fatalf("rows %v", rows)
+	}
+	chosen, err := s.Browse(ctx, id.Target, source.BrowseOptions{Columns: []string{"a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := chosen.Columns(); len(c) != 1 || c[0].Name != "a" || c[0].Type.Class != model.TypeString {
+		t.Errorf("columns chosen are the columns shown, as they are: %+v", c)
+	}
+	drain(t, chosen)
+	plan, err := s.Plan(ctx, source.Changeset{Target: id.Target, Identity: id, Changes: []source.RowChange{
+		{Kind: source.ChangeUpdate, Key: []any{rows[1][0]}, Values: map[string]any{"a": "z"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := s.Apply(ctx, plan); err != nil || out.Err != nil {
+		t.Fatalf("%v %+v", err, out)
+	}
+	var a string
+	if err := s.db.QueryRow(`SELECT a FROM loose WHERE rowid = 2`).Scan(&a); err != nil || a != "z" {
+		t.Errorf("the row is written by its rowid: %q %v", a, err)
+	}
+}
+
 func TestFilters(t *testing.T) {
 	s := open(t, fixture(t), source.Guard{})
 	count := func(f ...source.Filter) int64 {

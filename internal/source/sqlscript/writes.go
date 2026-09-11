@@ -20,6 +20,10 @@ import (
 // has changed its key, or gone, since it was read.
 var ErrNoRow = errors.New("no row matched: it was changed or deleted since it was read")
 
+// ErrManyRows is a statement that changed more than one row: its key does
+// not tell the rows apart, as a key someone chose may not (ADR-0034).
+var ErrManyRows = errors.New("the key does not tell the rows apart")
+
 // PlanWrites renders a changeset as statements, in its own order. A row
 // changed is matched by the key it had and given only the columns changed; a
 // row deleted is matched by its key; a new row names only the columns given,
@@ -151,16 +155,21 @@ func ApplySQL(ctx context.Context, db *sql.DB, guard source.Guard, plan *source.
 }
 
 // ApplyWith runs a plan's statements through exec, in a transaction already
-// begun, then commits. A statement that fails, or that changes no row
-// (ErrNoRow), stops it: the transaction is rolled back and the outcome says
-// which statement failed and why. Every statement plans one row, so one
-// changing none means that row was changed or deleted since it was read.
+// begun, then commits. Every statement is planned for exactly one row, so
+// one that fails, or changes none (ErrNoRow) or more than one (ErrManyRows),
+// stops it: the transaction is rolled back and the outcome says which
+// statement failed and why. None means the row was changed or deleted since
+// it was read; more means its key does not tell it apart.
 func ApplyWith(plan *source.WritePlan, exec func(source.Statement) (int64, error), commit, rollback func() error) *source.WriteOutcome {
 	out := &source.WriteOutcome{FailedAt: -1}
 	for i, st := range plan.Statements {
 		n, err := exec(st)
-		if err == nil && n == 0 {
+		switch {
+		case err != nil:
+		case n == 0:
 			err = ErrNoRow
+		case n > 1:
+			err = fmt.Errorf("%w: %d rows matched, where the change was meant for one", ErrManyRows, n)
 		}
 		if err != nil {
 			out.Applied, out.FailedAt, out.Affected, out.Err = i, i, 0, err
