@@ -45,6 +45,12 @@ type queryTab struct {
 	saved localdb.SavedQuery
 	title string // the tab's name, before any unsaved-edits mark
 	dirty bool   // edited since opened or last saved
+	// scratchID names the tab's text in the scratch store, and opened is
+	// when the tab first opened. keeping is true while a write of the text
+	// is scheduled (see edited).
+	scratchID string
+	opened    time.Time
+	keeping   bool
 
 	find *findBar
 }
@@ -56,11 +62,20 @@ func (s *Shell) OpenQuery(connID string) *tab {
 	if _, ok := s.d.Conns.Get(connID); !ok {
 		return nil
 	}
+	t := s.newQueryTab(connID)
+	s.connectQuery(t)
+	return t
+}
+
+// newQueryTab opens a query tab on a connection without connecting it.
+func (s *Shell) newQueryTab(connID string) *tab {
 	s.queries++
 	ctx, cancel := context.WithCancel(s.ctx)
 	q := &queryTab{
-		editor:   view.New(editor.NewDocument("", sqllex.DialectFor("")), s.colours()),
-		messages: widget.NewLabel(""),
+		editor:    view.New(editor.NewDocument("", sqllex.DialectFor("")), s.colours()),
+		messages:  widget.NewLabel(""),
+		scratchID: newScratchID(),
+		opened:    time.Now(),
 	}
 	q.messages.Wrapping = fyne.TextWrapWord
 	q.results = container.NewAppTabs(container.NewTabItem("Messages", container.NewVScroll(q.messages)))
@@ -82,6 +97,7 @@ func (s *Shell) OpenQuery(connID string) *tab {
 			q.dirty = true
 			s.retitle(t)
 		}
+		s.edited(t)
 		if q.find.visible() {
 			q.find.refresh() // the matches moved with the text
 		}
@@ -92,7 +108,13 @@ func (s *Shell) OpenQuery(connID string) *tab {
 	s.tabs.Select(t.item)
 	q.editor.Focus()
 	s.sync()
+	return t
+}
 
+// connectQuery opens a query tab's session in the background. Typing can go
+// on meanwhile.
+func (s *Shell) connectQuery(t *tab) {
+	q, ctx, connID := t.query, t.ctx, t.connID
 	go func() {
 		qs, lang, err := s.querySession(ctx, connID)
 		s.d.Run(func() {
@@ -114,7 +136,6 @@ func (s *Shell) OpenQuery(connID string) *tab {
 			s.sync()
 		})
 	}()
-	return t
 }
 
 // querySession connects a query tab. lang is the source's query language, for

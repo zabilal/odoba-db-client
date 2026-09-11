@@ -26,12 +26,12 @@ STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreS
 NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4),
            custom bindings (T1.8), and the explorer's context menu, structure
            and script-as (T1.44).
-[~] tasks: T1.1, T1.4, T1.8, T1.44 partly done; each line says what is open.
+[~] tasks: T1.1, T1.4, T1.8, T1.14, T1.44 partly done; each line says what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — a driver's panic is contained: it fails the call, not
-           the application (T1.16, ADR-0017).
+LAST DONE: 2026-09-11 — unsaved query text survives a crash and a quit, and
+           reopens at the next start (T1.15, ADR-0011 §9).
 ```
 
 **Phase 0 findings so far**
@@ -222,8 +222,8 @@ LAST DONE: 2026-09-11 — a driver's panic is contained: it fails the call, not
 - [x] **T1.11** Error surface: actionable, dismissible, copyable; never a raw stack trace → FR-15.7 — *tab errors explain and offer the fix; everything else is said in a band across the top of the window, dismissible and copyable, with an action where there is one; the modal error dialog is gone and a test keeps it gone (ADR-0011 §7)*
 - [x] **T1.12** Theme switching (OS-follow + manual override + accent choice) → FR-15.3 — *follow system / light / dark, persisted; eight macOS accents from View › Accent Colour, derived so each passes AA in both appearances, persisted (ADR-0006 addendum)*
 - [x] **T1.13** UI-goroutine discipline: worker→UI marshalling boundary → ARCH-6 — *uithread.Runner: UI work goes through an injected runner, tests drain a queue (ADR-0011)*
-- [ ] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3
-- [ ] **T1.15** Autosave scratch buffers → NFR-R2
+- [~] **T1.14** Session restore: tabs, layout, scroll, unsaved buffers → FR-15.2, NFR-R3 — *unsaved query text reopens in its tabs (T1.15); the other tabs, layout and scroll are open*
+- [x] **T1.15** Autosave scratch buffers → NFR-R2 — *a query tab's unsaved text is kept within a second of an edit and reopens at the next start on its connection, still unsaved; saving or closing on purpose forgets it, quitting and disconnecting keep it, and text whose connection has gone reopens without connecting (ADR-0011 §9)*
 - [x] **T1.16** Per-connection panic isolation and recovery → NFR-R1 — *a driver's panic becomes an error at every way into a driver, its stack in the log; the shell offers Disconnect to open the connection afresh (ADR-0017)*
 
 ## 1.B Persistence & store
