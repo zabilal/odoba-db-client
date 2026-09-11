@@ -4,8 +4,6 @@
 package transfer
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -43,8 +41,8 @@ func (f Format) String() string {
 	return fmt.Sprintf("Format(%d)", int(f))
 }
 
-// Options say how a file is read. Here they are given; finding them from
-// the file itself is T2.18's.
+// Options say how a file is read. Detect finds them from the file, for a
+// person to correct.
 type Options struct {
 	Format Format
 	// Header takes a delimited file's, or a sheet's, first row as the
@@ -52,6 +50,11 @@ type Options struct {
 	Header bool
 	// Sheet names the sheet of a workbook to read; empty is the first.
 	Sheet string
+	// Comma is a delimited file's delimiter; 0 is its format's own, a comma
+	// for CSV and a tab for TSV.
+	Comma rune
+	// Encoding is a text file's encoding; it is read as UTF-8.
+	Encoding Encoding
 }
 
 // Open reads a file of size bytes as rows (FR-10.4, ADR-0044). The stream
@@ -59,9 +62,9 @@ type Options struct {
 func Open(r io.ReaderAt, size int64, opt Options) (model.RowStream, error) {
 	switch opt.Format {
 	case CSV, TSV:
-		return openDelimited(io.NewSectionReader(r, 0, size), opt)
+		return openDelimited(textOf(io.NewSectionReader(r, 0, size), opt.Encoding), opt)
 	case JSON, NDJSON:
-		return openRecords(io.NewSectionReader(r, 0, size), opt.Format == JSON)
+		return openRecords(textOf(io.NewSectionReader(r, 0, size), opt.Encoding), opt.Format == JSON)
 	case XLSX:
 		return openSheet(r, size, opt)
 	}
@@ -79,13 +82,12 @@ type delimited struct {
 }
 
 func openDelimited(r io.Reader, opt Options) (*delimited, error) {
-	br := bufio.NewReader(r)
-	if b, _ := br.Peek(3); bytes.Equal(b, []byte{0xEF, 0xBB, 0xBF}) {
-		_, _ = br.Discard(3) // a byte-order mark is not text
-	}
-	c := csv.NewReader(br)
+	c := csv.NewReader(r) // as UTF-8, its byte-order mark dropped (textOf)
 	c.LazyQuotes, c.FieldsPerRecord = true, -1
-	if opt.Format == TSV {
+	switch {
+	case opt.Comma != 0:
+		c.Comma = opt.Comma
+	case opt.Format == TSV:
 		c.Comma = '\t'
 	}
 	d := &delimited{r: c}
