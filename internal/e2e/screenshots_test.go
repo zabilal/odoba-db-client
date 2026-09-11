@@ -110,6 +110,12 @@ func TestScreenshots(t *testing.T) {
 	shot("3c-where")
 	h.s.Commands().Run("data.where")
 
+	tbl.MouseDown(&desktop.MouseEvent{})
+	tbl.Select(widget.TableCellID{Row: 2, Col: 1})
+	h.s.Commands().Run("grid.viewer")
+	shot("3d-cell-viewer")
+	h.s.Commands().Run("grid.viewer")
+
 	h.s.OpenQuery(h.conn.ID)
 	ed := find[*view.Editor](h.tabs.Selected().Content)[0]
 	test.Type(ed.Focusable(), "-- people with a long id\nSELECT id, name, length(name) AS n\nFROM people\nWHERE id > 30\nORDER BY id DESC;")

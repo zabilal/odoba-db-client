@@ -109,3 +109,14 @@ func TestClicksReachTheGridsOwnTable(t *testing.T) {
 	}
 	t.Error("the grid's view does not hold the grid's own table, so clicks bypass it")
 }
+
+func TestSpaceAsksForTheViewer(t *testing.T) {
+	g := selectingGrid(t)
+	asked := 0
+	g.OnSpace = func() { asked++ }
+	click(g, 1, 1, 0)
+	g.table.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
+	if asked != 1 || !g.Selection().Contains(1, 1) {
+		t.Errorf("asked %d times; selection kept %v", asked, g.Selection().Contains(1, 1))
+	}
+}

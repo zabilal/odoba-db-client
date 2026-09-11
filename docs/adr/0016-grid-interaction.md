@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.51, T1.52, T1.54–T1.56 (and T1.48, T1.50, T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.51–T1.56 (and T1.48, T1.50 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -214,7 +214,20 @@ PostgreSQL, MySQL, MariaDB and SQLite. Writing them found that PostgreSQL
 A query's result has no one table to insert into, so it does not offer
 INSERT.
 
+**The cell viewer shows a value whole, beside the grid.** View › Cell Viewer,
+or Space on a focused grid as Quick Look does, opens a panel in a split to
+the right of the grid (FR-3.9). It is a panel, not a dialog, so the rows stay
+in view (UX principle 4). It follows the selection and shows the active
+cell's whole value, which a grid cell cuts at 200 characters. JSON is
+indented without being re-encoded, so every number keeps its digits and
+every key its place, and it is coloured by token. Bytes become a hex dump, a
+time is shown in local time and in UTC, and text wraps. A value past a limit
+(a million characters, 64 KiB of bytes) is shown from its start, and the
+viewer says so; Copy Value always copies all of it. A row not in memory is
+read for the viewer off the UI goroutine. What the viewer makes of a value
+is decided in `internal/ui/cellview`, which draws nothing and is tested
+without a window.
+
 ## Not decided here
 
-The cell viewer (T1.53), and
-column resize, reorder and hide (T1.48). Each will be added here as it lands.
+Column resize, reorder and hide (T1.48), and type-aware rendering (T1.50). Each will be added here as it lands.

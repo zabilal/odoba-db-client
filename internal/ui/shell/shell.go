@@ -107,6 +107,10 @@ type tab struct {
 	picked    map[int]pick    // filters chosen from a column\'s picklist
 	top       *fyne.Container // above the grid: the WHERE bar, when shown
 	where     *whereBar
+	// holders are where each grid's view lives, and viewers their cell
+	// viewers, so both go when the tab does.
+	holders map[*grid.TableGrid]*fyne.Container
+	viewers map[*grid.TableGrid]*cellViewer
 	// said is what the last action said, such as where an export went. A
 	// table\'s footer keeps it beside the row count, as it keeps problem.
 	said string
@@ -235,6 +239,8 @@ func (s *Shell) registerCommands() {
 			}},
 		{ID: cmdWhere, Category: "Data", Title: "WHERE Clause", Keywords: []string{"sql", "condition", "filter", "statement"},
 			Enabled: s.canWhere, Run: s.toggleWhere},
+		{ID: cmdCellViewer, Category: "View", Title: "Cell Viewer", Keywords: []string{"value", "inspect", "json", "expand"},
+			Enabled: func() bool { return s.activeGrid() != nil }, Run: s.toggleViewer},
 		{ID: cmdCopyCells, Category: "Edit", Title: "Copy Cells", Keywords: []string{"clipboard", "tsv", "selection"},
 			Enabled: s.hasSelection, Run: s.copyActive},
 		{ID: cmdCopyCSV, Category: "Edit", Title: "Copy as CSV", Keywords: []string{"clipboard", "comma"},
@@ -480,8 +486,11 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	if bs.CanListValues() {
 		g.OnPickValues = func(col int, at fyne.Position) { s.showPicklist(t, col, at) }
 	}
-	g.OnSelectCell = s.sync // Filter by Values follows the selected cell
+	// Filter by Values and the cell viewer follow the selected cell.
+	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) }
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
+	g.OnSpace = func() { s.toggleViewerFor(t, g) }
+	t.hold(g, t.body)
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
