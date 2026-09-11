@@ -29,12 +29,12 @@ NEXT TASK: Phase 1's other [~]: single instance (T1.1), dragging tabs (T1.4)
 OWNER:     first look at the real window: `go run ./cmd/ikigai`. Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — Script As SELECT, INSERT or UPDATE, which finishes
-           T1.44's context actions (ADR-0011 §15). Before it: Open Structure
-           and the explorer's context menu (T1.44), favourites (T1.46),
-           buttons with words (T1.78), ⇧⌘F filter (T1.43), ⌘/ shortcuts
-           (T1.9), side panels (T1.77), the session (T1.14), autosave
-           (T1.15), contained driver panics (T1.16).
+LAST DONE: 2026-09-11 — exporting the grid's selection, offered by its size and
+           streamed a page at a time (T1.71, ADR-0013 addendum). Before it:
+           T1.44's context actions (context menu, Open Structure, Script As),
+           favourites (T1.46), buttons with words (T1.78), ⇧⌘F filter (T1.43),
+           ⌘/ shortcuts (T1.9), side panels (T1.77), the session (T1.14),
+           autosave (T1.15), contained driver panics (T1.16).
 DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
            ports accept TCP, servers never reply. Each time, the next gate
            that could reach them ran the tagged suites over everything since;
@@ -308,7 +308,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T1.69** Streaming export engine (memory flat) → FR-10.3, NFR-P11 — *export.Copy streams a RowStream; 2M rows stay under 16 MB of heap (ADR-0013)*
 - [x] **T1.70** CSV, TSV, JSON, NDJSON writers → FR-10.1 — *CSV, TSV, JSON, NDJSON; exact decimals, NaN as text, bytes hex/base64, times by column type*
-- [~] **T1.71** Export scope: selection / filtered result / whole table → FR-10.2 — *whole table or filtered browse, and query results, stream page by page; selection needs grid selection (FR-3.7)*
+- [x] **T1.71** Export scope: selection / filtered result / whole table → FR-10.2 — *whole table or filtered browse, and query results, stream page by page; with a selection, the form offers it by its size, All rows staying the default, and it streams a page at a time with only its columns (ADR-0013 addendum)*
 - [x] **T1.72** Progress, rows/sec, ETA, working cancel → FR-10.7 — *progress sheet with rows, rows/s, a bar and time left when the total is known; Cancel (or closing the tab) stops and removes the partial file*
 
 ## 1.I Quality

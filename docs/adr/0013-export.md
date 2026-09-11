@@ -62,8 +62,19 @@ no cheap total, so a table shows rows and rate only.
 the tab, and so does a failure: a truncated export left behind looks like a
 complete one.
 
+## Addendum (2026-09-11): exporting the selection
+
+When the grid has a selection, the Export form asks which rows: all of
+them, or the selection, named by its size (FR-10.2, T1.71). All rows stays
+the default, so a stray selection cannot quietly shorten an export. The
+selection is exported as the rows it reaches with only its columns, in the
+order they are shown, and it works for a query's result as for a table's
+rows. It streams a page at a time through the grid's model, so a selection
+reaching the last row of a large table costs no more memory than a page
+(NFR-P11): Copy refuses a selection past its limit and sends it here. Copy
+and export share the one mapping from the columns shown to the model's.
+
 ## Not decided here
 
-The other FR-10.1 formats (xlsx, SQL INSERT, Markdown, HTML, XML), exporting
-a selection (it needs grid selection, FR-3.7), multi-table batches, and
-import (FR-10.4).
+The other FR-10.1 formats (xlsx, SQL INSERT, Markdown, HTML, XML),
+multi-table batches, and import (FR-10.4).
