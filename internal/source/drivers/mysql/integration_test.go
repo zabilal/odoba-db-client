@@ -62,6 +62,7 @@ INSERT INTO ikigai_it.people (id, name, score, born, meta)
   SELECT i, CONCAT('person ', i), i * 1.5,
     IF(i % 3 = 0, DATE('2000-01-01') + INTERVAL (i % 2) DAY, NULL), JSON_OBJECT('i', i) FROM n;
 INSERT INTO ikigai_it.people (id, name, score) VALUES (1000, 'exact', 12345678901234567890.1234567890);
+CREATE TABLE ikigai_it.writes (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(40) NOT NULL DEFAULT 'none', n INT);
 CREATE TABLE ikigai_it.nokey (a INT, b VARCHAR(10));
 INSERT INTO ikigai_it.nokey VALUES (2, 'y'), (1, 'x'), (1, 'x'), (3, 'z');
 CREATE TABLE ikigai_it.orders (id INT PRIMARY KEY, person_id INT, total DECIMAL(10,2),
@@ -134,6 +135,14 @@ func TestConformance(t *testing.T) {
 				return src
 			},
 			Browsable: people,
+			Writable:  model.NewRef(model.KindTable, "ikigai_it", "writes"),
+			OpenGuarded: func(ctx context.Context, t *testing.T, g source.Guard) source.Source {
+				src, err := Driver{}.Open(ctx, srv.config("ikigai_it", g))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return src
+			},
 		})
 	})
 }
@@ -271,7 +280,7 @@ func TestTheTreeListsEachClassOfADatabase(t *testing.T) {
 		}
 		// Five indexes: each table's PRIMARY, orders_total, the one the
 		// foreign key made, and name_score over two columns.
-		if want := []string{"Tables 3", "Views 1", "Indexes 5", "Triggers 1", "Routines 1"}; fmt.Sprintf("%q", got) != fmt.Sprintf("%q", want) {
+		if want := []string{"Tables 4", "Views 1", "Indexes 6", "Triggers 1", "Routines 1"}; fmt.Sprintf("%q", got) != fmt.Sprintf("%q", want) {
 			t.Fatalf("classes %q, want %q", got, want)
 		}
 		list := func(k model.ObjectKind) map[string]model.Node {
@@ -296,7 +305,7 @@ func TestTheTreeListsEachClassOfADatabase(t *testing.T) {
 		}
 		idx := list(model.KindIndex)
 		pk, ok := idx["PRIMARY on people"]
-		if _, total := idx["orders_total on orders"]; !ok || !total || len(idx) != 5 ||
+		if _, total := idx["orders_total on orders"]; !ok || !total || len(idx) != 6 ||
 			!pk.Ref.Equal(model.NewRef(model.KindIndex, "ikigai_it", "people", "PRIMARY")) {
 			t.Errorf("indexes %+v; each is named, and addressed, with its table", idx)
 		}

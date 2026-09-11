@@ -38,8 +38,15 @@ type Target struct {
 	Browsable model.ObjectRef
 
 	// Writable is an object the suite may modify. Zero disables write checks,
-	// which is the correct setting against any server holding real data.
+	// which is the correct setting against any server holding real data. It
+	// must be an empty table with columns id, an integer primary key the
+	// server numbers from 1 when it is not given; name, text that cannot be
+	// NULL, 'none' by default; and n, an integer that can be NULL.
 	Writable model.ObjectRef
+
+	// OpenGuarded opens a connection with a guard, for the write checks'
+	// read-only and production cases. Nil skips them.
+	OpenGuarded func(ctx context.Context, t *testing.T, g source.Guard) source.Source
 }
 
 // Run executes the full suite.
@@ -66,6 +73,7 @@ func Run(t *testing.T, target Target) {
 		{"Distinct", checkDistinct},
 		{"Where", checkWhere},
 		{"ReadOnlyGuard", checkReadOnlyGuard},
+		{"Writer", checkWriter},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
 	}
 

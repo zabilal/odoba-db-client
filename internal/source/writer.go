@@ -78,6 +78,10 @@ type RowChange struct {
 
 // WritePlan is the rendered, reviewable form of a changeset (FR-4.4).
 type WritePlan struct {
+	// Target is the object the plan writes, as its changeset's. A driver
+	// with a connection per database reads it to find the one to write on.
+	Target model.ObjectRef
+
 	// Statements are the operations in execution order. For sources with a
 	// query language these carry SQL; for others the text is a faithful
 	// human-readable rendering of the driver call that will be made, because
