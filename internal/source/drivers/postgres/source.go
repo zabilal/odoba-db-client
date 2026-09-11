@@ -233,6 +233,7 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			ServerFilter:     true,
 			DistinctValues:   true,
 			ApproximateCount: true,
+			Insert:           true, Update: true, Delete: true, TransactionalWrite: true,
 		},
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{

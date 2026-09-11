@@ -31,6 +31,7 @@ func fixture(t *testing.T) string {
 	for _, s := range []string{
 		`CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT NOT NULL, score REAL, born DATE, meta JSON, pic BLOB)`,
 		`CREATE TABLE tags (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID`,
+		`CREATE TABLE writes (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT 'none', n INTEGER)`,
 		`CREATE VIEW adults AS SELECT id, name FROM people WHERE id > 10`,
 		`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
 		 INSERT INTO people (id, name, score, born, meta) SELECT i, 'person ' || i, i * 1.5,
@@ -71,6 +72,14 @@ func TestConformance(t *testing.T) {
 			return src
 		},
 		Browsable: people,
+		Writable:  model.NewRef(model.KindTable, "main", "writes"),
+		OpenGuarded: func(ctx context.Context, t *testing.T, g source.Guard) source.Source {
+			src, err := Driver{}.Open(ctx, source.ConnectionConfig{DriverID: driverID, Database: path, Guard: g})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return src
+		},
 	})
 }
 
@@ -428,7 +437,7 @@ func TestTheTreeListsEachClassWithItsObjects(t *testing.T) {
 		got = append(got, n.Label+" "+n.Badge.Text)
 	}
 	// The indexes SQLite makes for keys (sqlite_autoindex_…) are not the user's.
-	if want := []string{"Tables 3", "Views 1", "Indexes 1", "Triggers 1"}; !slices.Equal(got, want) {
+	if want := []string{"Tables 4", "Views 1", "Indexes 1", "Triggers 1"}; !slices.Equal(got, want) {
 		t.Fatalf("classes %q, want %q", got, want)
 	}
 	for class, want := range map[model.ObjectKind]model.Node{

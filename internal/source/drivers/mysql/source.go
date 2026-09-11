@@ -109,6 +109,10 @@ func baseConfig(cfg source.ConnectionConfig) (*mysql.Config, error) {
 	mc.ParseTime, mc.Loc = true, time.UTC
 	mc.Timeout = 10 * time.Second
 	mc.AllowNativePasswords = true
+	// An UPDATE then counts the rows it matched, not only those it changed,
+	// as PostgreSQL and SQLite do: a change applied reads a row matching none
+	// as a row changed or deleted since it was read (ADR-0031).
+	mc.ClientFoundRows = true
 	// TIMESTAMP values then arrive as UTC instants, whatever the server's zone.
 	mc.Params = map[string]string{"time_zone": "'+00:00'"}
 	t, err := tlsconf.Config(cfg.TLS, host)
@@ -193,7 +197,8 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 		Query: capability.Query{Supported: true, Language: lang, MultiStatement: true,
 			Cancel: true, Parameters: true},
 		// InnoDB counts by scanning; the table statistics' estimate is cheap.
-		Data:   capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ApproximateCount: true},
+		Data: capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ApproximateCount: true,
+			Insert: true, Update: true, Delete: true, TransactionalWrite: true},
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true, model.KindTable: true,

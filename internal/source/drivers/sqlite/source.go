@@ -115,7 +115,8 @@ func (s *sqliteSource) Capabilities() capability.Capabilities {
 			Cancel: true, Parameters: true,
 		},
 		// A local file counts quickly, so the grid gets a real scrollbar.
-		Data:   capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, DistinctValues: true},
+		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, DistinctValues: true,
+			Insert: true, Update: true, Delete: true, TransactionalWrite: true},
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindFolder: true, model.KindTable: true, model.KindView: true, model.KindColumn: true,
