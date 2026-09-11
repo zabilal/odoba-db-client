@@ -45,12 +45,14 @@ type cellViewer struct {
 
 	// Edit (FR-4.1, ADR-0029 §9) opens the value at length in an editor,
 	// with a calendar for a date or an instant. While editing, the viewer
-	// stays on its cell: row and mc are the cell's row and model column.
+	// stays on its cell: r is the cell's grid row, row the row there, and mc
+	// its model column.
 	editBtn *widget.Button
 	editor  *valueEntry
 	calBox  *fyne.Container
 	editBox fyne.CanvasObject
 	editing bool
+	r       int
 	row     model.Row
 	mc      int
 	start   string
@@ -162,7 +164,7 @@ func (v *cellViewer) follow() {
 	col := cols[mc]
 	m := v.g.Model()
 	if row, loaded := m.Row(v.ctx, int64(c.Row)); loaded {
-		v.set(col, row, mc)
+		v.set(c.Row, col, row, mc)
 		return
 	}
 	v.title.SetText(col.Name)
@@ -182,14 +184,14 @@ func (v *cellViewer) follow() {
 			if len(rows) > 0 {
 				row = rows[0]
 			}
-			v.set(col, row, mc)
+			v.set(c.Row, col, row, mc)
 		})
 	}()
 }
 
-func (v *cellViewer) set(col model.ColumnDef, row model.Row, i int) {
-	val := v.g.CellValue(row, i) // a pending change, if it has one
-	v.value, v.col, v.has, v.row, v.mc = val, col, true, row, i
+func (v *cellViewer) set(r int, col model.ColumnDef, row model.Row, i int) {
+	val := v.g.CellValue(r, row, i) // a pending change, if it has one
+	v.value, v.col, v.has, v.r, v.row, v.mc = val, col, true, r, row, i
 	view := cellview.Prepare(val, col, time.Local)
 	var meta []string
 	if col.Type.Native != "" {
@@ -291,7 +293,7 @@ func (v *cellViewer) finishEdit() {
 			}
 		}
 		if err == nil {
-			err = v.g.OnEdit(v.row, v.mc, val)
+			err = v.g.SetValue(v.r, v.row, v.mc, val)
 		}
 		if err != nil {
 			v.meta.SetText("Not written: " + v.col.Name + ": " + err.Error())

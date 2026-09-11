@@ -379,7 +379,13 @@ func (s *Shell) registerCommands() {
 		{ID: cmdEditValue, Category: "Edit", Title: "Edit in Cell Viewer", Keywords: []string{"long", "json", "date", "calendar", "text", "value"},
 			Enabled: s.canEditCell, Run: s.editInViewer},
 		{ID: cmdSetNull, Category: "Edit", Title: "Set to NULL", Keywords: []string{"clear", "empty", "null", "value"},
-			Enabled: s.canSetNull, Run: s.setNull},
+			Enabled: s.canChangeRows, Run: s.setNull},
+		{ID: cmdInsertRow, Category: "Edit", Title: "Insert Row", Keywords: []string{"add", "new", "row", "record"},
+			Enabled: s.canInsert, Run: s.insertRow},
+		{ID: cmdDuplicateRows, Category: "Edit", Title: "Duplicate Rows", Keywords: []string{"copy", "clone", "row", "record"},
+			Enabled: s.canChangeRows, Run: s.duplicateRows},
+		{ID: cmdDeleteRows, Category: "Edit", Title: "Delete Rows", Keywords: []string{"remove", "row", "record"},
+			Enabled: s.canChangeRows, Run: s.deleteRows},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
@@ -633,6 +639,14 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 			s.showCount(t)
 			return nil
 		}
+		g.OnEditAdded = func(i, col int, v any) error {
+			if err := p.SetAdded(i, col, v); err != nil {
+				return err
+			}
+			m.SetAdded(p.Added())
+			s.showCount(t)
+			return nil
+		}
 	}
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
@@ -682,7 +696,9 @@ func (s *Shell) count(t *tab) {
 // showCount words what is known about a tab's row count.
 func (s *Shell) showCount(t *tab) {
 	var text string
-	switch n, final := t.model.Extent(); {
+	n, final := t.model.Extent()
+	n -= int64(t.model.Added()) // new rows are counted among the changes
+	switch {
 	case final:
 		text = rowCount(n, true)
 	case n > 0:

@@ -127,11 +127,11 @@ func TestNewRowsComeAfterTheOtherChanges(t *testing.T) {
 	if got := changes(p.Changeset(false)); got != "[delete [3] map[] update [1] map[score:5] insert [] map[name:cat] insert [] map[id:7]]" {
 		t.Errorf("changeset %s", got)
 	}
-	if got := fmt.Sprint(p.Added()); got != "[[<nil> cat <nil>] [7 <nil> <nil>]]" {
+	if got := fmt.Sprint(p.Added()); got != "[[DEFAULT cat DEFAULT] [7 DEFAULT DEFAULT]]" {
 		t.Errorf("new rows %s", got)
 	}
 	p.RemoveAdded(first)
-	if p.Len() != 3 || fmt.Sprint(p.Added()) != "[[7 <nil> <nil>]]" {
+	if p.Len() != 3 || fmt.Sprint(p.Added()) != "[[7 DEFAULT DEFAULT]]" {
 		t.Errorf("after removing one: %d changes, %v", p.Len(), p.Added())
 	}
 	if err := p.SetAdded(5, 0, 1); err == nil {
@@ -143,6 +143,30 @@ func TestNewRowsComeAfterTheOtherChanges(t *testing.T) {
 	p.RevertAll()
 	if p.Len() != 0 || len(p.Added()) != 0 || len(p.Changeset(false).Changes) != 0 {
 		t.Errorf("RevertAll leaves %d", p.Len())
+	}
+}
+
+func TestADuplicateHasTheRowsValuesButNotItsKey(t *testing.T) {
+	p := newPending(t)
+	ann := model.Row{int64(1), "ann", 3.5}
+	if err := p.Set(ann, 2, 4.0); err != nil {
+		t.Fatal(err)
+	}
+	i := p.Duplicate(ann)
+	if got := fmt.Sprint(p.Added()[i]); got != "[DEFAULT ann 4]" {
+		t.Errorf("a copy of the row as edited, its key left to the server: %s", got)
+	}
+	j := p.Duplicate(p.Added()[i])
+	if got := fmt.Sprint(p.Added()[j]); got != "[DEFAULT ann 4]" {
+		t.Errorf("a new row's copy leaves what it was not given: %s", got)
+	}
+	bob := p.Add()
+	if err := p.SetAdded(bob, 1, "bob"); err != nil {
+		t.Fatal(err)
+	}
+	p.Duplicate(p.Added()[bob])
+	if got := changes(p.Changeset(false)); got != "[update [1] map[score:4] insert [] map[name:ann score:4] insert [] map[name:ann score:4] insert [] map[name:bob] insert [] map[name:bob]]" {
+		t.Errorf("changeset %s", got)
 	}
 }
 

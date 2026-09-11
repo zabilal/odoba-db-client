@@ -1,6 +1,8 @@
 package grid
 
 import (
+	"errors"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -73,7 +75,7 @@ func (g *TableGrid) EditCell(first string) bool {
 	}
 	a, _ := g.sel.Active()
 	col := g.model.Columns()[mc]
-	v := g.CellValue(row, mc)
+	v := g.CellValue(a.Row, row, mc)
 	e := &edit{at: widget.TableCellID{Row: a.Row, Col: a.Col}, row: row, col: mc, start: EditText(v, col, g.loc)}
 	g.editing = e
 	// An editor is drawn only in a cell on screen, and only one drawn can
@@ -86,8 +88,11 @@ func (g *TableGrid) EditCell(first string) bool {
 		return true
 	}
 	e.entry = newEditEntry(g, e)
-	if v == nil {
+	switch v.(type) {
+	case nil:
 		e.entry.PlaceHolder = NullText
+	case model.Default:
+		e.entry.PlaceHolder = DefaultText
 	}
 	text := e.start
 	if first != "" {
@@ -101,10 +106,11 @@ func (g *TableGrid) EditCell(first string) bool {
 	return true
 }
 
-// CellValue is a cell's value as the grid shows it: its pending value, if it
-// has one, or the value read. col is the model's.
-func (g *TableGrid) CellValue(row model.Row, col int) any {
-	if g.changes != nil && row != nil {
+// CellValue is a cell's value as the grid shows it: a row read's pending
+// value, if it has one, or the value in the row. r is the grid's row, row the
+// row there, and col the model's column.
+func (g *TableGrid) CellValue(r int, row model.Row, col int) any {
+	if g.changes != nil && row != nil && r >= g.model.Added() {
 		if v, ok := g.changes.Value(row, col); ok {
 			return v
 		}
@@ -113,6 +119,22 @@ func (g *TableGrid) CellValue(row model.Row, col int) any {
 		return row[col]
 	}
 	return nil
+}
+
+// SetValue writes a value into a cell: a new row's through OnEditAdded, a
+// row read's through OnEdit. r is the grid's row, row the row there, and col
+// the model's column.
+func (g *TableGrid) SetValue(r int, row model.Row, col int, v any) error {
+	if r < g.model.Added() {
+		if g.OnEditAdded == nil {
+			return errors.New("new rows are not edited here")
+		}
+		return g.OnEditAdded(r, col, v)
+	}
+	if g.OnEdit == nil {
+		return errors.New("these rows are not edited here")
+	}
+	return g.OnEdit(row, col, v)
 }
 
 // host shows the open editor in the cell at its place, and takes it from a
@@ -158,7 +180,7 @@ func (g *TableGrid) write(e *edit, text string) bool {
 	col := g.model.Columns()[e.col]
 	v, err := Parse(text, col, g.loc)
 	if err == nil {
-		err = g.OnEdit(e.row, e.col, v)
+		err = g.SetValue(e.at.Row, e.row, e.col, v)
 	}
 	if err != nil {
 		g.refuse(e, col.Name+": "+err.Error())
@@ -264,7 +286,7 @@ func (g *TableGrid) showChoices(e *edit, col model.ColumnDef, current any, opts 
 // which closes the editor, before it runs the pick, so the cell is drawn
 // again here, with the value picked.
 func (g *TableGrid) choose(e *edit, v any) {
-	if err := g.OnEdit(e.row, e.col, v); err != nil {
+	if err := g.SetValue(e.at.Row, e.row, e.col, v); err != nil {
 		g.refuse(e, g.model.Columns()[e.col].Name+": "+err.Error())
 	}
 	g.Table.Refresh()

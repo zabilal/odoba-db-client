@@ -54,6 +54,10 @@ func (k CellKind) RightAligned() bool { return k == CellNumber }
 // so that it survives copy/paste and screen readers.
 const NullText = "NULL"
 
+// DefaultText is drawn for a new row's column given no value, which the
+// server will fill with its default.
+const DefaultText = "DEFAULT"
+
 // pendingText is drawn for a row still being fetched. An em-dash reads as
 // "not here yet" rather than as data.
 const pendingText = "—"
@@ -88,6 +92,10 @@ func Format(v any, col model.ColumnDef, loc *time.Location) Cell {
 	}
 
 	switch x := v.(type) {
+	case model.Default:
+		// A new row's column given no value: the server will give it one,
+		// so it is not NULL, and is drawn as NULL is, a word in italic.
+		return Cell{Text: DefaultText, Kind: CellNull, Hint: "No value is given, so the server gives its default"}
 	case string:
 		return textCell(x, col)
 	case bool:

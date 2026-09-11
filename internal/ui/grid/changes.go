@@ -42,11 +42,14 @@ func (g *TableGrid) SetChanges(c Changes) {
 
 // rowAt is a row and how it stands. A row still loading or past the end,
 // which the model gives as nil, or any row of a grid with no changes to
-// show, is unchanged.
+// show, is unchanged. The model's new rows, first, are added.
 func (g *TableGrid) rowAt(r int) (model.Row, bool, model.RowState) {
 	row, loaded := g.model.Row(g.ctx, int64(r))
-	if g.changes == nil || row == nil {
+	switch {
+	case g.changes == nil || row == nil:
 		return row, loaded, model.RowUnchanged
+	case r < g.model.Added():
+		return row, loaded, model.RowAdded
 	}
 	return row, loaded, g.changes.State(row)
 }

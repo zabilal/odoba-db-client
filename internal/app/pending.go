@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -211,11 +212,35 @@ func (p *Pending) RemoveAdded(i int) {
 	}
 }
 
-// Added is the new rows as rows, a column not given nil.
+// Duplicate adds a new row with a row's values, its pending edits
+// included, but not its key, which the server gives or is typed: a copy with
+// the same key could not be inserted. A column the row was not given stays
+// not given. It says which new row it is.
+func (p *Pending) Duplicate(row model.Row) int {
+	i := p.Add()
+	for col := range p.cols {
+		if col >= len(row) || slices.Contains(p.keyAt, col) {
+			continue
+		}
+		v := row[col]
+		if nv, ok := p.Value(row, col); ok {
+			v = nv
+		}
+		if _, given := v.(model.Default); !given {
+			p.added[i].values[col] = v
+		}
+	}
+	return i
+}
+
+// Added is the new rows as rows, a column not given model.Default.
 func (p *Pending) Added() []model.Row {
 	out := make([]model.Row, len(p.added))
 	for i, c := range p.added {
 		row := make(model.Row, len(p.cols))
+		for col := range row {
+			row[col] = model.Default{}
+		}
 		for col, v := range c.values {
 			row[col] = v
 		}
