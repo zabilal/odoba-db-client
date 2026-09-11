@@ -152,6 +152,7 @@ func (s *Shell) browsed(t *tab) {
 	if t.where != nil {
 		t.where.refresh()
 	}
+	s.sessionChanged()
 }
 
 // showStatement writes a statement for reading: its SQL, then the values

@@ -170,6 +170,31 @@ away unseen. An unreadable entry is left where it is and named, and a
 failed write is said once in the error band. Only unsaved query text comes
 back at the next start; the rest of the session (T1.14) does not yet.
 
+## 10. The session comes back at the next start
+
+The window is saved as it is left: its size, the sidebar's width, and the
+tabs in order with their pins and which one is selected (FR-15.2, NFR-R3).
+An object tab keeps the filters, sort and WHERE clause its rows are in, by
+column name, so that a column added or dropped since cannot carry them onto
+another. A query tab names its scratch buffer (§9) and its saved query. The
+session goes through the same writer as the scratch buffers, within a
+second of a change and again at quit, so a crash loses at most a second of
+it.
+
+At the next start the session is read before the window first shows, since
+it is small and local, and each tab reopens and connects as if opened by
+hand. A reopened object's view is put back once its rows first show, and
+the WHERE bar comes back shown: a condition quietly applied would hide rows
+without saying so. What no longer fits is said in the error band, not
+dropped unseen: a filter or sort on a column that has gone, a filter that no
+longer reads on its column's type, or a WHERE clause the source can no
+longer take. An object on a deleted connection stays closed; nothing unsaved
+goes with it.
+
+Not yet restored: the grid's scroll position (Fyne's table keeps its offset
+to itself), column widths, order and visibility, and the explorer's
+expanded nodes.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

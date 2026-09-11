@@ -144,7 +144,7 @@ func TestReopenedEditsOfASavedQueryStillSaveInPlace(t *testing.T) {
 	})
 }
 
-type failingScratch struct{ localdb.DB }
+type failingScratch struct{}
 
 func (failingScratch) PutScratch(context.Context, localdb.Scratch) error {
 	return errors.New("disk full")
@@ -156,8 +156,7 @@ func (failingScratch) Scratches(context.Context) ([]localdb.Scratch, error) {
 
 func TestAutosaveThatFailsSaysSo(t *testing.T) {
 	fx := newFixture(t)
-	fx.s.scratch.close(time.Second)
-	fx.s.scratch = newScratchWriter(failingScratch{}, func(err error) { fx.q.Run(func() { fx.s.autosaveFailed(err) }) })
+	fx.s.d.Scratch = failingScratch{}
 	_, q := openQuery(t, fx, "")
 	test.Type(q.editor.Focusable(), "rows 1;")
 	pump(t, fx.q, func() bool { return strings.Contains(fx.s.errors.text, "disk full") })

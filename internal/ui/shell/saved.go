@@ -306,15 +306,21 @@ func (p *savedPanel) open(sq localdb.SavedQuery) {
 		return
 	}
 	p.dlg.Hide()
-	t := p.s.OpenQuery(sq.ConnectionID)
+	p.s.reopenSaved(sq.ConnectionID, sq)
+}
+
+// reopenSaved opens a saved query, unedited, in a new tab on a connection.
+func (s *Shell) reopenSaved(connID string, sq localdb.SavedQuery) *tab {
+	t := s.OpenQuery(connID)
 	if t == nil {
-		return
+		return nil
 	}
 	q := t.query
 	q.editor.Document().SetText(sq.Body)
 	q.saved, q.title, q.dirty = sq, sq.Name, false
-	p.s.retitle(t)
+	s.retitle(t)
 	q.editor.Refresh()
+	return t
 }
 
 func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {

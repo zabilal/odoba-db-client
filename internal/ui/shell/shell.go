@@ -27,6 +27,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
@@ -53,6 +54,9 @@ type Deps struct {
 	// means autosaveDelay.
 	Scratch  app.ScratchStore
 	Autosave time.Duration
+	// Session keeps the window as it was left, for the next start. Nil
+	// starts with an empty window every time.
+	Session app.SessionStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -86,9 +90,15 @@ type Shell struct {
 	open    []*tab
 	queries int // numbers query tabs
 
-	scratch        *scratchWriter // nil without a scratch store
+	writer         *writer // nil without a scratch or session store
 	autosave       time.Duration
 	autosaveWarned bool
+	// restoring is true while restore reopens the last session, which is
+	// not saved again until it is whole. sessionPending is true while a save
+	// is scheduled, and lastSession is what was last saved.
+	restoring      bool
+	sessionPending bool
+	lastSession    []byte
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -129,6 +139,10 @@ type tab struct {
 	problem string
 	query   *queryTab // set only on query tabs
 	pinned  bool      // kept at the left, in the order pinned: see tabs.go
+	// ref is an object tab's object. restore is how its rows were viewed
+	// when the last session ended, put back once they first show.
+	ref     model.ObjectRef
+	restore *localdb.SessionTab
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
@@ -191,10 +205,10 @@ func New(a fyne.App, d Deps) *Shell {
 	if s.autosave <= 0 {
 		s.autosave = autosaveDelay
 	}
-	if d.Scratch != nil {
-		s.scratch = newScratchWriter(d.Scratch, func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
-		go s.reopenScratches()
+	if d.Scratch != nil || d.Session != nil {
+		s.writer = newWriter(func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
 	}
+	s.restore()
 	s.sync()
 	return s
 }
@@ -398,6 +412,7 @@ func (s *Shell) sync() {
 	if changed && s.menu != nil {
 		s.menu.Refresh()
 	}
+	s.sessionChanged()
 }
 
 func (s *Shell) statusText() string {
@@ -468,7 +483,7 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 	}
 
 	ctx, cancel := context.WithCancel(s.ctx)
-	t := &tab{key: key, connID: connID, ctx: ctx, cancel: cancel,
+	t := &tab{key: key, connID: connID, ref: n.Ref, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Opening…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
 	t.top = container.NewVBox()
@@ -537,6 +552,10 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	t.body.Refresh()
 	s.count(t)
 	s.sync()
+	if v := t.restore; v != nil {
+		t.restore = nil
+		s.restoreView(t, *v)
+	}
 }
 
 // count fetches the row count in the background. Rows show before it
@@ -854,13 +873,14 @@ func (s *Shell) recolour() {
 const shutdownWait = 3 * time.Second
 
 func (s *Shell) shutdown() {
-	// Unsaved query text first, while the tabs still hold it. It reopens at
-	// the next start (NFR-R3).
+	// The session and unsaved query text first, while the tabs still hold
+	// them. Both come back at the next start (NFR-R3).
+	s.saveSession()
 	for _, t := range s.open {
 		s.keep(t)
 	}
-	if s.scratch != nil && !s.scratch.close(shutdownWait) {
-		s.d.Log.Warn("unsaved query text still being written at exit")
+	if s.writer != nil && !s.writer.close(shutdownWait) {
+		s.d.Log.Warn("unsaved query text or the session still being written at exit")
 	}
 	s.cancel()
 	// Query sessions first. Each holds a pooled connection, and a pool will

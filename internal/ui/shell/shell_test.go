@@ -236,7 +236,7 @@ func newFixture(t *testing.T) *fixture {
 	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
-	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist,
+	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist,
 		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin"}
 	s := New(a, d)
 	t.Cleanup(s.shutdown)
