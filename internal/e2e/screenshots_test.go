@@ -151,4 +151,10 @@ func TestScreenshots(t *testing.T) {
 
 	h.s.ShowError(errors.New("The export failed, and the partial file was removed: open /exports/people.csv: permission denied"))
 	shot("8-error")
+
+	h.s.Commands().Run("appearance.light")
+	h.s.Commands().Run("appearance.accent.orange")
+	h.q.Flush()
+	h.w.Canvas().Capture()
+	shot("9-accent")
 }

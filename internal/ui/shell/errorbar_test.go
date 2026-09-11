@@ -10,6 +10,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+
+	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
 func TestAnErrorIsSaidAcrossTheTopAndCanBeCopied(t *testing.T) {
@@ -83,5 +85,20 @@ func TestNoErrorOpensAModalDialog(t *testing.T) {
 		if bytes.Contains(b, []byte("dialog.ShowError(")) {
 			t.Errorf("%s opens an error as a modal dialog; use showError", f)
 		}
+	}
+}
+
+// The band is drawn, not themed. The first version kept its tint across an
+// appearance change, and in light mode its text could not be read.
+func TestTheErrorBarFollowsTheAppearance(t *testing.T) {
+	fx := newFixture(t)
+	fx.s.showError(errors.New("something failed"))
+	fx.s.setAppearance(uitheme.AppearanceDark)
+	if fx.s.errors.bg.FillColor != uitheme.Dark.DangerSubtle {
+		t.Error("in dark mode the band should wear the dark tint")
+	}
+	fx.s.setAppearance(uitheme.AppearanceLight)
+	if fx.s.errors.bg.FillColor != uitheme.Light.DangerSubtle {
+		t.Error("back in light mode the band should wear the light tint")
 	}
 }

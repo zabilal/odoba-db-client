@@ -18,6 +18,8 @@ type Theme struct {
 	// Appearance pins the theme to light or dark. Zero follows the OS, which
 	// is what FR-15.3 requires by default.
 	Appearance Appearance
+	// Accent is the colour controls and the selection take. Zero is blue.
+	Accent Accent
 }
 
 // Appearance selects light or dark, or defers to the operating system.
@@ -35,18 +37,16 @@ var _ fyne.Theme = (*Theme)(nil)
 func New() *Theme { return &Theme{} }
 
 // PaletteFor returns the palette for a Fyne variant, honouring an explicit
-// Appearance override.
+// Appearance override and wearing the Accent.
 func (t *Theme) PaletteFor(v fyne.ThemeVariant) Palette {
+	dark := v == ftheme.VariantDark
 	switch t.Appearance {
 	case AppearanceLight:
-		return Light
+		dark = false
 	case AppearanceDark:
-		return Dark
+		dark = true
 	}
-	if v == ftheme.VariantDark {
-		return Dark
-	}
-	return Light
+	return accentPalette(t.Accent, dark)
 }
 
 // Color maps a Fyne colour name onto the palette.

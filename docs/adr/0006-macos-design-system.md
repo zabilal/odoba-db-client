@@ -101,3 +101,18 @@ foreground/background pair the UI actually draws, in both appearances, and
 `coverage_test.go` fails the build if a role is added without being either
 checked or explicitly exempted with a reason. `cmd/themegallery` renders every
 token side by side in both appearances for the judgement tests cannot make.
+
+## Addendum (2026-09-11): the accent colour
+
+FR-15.3 asks for an accent choice. The accents are macOS's own: blue,
+purple, pink, red, orange, yellow, green and graphite, chosen from View ›
+Accent Colour and kept in the settings file. Blue is the palettes' own,
+tuned by hand. The others start from Apple's system colours and are
+derived, once, so that each passes WCAG AA wherever the palette's blue
+does. A fill is darkened until white text on it passes, unless that would
+take it far from itself, as it would the lightest colours; then the colour
+stays and its text is near-black. As text, an accent is darkened on light,
+or lightened on dark, until it reads on the content, the window and its
+own tint. The selection follows the accent, as macOS's does. Where Apple's
+colours fall short of AA, accessibility wins (UX principle 13). A test
+holds every accent, in both appearances, to every accent pair.

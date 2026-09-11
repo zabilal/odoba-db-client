@@ -8,6 +8,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
 // errorBar is where the shell says that something failed (FR-15.7): a band
@@ -78,13 +80,20 @@ func (s *Shell) showErrorWith(err error, label string, act func()) {
 	} else {
 		b.action.Hide()
 	}
-	b.bg.FillColor = s.colours().DangerSubtle
-	b.bg.Refresh()
+	b.repaint(s.colours())
 	b.slot.Objects = []fyne.CanvasObject{b.box}
 	b.relayout()
 }
 
 func (b *errorBar) shown() bool { return len(b.slot.Objects) > 0 }
+
+// repaint gives the band its tint for the palette in use. It is drawn, not
+// themed, so an appearance change must repaint it: left alone, it kept the
+// dark tint under light text and could not be read.
+func (b *errorBar) repaint(p uitheme.Palette) {
+	b.bg.FillColor = p.DangerSubtle
+	b.bg.Refresh()
+}
 
 func (b *errorBar) dismiss() {
 	b.slot.Objects = nil
