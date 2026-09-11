@@ -180,9 +180,31 @@ func sharedStrings(files map[string]*zip.File) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, s)
+			out = append(out, unescape(s))
 		}
 	}
+}
+
+// unescape reads Excel's _xHHHH_ escapes in a cell's text: a character XML
+// cannot hold, or, as _x005F_, an underscore that would read as the start of
+// one.
+func unescape(s string) string {
+	if !strings.Contains(s, "_x") {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if len(s)-i >= 7 && s[i] == '_' && s[i+1] == 'x' && s[i+6] == '_' {
+			if n, err := strconv.ParseUint(s[i+2:i+6], 16, 16); err == nil {
+				b.WriteRune(rune(n))
+				i += 7
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 // text is the text of the <t> elements inside the element being read, up
@@ -439,7 +461,7 @@ func (sh *sheet) convert(kind string, style int, v string) (any, error) {
 		}
 		return sh.strings[i], nil
 	case "str", "inlineStr", "e":
-		return v, nil
+		return unescape(v), nil
 	case "b":
 		return strings.TrimSpace(v) == "1", nil
 	}

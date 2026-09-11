@@ -1,4 +1,5 @@
-// Package export writes rows out as CSV, TSV, JSON or NDJSON (FR-10.1). It
+// Package export writes rows out as CSV, TSV, JSON, NDJSON, Markdown or an
+// Excel workbook (FR-10.1). It
 // streams, so memory stays flat however many rows there are (FR-10.3,
 // NFR-P11).
 //
@@ -42,10 +43,11 @@ const (
 	JSON
 	NDJSON
 	Markdown
+	XLSX
 )
 
 // Formats lists every format, in the order a menu offers them.
-func Formats() []Format { return []Format{CSV, TSV, JSON, NDJSON, Markdown} }
+func Formats() []Format { return []Format{CSV, TSV, XLSX, JSON, NDJSON, Markdown} }
 
 func (f Format) String() string {
 	switch f {
@@ -59,6 +61,8 @@ func (f Format) String() string {
 		return "NDJSON"
 	case Markdown:
 		return "Markdown"
+	case XLSX:
+		return "Excel"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -74,6 +78,8 @@ func (f Format) Extension() string {
 		return "ndjson"
 	case Markdown:
 		return "md"
+	case XLSX:
+		return "xlsx"
 	}
 	return "csv"
 }
@@ -81,11 +87,14 @@ func (f Format) Extension() string {
 // Options configures an export.
 type Options struct {
 	Format Format
-	// Header writes the column names as the first CSV or TSV line.
+	// Header writes the column names as the first CSV or TSV line, or as an
+	// Excel sheet's first row.
 	Header bool
 	// Null is how CSV and TSV write NULL: empty unless set, which is what
 	// spreadsheets expect. JSON always writes null.
 	Null string
+	// Sheet names an Excel workbook's sheet: Sheet1 unless given.
+	Sheet string
 }
 
 // Progress is how far an export has got.
@@ -180,6 +189,8 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newJSONWriter(w, cols, opt.Format == JSON), nil
 	case Markdown:
 		return newMarkdown(w, cols), nil
+	case XLSX:
+		return newXLSX(w, cols, opt)
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }

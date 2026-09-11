@@ -1,13 +1,20 @@
 package shell
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
 )
@@ -125,5 +132,123 @@ func TestFileNameIsSafe(t *testing.T) {
 	}
 	if fileName("  ") != "export" {
 		t.Error("an empty name needs a fallback")
+	}
+}
+
+func TestAnExportCanBeAWorkbook(t *testing.T) {
+	fx, tb := openItems(t)
+	out := &sink{}
+	j := fx.s.runExport(tb, fx.s.exportSource(), exportOptions(export.XLSX, true, "items"), out, "items.xlsx", nil)
+	pump(t, fx.q, func() bool { return j.done })
+	if j.err != nil || !out.closed || !bytes.HasPrefix(out.Bytes(), []byte("PK")) || j.task.status != "Exported 250 rows to items.xlsx" {
+		t.Errorf("err %v, closed %v, starts %q, task %q", j.err, out.closed, out.Bytes()[:min(4, out.Len())], j.task.status)
+	}
+}
+
+func TestTheHeaderIsOfferedWhereAFormatHasOne(t *testing.T) {
+	for _, f := range export.Formats() {
+		if want := f == export.CSV || f == export.TSV || f == export.XLSX; headerApplies(f) != want {
+			t.Errorf("%v: header offered %v", f, !want)
+		}
+	}
+	if got := exportOptions(export.XLSX, true, "items"); got != (export.Options{Format: export.XLSX, Header: true, Sheet: "items"}) {
+		t.Errorf("a workbook's sheet takes the name of what is exported: %+v", got)
+	}
+}
+
+// findSelect is the first picker under o, as findButton looks.
+func findSelect(o fyne.CanvasObject) *widget.Select {
+	switch v := o.(type) {
+	case *widget.Select:
+		return v
+	case *widget.PopUp:
+		return findSelect(v.Content)
+	case *fyne.Container:
+		for _, c := range v.Objects {
+			if s := findSelect(c); s != nil {
+				return s
+			}
+		}
+	case fyne.Widget:
+		for _, c := range test.WidgetRenderer(v).Objects() {
+			if s := findSelect(c); s != nil {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+// findCheck is the check box under o with the text, as findButton looks.
+func findCheck(o fyne.CanvasObject, text string) *widget.Check {
+	switch v := o.(type) {
+	case *widget.Check:
+		if v.Text == text {
+			return v
+		}
+	case *widget.PopUp:
+		return findCheck(v.Content, text)
+	case *fyne.Container:
+		for _, c := range v.Objects {
+			if k := findCheck(c, text); k != nil {
+				return k
+			}
+		}
+	case fyne.Widget:
+		for _, c := range test.WidgetRenderer(v).Objects() {
+			if k := findCheck(c, text); k != nil {
+				return k
+			}
+		}
+	}
+	return nil
+}
+
+func TestAWorkbookIsOfferedWithItsHeader(t *testing.T) {
+	fx, tb := openItems(t)
+	fx.s.showExport()
+	form := fx.s.win.Canvas().Overlays().Top()
+	format, header := findSelect(form), findCheck(form, "Column names as the first line")
+	if format == nil || header == nil {
+		t.Fatal("the export form asks the format, and whether the column names come first")
+	}
+	format.SetSelected("JSON")
+	if !header.Disabled() {
+		t.Error("JSON names every value already")
+	}
+	format.SetSelected("Excel")
+	if header.Disabled() {
+		t.Error("a workbook's first row can be its column names")
+	}
+	test.Tap(findButton(form, "Choose File…"))
+	if len(fx.files.saves) != 1 || fx.files.saves[0].Name != tb.item.Text+".xlsx" || fx.files.saves[0].Kind != "Excel" {
+		t.Fatalf("the save dialog was asked %+v", fx.files.saves)
+	}
+	path := filepath.Join(t.TempDir(), "chosen.xlsx")
+	fx.files.answer(path, nil)
+	if len(fx.s.tasks) != 1 {
+		t.Fatalf("%d tasks, want the export", len(fx.s.tasks))
+	}
+	k := fx.s.tasks[0]
+	pump(t, fx.q, func() bool { return k.state != taskRunning })
+	zr, err := zip.OpenReader(path)
+	if err != nil || k.state != taskDone {
+		t.Fatalf("task %v (%s); file: %v", k.state, k.status, err)
+	}
+	defer zr.Close()
+	var workbook string
+	for _, f := range zr.File {
+		if f.Name == "xl/workbook.xml" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			workbook = string(b)
+		}
+	}
+	if !strings.Contains(workbook, `<sheet name="`+tb.item.Text+`"`) {
+		t.Errorf("the sheet takes the tab's name: %s", workbook)
 	}
 }

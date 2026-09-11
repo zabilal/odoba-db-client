@@ -59,3 +59,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0052](0052-updating-rows-by-key.md) | Updating rows by key | Accepted |
 | [0053](0053-leaving-refused-rows-out.md) | Leaving refused rows out | Accepted |
 | [0054](0054-how-an-import-writes-its-rows.md) | How an import writes its rows | Accepted |
+| [0055](0055-exporting-an-excel-workbook.md) | Exporting an Excel workbook | Accepted |
