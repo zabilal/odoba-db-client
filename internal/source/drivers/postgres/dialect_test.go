@@ -337,3 +337,23 @@ func TestPlaceholder(t *testing.T) {
 		t.Error("placeholder format")
 	}
 }
+
+func TestATypedWhereIsOneReadOnlyCondition(t *testing.T) {
+	ref := model.NewRef(model.KindTable, "db", "public", "orders")
+	st, err := d.BuildBrowse(ref, source.BrowseOptions{Where: "total > 100 -- the big ones",
+		Filters: []source.Filter{{Column: "status", Op: source.OpEqual, Values: []any{"paid"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(st.SQL, `WHERE "status" = $1 AND (`+"\ntotal > 100 -- the big ones\n)") {
+		t.Errorf("the condition is not ANDed in brackets on lines of its own: %s", st.SQL)
+	}
+	if !strings.Contains(st.SQL, "LIMIT $2") {
+		t.Errorf("the comment swallowed the LIMIT: %s", st.SQL)
+	}
+	for _, w := range []string{"pg_terminate_backend(1234)", "1 = 1; DROP TABLE orders", "id = $1"} {
+		if _, err := d.BuildBrowse(ref, source.BrowseOptions{Where: w}); err == nil {
+			t.Errorf("WHERE %q should be refused", w)
+		}
+	}
+}

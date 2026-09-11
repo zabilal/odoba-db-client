@@ -60,6 +60,7 @@ func (s *Shell) refilter(t *tab, texts []string) {
 		t.grid.SetFilterErrors(bad...)
 		t.problem = problem
 		s.showCount(t)
+		s.browsed(t)
 		return
 	}
 	opt := t.want
@@ -87,6 +88,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 				t.grid.SetFilterErrors(changed(texts, t.filtered)...)
 				t.problem = failed + err.Error()
 				s.showCount(t)
+				s.browsed(t)
 				return
 			}
 			t.browse, t.applied, t.filtered, t.problem = next, keys, texts, ""
@@ -94,6 +96,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 			t.model.SetFetcher(next)
 			t.grid.ScheduleRefresh()
 			s.count(t)
+			s.browsed(t)
 		})
 	}()
 }

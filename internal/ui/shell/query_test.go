@@ -36,8 +36,12 @@ var (
 func (fakeSource) QuoteIdentifier(n string) string   { return `"` + n + `"` }
 func (fakeSource) QualifyRef(model.ObjectRef) string { return "" }
 func (fakeSource) Placeholder(int) string            { return "?" }
-func (fakeSource) BuildBrowse(model.ObjectRef, source.BrowseOptions) (source.Statement, error) {
-	return source.Statement{}, nil
+func (fakeSource) BuildBrowse(_ model.ObjectRef, opt source.BrowseOptions) (source.Statement, error) {
+	sql := `SELECT * FROM "items"`
+	if opt.Where != "" {
+		sql += " WHERE (" + opt.Where + ")"
+	}
+	return source.Statement{SQL: sql + " LIMIT ?", Args: []any{opt.Limit}}, nil
 }
 func (fakeSource) Classify(stmt string) source.Access {
 	if strings.HasPrefix(strings.TrimSpace(stmt), "update") {

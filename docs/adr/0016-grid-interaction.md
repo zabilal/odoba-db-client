@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.54, T1.55 (and T1.48–T1.56 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.49, T1.54, T1.55, T1.56 (and T1.48–T1.53 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -133,8 +133,34 @@ running, however it closes: a click outside hides a popover without telling
 anyone, so a running count looks every 250 ms whether its list is still
 open.
 
+**A typed WHERE is the person's own SQL, held to being one condition.** The
+WHERE bar (View › WHERE Clause, hidden until asked for) takes a condition in
+the source's query language and ANDs it with the filters (FR-3.6). Unlike a
+filter's values it cannot be bound: it is SQL, as a query tab's is.
+`sqlscript.Predicate` checks that it is one condition: no `;`, no string,
+comment or quoted name left open, brackets that balance, and no parameters,
+since the statement's own are numbered around it. It goes in brackets on
+lines of its own, so a trailing `--` comment ends there rather than
+swallowing the `LIMIT` that bounds every read (NFR-P11). The dialect
+classifies the finished statement and refuses it if it could change
+anything, so `pg_terminate_backend(…)` is not a filter. Everything else is
+the server's to judge: a WHERE it refuses leaves the rows as they were, and
+the bar says why and keeps the text to correct. The WHERE composes with sort
+and filters and narrows the picklist. The conformance suite checks on every
+engine that it narrows, that a comment cannot lift the LIMIT, and that five
+kinds of non-condition are refused.
+
+**The statement is shown.** Under the WHERE field, the bar shows the
+statement the grid runs, with its bound values listed after it rather than
+spliced in, because that is how they travel (UX principle 6). It can be
+selected and copied. Its first screenshot had the statement drawn over the
+grid, for two reasons. Refreshing the bar alone left it the room it had
+before, so the tab's frame now re-divides the room. And a wrapping label
+cannot know its height before it is laid out, so the statement's lines no
+longer wrap and scroll sideways instead. A test lays the tab out and checks
+that the bar ends where the grid begins.
+
 ## Not decided here
 
-The WHERE editor and the effective SQL
-(T1.56), selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
+Selection and copy (T1.51–T1.52), the cell viewer (T1.53), and
 column resize, reorder and hide (T1.48). Each will be added here as it lands.

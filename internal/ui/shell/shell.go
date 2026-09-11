@@ -104,7 +104,9 @@ type tab struct {
 	want      source.BrowseOptions
 	applied   []grid.SortKey
 	filtered  []string
-	picked    map[int]pick // filters chosen from a column\'s picklist
+	picked    map[int]pick    // filters chosen from a column\'s picklist
+	top       *fyne.Container // above the grid: the WHERE bar, when shown
+	where     *whereBar
 	// problem is the last sort or filter failure. The footer keeps showing
 	// it beside the row count until a re-browse succeeds.
 	problem string
@@ -228,6 +230,8 @@ func (s *Shell) registerCommands() {
 					s.showPicklist(t, t.grid.SelectedColumn(), s.underHeader(t))
 				}
 			}},
+		{ID: cmdWhere, Category: "Data", Title: "WHERE Clause", Keywords: []string{"sql", "condition", "filter", "statement"},
+			Enabled: s.canWhere, Run: s.toggleWhere},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
@@ -401,7 +405,8 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 	t := &tab{key: key, connID: connID, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Opening…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem(n.Label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.top = container.NewVBox()
+	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.showTabs(true)
 	s.tabs.Append(t.item)
@@ -496,7 +501,7 @@ func (s *Shell) showCount(t *tab) {
 	default:
 		text = "Loading rows…"
 	}
-	if t.browse != nil && len(t.browse.Options().Filters) > 0 {
+	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
 	}
 	if t.problem != "" {

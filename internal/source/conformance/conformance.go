@@ -63,6 +63,7 @@ func Run(t *testing.T, target Target) {
 		{"BrowseCancellation", checkBrowseCancellation},
 		{"BrowseLimit", checkBrowseLimit},
 		{"Distinct", checkDistinct},
+		{"Where", checkWhere},
 		{"ReadOnlyGuard", checkReadOnlyGuard},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
 	}
@@ -425,7 +426,7 @@ func checkDistinct(t *testing.T, target Target) {
 		for _, r := range rows {
 			want[valueKey(r[i])]++
 		}
-		got, err := dl.Distinct(ctx, target.Browsable, c.Name, nil, len(want)+1)
+		got, err := dl.Distinct(ctx, target.Browsable, c.Name, source.BrowseOptions{}, len(want)+1)
 		if err != nil {
 			t.Errorf("Distinct(%s): %v", c.Name, err)
 			continue
@@ -454,7 +455,7 @@ func checkDistinct(t *testing.T, target Target) {
 			}
 		}
 		f := source.Filter{Column: c.Name, Op: source.OpIn, Values: []any{got[0].Value}}
-		narrowed, err := dl.Distinct(ctx, target.Browsable, c.Name, []source.Filter{f}, 10)
+		narrowed, err := dl.Distinct(ctx, target.Browsable, c.Name, source.BrowseOptions{Filters: []source.Filter{f}}, 10)
 		if err != nil || len(narrowed) != 1 || valueKey(narrowed[0].Value) != valueKey(got[0].Value) {
 			t.Errorf("Distinct(%s) under a filter for %s: %v, %v", c.Name, valueKey(got[0].Value), narrowed, err)
 		}
@@ -498,5 +499,68 @@ func readAll(ctx context.Context, t *testing.T, src source.Source, ref model.Obj
 			t.Fatalf("Next: %v", err)
 		}
 		rows = append(rows, r)
+	}
+}
+
+// checkWhere proves the typed WHERE clause (FR-3.6): it narrows the rows, a
+// comment at its end cannot swallow the LIMIT that bounds every read
+// (NFR-P11), it is taken only as one condition, and the picklist honours it.
+func checkWhere(t *testing.T, target Target) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	src := target.Open(ctx, t)
+	defer src.Close()
+	if _, ok := src.(source.Dialect); !ok {
+		t.Skip("source has no query language to write a WHERE in")
+	}
+	count := func(where string, limit int64) (int, error) {
+		st, err := src.Browse(ctx, target.Browsable, source.BrowseOptions{Where: where, Limit: limit})
+		if err != nil {
+			return 0, err
+		}
+		defer st.Close()
+		n := 0
+		for {
+			_, err := st.Next(ctx)
+			if errors.Is(err, io.EOF) {
+				return n, nil
+			}
+			if err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+
+	all, err := count("1 = 1", 20000)
+	if err != nil {
+		t.Fatalf("WHERE 1 = 1: %v", err)
+	}
+	if n, err := count("1 = 0", 20000); err != nil || n != 0 {
+		t.Errorf("WHERE 1 = 0: %d rows, %v; want none", n, err)
+	}
+	if want := min(all, 3); want > 0 {
+		if n, err := count("1 = 1 -- a note", 3); err != nil || n != want {
+			t.Errorf("WHERE 1 = 1 -- a note, LIMIT 3: %d rows, %v; the comment must end at its line", n, err)
+		}
+	}
+	for _, bad := range []string{"1 = 1; SELECT 1", "(1 = 1", "1 = 1)", "'open = 1", "1 = 1 /* open"} {
+		if _, err := count(bad, 3); err == nil {
+			t.Errorf("WHERE %q was accepted; it is not one condition", bad)
+		}
+	}
+
+	if dl, ok := src.(source.DistinctLister); ok && src.Capabilities().Data.DistinctValues {
+		st, err := src.Browse(ctx, target.Browsable, source.BrowseOptions{Limit: 1})
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		cols := st.Columns()
+		st.Close()
+		vals, err := dl.Distinct(ctx, target.Browsable, cols[0].Name, source.BrowseOptions{Where: "1 = 0"}, 10)
+		if err != nil || len(vals) != 0 {
+			t.Errorf("Distinct under WHERE 1 = 0: %v, %v; want nothing", vals, err)
+		}
 	}
 }

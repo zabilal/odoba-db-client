@@ -36,6 +36,7 @@ const (
 	cmdOpenSaved    = "query.openSaved"
 	cmdExport       = "data.export"
 	cmdFilterValues = "data.filterValues"
+	cmdWhere        = "data.where"
 	cmdFind         = "edit.find"
 	cmdFindReplace  = "edit.findReplace"
 	cmdFindNext     = "edit.findNext"
@@ -85,7 +86,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), separator,
+		item(cmdSidebar), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 	}},
 	{"Connection", []menuEntry{

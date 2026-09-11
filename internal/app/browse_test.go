@@ -22,12 +22,12 @@ type browseFake struct {
 	overrun  bool // ignore Limit, to prove the adapter bounds it
 	exact    bool
 	distinct bool
-	// listed records the filters the last Distinct was given.
-	listed []source.Filter
+	// listed records the options the last Distinct was given.
+	listed source.BrowseOptions
 }
 
-func (b *browseFake) Distinct(_ context.Context, _ model.ObjectRef, _ string, filters []source.Filter, _ int) ([]source.DistinctValue, error) {
-	b.listed = filters
+func (b *browseFake) Distinct(_ context.Context, _ model.ObjectRef, _ string, opt source.BrowseOptions, _ int) ([]source.DistinctValue, error) {
+	b.listed = opt
 	return []source.DistinctValue{{Value: "a", Count: 3}}, nil
 }
 
@@ -150,7 +150,7 @@ func TestDistinctLeavesOutTheColumnsOwnFilter(t *testing.T) {
 	src := &browseFake{n: 10, distinct: true}
 	name := source.Filter{Column: "name", Op: source.OpIn, Values: []any{"a"}}
 	id := source.Filter{Column: "id", Op: source.OpGreater, Values: []any{int64(3)}}
-	b, err := NewBrowseSource(context.Background(), src, orders, source.BrowseOptions{Filters: []source.Filter{name, id}})
+	b, err := NewBrowseSource(context.Background(), src, orders, source.BrowseOptions{Filters: []source.Filter{name, id}, Where: "id < 9"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +158,8 @@ func TestDistinctLeavesOutTheColumnsOwnFilter(t *testing.T) {
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("%v, %v", vals, err)
 	}
-	if len(src.listed) != 1 || src.listed[0].Column != "id" {
-		t.Errorf("listed under %+v; want only the id filter", src.listed)
+	if len(src.listed.Filters) != 1 || src.listed.Filters[0].Column != "id" || src.listed.Where != "id < 9" {
+		t.Errorf("listed under %+v; want the id filter and the typed WHERE", src.listed)
 	}
 }
 

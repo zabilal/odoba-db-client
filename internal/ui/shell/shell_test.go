@@ -142,7 +142,7 @@ var (
 )
 
 // Distinct lists four values of any column, the most frequent first.
-func (fakeSource) Distinct(ctx context.Context, _ model.ObjectRef, _ string, _ []source.Filter, limit int) ([]source.DistinctValue, error) {
+func (fakeSource) Distinct(ctx context.Context, _ model.ObjectRef, _ string, _ source.BrowseOptions, limit int) ([]source.DistinctValue, error) {
 	if g := distinctGate; g != nil {
 		select {
 		case <-ctx.Done():
@@ -166,6 +166,9 @@ func (fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Browse
 	browses.Lock()
 	browses.opts = append(browses.opts, opt)
 	browses.Unlock()
+	if strings.Contains(opt.Where, "boom") {
+		return nil, errors.New(`fakesql: syntax error at or near "boom"`)
+	}
 	for _, f := range opt.Filters {
 		if f.Op == source.OpRegex {
 			return nil, errors.New("fakesql: no regular expressions")
