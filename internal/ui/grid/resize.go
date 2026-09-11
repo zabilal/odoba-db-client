@@ -64,4 +64,5 @@ func (g *TableGrid) ResizeColumn(col int, width float32) {
 	if dc := slices.Index(g.order, col); dc >= 0 {
 		g.Table.SetColumnWidth(dc, g.widths[col])
 	}
+	g.fitFiller()
 }

@@ -55,6 +55,17 @@ type TableGrid struct {
 
 	bg   *canvas.Rectangle
 	view *fyne.Container
+	run  uithread.Runner
+
+	// The filler column follows the last one shown and takes the width the
+	// columns leave, so each row's stripe reaches the grid's edge.
+	viewWidth, fillerWidth float32
+
+	// tip is a cell's hint, drawn over the grid near the pointer.
+	tip     *fyne.Container
+	tipBg   *canvas.Rectangle
+	tipText *canvas.Text
+	tipSeq  int
 
 	// Sortable lets the header sort the grid, and OnSort hears the new sort.
 	// A browse re-sorts on the server; a query's result cannot, since that
@@ -197,6 +208,7 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 		palette: pal,
 		loc:     time.Local,
 		ctx:     ctx,
+		run:     run,
 	}
 
 	cols := m.Columns()
@@ -225,13 +237,21 @@ func NewTableGridWith(ctx context.Context, m *Model, pal theme.Palette, run uith
 	for i, w := range g.widths {
 		t.SetColumnWidth(i, w)
 	}
+	g.fillerWidth = 1
+	t.SetColumnWidth(len(g.order), g.fillerWidth)
 
 	g.Table = t
 	g.bg = canvas.NewRectangle(pal.ContentBackground)
 	// The grid's own table goes on screen, not the Table inside it: Fyne hands
 	// mouse events to the object in the tree, and only the grid's hears the
 	// modifiers of a click.
-	g.view = container.NewStack(g.bg, g.table)
+	g.tipBg = canvas.NewRectangle(pal.ElevatedBackground)
+	g.tipBg.StrokeColor, g.tipBg.StrokeWidth, g.tipBg.CornerRadius = pal.Separator, 1, theme.RadiusSmall
+	g.tipText = canvas.NewText("", pal.Label)
+	g.tipText.TextSize = theme.TextFootnote
+	g.tip = container.NewWithoutLayout(g.tipBg, g.tipText)
+	g.tip.Hide()
+	g.view = container.New(&gridLayout{g: g}, g.bg, g.table, g.tip)
 	g.refresh = uithread.Coalesce(run, delay, func() {
 		if g.Table != nil {
 			g.Table.Refresh()
@@ -252,10 +272,14 @@ func (g *TableGrid) length() (int, int) {
 		// cells and so never fetches anything.
 		n += PageSize
 	}
-	return int(n), len(g.order)
+	return int(n), len(g.order) + 1 // and the filler column
 }
 
-func (g *TableGrid) createCell() fyne.CanvasObject { return newCellWidget() }
+func (g *TableGrid) createCell() fyne.CanvasObject {
+	c := newCellWidget()
+	c.onHint = g.hint
+	return c
+}
 
 // UpdateCell renders one cell. This is the hot path: it runs for every visible
 // cell whenever the table refreshes, and it is what the W1 benchmark measures.
@@ -267,7 +291,9 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 
 	cols := g.model.Columns()
 	mc := g.ColumnAt(id.Col)
-	if mc < 0 || mc >= len(cols) {
+	if mc < 0 || mc >= len(cols) { // the filler: the row's stripe, and nothing to say
+		cell.hint = ""
+		cell.set("", g.palette.Label, g.stripe(id.Row), fyne.TextAlignLeading, fyne.TextStyle{})
 		return
 	}
 	col := cols[mc]
@@ -303,7 +329,8 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 		style.Monospace = true
 	}
 
-	cell.set(c.Text, fg, bg, align, style)
+	cell.hint = c.Hint
+	cell.set(shown(c), fg, bg, align, style)
 }
 
 func (g *TableGrid) foreground(k CellKind) color.Color {
@@ -319,10 +346,9 @@ func (g *TableGrid) foreground(k CellKind) color.Color {
 	}
 }
 
-// background is a cell's fill. Rows are not striped: a cell can only tint its
-// own width, and with the grid's background showing past the last column the
-// stripes read as grey blocks rather than rows. Full-width stripes need a
-// background drawn in step with scrolling (T1.50).
+// background is a cell's fill: the selection's tint, or the row's stripe. A
+// cell can tint only its own width, so the filler column after the last one
+// carries the stripe to the grid's edge (see gridLayout).
 func (g *TableGrid) background(id widget.TableCellID) color.Color {
 	if g.sel.Contains(id.Row, id.Col) {
 		return g.palette.SelectedUnemphasized
@@ -331,6 +357,15 @@ func (g *TableGrid) background(id widget.TableCellID) color.Color {
 		switch g.RowStates(int64(id.Row)) {
 		case CellKind(200): // placeholder; real changeset states land in Phase 1
 		}
+	}
+	return g.stripe(id.Row)
+}
+
+// stripe is a row's own background: every other row is tinted, as a macOS
+// table's are.
+func (g *TableGrid) stripe(row int) color.Color {
+	if row%2 == 1 {
+		return g.palette.AlternateRow
 	}
 	return g.palette.ContentBackground
 }
@@ -349,6 +384,17 @@ func (g *TableGrid) updateHeader(id widget.TableCellID, o fyne.CanvasObject) {
 			g.bindFilter(h.filter, g.ColumnAt(id.Col))
 		}
 		h.handle.col = g.ColumnAt(id.Col)
+		if filler := h.handle.col < 0; filler { // nothing to filter, sort or resize
+			h.handle.Hide()
+			if h.field != nil {
+				h.field.Hide()
+			}
+		} else {
+			h.handle.Show()
+			if h.field != nil {
+				h.field.Show()
+			}
+		}
 	case *headerCell:
 		g.updateTitle(g.ColumnAt(id.Col), h)
 	}

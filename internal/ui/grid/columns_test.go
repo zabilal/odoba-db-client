@@ -32,7 +32,7 @@ func TestColumnsHideMoveAndFreeze(t *testing.T) {
 		t.Errorf("moved right: shown %v, active column %d; the active cell goes with its column", got, g.SelectedColumn())
 	}
 	g.HideColumn(0)
-	if _, c := g.length(); c != n-1 || !g.Hidden() || g.Selection().Contains(1, 0) {
+	if c := len(g.Shown()); c != n-1 || !g.Hidden() || g.Selection().Contains(1, 0) {
 		t.Errorf("hid a column: %d shown of %d, hidden %v; the selection should clear", c, n, g.Hidden())
 	}
 	g.ShowAllColumns()

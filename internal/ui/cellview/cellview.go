@@ -1,7 +1,7 @@
 // Package cellview prepares one value for the grid's cell viewer (FR-3.9):
 // the whole of it, where a grid cell shows one line. JSON is indented and
-// its tokens marked for colouring, bytes become a hex dump, a time is shown
-// in both local time and UTC, and a value too long to show is cut at a
+// its tokens marked for colouring, bytes become a hex dump, an instant is
+// shown in both local time and UTC, and a value too long to show is cut at a
 // stated limit rather than drawn until the application hangs.
 //
 // It draws nothing; the shell's viewer does. That keeps what the viewer
@@ -85,8 +85,7 @@ func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 	case []byte:
 		return hexView(x)
 	case time.Time:
-		local := x.In(loc).Format("2006-01-02 15:04:05.999999999 -07:00")
-		return View{Kind: KindText, Text: local + "\n" + x.UTC().Format("2006-01-02 15:04:05.999999999") + " UTC"}
+		return View{Kind: KindText, Text: timeText(x, col.Type, loc)}
 	case string:
 		switch col.Type.Class {
 		case model.TypeJSON:
@@ -101,6 +100,21 @@ func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 		return textView(x)
 	}
 	return textView(export.Text(v, col))
+}
+
+// timeText writes a time whole. An instant, from a column that carries a
+// zone, is shown in local time and in UTC. A date, or a time with no zone, is
+// shown exactly as stored: moving it to another zone would show a time that
+// was never written.
+func timeText(x time.Time, t model.DataType, loc *time.Location) string {
+	switch {
+	case t.Class == model.TypeDate:
+		return x.Format("2006-01-02")
+	case t.TimeZone:
+		return x.In(loc).Format("2006-01-02 15:04:05.999999999 -07:00") + "\n" +
+			x.UTC().Format("2006-01-02 15:04:05.999999999") + " UTC"
+	}
+	return x.Format("2006-01-02 15:04:05.999999999")
 }
 
 func textView(s string) View {

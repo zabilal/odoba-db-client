@@ -103,6 +103,8 @@ func (g *TableGrid) relayout(clearSelection bool) {
 	for dc, mc := range g.order {
 		g.Table.SetColumnWidth(dc, g.widths[mc])
 	}
+	g.fillerWidth = -1 // the filler has moved: size it afresh
+	g.fitFiller()
 	if clearSelection {
 		g.sel.Clear()
 	}

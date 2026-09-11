@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.48, T1.49, T1.51–T1.56 (and T1.50 as it lands) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.48–T1.56 (T1.50 in part) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -248,6 +248,22 @@ Instead each title carries a handle on its right edge; dragging it sets the
 model column's width, which the grid keeps, so a column has its width
 wherever it moves. No column goes narrower than 40 points.
 
+**Rows are striped to the grid's edge, and a time is shown as its type
+says.** A cell can tint only its own width, so a filler column after the
+last takes the width the columns leave, and every other row is tinted
+across the whole view, as macOS tables are. The filler is never selected,
+copied or stepped into. Resizing a column refits the filler itself. Fyne's
+test driver re-lays out the whole window on any refresh, which would refit
+it anyway and hide a missing call, but a real window does not; so the test
+for it uses a grid in no window. A value cut at 200 characters ends in an ellipsis,
+so it never passes for the whole. A time from a column with a zone is an
+instant: it is shown in local time, and resting the pointer on it shows it
+in UTC (FR-3.8). The tip is drawn over the grid rather than opened as a
+popup, which would take the pointer and never hear it leave. A date, or a
+time with no zone, is shown exactly as stored. The first version moved every
+time into local time, which showed a timestamp without a zone at an hour it
+never had. The cell viewer follows the same rule.
+
 ## Not decided here
 
-Type-aware rendering and full-width stripes (T1.50). Each will be added here as it lands.
+Geometry values (T1.50), which need a reader for each engine's binary form. Each will be added here as it lands.
