@@ -24,6 +24,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	explorerview "github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
+	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
@@ -45,7 +46,7 @@ type harness struct {
 	s    *shell.Shell
 	q    *uithread.Queue
 	w    fyne.Window
-	tabs *container.DocTabs
+	tabs *tabbar.Tabs
 	db   *localdb.DB
 	conn store.SavedConnection
 }
@@ -75,7 +76,7 @@ func start(t *testing.T, j journey) *harness {
 	w := s.Window()
 	t.Cleanup(w.Close) // quit as a person does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
-	return &harness{s: s, q: q, w: w, tabs: findDocTabs(w.Content()), db: db, conn: c}
+	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c}
 }
 
 // runJ1 is journey J1: with a saved connection, find a table in the sidebar,
@@ -241,8 +242,8 @@ func button(t *testing.T, o fyne.CanvasObject, text string) *widget.Button {
 	return nil
 }
 
-func findDocTabs(o fyne.CanvasObject) *container.DocTabs {
-	if tabs := find[*container.DocTabs](o); len(tabs) > 0 {
+func findTabs(o fyne.CanvasObject) *tabbar.Tabs {
+	if tabs := find[*tabbar.Tabs](o); len(tabs) > 0 {
 		return tabs[0]
 	}
 	return nil
@@ -269,7 +270,7 @@ func find[T fyne.CanvasObject](o fyne.CanvasObject) []T {
 			for _, it := range v.Items {
 				walk(it.Content)
 			}
-		case *container.DocTabs:
+		case *tabbar.Tabs:
 			for _, it := range v.Items {
 				walk(it.Content)
 			}
