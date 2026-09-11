@@ -82,7 +82,13 @@ type Shell struct {
 	empty    fyne.CanvasObject
 	status   *widget.Label
 	errors   *errorBar
-	pal      *palette.Palette
+	// taskButton, in the status bar, says while tasks run, and opens the
+	// Tasks panel (tasks.go). tasks is every task not cleared; taskView is
+	// the panel, current while it is open.
+	taskButton *widget.Button
+	tasks      []*task
+	taskView   *tasksPanel
+	pal        *palette.Palette
 	// work is the tabs, or the empty state, and right holds work alone or
 	// beside the open side panel (panel.go).
 	work, right *fyne.Container
@@ -198,6 +204,9 @@ func New(a fyne.App, d Deps) *Shell {
 	s.status = widget.NewLabel("")
 	s.status.Truncation = fyne.TextTruncateEllipsis
 	s.status.Importance = widget.LowImportance
+	s.taskButton = widget.NewButton("", func() { s.run(cmdTasks) })
+	s.taskButton.Importance = widget.LowImportance
+	s.taskButton.Hide()
 
 	s.sidebar = s.buildSidebar()
 	s.work = container.NewStack(s.empty, s.tabs)
@@ -206,7 +215,7 @@ func New(a fyne.App, d Deps) *Shell {
 	s.split.Offset = 0.24
 	s.errors = s.newErrorBar()
 	s.win.SetContent(container.NewBorder(s.errors.slot,
-		container.NewVBox(widget.NewSeparator(), s.status), nil, nil, s.split))
+		container.NewVBox(widget.NewSeparator(), container.NewBorder(nil, nil, nil, s.taskButton, s.status)), nil, nil, s.split))
 
 	s.applyBindings() // before the menu bar, whose items carry the shortcuts
 	s.menu = s.buildMenu()
@@ -216,6 +225,7 @@ func New(a fyne.App, d Deps) *Shell {
 	d.WS.OnStatus(func(string, app.Status) { d.Run(s.sync) })
 	a.Settings().AddListener(func(fyne.Settings) { d.Run(s.recolour) })
 	s.win.SetOnClosed(s.shutdown)
+	s.win.SetCloseIntercept(s.requestQuit) // Quit comes this way too
 	s.autosave = d.Autosave
 	if s.autosave <= 0 {
 		s.autosave = autosaveDelay
@@ -354,6 +364,8 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return s.canMoveTab(1) }, Run: func() { s.moveTab(1) }},
 		{ID: cmdPinTab, Category: "Tab", Title: "Pin Tab", Keywords: []string{"keep", "stick"},
 			Enabled: func() bool { return s.activeTab() != nil }, Run: s.togglePin},
+		{ID: cmdTasks, Category: "Window", Title: "Tasks", Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
+			Run: func() { s.togglePanel(panelTasks, func() { s.showTasks() }) }},
 		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
 			Shortcut: sc("T", commands.ModShortcut), Enabled: hasConn, Run: func() {
 				if id, ok := s.selectedConn(); ok {
@@ -884,6 +896,8 @@ func (s *Shell) checked(id string) bool {
 		return s.panelIs(panelSaved)
 	case cmdShortcuts:
 		return s.panelIs(panelShortcuts)
+	case cmdTasks:
+		return s.panelIs(panelTasks)
 	case cmdFavorite:
 		f, ok := s.selectedFavorite()
 		return ok && s.isFavorite(f)
@@ -934,6 +948,11 @@ func (s *Shell) shutdown() {
 		s.d.Log.Warn("unsaved query text or the session still being written at exit")
 	}
 	s.cancel()
+	// Tasks stop with the context, and clean up after themselves: wait, or
+	// an export quit halfway would leave a file that looks complete.
+	if !s.waitTasks(shutdownWait) {
+		s.d.Log.Warn("a task still stopping at exit")
+	}
 	// Query sessions first. Each holds a pooled connection, and a pool will
 	// not close while any are out: closing connections first hung quitting
 	// whenever a query tab was open (found by the J3 journey test).

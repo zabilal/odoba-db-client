@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
@@ -235,9 +234,7 @@ func fileName(name string) string {
 
 // exportJob is one export under way.
 type exportJob struct {
-	dlg    *dialog.CustomDialog
-	status *widget.Label
-	bar    *widget.ProgressBar // nil when the total is unknown
+	task   *task
 	cancel context.CancelFunc
 
 	mu     sync.Mutex
@@ -247,34 +244,24 @@ type exportJob struct {
 	err  error
 }
 
-// runExport writes src to w under a progress sheet whose Cancel works
-// (FR-10.7). Closing the tab cancels it too. On failure or cancellation,
-// discard removes what was written: a truncated file left behind looks like a
-// complete export.
+// runExport writes src to w as a task in the task centre (FR-15.6), whose
+// Cancel works (FR-10.7); the window stays usable while it runs. Closing
+// the tab cancels it too. On failure or cancellation, discard removes what
+// was written: a truncated file left behind looks like a complete export.
 func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.WriteCloser, dest string, discard func()) *exportJob {
 	ctx, cancel := context.WithCancel(t.ctx)
-	j := &exportJob{status: widget.NewLabel("Starting…"), cancel: cancel}
-	var bar fyne.CanvasObject = widget.NewProgressBarInfinite()
-	if src.total > 0 {
-		j.bar = widget.NewProgressBar()
-		bar = j.bar
-	}
-	j.dlg = dialog.NewCustomWithoutButtons("Exporting to "+dest, container.NewVBox(j.status, bar), s.win)
-	j.dlg.SetButtons([]fyne.CanvasObject{widget.NewButton("Cancel", cancel)})
-	j.dlg.Resize(fyne.NewSize(440, j.dlg.MinSize().Height))
-	j.dlg.Show()
+	j := &exportJob{cancel: cancel}
+	j.task = s.startTask(t, "Export to "+dest, cancel)
 
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
 		j.mu.Lock()
 		p := j.latest
 		j.mu.Unlock()
-		if j.done {
-			return
+		frac := -1.0
+		if src.total > 0 {
+			frac = min(1, float64(p.Rows)/float64(src.total))
 		}
-		j.status.SetText(exportStatus(p, src.total))
-		if j.bar != nil {
-			j.bar.SetValue(min(1, float64(p.Rows)/float64(src.total)))
-		}
+		s.progressTask(j.task, exportStatus(p, src.total), frac)
 	})
 	go func() {
 		p, err := export.Copy(ctx, w, src.rows(), opt, func(p export.Progress) {
@@ -289,16 +276,20 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 		if err != nil && discard != nil {
 			discard()
 		}
+		close(j.task.finished)
 		s.d.Run(func() {
 			cancel()
 			j.done, j.err = true, err
-			j.dlg.Hide()
 			switch {
 			case err == nil:
-				s.say(t, fmt.Sprintf("Exported %s to %s", rowCount(p.Rows, true), dest))
+				done := fmt.Sprintf("Exported %s to %s", rowCount(p.Rows, true), dest)
+				s.endTask(j.task, taskDone, done)
+				s.say(t, done)
 			case errors.Is(err, context.Canceled):
+				s.endTask(j.task, taskCancelled, "Cancelled; the partial file was removed")
 				s.say(t, "Export cancelled; the partial file was removed")
 			default:
+				s.endTask(j.task, taskFailed, "Failed, and the partial file was removed: "+err.Error())
 				s.showError(formError("The export failed, and the partial file was removed: " + err.Error()))
 			}
 		})

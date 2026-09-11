@@ -95,6 +95,14 @@ func TestEveryButtonHasWords(t *testing.T) {
 			t.Errorf("buttons with only an icon: %v", bad)
 		}
 	})
+	t.Run("an export running, with the Tasks panel", func(t *testing.T) {
+		fx := newFixture(t)
+		slowExport(t, fx, nil)
+		fx.s.showTasks()
+		if bad := wordless(fx.s); len(bad) > 0 {
+			t.Errorf("buttons with only an icon: %v", bad)
+		}
+	})
 }
 
 type errTest string

@@ -300,10 +300,32 @@ type. A chord another command has is refused with that command's name. The
 editor also sets a command back to its default, or to no shortcut; and a
 box lists the commands without one, to give them one.
 
+## 17. Long work is a task, beside the window
+
+An export showed its progress in a sheet over the window, which kept the
+window from use until the export ended; UX principle 5 sends long work to a
+task centre instead (FR-15.6, T1.10). A task (tasks.go) has a title, a
+status line, a share done when the total is known, a Cancel, and an end:
+done, failed or cancelled. The Tasks panel (§11's side panel, Window ›
+Tasks) lists them newest first, with a bar that measures when the total is
+known and one that moves without measuring when it is not. A finished task
+stays, saying how it ended, until Clear Finished. The status bar says while
+any task is running (the one task and how far it has got, or how many are
+running) and opens the panel. Exports are the first tasks; long queries and
+imports are to join them.
+
+A task stops with the tab it works from, so closing that tab asks first, as
+quitting does while any task runs; the question says what stopping loses.
+The window's close intercept asks it, and Fyne's Quit comes the same way.
+Quitting then waits, up to the three seconds it gives connections, for
+stopped tasks to clean up. An export removes its partial file, and one
+stopped by quitting could otherwise leave a file that looks complete.
+
 ## Not decided here
 
-Dragging tabs (T1.4), custom key bindings (T1.8) and the task centre (T1.10)
-are still open; single-instance handling is ADR-0022's. When a connection has no saved password, the tab offers
+Dragging tabs (T1.4) is still open; single-instance handling is ADR-0022's.
+A quit by signal, which Fyne turns into its driver's Quit without closing
+the window, skips the close and so the wait for tasks. When a connection has no saved password, the tab offers
 "Edit Connection…". A proper prompt with a "remember" choice is still to be
 designed. Nothing here has been looked at in a real window yet; the first
 `go run ./cmd/ikigai` is the first visual review.
