@@ -42,6 +42,19 @@ func TestNewRowsComeBeforeTheRowsRead(t *testing.T) {
 	if m.Resident(2+3*PageSize) || !m.Resident(PageSize+1) {
 		t.Error("a row read is resident by its page, counted after the new rows")
 	}
+	if at, ok := m.Find(func(r model.Row) bool { return r[0] == int64(5) }); !ok || at != 6 {
+		t.Errorf("the row read with id 5 is the grid's row 6, after the new rows: %d %v", at, ok)
+	}
+	m.Row(ctx, 2+PageSize+10)
+	waitFor(t, func() bool { _, ok := m.Row(ctx, 2+PageSize+10); return ok }, "the second page")
+	for range 20 { // pages are held in a map, which is read in no order
+		if at, ok := m.Find(func(r model.Row) bool { return r[0].(int64)%100 == 0 }); !ok || at != 101 {
+			t.Fatalf("the first match is found, id 100, though a later page has others: %d %v", at, ok)
+		}
+	}
+	if _, ok := m.Find(func(r model.Row) bool { return r[0] == int64(599) }); ok {
+		t.Error("a row not in memory is not found")
+	}
 	before := m.Stats().Fetches
 	m.Prefetch(ctx, 0, 1)
 	if m.Stats().Fetches != before {

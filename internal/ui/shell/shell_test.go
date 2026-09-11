@@ -176,6 +176,49 @@ func (fakeSource) InsertRows(_ model.ObjectRef, cols []model.ColumnDef, rows []m
 	return b.String(), nil
 }
 
+// fakeWrites records the plans the fake source applied. failWrite, when not
+// 0, makes the statement at failWrite-1 fail.
+var (
+	fakeWrites struct {
+		sync.Mutex
+		plans []*source.WritePlan
+	}
+	failWrite atomic.Int32
+)
+
+func writtenPlans() []*source.WritePlan {
+	fakeWrites.Lock()
+	defer fakeWrites.Unlock()
+	return append([]*source.WritePlan(nil), fakeWrites.plans...)
+}
+
+// Plan writes each change as a line of text, and binds one value to it.
+func (f fakeSource) Plan(_ context.Context, cs source.Changeset) (*source.WritePlan, error) {
+	plan := &source.WritePlan{Target: cs.Target, Atomic: true, Guarded: f.guard.RequiresConfirmation(source.AccessWrite)}
+	for i, c := range cs.Changes {
+		plan.Statements = append(plan.Statements, source.Statement{
+			SQL: fmt.Sprintf("%d %v %v", c.Kind, c.Key, c.Values), Args: []any{"x"}, Confirmed: cs.Confirmed})
+		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("change %d", i+1))
+	}
+	return plan, nil
+}
+
+// Apply records a plan the guard allows, failing where failWrite says.
+func (f fakeSource) Apply(_ context.Context, plan *source.WritePlan) (*source.WriteOutcome, error) {
+	for _, st := range plan.Statements {
+		if err := f.guard.Allow(source.AccessWrite, st.Confirmed); err != nil {
+			return nil, err
+		}
+	}
+	fakeWrites.Lock()
+	fakeWrites.plans = append(fakeWrites.plans, plan)
+	fakeWrites.Unlock()
+	if at := int(failWrite.Load()) - 1; at >= 0 && at < len(plan.Statements) {
+		return &source.WriteOutcome{Applied: at, FailedAt: at, RolledBack: true, Err: errors.New("fakesql: duplicate key")}, nil
+	}
+	return &source.WriteOutcome{Applied: len(plan.Statements), Affected: int64(len(plan.Statements)), FailedAt: -1}, nil
+}
+
 // browses records every Browse, for tests that check what was asked for.
 var browses struct {
 	sync.Mutex

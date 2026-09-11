@@ -170,6 +170,32 @@ func TestADuplicateHasTheRowsValuesButNotItsKey(t *testing.T) {
 	}
 }
 
+func TestEachChangeSaysWhichRowItIsTo(t *testing.T) {
+	p := newPending(t)
+	ann, bob := model.Row{int64(1), "ann", 3.5}, model.Row{int64(2), "bob", 1.0}
+	p.Delete(bob)
+	if err := p.Set(ann, 1, "anne"); err != nil {
+		t.Fatal(err)
+	}
+	p.Add()
+	key, added, ok := p.Change(1)
+	if !ok || added != -1 || !p.IsRow(ann, key) || p.IsRow(bob, key) {
+		t.Errorf("change 2 is to ann: %v %d %v", key, added, ok)
+	}
+	if key, _, _ := p.Change(0); !p.IsRow(bob, key) || p.IsRow(model.Row{"2", "bob"}, key) {
+		t.Error("change 1 is to bob, known by his key's type too")
+	}
+	if _, added, ok := p.Change(2); !ok || added != 0 {
+		t.Errorf("change 3 is to the first new row: %d %v", added, ok)
+	}
+	if _, _, ok := p.Change(3); ok {
+		t.Error("there is no change 4")
+	}
+	if _, _, ok := p.Change(-1); ok {
+		t.Error("nor a change before the first")
+	}
+}
+
 func TestACellIsNoChangeWhenItsValueIsTheSame(t *testing.T) {
 	at := time.Date(2026, 9, 11, 14, 2, 0, 0, time.UTC)
 	for _, c := range []struct {

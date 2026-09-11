@@ -117,6 +117,28 @@ func (b *BrowseSource) Columns() []model.ColumnDef { return b.cols }
 // Identity reports whether browsed rows can be addressed for editing.
 func (b *BrowseSource) Identity() model.RowIdentity { return b.identity }
 
+// Plan renders a changeset as the statements that would write it, running
+// nothing (FR-4.4, ADR-0031).
+func (b *BrowseSource) Plan(ctx context.Context, cs source.Changeset) (_ *source.WritePlan, err error) {
+	defer panics.Recover(&err, "planning the changes")
+	w, ok := b.src.(source.Writer)
+	if !ok {
+		return nil, errors.New("app: this source does not write rows")
+	}
+	return w.Plan(ctx, cs)
+}
+
+// Apply writes a plan: in one transaction where the source has them
+// (FR-4.5, ADR-0031).
+func (b *BrowseSource) Apply(ctx context.Context, plan *source.WritePlan) (_ *source.WriteOutcome, err error) {
+	defer panics.Recover(&err, "writing the changes")
+	w, ok := b.src.(source.Writer)
+	if !ok {
+		return nil, errors.New("app: this source does not write rows")
+	}
+	return w.Apply(ctx, plan)
+}
+
 // Ref is the object being browsed.
 func (b *BrowseSource) Ref() model.ObjectRef { return b.ref }
 

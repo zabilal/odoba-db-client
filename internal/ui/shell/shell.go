@@ -149,6 +149,10 @@ type tab struct {
 	// pending are the table's edits not yet written (FR-4.3). It is nil
 	// where the rows cannot be told apart, which are never edited (FR-4.7).
 	pending *app.Pending
+	// review is Review Changes…, beside the footer while changes are
+	// pending; committing is set while they are being written (commit.go).
+	review     *widget.Button
+	committing bool
 	// browseSeq numbers re-browses (a sort or a filter), so only the latest
 	// is applied. want is what the latest asked for, so a sort made while a
 	// filter is on its way keeps it. applied and filtered are the sort and
@@ -386,6 +390,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canChangeRows, Run: s.duplicateRows},
 		{ID: cmdDeleteRows, Category: "Edit", Title: "Delete Rows", Keywords: []string{"remove", "row", "record"},
 			Enabled: s.canChangeRows, Run: s.deleteRows},
+		{ID: cmdReviewChanges, Category: "Edit", Title: "Review Changes…", Keywords: []string{"commit", "save", "write", "apply", "preview", "sql"},
+			Enabled: s.canReview, Run: s.reviewActive},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
@@ -579,7 +585,14 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 		body: container.NewStack(quiet("Opening…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
 	t.top = container.NewVBox()
-	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, t.footer, nil, nil, t.body))
+	t.review = widget.NewButton("Review Changes…", func() {
+		if t.pending != nil && t.pending.Len() > 0 && !t.committing {
+			s.review(t)
+		}
+	})
+	t.review.Hide()
+	foot := container.NewBorder(nil, nil, nil, t.review, t.footer)
+	t.item = container.NewTabItem(n.Label, container.NewBorder(t.top, foot, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -628,8 +641,10 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	}
 	t.model, t.grid, t.browse = m, g, bs
 	// A table whose rows can be told apart shows the edits made to it. They
-	// are kept by each row's key, so they stay through a sort or a filter.
-	if p, err := app.NewPending(bs.Columns(), bs.Identity()); err == nil {
+	// are kept by each row's key, so they stay through a sort or a filter. A
+	// read-only connection edits nothing (FR-1.8).
+	_, readOnly := s.envOf(t)
+	if p, err := app.NewPending(bs.Columns(), bs.Identity()); err == nil && !readOnly {
 		t.pending = p
 		g.SetChanges(p)
 		g.OnEdit = func(row model.Row, col int, v any) error {
@@ -712,6 +727,14 @@ func (s *Shell) showCount(t *tab) {
 	if p := t.pending; p != nil && p.Len() > 0 {
 		text += " · " + pendingText(p.Len())
 	}
+	if t.review != nil {
+		setShown(t.review, t.pending != nil && t.pending.Len() > 0)
+		if t.committing {
+			t.review.Disable()
+		} else {
+			t.review.Enable()
+		}
+	}
 	if t.said != "" {
 		text += " — " + t.said
 	}
@@ -748,10 +771,13 @@ func (s *Shell) tabFailed(t *tab, err error) {
 }
 
 func (s *Shell) reloadTab() {
-	t := s.activeTab()
-	if t == nil || t.model == nil {
-		return
+	if t := s.activeTab(); t != nil && t.model != nil {
+		s.reload(t)
 	}
+}
+
+// reload reads a tab's rows again.
+func (s *Shell) reload(t *tab) {
 	t.model.Invalidate()
 	t.grid.ScheduleRefresh()
 	s.count(t)
