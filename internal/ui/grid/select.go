@@ -86,15 +86,27 @@ func (t *gridTable) FocusLost() {
 }
 
 // TypedKey lets the arrow keys move the selection, as in a spreadsheet; with
-// ⇧ held they stretch it. Space asks for the cell viewer.
+// ⇧ held they stretch it. Space asks for the cell viewer, and Return edits
+// the active cell.
 func (t *gridTable) TypedKey(e *fyne.KeyEvent) {
 	if e.Name == fyne.KeySpace && t.g.OnSpace != nil {
 		t.g.OnSpace()
 		return
 	}
+	if (e.Name == fyne.KeyReturn || e.Name == fyne.KeyEnter) && t.g.EditCell("") {
+		return
+	}
 	t.stepping = true
 	t.Table.TypedKey(e)
 	t.stepping = false
+}
+
+// TypedRune edits the active cell, starting with what was typed, as a
+// spreadsheet does. A space is left to TypedKey, for the cell viewer.
+func (t *gridTable) TypedRune(r rune) {
+	if r != ' ' {
+		t.g.EditCell(string(r))
+	}
 }
 
 func (t *gridTable) highlighted(id widget.TableCellID) {

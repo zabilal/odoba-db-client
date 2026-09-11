@@ -374,6 +374,10 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.onGrid((*grid.TableGrid).SelectColumn) }},
 		{ID: cmdSelectAllCells, Category: "Edit", Title: "Select All Cells", Keywords: []string{"everything"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: func() { s.onGrid((*grid.TableGrid).SelectAll) }},
+		{ID: cmdEditCell, Category: "Edit", Title: "Edit Cell", Keywords: []string{"change", "value", "type", "update"},
+			Enabled: s.canEditCell, Run: func() { s.onGrid(func(g *grid.TableGrid) { g.EditCell("") }) }},
+		{ID: cmdSetNull, Category: "Edit", Title: "Set to NULL", Keywords: []string{"clear", "empty", "null", "value"},
+			Enabled: s.canSetNull, Run: s.setNull},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
@@ -620,6 +624,13 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	if p, err := app.NewPending(bs.Columns(), bs.Identity()); err == nil {
 		t.pending = p
 		g.SetChanges(p)
+		g.OnEdit = func(row model.Row, col int, v any) error {
+			if err := p.Set(row, col, v); err != nil {
+				return err
+			}
+			s.showCount(t)
+			return nil
+		}
 	}
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
@@ -679,6 +690,9 @@ func (s *Shell) showCount(t *tab) {
 	}
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
+	}
+	if p := t.pending; p != nil && p.Len() > 0 {
+		text += " · " + pendingText(p.Len())
 	}
 	if t.said != "" {
 		text += " — " + t.said

@@ -56,6 +56,8 @@ const (
 	cmdSelectRow      = "grid.selectRow"
 	cmdSelectColumn   = "grid.selectColumn"
 	cmdSelectAllCells = "grid.selectAll"
+	cmdEditCell       = "grid.editCell"
+	cmdSetNull        = "grid.setNull"
 	cmdCopyCSV        = "grid.copyCSV"
 	cmdCopyJSON       = "grid.copyJSON"
 	cmdCopyMarkdown   = "grid.copyMarkdown"
@@ -113,7 +115,8 @@ var menuBar = []struct {
 	}},
 	{"Edit", []menuEntry{
 		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev), separator,
-		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells),
+		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
+		item(cmdEditCell), item(cmdSetNull),
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,

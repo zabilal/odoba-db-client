@@ -36,6 +36,26 @@ type cellWidget struct {
 	// hint is said when the pointer rests on the cell, through onHint.
 	hint   string
 	onHint func(text string, at fyne.Position)
+
+	// editor, when set, is drawn in place of the text (edit.go).
+	editor fyne.CanvasObject
+}
+
+// setEditor shows an editor in place of the cell's text, or the text again
+// when o is nil.
+func (c *cellWidget) setEditor(o fyne.CanvasObject) {
+	if c.editor == o {
+		return
+	}
+	c.editor = o
+	if c.label == nil {
+		return // not yet rendered; CreateRenderer will pick it up
+	}
+	if o != nil {
+		o.Move(fyne.NewPos(0, 0))
+		o.Resize(c.Size())
+	}
+	c.Refresh()
 }
 
 // MouseIn asks for the cell's hint to be shown, and MouseOut for it to go.
@@ -109,6 +129,10 @@ func (r *cellRenderer) Layout(size fyne.Size) {
 	textH := r.cell.label.MinSize().Height
 	r.cell.label.Resize(fyne.NewSize(size.Width-2*pad, textH))
 	r.cell.label.Move(fyne.NewPos(pad, (size.Height-textH)/2))
+	if e := r.cell.editor; e != nil {
+		e.Move(fyne.NewPos(0, 0))
+		e.Resize(size)
+	}
 }
 
 func (r *cellRenderer) MinSize() fyne.Size {
@@ -120,6 +144,13 @@ func (r *cellRenderer) Refresh() {
 	r.cell.label.Refresh()
 }
 
-func (r *cellRenderer) Objects() []fyne.CanvasObject { return r.objects }
+// Objects is the background and the text, or the editor in the text's
+// place while the cell is edited.
+func (r *cellRenderer) Objects() []fyne.CanvasObject {
+	if e := r.cell.editor; e != nil {
+		return []fyne.CanvasObject{r.cell.rect, e}
+	}
+	return r.objects
+}
 
 func (r *cellRenderer) Destroy() {}

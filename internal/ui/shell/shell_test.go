@@ -218,7 +218,7 @@ func (s *sliceStream) Identity() model.RowIdentity {
 }
 
 func (*sliceStream) Columns() []model.ColumnDef {
-	return []model.ColumnDef{{Name: "id", Type: model.DataType{Class: model.TypeInteger}}, {Name: "name"}}
+	return []model.ColumnDef{{Name: "id", Type: model.DataType{Class: model.TypeInteger}}, {Name: "name", Type: model.DataType{Nullable: true}}}
 }
 func (s *sliceStream) Next(context.Context) (model.Row, error) {
 	if s.next >= s.end {

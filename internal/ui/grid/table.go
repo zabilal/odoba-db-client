@@ -39,6 +39,13 @@ type TableGrid struct {
 	// in the gutter; nil on a grid that shows none. See changes.go.
 	changes Changes
 
+	// OnEdit is asked to change a cell of a row read to a value typed or
+	// picked in the cell's editor (FR-4.1); col is the model's. An error
+	// refuses it, and is said under the cell. Nil on a grid that edits
+	// nothing. editing is the editor open, if any. See edit.go.
+	OnEdit  func(row model.Row, col int, v any) error
+	editing *edit
+
 	// sel is the selected cells (FR-3.7); table is the Table that hears the
 	// clicks and keys that change it.
 	sel   Selection
@@ -291,6 +298,7 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 	if !ok {
 		return
 	}
+	g.host(id, cell)
 
 	cols := g.model.Columns()
 	mc := g.ColumnAt(id.Col)
