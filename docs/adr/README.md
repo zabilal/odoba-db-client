@@ -57,3 +57,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0050](0050-loading-rows-in-bulk.md) | Loading rows in bulk | Accepted |
 | [0051](0051-adding-or-replacing-a-tables-rows.md) | Adding or replacing a table's rows | Accepted |
 | [0052](0052-updating-rows-by-key.md) | Updating rows by key | Accepted |
+| [0053](0053-leaving-refused-rows-out.md) | Leaving refused rows out | Accepted |

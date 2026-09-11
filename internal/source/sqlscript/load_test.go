@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -45,8 +46,9 @@ func people(n int) *rowsOf {
 // txLog records what a load does with its transactions, and fails as told.
 type txLog struct {
 	events    []string
-	fail      string // an Exec whose statement reads so fails
-	affected  int64  // rows each Exec says it changed; 0 is 1
+	fail      string   // an Exec whose statement reads so fails
+	fails     []string // and those that read so
+	affected  int64    // rows each Exec says it changed; 0 is 1
 	beginErr  error
 	failBegin int // the begin, from 1, that fails with beginErr; 0 is the first
 	begins    int
@@ -64,7 +66,7 @@ func (l *txLog) begin() (Tx, error) {
 		Exec: func(st source.Statement) (int64, error) {
 			said := fmt.Sprintf("%s %v", st.SQL, st.Args)
 			l.events = append(l.events, said)
-			if l.fail != "" && said == l.fail {
+			if l.fail != "" && said == l.fail || slices.Contains(l.fails, said) {
 				return 0, errDuplicate
 			}
 			return max(l.affected, 1), nil
@@ -159,7 +161,7 @@ func TestALoadIsGuardedAndSaysWhatStoppedIt(t *testing.T) {
 	if n, err := l.load(t, people(1), source.LoadOptions{Confirmed: true}, source.Guard{Environment: source.EnvProduction}); err != nil || n != 1 {
 		t.Errorf("production with consent: %v", err)
 	}
-	if _, err := l.load(t, people(1), source.LoadOptions{OnError: "skip"}, source.Guard{}); err == nil {
+	if _, err := l.load(t, people(1), source.LoadOptions{OnError: "retry"}, source.Guard{}); err == nil {
 		t.Error("an error policy not taken is refused")
 	}
 	if _, err := LoadWith(context.Background(), pgLike{}, source.Guard{}, peopleRef, nil, people(1), source.LoadOptions{}, l.begin); err == nil {
@@ -216,6 +218,61 @@ func TestAnUpsertUpdatesTheRowWhoseKeyIsTaken(t *testing.T) {
 		l := &txLog{}
 		if _, err := LoadWith(context.Background(), c.d, source.Guard{}, peopleRef, []string{"id", "name"}, people(1), c.opt, l.begin); err == nil || len(l.events) != 0 {
 			t.Errorf("%s: %v %v", name, err, l.events)
+		}
+	}
+}
+
+const (
+	savepoint = "SAVEPOINT ikigai_row []"
+	undoRow   = "ROLLBACK TO SAVEPOINT ikigai_row []"
+	release   = "RELEASE SAVEPOINT ikigai_row []"
+)
+
+func TestARowRefusedIsLeftOutWhenTold(t *testing.T) {
+	l := &txLog{fail: insertPerson + " [2 p2]"}
+	var told []string
+	skipped := func(e *source.LoadError) { told = append(told, e.Error()) }
+	n, err := l.load(t, people(4), source.LoadOptions{BatchSize: 2, OnError: "skip", Skipped: skipped}, source.Guard{})
+	want := []string{"begin",
+		savepoint, insertPerson + " [1 p1]", release,
+		savepoint, insertPerson + " [2 p2]", undoRow, release,
+		savepoint, insertPerson + " [3 p3]", release, "commit",
+		"begin", savepoint, insertPerson + " [4 p4]", release, "commit"}
+	if err != nil || n != 3 || strings.Join(l.events, "\n") != strings.Join(want, "\n") {
+		t.Errorf("%v %d:\n%s", err, n, strings.Join(l.events, "\n"))
+	}
+	if !reflect.DeepEqual(told, []string{"row 2: duplicate key"}) {
+		t.Errorf("told of the row left out: %v", told)
+	}
+	l = &txLog{fails: []string{insertPerson + " [2 p2]", insertPerson + " [3 p3]"}}
+	if n, err := l.load(t, people(3), source.LoadOptions{OnError: "skip"}, source.Guard{}); err != nil || n != 1 {
+		t.Errorf("skipping leaves out any number, told or not: %v %d", err, n)
+	}
+}
+
+func TestCollectingStopsAfterTheMostLeftOut(t *testing.T) {
+	l := &txLog{fails: []string{insertPerson + " [2 p2]", insertPerson + " [3 p3]"}}
+	told := 0
+	n, err := l.load(t, people(4), source.LoadOptions{BatchSize: 5, OnError: "collect", MaxErrors: 1, Skipped: func(*source.LoadError) { told++ }}, source.Guard{})
+	var le *source.LoadError
+	if !errors.As(err, &le) || le.Row != 3 || n != 0 || told != 1 || l.events[len(l.events)-1] != "rollback" {
+		t.Errorf("one row left out, and the next refused stops it: %v %d %d %v", err, n, told, l.events)
+	}
+	if _, err := l.load(t, people(1), source.LoadOptions{OnError: "collect"}, source.Guard{}); err == nil {
+		t.Error("collecting with no most is refused")
+	}
+	l = &txLog{fail: insertPerson + " [1 p1]"}
+	if n, err := l.load(t, people(2), source.LoadOptions{MaxErrors: 5}, source.Guard{}); !errors.As(err, &le) || le.Row != 1 || n != 0 || slices.Contains(l.events, savepoint) {
+		t.Errorf("a most given to a load that aborts leaves nothing out: %v %d %v", err, n, l.events)
+	}
+}
+
+func TestASavepointThatFailsStopsTheLoad(t *testing.T) {
+	for _, bad := range []string{savepoint, undoRow, release} {
+		l := &txLog{fails: []string{bad, insertPerson + " [1 p1]"}}
+		var le *source.LoadError
+		if n, err := l.load(t, people(2), source.LoadOptions{OnError: "skip"}, source.Guard{}); err == nil || errors.As(err, &le) || n != 0 || l.events[len(l.events)-1] != "rollback" {
+			t.Errorf("%s: %v %d %v", bad, err, n, l.events)
 		}
 	}
 }
