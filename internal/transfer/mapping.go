@@ -2,9 +2,11 @@ package transfer
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -72,7 +74,9 @@ var errNeedsValue = errors.New("needs a value")
 // is (value.Parse); a value the file gave a type is written as text and read
 // the same way, save a date and time, which goes as it is into a column of
 // dates or times. NULL stays NULL, and is an error in a column that cannot
-// hold it. It says, of each value it could not make, its column and why.
+// hold it; text longer than its column's length, where the source knows it,
+// is an error too, save for spaces at its end, which a database drops. It
+// says, of each value it could not make, its column and why.
 func Coerce(row model.Row, from []model.ColumnDef, pairs []Pair, to map[string]model.ColumnDef) ([]any, []CellError) {
 	out := make([]any, len(pairs))
 	var errs []CellError
@@ -105,6 +109,9 @@ func Coerce(row model.Row, from []model.ColumnDef, pairs []Pair, to map[string]m
 			text = export.Text(v, fc)
 		}
 		got, err := value.Parse(text, col, time.Local)
+		if err == nil {
+			err = tooLong(got, col.Type)
+		}
 		if err != nil {
 			errs = append(errs, CellError{Column: p.To, Value: text, Err: err})
 			continue
@@ -112,4 +119,36 @@ func Coerce(row model.Row, from []model.ColumnDef, pairs []Pair, to map[string]m
 		out[i] = got
 	}
 	return out, errs
+}
+
+// tooLong refuses text longer than its column's length, as PostgreSQL and a
+// strict MySQL do: spaces past the length are dropped, not refused. Only a
+// column of text has a length.
+func tooLong(v any, t model.DataType) error {
+	s, ok := v.(string)
+	if !ok || t.Length <= 0 {
+		return nil
+	}
+	if n := int64(utf8.RuneCountInString(strings.TrimRight(s, " "))); n > t.Length {
+		return fmt.Errorf("longer than %d characters", t.Length)
+	}
+	return nil
+}
+
+// Unfilled is those of a table's columns that need a value and are given
+// none: no pair fills it, and it cannot be NULL, has no default, and is not
+// filled by the database as an identity, auto-increment or generated column
+// is. Every row written without them would be refused.
+func Unfilled(cols []model.Column, pairs []Pair) []string {
+	filled := map[string]bool{}
+	for _, p := range pairs {
+		filled[p.To] = true
+	}
+	var out []string
+	for _, c := range cols {
+		if !filled[c.Name] && !c.Type.Nullable && !c.HasDefault && !c.Identity && !c.AutoIncrement && c.Generated == "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
 }
