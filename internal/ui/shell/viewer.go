@@ -21,6 +21,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
+	"github.com/ikigai-db/ikigai-db/internal/value"
 )
 
 // cellViewer shows the active cell's whole value beside the grid (FR-3.9).
@@ -238,7 +239,7 @@ func (v *cellViewer) beginEdit() {
 		return
 	}
 	v.seq++ // a read still on its way must not move the viewer off this cell
-	text := grid.EditText(v.value, v.col, time.Local)
+	text := value.EditText(v.value, v.col, time.Local)
 	if v.col.Type.Class == model.TypeJSON {
 		var b bytes.Buffer
 		if json.Indent(&b, []byte(text), "", "  ") == nil {
@@ -299,7 +300,7 @@ func (v *cellViewer) finishEdit() {
 		return
 	}
 	if text := v.editor.Text; text != v.start {
-		val, err := grid.Parse(text, v.col, time.Local)
+		val, err := value.Parse(text, v.col, time.Local)
 		if j, ok := val.(model.JSON); ok && err == nil {
 			var b bytes.Buffer
 			if json.Compact(&b, j) == nil {

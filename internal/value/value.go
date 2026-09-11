@@ -1,4 +1,8 @@
-package grid
+// Package value reads and writes a value as text, as its column's type: as a
+// cell's editor starts with it and reads what is typed back (FR-4.1), and as
+// an import makes a file's text a table column's (FR-10.5). It holds no UI
+// (ARCH-1).
+package value
 
 import (
 	"encoding/json"
@@ -13,9 +17,8 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
-// A cell's editor (FR-4.1) starts from EditText, the value whole and in the
-// form Parse reads, and what is typed is read back by Parse as the column's
-// type.
+// An editor starts from EditText, the value whole and in the form Parse
+// reads, and what is typed is read back by Parse as the column's type.
 
 const (
 	dateLayout = "2006-01-02"

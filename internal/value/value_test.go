@@ -1,4 +1,4 @@
-package grid
+package value
 
 import (
 	"reflect"
@@ -137,11 +137,5 @@ func TestOnlyValuesThatCanBeTypedAreEditedInPlace(t *testing.T) {
 		if Editable(typed(class)) != want {
 			t.Errorf("%v edited in place: %v", class, !want)
 		}
-	}
-	if got := choices(nullable(typed(model.TypeBool))); !reflect.DeepEqual(got, []any{true, false, nil}) {
-		t.Errorf("a nullable bool is picked from true, false and NULL: %v", got)
-	}
-	if choices(typed(model.TypeEnum)) != nil || choices(nullable(typed(model.TypeString))) != nil {
-		t.Error("an enum whose labels are not known, and text, are typed")
 	}
 }

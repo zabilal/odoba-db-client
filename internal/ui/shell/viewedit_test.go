@@ -14,6 +14,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
+	"github.com/ikigai-db/ikigai-db/internal/value"
 )
 
 // viewerOn opens the items tab's cell viewer on a cell.
@@ -135,7 +136,7 @@ func TestADaysIsPickedOnACalendar(t *testing.T) {
 		t.Fatalf("the day picked, with the time of day kept: %q from %q", v.editor.Text, start)
 	}
 	v.finishEdit()
-	w, _ := grid.Parse(v.start[:0]+"2021-03-04"+start[10:], m.Columns()[11], time.Local)
+	w, _ := value.Parse(v.start[:0]+"2021-03-04"+start[10:], m.Columns()[11], time.Local)
 	if at, ok := got.(time.Time); !ok || !at.Equal(w.(time.Time)) {
 		t.Errorf("written: %v, want %v", got, w)
 	}

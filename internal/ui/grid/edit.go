@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/value"
 )
 
 // Editing a cell in place (FR-4.1, ADR-0029). Return on the focused grid, or
@@ -47,7 +48,7 @@ func (g *TableGrid) editable() (model.Row, int, bool) {
 	}
 	cols := g.model.Columns()
 	mc := g.ColumnAt(a.Col)
-	if mc < 0 || mc >= len(cols) || !Editable(cols[mc]) {
+	if mc < 0 || mc >= len(cols) || !value.Editable(cols[mc]) {
 		return nil, -1, false
 	}
 	row, _, state := g.rowAt(a.Row)
@@ -76,7 +77,7 @@ func (g *TableGrid) EditCell(first string) bool {
 	a, _ := g.sel.Active()
 	col := g.model.Columns()[mc]
 	v := g.CellValue(a.Row, row, mc)
-	e := &edit{at: widget.TableCellID{Row: a.Row, Col: a.Col}, row: row, col: mc, start: EditText(v, col, g.loc)}
+	e := &edit{at: widget.TableCellID{Row: a.Row, Col: a.Col}, row: row, col: mc, start: value.EditText(v, col, g.loc)}
 	g.editing = e
 	// An editor is drawn only in a cell on screen, and only one drawn can
 	// take the keyboard: Edit Cell may come from the menu with the cell
@@ -178,7 +179,7 @@ func (g *TableGrid) write(e *edit, text string) bool {
 		return true
 	}
 	col := g.model.Columns()[e.col]
-	v, err := Parse(text, col, g.loc)
+	v, err := value.Parse(text, col, g.loc)
 	if err == nil {
 		err = g.SetValue(e.at.Row, e.row, e.col, v)
 	}
