@@ -46,7 +46,7 @@ func TestTheViewerEditsAValueAtLength(t *testing.T) {
 	v.editor.SetText("two\nlines")
 	v.finishEdit()
 	row, _ := tb.model.Row(tb.ctx, 1)
-	if got, ok := tb.pending.Value(row, 1); !ok || got != "two\nlines" || v.editing {
+	if got, ok := tb.ed.pending.Value(row, 1); !ok || got != "two\nlines" || v.editing {
 		t.Fatalf("Done keeps it as a pending change: %v %v, editing %v", got, ok, v.editing)
 	}
 	if v.editBox.Visible() || !v.textBox.Visible() {
@@ -67,16 +67,16 @@ func TestTheViewerSaysWhyAValueIsNotWritten(t *testing.T) {
 	v.beginEdit()
 	v.editor.SetText("x")
 	v.finishEdit()
-	if !v.editing || v.meta.Text != "Not written: id: not a whole number" || tb.pending.Len() != 0 {
+	if !v.editing || v.meta.Text != "Not written: id: not a whole number" || tb.ed.pending.Len() != 0 {
 		t.Fatalf("editing %v, saying %q", v.editing, v.meta.Text)
 	}
 	v.editor.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
-	if v.editing || v.title.Text != "id" || tb.pending.Len() != 0 {
+	if v.editing || v.title.Text != "id" || tb.ed.pending.Len() != 0 {
 		t.Errorf("Escape gives it up: editing %v, %q", v.editing, v.title.Text)
 	}
 	v.beginEdit()
 	v.cancelEdit()
-	if v.editing || tb.pending.Len() != 0 {
+	if v.editing || tb.ed.pending.Len() != 0 {
 		t.Error("Cancel gives it up")
 	}
 }

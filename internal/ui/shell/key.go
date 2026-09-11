@@ -20,29 +20,23 @@ import (
 // noKeyText is what a table with no key says in its footer.
 const noKeyText = "These rows have no key to tell them apart, so they are not edited: Choose a Key… names one."
 
-// startEditing lets a table tab edit its rows, told apart by id. The edits
-// are kept by each row's key, so they stay through a sort or a filter. A
-// read-only connection edits nothing (FR-1.8). Rows that cannot be told
-// apart are not edited; a table's footer says so.
-func (s *Shell) startEditing(t *tab, id model.RowIdentity) {
-	if _, readOnly := s.envOf(t); readOnly {
-		return
-	}
-	p, err := app.NewPending(t.browse.Columns(), id)
+// edit lets a grid's rows, whose columns are cols, be edited, told apart by
+// id. The edits are kept by each row's key, so they stay through a sort or
+// a filter. Rows that cannot be told apart are refused
+// (app.ErrNoRowIdentity), and nothing changes.
+func (s *Shell) edit(e *edits, cols []model.ColumnDef, id model.RowIdentity) error {
+	p, err := app.NewPending(cols, id)
 	if err != nil {
-		if t.ref.Kind == model.KindTable {
-			t.said = noKeyText
-		}
-		return
+		return err
 	}
-	g, m := t.grid, t.model
-	t.pending = p
+	g, m := e.grid, e.model
+	e.pending = p
 	g.SetChanges(p)
 	g.OnEdit = func(row model.Row, col int, v any) error {
 		if err := p.Set(row, col, v); err != nil {
 			return err
 		}
-		s.showCount(t)
+		e.show()
 		return nil
 	}
 	g.OnEditAdded = func(i, col int, v any) error {
@@ -50,8 +44,21 @@ func (s *Shell) startEditing(t *tab, id model.RowIdentity) {
 			return err
 		}
 		m.SetAdded(p.Added())
-		s.showCount(t)
+		e.show()
 		return nil
+	}
+	return nil
+}
+
+// startEditing lets a table tab edit its rows, told apart by id. A
+// read-only connection edits nothing (FR-1.8). A table whose rows cannot be
+// told apart says so in its footer.
+func (s *Shell) startEditing(t *tab, id model.RowIdentity) {
+	if _, readOnly := s.envOf(t); readOnly {
+		return
+	}
+	if err := s.edit(t.ed, t.browse.Columns(), id); err != nil && t.ref.Kind == model.KindTable {
+		t.said = noKeyText
 	}
 }
 
@@ -59,7 +66,7 @@ func (s *Shell) startEditing(t *tab, id model.RowIdentity) {
 // key to be edited by, on a connection that edits.
 func (s *Shell) canChooseKey() bool {
 	t := s.activeTab()
-	if t == nil || t.browse == nil || t.pending != nil || t.ref.Kind != model.KindTable {
+	if t == nil || t.ed == nil || t.browse == nil || t.ed.pending != nil || t.ref.Kind != model.KindTable {
 		return false
 	}
 	_, readOnly := s.envOf(t)
@@ -104,7 +111,7 @@ func (s *Shell) useKey(t *tab, chosen []string) {
 		return
 	}
 	s.startEditing(t, model.RowIdentity{Kind: model.IdentityChosen, Columns: key, Target: t.ref})
-	if t.pending != nil {
+	if t.ed.pending != nil {
 		t.said = "Edited by " + strings.Join(key, ", ") + ", the key chosen"
 	}
 	s.showCount(t)
