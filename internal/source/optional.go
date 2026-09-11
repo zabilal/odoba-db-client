@@ -38,6 +38,11 @@ type LoadOptions struct {
 	// Truncate empties the target first. Always a guarded operation.
 	Truncate bool
 
+	// Keys, when given, are the columns of a key: a row whose key is taken
+	// already updates the row there instead of being refused. It cannot go
+	// with Truncate.
+	Keys []string
+
 	Confirmed bool
 }
 

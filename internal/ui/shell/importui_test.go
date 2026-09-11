@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -417,7 +418,7 @@ func TestAnImportWritesTheRowsAndRereadsTheTable(t *testing.T) {
 		t.Error("an import says when it has stopped writing, as quitting waits for it")
 	}
 	loads := loadsSoFar()[before:]
-	if len(loads) != 1 || strings.Join(loads[0].columns, ",") != "id,name" || fmt.Sprint(loads[0].rows) != "[[1 first] [2 <nil>]]" || loads[0].opt != (source.LoadOptions{}) {
+	if len(loads) != 1 || strings.Join(loads[0].columns, ",") != "id,name" || fmt.Sprint(loads[0].rows) != "[[1 first] [2 <nil>]]" || !reflect.DeepEqual(loads[0].opt, source.LoadOptions{}) {
 		t.Errorf("the rows loaded as the table's values, added to its rows: %+v", loads)
 	}
 	pump(t, fx.q, func() bool { return browsesSoFar() > reads })
@@ -526,7 +527,7 @@ func TestWhatAnImportLeftWrittenIsWorded(t *testing.T) {
 		{transfer.Loaded{Written: 2}, nil, true, true, taskDone, "Replaced the rows of items with 2 rows."},
 		{transfer.Loaded{}, context.Canceled, true, true, taskCancelled, "Cancelled. The table is as it was."},
 	} {
-		if state, say := importEnd(c.l, c.err, c.stopped, "items", c.replace); state != c.state || say != c.want {
+		if state, say := importEnd(c.l, c.err, c.stopped, "items", transfer.LoadOptions{Replace: c.replace}); state != c.state || say != c.want {
 			t.Errorf("%+v: %v %q", c, state, say)
 		}
 	}
@@ -570,5 +571,40 @@ func TestAFileWithNoRowsIsNotImported(t *testing.T) {
 	p.mode.SetSelected(modeReplace)
 	if p.startImport(); len(fx.s.tasks) != 0 || fx.s.win.Canvas().Overlays().Top() != nil || it.footer.Text != "The file has no rows." {
 		t.Errorf("nothing to import, and no table emptied: %q", it.footer.Text)
+	}
+}
+
+func TestRowsWithAKeyThereAlreadyAreUpdated(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name,id\nfirst,1\nsecond,2\n")
+	if !reflect.DeepEqual(p.mode.Options, []string{modeAdd, modeReplace, modeUpsert}) {
+		t.Fatalf("a table with a primary key can have its rows updated by it: %v", p.mode.Options)
+	}
+	before := len(loadsSoFar())
+	p.mode.SetSelected(modeUpsert)
+	test.Tap(p.load)
+	k := lastTaskEnds(t, fx)
+	if k.status != "Imported 2 rows into items: those whose id was there already were updated." || it.footer.Text != k.status {
+		t.Errorf("%q", k.status)
+	}
+	if loads := loadsSoFar(); len(loads) != before+1 || !reflect.DeepEqual(loads[before].opt.Keys, []string{"id"}) || loads[before].opt.Truncate {
+		t.Errorf("rows updated by the primary key, and none emptied: %+v", loads[before:])
+	}
+	pickFor(p, "id").SetSelected(notImported)
+	test.Tap(p.load)
+	if len(fx.s.tasks) != 1 || it.footer.Text != "id is the table's key: pick the file column that fills it, to update rows by it." {
+		t.Errorf("rows are updated by a key the file fills: %d tasks, %q", len(fx.s.tasks), it.footer.Text)
+	}
+	if _, say := importEnd(transfer.Loaded{Written: 1}, nil, false, "items", transfer.LoadOptions{Keys: []string{"a", "b"}}); say != "Imported 1 row into items: those whose a, b was there already were updated." {
+		t.Errorf("%q", say)
+	}
+}
+
+func TestATableWithNoKeyHasNoRowsUpdatedByOne(t *testing.T) {
+	fx, tb := itemsDescribed(t)
+	tb.table.PrimaryKey = nil
+	_, p := importing(t, fx, "name,id\nfirst,1\n")
+	if !reflect.DeepEqual(p.mode.Options, []string{modeAdd, modeReplace}) {
+		t.Errorf("%v", p.mode.Options)
 	}
 }

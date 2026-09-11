@@ -53,11 +53,12 @@ const maxProblems = 1000
 const dryRunIntro = "A dry run reads every row of the file as the import would write it, " +
 	"and lists each value that would not go in. Nothing is written."
 
-// An import's modes: the file's rows added to the table's, or put in their
-// place (ADR-0051).
+// An import's modes: the file's rows added to the table's, put in their
+// place (ADR-0051), or written over the rows with their keys (ADR-0052).
 const (
 	modeAdd     = "Add to the table's rows"
 	modeReplace = "Replace the table's rows"
+	modeUpsert  = "Update rows with the same key, add the rest"
 )
 
 // notImported is the choice of no file column for a table column.
@@ -213,7 +214,11 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.dry = widget.NewButton("Dry Run", p.dryRun)
 	p.load = widget.NewButton("Import", p.startImport)
 	p.load.Importance = widget.HighImportance
-	p.mode = widget.NewRadioGroup([]string{modeAdd, modeReplace}, nil)
+	modes := []string{modeAdd, modeReplace}
+	if pk := into.table.PrimaryKey; pk != nil && len(pk.Columns) > 0 {
+		modes = append(modes, modeUpsert) // by the primary key
+	}
+	p.mode = widget.NewRadioGroup(modes, nil)
 	p.mode.Horizontal = true
 	p.mode.Required = true
 	p.mode.SetSelected(modeAdd)
@@ -610,25 +615,36 @@ func (p *importPanel) showChecked(say string, problems []transfer.Problem) {
 }
 
 // startImport writes the file's rows into the table (FR-10.6, ADR-0049,
-// ADR-0051), added to its rows or in their place. Replacing them always asks
-// first; adding them asks on a production connection, as a commit does
-// (FR-4.9), the driver's own guard saying whether it must of a plan of no
-// rows. A file with no rows is not imported, so that replacing cannot
-// empty a table; the footer says so already.
+// ADR-0051, ADR-0052): added to its rows, in their place, or over the rows
+// with their primary keys, which the mapping must then fill. Replacing
+// always asks first; adding and updating ask on a production connection, as
+// a commit does (FR-4.9), the driver's own guard saying whether they must of
+// a plan of no rows. A file with no rows is not imported, so that replacing
+// cannot empty a table; the footer says so already.
 func (p *importPanel) startImport() {
 	pairs, _ := p.pairList()
 	if len(pairs) == 0 || len(p.rows) == 0 || p.running != nil || p.importing != nil || p.refused(pairs) {
 		return
 	}
 	s, into := p.s, p.into
-	replace := p.mode.Selected == modeReplace
+	opt := transfer.LoadOptions{Replace: p.mode.Selected == modeReplace}
+	if p.mode.Selected == modeUpsert {
+		opt.Keys = into.table.PrimaryKey.Columns
+		for _, k := range opt.Keys {
+			if from, ok := p.pairs[k]; !ok || from < 0 {
+				p.t.footer.SetText(k + " is the table's key: pick the file column that fills it, to update rows by it.")
+				return
+			}
+		}
+	}
+	replace := opt.Replace
 	probe, err := into.browse.Plan(p.t.ctx, source.Changeset{Target: into.ref})
 	if err != nil {
 		s.showError(err)
 		return
 	}
 	if !probe.Guarded && !replace {
-		p.runImport(pairs, false, false)
+		p.runImport(pairs, opt)
 		return
 	}
 	c, _ := s.d.Conns.Get(into.connID)
@@ -644,7 +660,8 @@ func (p *importPanel) startImport() {
 	}
 	d := dialog.NewConfirm(title, say, func(yes bool) {
 		if yes {
-			p.runImport(pairs, true, replace)
+			opt.Confirmed = true
+			p.runImport(pairs, opt)
 		}
 	}, s.win)
 	d.SetConfirmText(act)
@@ -657,16 +674,16 @@ func (p *importPanel) startImport() {
 // again from its start with the options and the mapping as they are. How
 // long is left is said where a dry run counted the rows (FR-10.7). The
 // table's tab reads its rows again once any are written.
-func (p *importPanel) runImport(pairs []transfer.Pair, confirmed, replace bool) {
+func (p *importPanel) runImport(pairs []transfer.Pair, opt transfer.LoadOptions) {
 	s, t, into := p.s, p.t, p.into
 	to := map[string]model.ColumnDef{}
 	for _, c := range p.to {
 		to[c.Name] = c
 	}
-	opt, total := p.opt, p.known
+	read, total := p.opt, p.known
 	ctx, cancel := context.WithCancel(t.ctx)
 	title := "Import " + filepath.Base(p.f.Name()) + " into " + into.item.Text
-	if replace {
+	if opt.Replace {
 		title = "Replace the rows of " + into.item.Text + " with " + filepath.Base(p.f.Name())
 	}
 	k := s.startTask(t, title, cancel)
@@ -686,9 +703,9 @@ func (p *importPanel) runImport(pairs []transfer.Pair, confirmed, replace bool) 
 	})
 	go func() {
 		var l transfer.Loaded
-		rs, err := transfer.Open(p.f, p.size, opt)
+		rs, err := transfer.Open(p.f, p.size, read)
 		if err == nil {
-			l, err = transfer.Load(ctx, rs, pairs, to, into.ref, into.browse, transfer.LoadOptions{Confirmed: confirmed, Replace: replace},
+			l, err = transfer.Load(ctx, rs, pairs, to, into.ref, into.browse, opt,
 				func(l transfer.Loaded) {
 					mu.Lock()
 					latest = l
@@ -706,7 +723,7 @@ func (p *importPanel) runImport(pairs []transfer.Pair, confirmed, replace bool) 
 			if l.Written > 0 && into.ctx.Err() == nil {
 				s.reload(into)
 			}
-			state, say := importEnd(l, err, stopped, into.item.Text, replace)
+			state, say := importEnd(l, err, stopped, into.item.Text, opt)
 			s.endTask(k, state, say)
 			t.footer.SetText(say)
 			if state == taskFailed {
@@ -718,9 +735,9 @@ func (p *importPanel) runImport(pairs []transfer.Pair, confirmed, replace bool) 
 
 // importEnd says how an import ended, and what it left written. One that
 // finished before a cancel reached it is said as done.
-func importEnd(l transfer.Loaded, err error, stopped bool, table string, replace bool) (taskState, string) {
+func importEnd(l transfer.Loaded, err error, stopped bool, table string, opt transfer.LoadOptions) (taskState, string) {
 	kept := wroteText(l.Written)
-	if replace {
+	if opt.Replace {
 		kept = " The table is as it was."
 	}
 	var le *transfer.LoadError
@@ -731,8 +748,11 @@ func importEnd(l transfer.Loaded, err error, stopped bool, table string, replace
 		return taskFailed, fmt.Sprintf("Stopped at row %s: %v.", group(le.Row), le.Err) + kept
 	case err != nil:
 		return taskFailed, "Not imported: " + err.Error() + "." + kept
-	case replace:
+	case opt.Replace:
 		return taskDone, fmt.Sprintf("Replaced the rows of %s with %s.", table, nounCount(int(l.Written), "row"))
+	case len(opt.Keys) > 0:
+		return taskDone, fmt.Sprintf("Imported %s into %s: those whose %s was there already were updated.",
+			nounCount(int(l.Written), "row"), table, strings.Join(opt.Keys, ", "))
 	}
 	return taskDone, fmt.Sprintf("Imported %s into %s.", nounCount(int(l.Written), "row"), table)
 }

@@ -12,10 +12,11 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
-// checkLoader imports rows into the Writable table (FR-10.6, ADR-0050): a
-// batch a transaction, a row the server refuses stopping it with the
-// batches before it kept, emptying the table first in one transaction
-// whole, and the guard asked first. It runs last, as it leaves rows behind.
+// checkLoader imports rows into the Writable table (FR-10.6, ADR-0050,
+// ADR-0052): a batch a transaction, a row the server refuses stopping it
+// with the batches before it kept, emptying the table first in one
+// transaction whole, a row whose key is taken updating the row there, and
+// the guard asked first. It runs last, as it leaves rows behind.
 func checkLoader(t *testing.T, target Target) {
 	if target.Writable.IsZero() {
 		t.Skip("no Writable target configured")
@@ -64,6 +65,15 @@ func checkLoader(t *testing.T, target Target) {
 	}
 	if got := tableRows(t, src, ref); got != want {
 		t.Errorf("a load emptying the table that fails, or whose rows stop coming, leaves the table as it was: %s", got)
+	}
+
+	// A row whose key is taken updates the row there (ADR-0052).
+	if n, err := load(l, source.LoadOptions{Keys: []string{"id"}}, row(10, "TEN"), row(13, "thirteen")); err != nil || n != 2 {
+		t.Errorf("an upsert: %v %d", err, n)
+	}
+	want = "[10 TEN <nil>] [11 eleven <nil>] [12 twelve <nil>] [13 thirteen <nil>] [20 a <nil>] [21 b <nil>]"
+	if got := tableRows(t, src, ref); got != want {
+		t.Errorf("after an upsert, the row with its key updated and the other added: %s", got)
 	}
 
 	if target.OpenGuarded == nil {
