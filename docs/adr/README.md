@@ -43,3 +43,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0036](0036-editing-a-querys-result.md) | Editing a query's result | Accepted |
 | [0037](0037-pasting-a-block.md) | Pasting a block of cells | Accepted |
 | [0038](0038-a-value-set-across-a-selection.md) | A value set across a selection | Accepted |
+| [0039](0039-the-form-view.md) | The form view | Accepted |

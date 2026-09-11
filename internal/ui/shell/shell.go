@@ -160,10 +160,11 @@ type tab struct {
 	picked    map[int]pick    // filters chosen from a column\'s picklist
 	top       *fyne.Container // above the grid: the WHERE bar, when shown
 	where     *whereBar
-	// holders are where each grid's view lives, and viewers their cell
-	// viewers, so both go when the tab does.
+	// holders are where each grid's view lives, viewers their cell viewers
+	// and forms their form views, so all go when the tab does.
 	holders map[*grid.TableGrid]*fyne.Container
 	viewers map[*grid.TableGrid]*cellViewer
+	forms   map[*grid.TableGrid]*formView
 	// said is what the last action said, such as where an export went. A
 	// table\'s footer keeps it beside the row count, as it keeps problem.
 	said string
@@ -344,6 +345,9 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canWhere, Run: s.toggleWhere},
 		{ID: cmdCellViewer, Category: "View", Title: "Cell Viewer", Keywords: []string{"value", "inspect", "json", "expand"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: s.toggleViewer},
+		{ID: cmdFormView, Category: "View", Title: "Form View", Keywords: []string{"record", "row", "vertical", "fields", "wide"},
+			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
+			Run:     s.toggleForm},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
 			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
 		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
@@ -663,7 +667,10 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	g.OnPaste = func() { s.paste(editsFor(t, g)) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
-	g.OnLayout = s.sessionChanged // a resize or move is kept within a second
+	g.OnLayout = func() { // a resize or move is kept within a second; a form shows the columns shown
+		s.sessionChanged()
+		t.viewerFollow(g)
+	}
 	t.hold(g, t.body)
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
