@@ -17,6 +17,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
 
@@ -25,6 +26,96 @@ type exportSrc struct {
 	name  string // a file name to suggest, without its extension
 	rows  func() model.RowStream
 	total int64 // -1 when unknown, as for a PostgreSQL table
+}
+
+// selectionSource is the grid's selection as rows to export (FR-10.2): the
+// rows it reaches, with only its columns. It streams a page at a time, so a
+// selection reaching the last of a large table costs no more memory than a
+// page: Copy sends a selection past its limit here. Nil with no selection.
+func (s *Shell) selectionSource(g *grid.TableGrid, name string) *exportSrc {
+	sel := g.Selection()
+	cols, _, picked := selectionColumns(g)
+	if len(picked) == 0 {
+		return nil // nothing selected
+	}
+	defs := make([]model.ColumnDef, len(picked))
+	for i, c := range picked {
+		defs[i] = cols[c]
+	}
+	first, last := sel.Rows()
+	end, total := int64(last)+1, int64(last-first+1)
+	if last == grid.End {
+		end, total = -1, -1
+	}
+	m := g.Model()
+	return &exportSrc{name: name + " selection", total: total, rows: func() model.RowStream {
+		return &selectionStream{m: m, cols: defs, picked: picked, next: int64(first), end: end}
+	}}
+}
+
+// describeSelection names a selection's size for the export form.
+func describeSelection(src *exportSrc, columns int) string {
+	cols := "1 column"
+	if columns != 1 {
+		cols = fmt.Sprintf("%d columns", columns)
+	}
+	switch src.total {
+	case -1:
+		return "The selection: " + cols + ", to the last row"
+	case 1:
+		return "The selection: 1 row, " + cols
+	}
+	return fmt.Sprintf("The selection: %d rows, %s", src.total, cols)
+}
+
+// selectionPage is how many rows a selection's export reads at a time. A
+// variable so that a test can make a small table span several reads.
+var selectionPage = int64(grid.PageSize)
+
+// selectionStream reads a selection's rows a page at a time through the
+// grid's model, keeping only the selected columns. end is one past the last
+// row, or -1 to read until the rows run out.
+type selectionStream struct {
+	m      *grid.Model
+	cols   []model.ColumnDef
+	picked []int
+	next   int64
+	end    int64
+	buf    []model.Row
+	done   bool
+}
+
+func (s *selectionStream) Columns() []model.ColumnDef { return s.cols }
+func (s *selectionStream) Close() error               { return nil }
+
+func (s *selectionStream) Next(ctx context.Context) (model.Row, error) {
+	for len(s.buf) == 0 {
+		if s.done || (s.end >= 0 && s.next >= s.end) {
+			return nil, io.EOF
+		}
+		to := s.next + selectionPage
+		if s.end >= 0 && to > s.end {
+			to = s.end
+		}
+		rows, err := s.m.Read(ctx, s.next, to)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(rows)) < to-s.next {
+			s.done = true // the end of the data
+		}
+		s.next += int64(len(rows))
+		s.buf = rows
+	}
+	r := s.buf[0]
+	s.buf = s.buf[1:]
+	out := make(model.Row, len(s.picked))
+	for i, c := range s.picked {
+		if c < len(r) {
+			out[i] = r[c]
+		}
+	}
+	return out, nil
 }
 
 // exportSource is the active tab's exportable rows: a table's, or the query
@@ -61,6 +152,17 @@ func (s *Shell) showExport() {
 	if src == nil {
 		return
 	}
+	// The selection is offered, never assumed: All rows stays the default,
+	// so a stray selection cannot quietly shorten an export.
+	var sel *exportSrc
+	var rows *widget.RadioGroup
+	if g := s.activeGrid(); g != nil {
+		if sel = s.selectionSource(g, src.name); sel != nil {
+			_, _, picked := selectionColumns(g)
+			rows = widget.NewRadioGroup([]string{allRows, describeSelection(sel, len(picked))}, nil)
+			rows.SetSelected(allRows)
+		}
+	}
 	formats := export.Formats()
 	names := make([]string, len(formats))
 	for i, f := range formats {
@@ -77,12 +179,17 @@ func (s *Shell) showExport() {
 		}
 	}
 	format.SetSelectedIndex(0)
-	dialog.NewForm("Export “"+src.name+"”", "Choose File…", "Cancel",
-		[]*widget.FormItem{widget.NewFormItem("Format", format), widget.NewFormItem("", header)},
+	var items []*widget.FormItem
+	if rows != nil {
+		items = append(items, widget.NewFormItem("Rows", rows))
+	}
+	items = append(items, widget.NewFormItem("Format", format), widget.NewFormItem("", header))
+	dialog.NewForm("Export “"+src.name+"”", "Choose File…", "Cancel", items,
 		func(ok bool) {
 			if !ok {
 				return
 			}
+			src = pickSource(rows, src, sel)
 			opt := export.Options{Format: formats[format.SelectedIndex()], Header: header.Checked}
 			save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
 				if err != nil {
@@ -99,6 +206,18 @@ func (s *Shell) showExport() {
 			save.Show()
 		}, s.win).Show()
 }
+
+// pickSource is the rows the export form's choice names: the selection if
+// it was chosen, and every row otherwise.
+func pickSource(rows *widget.RadioGroup, all, sel *exportSrc) *exportSrc {
+	if rows != nil && sel != nil && rows.Selected != allRows {
+		return sel
+	}
+	return all
+}
+
+// allRows is the export form's choice of every row, not just the selection.
+const allRows = "All rows"
 
 // fileName makes a tab's name safe to suggest as a file name.
 func fileName(name string) string {

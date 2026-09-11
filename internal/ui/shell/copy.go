@@ -74,6 +74,18 @@ type copyJob struct {
 	picked []int // the model's columns behind them
 }
 
+// selectionColumns is the grid's columns, and those the selection covers:
+// as shown, and the model's columns behind them.
+func selectionColumns(g *grid.TableGrid) (cols []model.ColumnDef, shown, picked []int) {
+	cols = g.Model().Columns()
+	for _, dc := range g.Selection().Columns() {
+		if mc := g.ColumnAt(dc); mc >= 0 && mc < len(cols) {
+			shown, picked = append(shown, dc), append(picked, mc)
+		}
+	}
+	return cols, shown, picked
+}
+
 // copySelection reads the rows a selection reaches and puts what render
 // makes of them on the clipboard (FR-3.7). Rows that were never drawn are
 // read off the UI goroutine; a selection reaching past copyLimit rows is
@@ -84,13 +96,7 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 		return
 	}
 	m := g.Model()
-	cols := m.Columns()
-	var shown, picked []int
-	for _, dc := range sel.Columns() {
-		if mc := g.ColumnAt(dc); mc >= 0 && mc < len(cols) {
-			shown, picked = append(shown, dc), append(picked, mc)
-		}
-	}
+	cols, shown, picked := selectionColumns(g)
 	first, last := sel.Rows()
 	to := int64(last) + 1
 	if last == grid.End || to > int64(first)+copyLimit {
