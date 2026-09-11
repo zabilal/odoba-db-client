@@ -147,8 +147,8 @@ and could not be read.
 Tabs move left and right, and pin, from the Window menu (FR-15.2). Pinned
 tabs stay together at the left, in the order they were pinned, marked with
 a pin, and a tab moves only among the tabs of its own kind; new tabs open
-after the pinned ones. Fyne's tab bar cannot be dragged, so moving is by
-command. Dragging a tab needs a tab bar of our own, and is open.
+after the pinned ones. Fyne's tab bar cannot be dragged, so moving was by
+command at first; dragging came with a tab bar of our own (§18).
 
 ## 9. Unsaved query text is kept as it is typed
 
@@ -321,9 +321,37 @@ Quitting then waits, up to the three seconds it gives connections, for
 stopped tasks to clean up. An export removes its partial file, and one
 stopped by quitting could otherwise leave a file that looks complete.
 
+## 18. The tab bar is our own, and a tab is dragged
+
+Fyne's DocTabs cannot drag a tab, so §8 moved tabs by command only. The tab
+bar is now internal/ui/tabbar. It holds the same *container.TabItem and
+keeps the selection as DocTabs does (the first tab added is selected;
+removing the selected tab selects the one taking its place), so the shell
+uses it as it used DocTabs. A tab dragged along the row shows an accent
+line where it would land; let go, it moves there and is selected, kept
+among the tabs of its kind as a move by command keeps it. Only the drag's
+distance is used, since Fyne's drivers report where the pointer is
+differently. A secondary tap on a tab selects it and opens a menu of the
+Window menu's commands (§13). Tabs that do not fit scroll, the selected one
+kept in view, and an All Tabs button lists them all.
+
+The selected tab is marked by more than colour: its title is bold and
+underlined, on the control background. The line, like the mark where a
+dragged tab would land, is in the accent's text colour: the plain accent is
+2.99:1 against the control background in dark, short of the 3:1 a mark
+needs, and the contrast test now holds both colours to it. Each tab keeps its
+width when its title turns bold. A tab's close control is an ×, shown on the
+selected tab and the one under the pointer. It is named "Close" and the tab's
+title for a screen reader through Fyne 2.8's accessibility interface, and
+the tab is named by its title. The words ADR-0006 asks of buttons stay with
+buttons: a word on every tab's close control would not fit.
+
+Not done: the row does not scroll while a tab is dragged past its edge, so a
+tab going to a place out of view goes by All Tabs or by command.
+
 ## Not decided here
 
-Dragging tabs (T1.4) is still open; single-instance handling is ADR-0022's.
+Single-instance handling is ADR-0022's.
 A quit by signal, which Fyne turns into its driver's Quit without closing
 the window, skips the close and so the wait for tasks. When a connection has no saved password, the tab offers
 "Edit Connection…". A proper prompt with a "remember" choice is still to be

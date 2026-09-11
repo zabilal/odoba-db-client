@@ -33,6 +33,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/palette"
+	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
@@ -78,7 +79,7 @@ type Shell struct {
 	Explorer *view.Explorer
 	sidebar  fyne.CanvasObject
 	split    *container.Split
-	tabs     *container.DocTabs
+	tabs     *tabbar.Tabs
 	empty    fyne.CanvasObject
 	status   *widget.Label
 	errors   *errorBar
@@ -195,7 +196,9 @@ func New(a fyne.App, d Deps) *Shell {
 	s.Explorer.OnSelect = func(string) { s.sync() }
 	s.Explorer.OnExpand = s.sessionChanged
 
-	s.tabs = container.NewDocTabs()
+	s.tabs = tabbar.New()
+	s.tabs.OnMove = s.dropTab
+	s.tabs.OnMenu = s.showTabMenu
 	s.tabs.CloseIntercept = s.requestClose
 	s.tabs.OnSelected = func(*container.TabItem) { s.sync() }
 	s.tabs.Hide()

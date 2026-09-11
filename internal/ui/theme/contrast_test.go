@@ -145,6 +145,10 @@ var componentPairs = []pair{
 	{"ControlBorder/Window", fControlBorder, fWindow, aaLarge},
 	{"ControlBorder/Sidebar", fControlBorder, fSidebar, aaLarge},
 	{"ControlBorder/Control", fControlBorder, fControl, aaLarge},
+	// The line under the selected tab, and the drop mark (internal/ui/tabbar):
+	// in the accent's text colour, since the plain accent is 2.99:1 in dark.
+	{"AccentText/Control", fAccentText, fControl, aaLarge},
+	{"AccentText/Window", fAccentText, fWindow, aaLarge},
 }
 
 func TestPaletteContrastAA(t *testing.T) {

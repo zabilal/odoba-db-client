@@ -33,13 +33,6 @@ func buttons(o fyne.CanvasObject) []*widget.Button {
 			if v.CreateItem != nil {
 				walk(v.CreateItem())
 			}
-		case *container.DocTabs:
-			// Fyne's tab bars draw a "…" menu of their own, which the app
-			// cannot name. What the tabs hold is the app's, and is walked.
-			if it := v.Selected(); it != nil {
-				walk(it.Content)
-			}
-			return
 		case *container.AppTabs:
 			if it := v.Selected(); it != nil {
 				walk(it.Content)
