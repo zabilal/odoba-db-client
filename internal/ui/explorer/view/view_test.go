@@ -3,6 +3,7 @@ package view
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -85,7 +86,31 @@ func (treeSource) Close() error                                    { return nil 
 func (treeSource) Describe(context.Context, model.ObjectRef) (any, error) {
 	return nil, nil
 }
-func (treeSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
+
+// Badge answers for table c; the rest have none. badgeCalls counts reads,
+// and slowBadges makes them wait until cancelled, counting those.
+var (
+	badgeCalls, badgeCancels, inFlight, peakInFlight atomic.Int64
+	slowBadges, panicBadges                          atomic.Bool
+)
+
+func (treeSource) Badge(ctx context.Context, ref model.ObjectRef) (model.Badge, bool, error) {
+	badgeCalls.Add(1)
+	if panicBadges.Load() {
+		panic("treefake: badge fell over")
+	}
+	if slowBadges.Load() {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for p := peakInFlight.Load(); n > p && !peakInFlight.CompareAndSwap(p, n); p = peakInFlight.Load() {
+		}
+		<-ctx.Done()
+		badgeCancels.Add(1)
+		return model.Badge{}, false, ctx.Err()
+	}
+	if ref.Kind == model.KindTable && ref.Name() == "c" {
+		return model.Badge{Text: "7", Exact: true}, true, nil
+	}
 	return model.Badge{}, false, nil
 }
 func (treeSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
@@ -446,5 +471,115 @@ func TestARightClickSelectsTheNodeAndAsksForItsMenu(t *testing.T) {
 	r.TappedSecondary(&fyne.PointEvent{})
 	if asked != "" {
 		t.Error("a loading row has no menu")
+	}
+}
+
+// badgeTree is an explorer over one connection with schema a.b's table c
+// loaded, and the badge counters reset.
+func badgeTree(t *testing.T) (*Explorer, *uithread.Queue, []string) {
+	t.Helper()
+	badgeCalls.Store(0)
+	badgeCancels.Store(0)
+	inFlight.Store(0)
+	peakInFlight.Store(0)
+	slowBadges.Store(false)
+	panicBadges.Store(false)
+	t.Cleanup(func() { slowBadges.Store(false); panicBadges.Store(false) })
+	e, q, ids := filtered(t, "primary")
+	e.Model.Children(ids[2])
+	c := waitReal(t, e.Model, ids[2])[0] // schema a.b's table c
+	return e, q, append(ids, c)
+}
+
+func drawn(e *Explorer, id string) string {
+	r := newNodeRow()
+	e.update(id, r)
+	return r.badge.Text
+}
+
+func waitFor(t *testing.T, q *uithread.Queue, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition never held")
+		}
+		if q.Flush() == 0 {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+}
+
+func TestABadgeIsReadWhenItsRowIsDrawn(t *testing.T) {
+	e, q, ids := badgeTree(t)
+	c := ids[4]
+	if got := drawn(e, c); got != "" {
+		t.Errorf("the first draw should not wait for the badge, drew %q", got)
+	}
+	waitFor(t, q, func() bool { return drawn(e, c) == "7" })
+	calls := badgeCalls.Load()
+	drawn(e, c)
+	if badgeCalls.Load() != calls {
+		t.Error("a badge read once should not be read again on every redraw")
+	}
+}
+
+func TestANodesOwnBadgeIsNotReadAgain(t *testing.T) {
+	e, _, ids := badgeTree(t)
+	e.Model.Children(ids[3])
+	bc := waitReal(t, e.Model, ids[3])[0] // table b.c, which came with ~1.2M
+	if got := drawn(e, bc); got != "~1.2M" || badgeCalls.Load() != 0 {
+		t.Errorf("drew %q after %d reads; a node's own badge needs no read", got, badgeCalls.Load())
+	}
+}
+
+func TestNoBadgeIsAskedOnce(t *testing.T) {
+	e, q, ids := badgeTree(t)
+	drawn(e, ids[2]) // schema a.b: the fake has no badge for a schema
+	waitFor(t, q, func() bool { _, ok := e.badges[ids[2]]; return ok })
+	calls := badgeCalls.Load()
+	drawn(e, ids[2])
+	if badgeCalls.Load() != calls {
+		t.Error("a node with no badge should not be asked again on every redraw")
+	}
+}
+
+func TestClosingABranchCancelsItsBadges(t *testing.T) {
+	e, q, ids := badgeTree(t)
+	slowBadges.Store(true)
+	drawn(e, ids[4])
+	waitFor(t, q, func() bool { return inFlight.Load() == 1 })
+	e.Tree.OpenBranch(ids[2])
+	e.Tree.CloseBranch(ids[2]) // schema a.b, table c's parent
+	waitFor(t, q, func() bool { return badgeCancels.Load() == 1 })
+	if _, ok := e.badges[ids[4]]; ok {
+		t.Error("a cancelled read should be forgotten, to be read again when its row is drawn")
+	}
+}
+
+func TestAtMostFourBadgesAreReadAtOnce(t *testing.T) {
+	e, q, ids := badgeTree(t)
+	slowBadges.Store(true)
+	it, _, _ := e.Model.Item(ids[4])
+	d := it.Data.(objItem)
+	for i := range 6 {
+		e.fetchBadge(fmt.Sprintf("%s#%d", ids[4], i), d)
+	}
+	waitFor(t, q, func() bool { return inFlight.Load() == badgeWorkers })
+	time.Sleep(20 * time.Millisecond)
+	if p := peakInFlight.Load(); p != badgeWorkers {
+		t.Errorf("%d badges were read at once, want at most %d", p, badgeWorkers)
+	}
+	e.Refresh(explorer.RootID)
+	waitFor(t, q, func() bool { return len(e.waiting) == 0 && inFlight.Load() == 0 })
+}
+
+func TestABadgeThatPanicsIsNoBadge(t *testing.T) {
+	e, q, ids := badgeTree(t)
+	panicBadges.Store(true)
+	drawn(e, ids[4])
+	waitFor(t, q, func() bool { _, ok := e.badges[ids[4]]; return ok })
+	if got := drawn(e, ids[4]); got != "" {
+		t.Errorf("a driver that panicked drew %q", got)
 	}
 }

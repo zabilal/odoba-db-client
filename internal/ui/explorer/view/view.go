@@ -47,6 +47,23 @@ type Loader struct {
 
 var _ explorer.Loader = (*Loader)(nil)
 
+// Badge reads an object's count or size from its source (FR-2.5). The
+// driver is called here directly, so a panic comes back as an error.
+func (l *Loader) Badge(ctx context.Context, connID string, ref model.ObjectRef) (_ model.Badge, _ bool, err error) {
+	defer panics.Recover(&err, "reading a badge")
+	live, err := l.WS.Connect(ctx, connID)
+	if err != nil {
+		return model.Badge{}, false, err
+	}
+	return live.Source.Badge(ctx, ref)
+}
+
+// badger reads badges. The view's Loader is one; a loader that is not has
+// no badges to fetch.
+type badger interface {
+	Badge(ctx context.Context, connID string, ref model.ObjectRef) (model.Badge, bool, error)
+}
+
 // sep joins the parts of a node ID. A path joined with "." would be
 // ambiguous: schema "a.b" with table "c" and schema "a" with table "b.c" would
 // share an ID, and expanding one would show the other's columns. The unit
@@ -148,6 +165,15 @@ type Explorer struct {
 	open     map[string]bool // the branches open
 	refresh  func()
 
+	// Badges are fetched as their rows are drawn, badgeWorkers at a time,
+	// and remembered, "none" included (FR-2.5). badges and waiting are the
+	// UI goroutine's.
+	badger  badger
+	run     uithread.Runner
+	badges  map[string]fetched
+	waiting map[string]*fetch
+	slots   chan struct{}
+
 	// Filter narrows the sidebar to the objects whose path matches
 	// (FR-2.3, ADR-0018), listed in the tree's place.
 	Filter  *filterEntry
@@ -167,7 +193,9 @@ const searchLimit = 200
 // (uithread.Fyne in production) and delay coalesces refreshes
 // (uithread.FrameDelay). Tests pass a uithread.Queue and zero.
 func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer {
-	e := &Explorer{Model: explorer.NewModel(l, 30*time.Second)}
+	e := &Explorer{Model: explorer.NewModel(l, 30*time.Second), run: run,
+		badges: map[string]fetched{}, waiting: map[string]*fetch{}, slots: make(chan struct{}, badgeWorkers)}
+	e.badger, _ = l.(badger)
 	e.Tree = widget.NewTree(
 		func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) },
 		func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) },
@@ -313,7 +341,11 @@ func (e *Explorer) choose(id string) {
 }
 
 // Refresh reloads a node's children, or the whole tree with explorer.RootID.
-func (e *Explorer) Refresh(id string) { e.Model.Refresh(id) }
+// Badges below it are fetched afresh, and fetches under way are cancelled.
+func (e *Explorer) Refresh(id string) {
+	e.dropBadges(id, true)
+	e.Model.Refresh(id)
+}
 
 // expanded records a branch opening or closing.
 func (e *Explorer) expanded(id string, open bool) {
@@ -321,6 +353,7 @@ func (e *Explorer) expanded(id string, open bool) {
 		e.open[id] = true
 	} else {
 		delete(e.open, id)
+		e.dropBadges(id, false) // its rows are out of view: stop reading their badges
 	}
 	if e.OnExpand != nil {
 		e.OnExpand()
@@ -367,7 +400,7 @@ func (e *Explorer) update(id string, r *nodeRow) {
 	case connItem:
 		r.show(uitheme.IconNameDatabase, it.Label, environmentBadge(d.Environment))
 	case objItem:
-		r.show(iconFor(d.Node.Ref.Kind), it.Label, badge(d.Node))
+		r.show(iconFor(d.Node.Ref.Kind), it.Label, e.badgeOf(id, d))
 	default:
 		r.show("", it.Label, badgeText{})
 	}
@@ -417,6 +450,105 @@ func badge(n model.Node) badgeText {
 		return badgeText{text: n.Badge.Text}
 	}
 	return badgeText{text: "~" + n.Badge.Text}
+}
+
+// badgeWorkers is how many badges are read at once. Each is a query on
+// the server, and a schema of a thousand tables must not send a thousand.
+const badgeWorkers = 4
+
+// badgeTimeout bounds reading one badge.
+const badgeTimeout = 10 * time.Second
+
+// fetched is a badge as read: ok is false when the source has none for the
+// node, or could not say, and either way it is not asked again.
+type fetched struct {
+	badge model.Badge
+	ok    bool
+}
+
+// fetch is one badge being read. cancel ends it.
+type fetch struct{ cancel context.CancelFunc }
+
+// badgeOf is the badge to draw for an object. A node that came with its own
+// is drawn as it is; otherwise its badge is fetched, the first time its row
+// is drawn, and drawn once it arrives. Folders and columns have none.
+func (e *Explorer) badgeOf(id string, d objItem) badgeText {
+	own := badge(d.Node)
+	if d.Node.Badge != nil || own.text != "" || e.badger == nil ||
+		d.Node.Ref.Kind == model.KindFolder || d.Node.Ref.Kind == model.KindColumn {
+		return own
+	}
+	if f, ok := e.badges[id]; ok {
+		if f.ok {
+			return badge(model.Node{Badge: &f.badge})
+		}
+		return own
+	}
+	e.fetchBadge(id, d)
+	return own
+}
+
+// fetchBadge reads a badge off the UI goroutine, waiting for one of the
+// badgeWorkers slots, and draws it when it lands. It never delays drawing
+// the tree: a row is drawn at once, and again when its badge arrives.
+func (e *Explorer) fetchBadge(id string, d objItem) {
+	if _, ok := e.waiting[id]; ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), badgeTimeout)
+	f := &fetch{cancel: cancel}
+	e.waiting[id] = f
+	go func() {
+		defer cancel()
+		select {
+		case e.slots <- struct{}{}:
+			defer func() { <-e.slots }()
+		case <-ctx.Done():
+			e.run(func() { e.landed(id, f, fetched{}, ctx.Err()) })
+			return
+		}
+		b, ok, err := e.badger.Badge(ctx, d.ConnID, d.Node.Ref)
+		if err == nil {
+			err = ctx.Err()
+		}
+		e.run(func() { e.landed(id, f, fetched{badge: b, ok: ok && err == nil}, err) })
+	}()
+}
+
+// landed records a badge read, unless its fetch was cancelled: dropBadges
+// takes a cancelled fetch out of waiting, so it lands here unrecorded and
+// its row, if drawn again, asks again. A timeout or an error is remembered
+// as no badge, so a slow or failing server is not asked on every redraw.
+func (e *Explorer) landed(id string, f *fetch, got fetched, err error) {
+	if e.waiting[id] != f {
+		return // cancelled, and maybe asked again since
+	}
+	delete(e.waiting, id)
+	_ = err // any failure is remembered as no badge: got.ok is false
+	e.badges[id] = got
+	e.refresh()
+}
+
+// dropBadges cancels the badge reads below a branch, and with forget also
+// drops what was read there, for a refresh to read it afresh. The whole
+// tree takes everything, including reads for nodes the model has dropped.
+func (e *Explorer) dropBadges(branch string, forget bool) {
+	below := func(id string) bool {
+		return branch == explorer.RootID || id == branch || e.Model.Within(id, branch)
+	}
+	for id, f := range e.waiting {
+		if below(id) {
+			f.cancel()
+			delete(e.waiting, id)
+		}
+	}
+	if forget {
+		for id := range e.badges {
+			if below(id) {
+				delete(e.badges, id)
+			}
+		}
+	}
 }
 
 // environmentBadge labels a connection's environment in words as well as

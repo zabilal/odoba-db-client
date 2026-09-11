@@ -314,6 +314,21 @@ func (m *Model) Search(query string, limit int) SearchResult {
 	return res
 }
 
+// Within reports whether a node lies below branch: whether closing or
+// refreshing branch takes it out of view.
+func (m *Model) Within(id, branch string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.entries[id]
+	for ok && e.parent != RootID {
+		if e.parent == branch {
+			return true
+		}
+		e, ok = m.entries[e.parent]
+	}
+	return ok && branch == RootID
+}
+
 func (m *Model) notify(id string) {
 	if m.OnChange != nil {
 		m.OnChange(id)
