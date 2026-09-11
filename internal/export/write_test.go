@@ -25,3 +25,16 @@ func TestWriteFormatsRowsInHand(t *testing.T) {
 		t.Errorf("CSV %q, want %q", got, want)
 	}
 }
+
+func TestMarkdownKeepsEachValueInItsCell(t *testing.T) {
+	cols := []model.ColumnDef{{Name: "n", Type: model.DataType{Class: model.TypeDecimal}}, {Name: "a|b"}}
+	rows := []model.Row{{model.Decimal("1.50"), "x|y\nz"}, {nil, "NULL"}}
+	var b strings.Builder
+	if err := Write(&b, cols, rows, Options{Format: Markdown}); err != nil {
+		t.Fatal(err)
+	}
+	want := "| n | a\\|b |\n| ---: | --- |\n| 1.50 | x\\|y<br>z |\n| _NULL_ | NULL |\n"
+	if got := b.String(); got != want {
+		t.Errorf("markdown\n%s\nwant\n%s", got, want)
+	}
+}

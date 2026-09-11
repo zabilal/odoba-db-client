@@ -64,12 +64,20 @@ func (s *Shell) copyActive() {
 	}
 }
 
-// copyCells puts the selected cells on the clipboard as tab-separated text,
-// the way spreadsheets paste (FR-3.7): each row that has a selected cell, in
-// order, and in each the columns any part of the selection covers, with the
-// cells outside it left empty. One cell is copied as its text alone. Rows
-// that were never drawn are read for the copy, off the UI goroutine.
-func (s *Shell) copyCells(ctx context.Context, g *grid.TableGrid) {
+// copyJob is what a copy needs besides the rows: the selection, the row the
+// read began at, the columns, and which of them the selection covers.
+type copyJob struct {
+	sel    grid.Selection
+	first  int
+	cols   []model.ColumnDef
+	picked []int
+}
+
+// copySelection reads the rows a selection reaches and puts what render
+// makes of them on the clipboard (FR-3.7). Rows that were never drawn are
+// read off the UI goroutine; a selection reaching past copyLimit rows is
+// refused. as is added to the report, such as " as CSV".
+func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string, render func(copyJob, []model.Row) (string, int, error)) {
 	sel := g.Selection()
 	if sel.Empty() {
 		return
@@ -94,47 +102,94 @@ func (s *Shell) copyCells(ctx context.Context, g *grid.TableGrid) {
 			if ctx.Err() != nil {
 				return
 			}
-			switch {
-			case err != nil:
-				s.status.SetText("Could not copy: " + err.Error())
-			case int64(len(rows)) > copyLimit:
+			if err == nil && int64(len(rows)) > copyLimit {
 				s.status.SetText(fmt.Sprintf("Copy takes up to %s rows, and this selection has more. Export it instead.", group(copyLimit)))
-			default:
-				text, n := cellText(sel, first, rows, cols, picked)
-				s.app.Clipboard().SetContent(text)
-				s.status.SetText("Copied " + describeCopy(n, len(picked)))
+				return
 			}
+			var text string
+			var n int
+			if err == nil {
+				text, n, err = render(copyJob{sel, first, cols, picked}, rows)
+			}
+			if err != nil {
+				s.status.SetText("Could not copy: " + err.Error())
+				return
+			}
+			s.app.Clipboard().SetContent(text)
+			s.status.SetText("Copied " + describeCopy(n, len(picked)) + as)
 		})
 	}()
 }
 
-// cellText writes the selected cells of rows, the first of which is row
-// first, and says how many rows it wrote.
-func cellText(sel grid.Selection, first int, rows []model.Row, cols []model.ColumnDef, picked []int) (string, int) {
+// copyCells puts exactly the selected cells on the clipboard as
+// tab-separated text, the way spreadsheets paste: each row that has a
+// selected cell, in order, and in each the columns any part of the selection
+// covers, with the cells outside it left empty. One cell is copied as its
+// text alone.
+func (s *Shell) copyCells(ctx context.Context, g *grid.TableGrid) {
+	s.copySelection(ctx, g, "", func(j copyJob, rows []model.Row) (string, int, error) {
+		out, defs := j.rows(rows, true)
+		if len(out) == 1 && len(defs) == 1 {
+			return export.Text(out[0][0], defs[0]), 1, nil
+		}
+		return written(defs, out, export.Options{Format: export.TSV})
+	})
+}
+
+// copyAs puts the rows that have a selected cell on the clipboard in a
+// format, with a header. Unlike ⌘C it writes every cell of those rows in the
+// columns the selection covers: CSV, JSON and Markdown describe rows, and a
+// blank where the selection skipped would say something false about one.
+func (s *Shell) copyAs(ctx context.Context, g *grid.TableGrid, f export.Format) {
+	s.copySelection(ctx, g, " as "+f.String(), func(j copyJob, rows []model.Row) (string, int, error) {
+		out, defs := j.rows(rows, false)
+		return written(defs, out, export.Options{Format: f, Header: true})
+	})
+}
+
+func (s *Shell) copyActiveAs(f export.Format) {
+	if t, g := s.activeTab(), s.activeGrid(); t != nil && g != nil {
+		s.copyAs(t.ctx, g, f)
+	}
+}
+
+func (s *Shell) copyCSV()      { s.copyActiveAs(export.CSV) }
+func (s *Shell) copyJSON()     { s.copyActiveAs(export.JSON) }
+func (s *Shell) copyMarkdown() { s.copyActiveAs(export.Markdown) }
+
+// rows keeps, of rows read from the job's first row on, those that have a
+// selected cell, in the picked columns. With blanks, the cells outside the
+// selection are left empty.
+func (j copyJob) rows(rows []model.Row, blanks bool) ([]model.Row, []model.ColumnDef) {
 	var out []model.Row
 	for i, r := range rows {
-		row := first + i
-		if !sel.HasRow(row) {
+		row := j.first + i
+		if !j.sel.HasRow(row) {
 			continue
 		}
-		o := make(model.Row, len(picked))
-		for j, c := range picked {
-			if sel.Contains(row, c) && c < len(r) {
-				o[j] = r[c]
+		o := make(model.Row, len(j.picked))
+		for k, c := range j.picked {
+			if c < len(r) && (!blanks || j.sel.Contains(row, c)) {
+				o[k] = r[c]
 			}
 		}
 		out = append(out, o)
 	}
-	if len(out) == 1 && len(picked) == 1 {
-		return export.Text(out[0][0], cols[picked[0]]), 1
+	defs := make([]model.ColumnDef, len(j.picked))
+	for k, c := range j.picked {
+		defs[k] = j.cols[c]
 	}
-	defs := make([]model.ColumnDef, len(picked))
-	for j, c := range picked {
-		defs[j] = cols[c]
-	}
+	return out, defs
+}
+
+// written formats rows, without the final line break a clipboard does not
+// want, and says how many rows it wrote.
+func written(defs []model.ColumnDef, rows []model.Row, opt export.Options) (string, int, error) {
 	var b strings.Builder
-	_ = export.Write(&b, defs, out, export.Options{Format: export.TSV})
-	return strings.TrimSuffix(b.String(), "\n"), len(out)
+	if err := export.Write(&b, defs, rows, opt); err != nil {
+		return "", 0, err
+	}
+	return strings.TrimSuffix(b.String(), "\n"), len(rows), nil
 }
 
 func describeCopy(rows, cols int) string {
