@@ -28,26 +28,35 @@ func (g *TableGrid) SetFilterable(on bool) {
 // Filterable reports whether the grid has a filter row.
 func (g *TableGrid) Filterable() bool { return g.filterable }
 
-// columnHeader is a filterable grid's column header: the title, which sorts
-// when tapped, above a field holding the column's filter.
+// columnHeader is a column's header: the title, which sorts when tapped,
+// above a field holding the column's filter on a grid with a filter row, and
+// a handle on its right edge that sets the column's width.
 type columnHeader struct {
 	widget.BaseWidget
 	bg     *canvas.Rectangle
 	title  *headerCell
-	filter *filterField
+	filter *filterField      // nil on a grid with no filter row
 	field  fyne.CanvasObject // the filter, at a small control's size
+	handle *resizeHandle
 }
 
 func newColumnHeader(g *TableGrid) *columnHeader {
 	h := &columnHeader{bg: canvas.NewRectangle(g.palette.SidebarBackground),
-		title: newHeaderCell(g), filter: newFilterField(g)}
-	h.field = container.NewThemeOverride(h.filter, compact{})
+		title: newHeaderCell(g), handle: newResizeHandle(g)}
+	if g.filterable {
+		h.filter = newFilterField(g)
+		h.field = container.NewThemeOverride(h.filter, compact{})
+	}
 	h.ExtendBaseWidget(h)
 	return h
 }
 
 func (h *columnHeader) CreateRenderer() fyne.WidgetRenderer {
-	return &columnHeaderRenderer{h: h, objects: []fyne.CanvasObject{h.bg, h.title, h.field}}
+	objects := []fyne.CanvasObject{h.bg, h.title}
+	if h.field != nil {
+		objects = append(objects, h.field)
+	}
+	return &columnHeaderRenderer{h: h, objects: append(objects, h.handle)}
 }
 
 type columnHeaderRenderer struct {
@@ -59,11 +68,17 @@ type columnHeaderRenderer struct {
 // below the field and between neighbouring fields.
 func (r *columnHeaderRenderer) Layout(size fyne.Size) {
 	r.h.bg.Resize(size)
+	title := size.Height
+	if r.h.field != nil {
+		title = theme.RowHeight
+		inset := theme.SpaceXS / 2
+		r.h.field.Move(fyne.NewPos(inset, theme.RowHeight))
+		r.h.field.Resize(fyne.NewSize(max(0, size.Width-2*inset), max(0, size.Height-theme.RowHeight-theme.SpaceXS)))
+	}
 	r.h.title.Move(fyne.NewPos(0, 0))
-	r.h.title.Resize(fyne.NewSize(size.Width, theme.RowHeight))
-	inset := theme.SpaceXS / 2
-	r.h.field.Move(fyne.NewPos(inset, theme.RowHeight))
-	r.h.field.Resize(fyne.NewSize(max(0, size.Width-2*inset), max(0, size.Height-theme.RowHeight-theme.SpaceXS)))
+	r.h.title.Resize(fyne.NewSize(size.Width, title))
+	r.h.handle.Move(fyne.NewPos(max(0, size.Width-handleWidth), 0))
+	r.h.handle.Resize(fyne.NewSize(min(handleWidth, size.Width), size.Height))
 }
 
 // MinSize is one row, though the header is taller. Fyne makes every row as
@@ -75,7 +90,9 @@ func (r *columnHeaderRenderer) MinSize() fyne.Size { return fyne.NewSize(0, them
 func (r *columnHeaderRenderer) Refresh() {
 	r.h.bg.Refresh()
 	r.h.title.Refresh()
-	r.h.field.Refresh()
+	if r.h.field != nil {
+		r.h.field.Refresh()
+	}
 }
 
 func (r *columnHeaderRenderer) Objects() []fyne.CanvasObject { return r.objects }

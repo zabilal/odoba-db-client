@@ -12,7 +12,7 @@ func TestColumnsHideMoveAndFreeze(t *testing.T) {
 	cols := g.model.Columns()
 	n := len(cols)
 	title := func(display int) string {
-		h := g.createHeader().(*headerCell)
+		h := g.createHeader().(*columnHeader).title
 		g.updateHeader(widget.TableCellID{Row: -1, Col: display}, h)
 		return h.text
 	}

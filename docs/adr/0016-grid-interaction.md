@@ -1,7 +1,7 @@
 # ADR-0016: The grid's interaction model
 
 **Status:** Accepted · **Date:** 2026-09-10
-**Tasks:** T1.49, T1.51–T1.56 (and T1.48, T1.50 as they land) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
+**Tasks:** T1.48, T1.49, T1.51–T1.56 (and T1.50 as it lands) · **Packages:** `internal/ui/grid`, `internal/app` (`browse.go`), `internal/ui/shell`
 
 ## Context
 
@@ -241,6 +241,13 @@ Hiding or moving a column clears the selection, which no longer means what
 it did, but a moved column's active cell goes with it, so it can be moved
 again. A hidden column comes back after the column before it in the model.
 
+**The grid keeps each column's width.** Fyne's table resizes a column when
+the gap between two titles is dragged, but tells nobody the width it set,
+so a column moved afterwards would lose it. The grid switches that off.
+Instead each title carries a handle on its right edge; dragging it sets the
+model column's width, which the grid keeps, so a column has its width
+wherever it moves. No column goes narrower than 40 points.
+
 ## Not decided here
 
-Column widths the grid remembers (T1.48), and type-aware rendering (T1.50). Each will be added here as it lands.
+Type-aware rendering and full-width stripes (T1.50). Each will be added here as it lands.
