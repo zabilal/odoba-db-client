@@ -11,8 +11,9 @@ import (
 // view. One panel is open at a time, in a split the person can widen.
 
 const (
-	panelHistory = "history"
-	panelSaved   = "saved"
+	panelHistory   = "history"
+	panelSaved     = "saved"
+	panelShortcuts = "shortcuts"
 )
 
 // panelShare is a new panel's share of the room beside the sidebar.

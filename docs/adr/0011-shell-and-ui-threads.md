@@ -220,6 +220,16 @@ delete and naming a query to save are still sheets: each asks one question
 and waits for the answer, which is what a sheet is for. The commands lost
 their trailing ellipsis, which on the Mac promises a question before acting.
 
+## 12. A keyboard-shortcut reference, on ⌘/
+
+Help › Keyboard Shortcuts (⌘/) opens a third side panel (§11) listing every
+command that has a shortcut, whether or not it can run just now, by
+category and title, with the keys as the platform writes them (FR-15.4).
+Each word typed must match the title, category, keywords or keys, so "save"
+and "⌘S" both find Save Query. It reads the command registry each time it
+opens, so bindings a person changes (T1.8) will show there with no more
+work. It is for reading: running a command is the palette's job.
+
 ## Not decided here
 
 Single-instance handling (T1.1), tab reorder and pinning (T1.4), custom key

@@ -14,6 +14,7 @@ import (
 // (FR-15.4).
 const (
 	cmdPalette        = "palette.show"
+	cmdShortcuts      = "help.shortcuts"
 	cmdConnNew        = "connection.new"
 	cmdConnEdit       = "connection.edit"
 	cmdConnDup        = "connection.duplicate"
@@ -118,6 +119,7 @@ var menuBar = []struct {
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab)}},
+	{"Help", []menuEntry{item(cmdShortcuts)}},
 }
 
 func (s *Shell) buildMenu() *fyne.MainMenu {
