@@ -281,6 +281,25 @@ func (r *Registry) Rebind(id string, sc Shortcut) error {
 	return nil
 }
 
+// Holder is the command, other than id, already on a chord as macOS or
+// another platform sees it: the one a change to it would clash with.
+func (r *Registry) Holder(id string, sc Shortcut) (Command, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if sc.IsZero() {
+		return Command{}, false
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		want := sc.effective(goos)
+		for _, oid := range r.order {
+			if o := r.byID[oid]; oid != id && !o.Shortcut.IsZero() && o.Shortcut.effective(goos) == want {
+				return *o, true
+			}
+		}
+	}
+	return Command{}, false
+}
+
 // Default is the shortcut a command was registered with.
 func (r *Registry) Default(id string) Shortcut {
 	r.mu.RLock()

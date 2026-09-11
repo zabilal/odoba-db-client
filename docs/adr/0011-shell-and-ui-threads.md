@@ -289,9 +289,16 @@ fits, for a command that has gone, in a form that does not read, or on a
 chord another command now has, is said once and left in the file untouched,
 rather than dropped unseen.
 
-The way to change one, pressing the new keys in the Keyboard Shortcuts
-panel (§12), is still to come. On a Mac the native menu bar can take a
-chord before the application sees it, which that panel must allow for.
+A shortcut is changed in the Keyboard Shortcuts panel (§12): each row has
+a Change… button, which opens an editor in the panel rather than over it.
+Its modifiers are ticked and its key chosen from the keys Fyne delivers as a
+shortcut, rather than pressed. On a Mac the native menu bar takes a chord it
+holds before the application sees it, so a chord already in use could never
+be pressed there; and a choice made by ticking can be read out. A letter,
+digit or punctuation key needs ⌘, ⌃ or ⌥ with it, since with only ⇧ it would
+type. A chord another command has is refused with that command's name. The
+editor also sets a command back to its default, or to no shortcut; and a
+box lists the commands without one, to give them one.
 
 ## Not decided here
 
