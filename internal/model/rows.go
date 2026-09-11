@@ -81,6 +81,11 @@ const (
 	IdentityDocumentID  // document _id
 	IdentityKeyName     // key-value key
 	IdentityLogOffset   // stream partition+offset — addressable but immutable
+
+	// IdentityChosen is columns a person named as the key of rows that have
+	// none (FR-4.7). Nothing says they are unique, so a write that would
+	// change more than one row is refused (ADR-0034).
+	IdentityChosen
 )
 
 // Mutable reports whether rows identified this way may be updated in place.
@@ -89,7 +94,7 @@ const (
 func (k IdentityKind) Mutable() bool {
 	switch k {
 	case IdentityPrimaryKey, IdentityUniqueIndex, IdentityRowID,
-		IdentityDocumentID, IdentityKeyName:
+		IdentityDocumentID, IdentityKeyName, IdentityChosen:
 		return true
 	}
 	return false

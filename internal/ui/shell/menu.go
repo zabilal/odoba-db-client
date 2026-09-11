@@ -66,6 +66,7 @@ const (
 	cmdRevertCells    = "data.revertCells"
 	cmdRevertRows     = "data.revertRows"
 	cmdDiscardAll     = "data.discardAll"
+	cmdChooseKey      = "data.chooseKey"
 	cmdCopyCSV        = "grid.copyCSV"
 	cmdCopyJSON       = "grid.copyJSON"
 	cmdCopyMarkdown   = "grid.copyMarkdown"
@@ -126,7 +127,8 @@ var menuBar = []struct {
 		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
 		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
-		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll),
+		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,
+		item(cmdChooseKey),
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,

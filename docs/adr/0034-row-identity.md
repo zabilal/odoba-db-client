@@ -1,7 +1,7 @@
 # ADR-0034: Row identity
 
 **Status:** Accepted · **Date:** 2026-09-11
-**Tasks:** T2.8 · **Requirements:** FR-4.7 · **Packages:** `internal/source/drivers/sqlite`, `internal/source/sqlscript`
+**Tasks:** T2.8 · **Requirements:** FR-4.7 · **Packages:** `internal/source/drivers/sqlite`, `internal/source/sqlscript`, `internal/model`, `internal/ui/shell`
 
 ## Context
 
@@ -28,8 +28,16 @@ INTEGER PRIMARY KEY *is* its rowid.
    write every row that shares it. The count checked is the statement's own
    rows; on these engines a trigger's writes are not added to it.
 
+3. **A table with no key says why its rows are not edited**, in its
+   footer. **Choose a Key…** offers its columns to pick from. Its rows are
+   then edited by the columns picked, in the table's order, as a key of
+   their own kind (`IdentityChosen`); decision 2 refuses any change that
+   would write more than one row. A read-only connection offers neither,
+   since it edits nothing.
+
 ## Consequences
 
 - SQLite tables can be edited, and a table with no key shows its rowid.
-- Saying why a table cannot be edited, and nominating a key, are the
-  grid's part, still to come under T2.8.
+- A key chosen lasts while the tab is open. It is not remembered.
+- A view is not offered a key; writing through a view is a question of
+  its own (T2.9).
