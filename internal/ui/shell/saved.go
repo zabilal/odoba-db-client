@@ -200,7 +200,7 @@ func (s *Shell) showSaved() *savedPanel {
 			meta := widget.NewLabel("")
 			meta.Importance = widget.LowImportance
 			meta.Truncation = fyne.TextTruncateEllipsis
-			del := widget.NewButtonWithIcon("", fynetheme.DeleteIcon(), nil)
+			del := widget.NewButtonWithIcon("Delete", fynetheme.DeleteIcon(), nil)
 			del.Importance = widget.LowImportance
 			return container.NewBorder(nil, nil, nil, del, container.NewVBox(name, meta))
 		},

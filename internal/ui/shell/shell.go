@@ -385,7 +385,7 @@ func (s *Shell) registerCommands() {
 
 func (s *Shell) buildSidebar() fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("Connections", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	add := widget.NewButtonWithIcon("", fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
+	add := widget.NewButtonWithIcon("New", fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
 	add.Importance = widget.LowImportance
 	return container.NewBorder(container.NewBorder(nil, nil, nil, add, title), nil, nil, nil, s.Explorer.View())
 }
