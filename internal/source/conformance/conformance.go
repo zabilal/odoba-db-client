@@ -47,6 +47,41 @@ type Target struct {
 	// OpenGuarded opens a connection with a guard, for the write checks'
 	// read-only and production cases. Nil skips them.
 	OpenGuarded func(ctx context.Context, t *testing.T, g source.Guard) source.Source
+
+	// Conditions are what a typed condition looks like in this source's own
+	// language (FR-3.6). Zero means SQL's, which is what most sources speak;
+	// a source whose language is not SQL — a document store's filter
+	// document — gives its own.
+	Conditions *Conditions
+}
+
+// Conditions are the typed conditions the WHERE checks use.
+type Conditions struct {
+	// True matches every row, False none.
+	True, False string
+
+	// Trailing is True with a comment at its end, which must not swallow the
+	// limit that bounds every read (NFR-P11). Empty where the language has
+	// no comments.
+	Trailing string
+
+	// Refused are conditions the source must refuse: more than one
+	// condition, or text that is not one at all.
+	Refused []string
+}
+
+// sqlConditions are what a SQL source's conditions look like.
+var sqlConditions = Conditions{
+	True: "1 = 1", False: "1 = 0", Trailing: "1 = 1 -- a note",
+	Refused: []string{"1 = 1; SELECT 1", "(1 = 1", "1 = 1)", "'open = 1", "1 = 1 /* open"},
+}
+
+// conditions are the target's, or SQL's.
+func (t Target) conditions() Conditions {
+	if t.Conditions != nil {
+		return *t.Conditions
+	}
+	return sqlConditions
 }
 
 // Run executes the full suite.
@@ -628,21 +663,22 @@ func checkWhere(t *testing.T, target Target) {
 		}
 	}
 
-	all, err := count("1 = 1", 20000)
+	cond := target.conditions()
+	all, err := count(cond.True, 20000)
 	if err != nil {
-		t.Fatalf("WHERE 1 = 1: %v", err)
+		t.Fatalf("a condition matching everything (%s): %v", cond.True, err)
 	}
-	if n, err := count("1 = 0", 20000); err != nil || n != 0 {
-		t.Errorf("WHERE 1 = 0: %d rows, %v; want none", n, err)
+	if n, err := count(cond.False, 20000); err != nil || n != 0 {
+		t.Errorf("a condition matching nothing (%s): %d rows, %v; want none", cond.False, n, err)
 	}
-	if want := min(all, 3); want > 0 {
-		if n, err := count("1 = 1 -- a note", 3); err != nil || n != want {
-			t.Errorf("WHERE 1 = 1 -- a note, LIMIT 3: %d rows, %v; the comment must end at its line", n, err)
+	if want := min(all, 3); want > 0 && cond.Trailing != "" {
+		if n, err := count(cond.Trailing, 3); err != nil || n != want {
+			t.Errorf("%s with a limit of 3: %d rows, %v; the comment must end at its line", cond.Trailing, n, err)
 		}
 	}
-	for _, bad := range []string{"1 = 1; SELECT 1", "(1 = 1", "1 = 1)", "'open = 1", "1 = 1 /* open"} {
+	for _, bad := range cond.Refused {
 		if _, err := count(bad, 3); err == nil {
-			t.Errorf("WHERE %q was accepted; it is not one condition", bad)
+			t.Errorf("the condition %q was accepted; it is not one condition", bad)
 		}
 	}
 
@@ -653,9 +689,9 @@ func checkWhere(t *testing.T, target Target) {
 		}
 		cols := st.Columns()
 		st.Close()
-		vals, err := dl.Distinct(ctx, target.Browsable, cols[0].Name, source.BrowseOptions{Where: "1 = 0"}, 10)
+		vals, err := dl.Distinct(ctx, target.Browsable, cols[0].Name, source.BrowseOptions{Where: cond.False}, 10)
 		if err != nil || len(vals) != 0 {
-			t.Errorf("Distinct under WHERE 1 = 0: %v, %v; want nothing", vals, err)
+			t.Errorf("Distinct under a condition matching nothing: %v, %v; want nothing", vals, err)
 		}
 	}
 }

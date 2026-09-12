@@ -227,6 +227,9 @@ var (
 	_ source.Writer        = (*mongoSource)(nil)
 	_ source.Aggregator    = (*mongoSource)(nil)
 	_ source.IndexManager  = (*mongoSource)(nil)
+	_ source.Dialect       = (*mongoSource)(nil)
+	_ source.Queryer       = (*mongoSource)(nil)
+	_ source.Sessioner     = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -236,6 +239,10 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// document is written into it, so CreateDatabase stays false until
 		// the writes that would do it exist.
 		Structure: capability.Structure{MultipleDatabases: true, InferredShape: true},
+		// The console is the query language: mongosh, as far as a person
+		// types it at a prompt (T2.37). A command is cancelled by cancelling
+		// its context, which the driver does itself, so no Killer is needed.
+		Query: capability.Query{Supported: true, Language: "mongosh", MultiStatement: true},
 		// The server does the filtering, the ordering and the counting. A
 		// standalone server has no transaction, so a write that fails leaves
 		// the writes before it, and the UI says so before committing.

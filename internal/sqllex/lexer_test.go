@@ -1,6 +1,7 @@
 package sqllex
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -221,6 +222,11 @@ func TestStateEqualDrivesCascadeStop(t *testing.T) {
 	if (State{Kind: StateDollarQuote, Tag: "a"}).Equal(State{Kind: StateDollarQuote, Tag: "b"}) {
 		t.Error("differing dollar tag reported equal")
 	}
+	// A language with two kinds of string carries which one opened it: a
+	// line left inside "…" is not the same state as one inside '…'.
+	if (State{Kind: StateString, Quote: '"'}).Equal(State{Kind: StateString, Quote: '\''}) {
+		t.Error("two kinds of open string reported equal")
+	}
 }
 
 func TestTokensCoverTheLineExactly(t *testing.T) {
@@ -294,4 +300,65 @@ func assertContains(t *testing.T, got []string, want string) {
 		}
 	}
 	t.Errorf("missing %q in %v", want, got)
+}
+
+func TestMongoshIsLexedAsItsOwnLanguage(t *testing.T) {
+	lx := NewLexer(Mongosh)
+	line := `db.people.find({"name": "Ada's", 'n': 1}) // a comment`
+	toks, st := lx.LexLine(line, State{})
+	kinds := map[TokenKind]int{}
+	for _, tk := range toks {
+		kinds[tk.Kind]++
+	}
+	// A double-quoted run is a string, not a name: mongosh writes every key
+	// and every text value that way.
+	if kinds[TokString] != 3 {
+		t.Errorf("%d strings, want three: %s", kinds[TokString], render(line, toks))
+	}
+	if kinds[TokQuotedIdent] != 0 {
+		t.Errorf("a name was found where there are none: %s", render(line, toks))
+	}
+	if kinds[TokComment] != 1 {
+		t.Errorf("%d comments, want the one after //: %s", kinds[TokComment], render(line, toks))
+	}
+	if st.Kind != StateNormal {
+		t.Errorf("the line ends in %v", st.Kind)
+	}
+	// A quote of one kind inside the other is text, not an end.
+	const mixed = `x = "it's here"`
+	toks, _ = lx.LexLine(mixed, State{})
+	found := ""
+	for _, tk := range toks {
+		if tk.Kind == TokString {
+			found = mixed[tk.Start:tk.End]
+		}
+	}
+	if found != `"it's here"` {
+		t.Errorf("the string is %q, want the whole of it", found)
+	}
+	// A string left open carries to the next line, with the quote it opened.
+	_, st = lx.LexLine(`db.x.find({"a": "open`, State{})
+	if st.Kind != StateString || st.Quote != '"' {
+		t.Errorf("an unterminated double-quoted string leaves %+v", st)
+	}
+	toks, st = lx.LexLine(`still text"})`, st)
+	if st.Kind != StateNormal || toks[0].Kind != TokString {
+		t.Errorf("the next line is %+v %v", st, toks[0].Kind)
+	}
+	// The words of the shell are its own.
+	if !Known("mongosh") {
+		t.Error("the lexer does not know mongosh")
+	}
+	if DialectFor("mongosh") != Mongosh {
+		t.Error("mongosh resolves elsewhere")
+	}
+}
+
+// render shows a line's tokens, for a failure to read.
+func render(line string, toks []Token) string {
+	var b strings.Builder
+	for _, t := range toks {
+		fmt.Fprintf(&b, "[%d %q]", t.Kind, line[t.Start:t.End])
+	}
+	return b.String()
 }

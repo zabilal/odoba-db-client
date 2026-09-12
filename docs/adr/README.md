@@ -74,3 +74,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0067](0067-editing-a-document.md) | Editing a document | Accepted |
 | [0068](0068-the-aggregation-pipeline.md) | The aggregation pipeline | Accepted |
 | [0069](0069-making-and-unmaking-indexes.md) | Making and unmaking indexes | Accepted |
+| [0070](0070-the-command-console.md) | The command console | Accepted |

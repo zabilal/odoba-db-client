@@ -8,6 +8,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
 func config(host string, port int, params map[string]string) source.ConnectionConfig {
@@ -222,9 +223,15 @@ func TestCapabilitiesAreTheDocumentParadigms(t *testing.T) {
 	if c.Data.TransactionalWrite {
 		t.Errorf("data %+v claims a transaction this server has not got", c.Data)
 	}
+	// The console is the query language, and the lexer must know it: an
+	// unknown name would colour the editor, and redact history, by another
+	// engine's rules.
+	if !c.Query.Supported || c.Query.Language != "mongosh" || !sqllex.Known(c.Query.Language) {
+		t.Errorf("query %+v, want the console's own language", c.Query)
+	}
 	// Nothing is claimed that is not written yet: a capability claimed
 	// without its interface is what the conformance suite fails a driver for.
-	if c.Query.Supported || c.Data.BulkLoad || c.Data.DistinctValues {
+	if c.Data.BulkLoad || c.Data.DistinctValues || c.Query.Cancel || c.Query.Parameters {
 		t.Errorf("capabilities %+v claim what is not written yet", c)
 	}
 }

@@ -123,6 +123,35 @@ var CQL = &Dialect{
 	QuoteIdent: '"',
 }
 
+// Mongosh is MongoDB's shell language: JavaScript-shaped, with the driver's
+// own methods as its words. It is not SQL at all, and shares this lexer
+// because what the editor needs of a language — its strings, its comments,
+// its words and its brackets — is the same either way.
+var Mongosh = &Dialect{
+	Name: "mongosh",
+	Keywords: words(`
+		db use show dbs databases collections tables var let const function return
+		null true false new this if else for while
+	`),
+	Types: words(`
+		objectid isodate numberlong numberint numberdecimal uuid binata timestamp regexp
+	`),
+	Functions: words(`
+		find findone aggregate count countdocuments estimateddocumentcount distinct
+		insertone insertmany updateone updatemany replaceone deleteone deletemany
+		findoneandupdate findoneandreplace findoneandelete bulkwrite
+		createindex createindexes dropindex dropindexes getindexes
+		drop createcollection rencollection renamecollection stats
+		getcollectionnames getcollectioninfos runcommand admincommand
+		sort limit skip project match group lookup unwind
+		printjson print it explain hint
+	`),
+	DollarQuote:         false,
+	DoubleQuotedStrings: true,
+	SlashComment:        true,
+	BackslashEscapes:    true,
+}
+
 // dialects maps a source's declared query language (capability.Query.Language)
 // to a lexer dialect.
 var dialects = map[string]*Dialect{
@@ -137,6 +166,8 @@ var dialects = map[string]*Dialect{
 	"mssql":       SQLServer,
 	"cql":         CQL,
 	"cassandra":   CQL,
+	"mongosh":     Mongosh,
+	"mongodb":     Mongosh,
 }
 
 // Known reports whether a language name resolves to a dialect of its own

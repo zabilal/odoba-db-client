@@ -165,16 +165,51 @@ func TestLiveListsDatabases(t *testing.T) {
 	}
 }
 
-func TestLiveRefusesAQueryItHasNoLanguageFor(t *testing.T) {
+func TestLiveTakesAFilterDocumentAsACondition(t *testing.T) {
 	src := open(t, liveConfig("ikigai_it"))
 	seed(t, src, "ikigai_it")
+	ctx := context.Background()
 	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
-	_, err := src.Browse(context.Background(), ref, source.BrowseOptions{Where: "score > 1"})
-	if err == nil {
-		t.Fatal("a condition was taken in a language this source has none of")
+	count := func(t *testing.T, where string) int {
+		t.Helper()
+		rs, err := src.Browse(ctx, ref, source.BrowseOptions{Where: where, Limit: 10})
+		if err != nil {
+			t.Fatalf("browse under %s: %v", where, err)
+		}
+		defer rs.Close()
+		return len(read(t, rs))
 	}
-	if !strings.Contains(err.Error(), "filters") {
-		t.Errorf("error %q, want it to say what it takes instead", err)
+	// A condition in this language is a filter document (ADR-0070).
+	if got := count(t, `{}`); got != 2 {
+		t.Errorf("%d documents under {}, want both", got)
+	}
+	if got := count(t, `{"score": {"$gt": 10}}`); got != 1 {
+		t.Errorf("%d documents under a filter, want the one", got)
+	}
+	// It is ANDed with the grid's own filters, not instead of them.
+	rs, err := src.Browse(ctx, ref, source.BrowseOptions{Limit: 10,
+		Where:   `{"score": {"$gt": 1}}`,
+		Filters: []source.Filter{{Column: "name", Op: source.OpEqual, Values: []any{"Grace"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rs.Close()
+	if got := len(read(t, rs)); got != 1 {
+		t.Errorf("%d documents under both, want the one they agree on", got)
+	}
+	// A condition in another language is refused, and says what this one
+	// takes.
+	_, err = src.Browse(ctx, ref, source.BrowseOptions{Where: "score > 1"})
+	if err == nil {
+		t.Fatal("a condition of another language was taken")
+	}
+	if !strings.Contains(err.Error(), "filter document") {
+		t.Errorf("error %q, want it to say what a condition is here", err)
+	}
+	// And it counts what it filters.
+	n, err := src.(source.Countable).Count(ctx, ref, source.BrowseOptions{Where: `{"score": {"$gt": 10}}`})
+	if err != nil || n != 1 {
+		t.Errorf("counted %d (%v) under a filter, want the one", n, err)
 	}
 }
 
@@ -1074,6 +1109,151 @@ func TestLiveRefusesIndexChangesWhereItMayNot(t *testing.T) {
 	}
 }
 
+func TestLiveRunsConsoleCommands(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	sess, err := src.(source.Sessioner).Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	run := func(t *testing.T, text string) *source.Result {
+		t.Helper()
+		res, err := sess.Query(ctx, source.Statement{SQL: text})
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		return res
+	}
+	rowsOf := func(t *testing.T, res *source.Result) []model.Row {
+		t.Helper()
+		defer res.Rows.Close()
+		return read(t, res.Rows)
+	}
+
+	// A find answers with documents, and its columns are their fields.
+	res := run(t, `db.people.find({"name": "Ada"})`)
+	rows := rowsOf(t, res)
+	if len(rows) != 1 {
+		t.Fatalf("%d documents found", len(rows))
+	}
+	if got := colNames(res.Rows); !has(got, "name") || !has(got, "score") {
+		t.Errorf("the columns are %v", got)
+	}
+	// A count answers with a number.
+	rows = rowsOf(t, run(t, "db.people.countDocuments()"))
+	if len(rows) != 1 || rows[0][0] != int64(2) {
+		t.Errorf("the count is %v", rows)
+	}
+	// An aggregate runs its stages.
+	rows = rowsOf(t, run(t, `db.people.aggregate([{"$group": {"_id": null, "n": {"$sum": 1}}}])`))
+	if len(rows) != 1 {
+		t.Errorf("the aggregate answered %v", rows)
+	}
+	// The shell's own words.
+	rows = rowsOf(t, run(t, "show collections"))
+	var names []string
+	for _, r := range rows {
+		names = append(names, fmt.Sprint(r[0]))
+	}
+	if !has(names, "people") || !has(names, "orders") {
+		t.Errorf("the collections are %v", names)
+	}
+	if got := rowsOf(t, run(t, "show dbs")); len(got) == 0 {
+		t.Error("no databases were shown")
+	}
+	// use changes the database the commands are on, and it stays changed.
+	if res := run(t, "use admin"); len(res.Messages) == 0 || !strings.Contains(res.Messages[0].Text, "admin") {
+		t.Errorf("use says %+v", res.Messages)
+	}
+	if got := rowsOf(t, run(t, "db.people.countDocuments()")); got[0][0] != int64(0) {
+		t.Errorf("the count on another database is %v, want none: people is not there", got)
+	}
+	run(t, "use ikigai_it")
+
+	// A write says what it did, and did it.
+	res = run(t, `db.people.insertOne({"name": "Edsger", "score": 3})`)
+	if res.Affected != 1 || len(res.Messages) == 0 {
+		t.Errorf("the insert says %+v", res)
+	}
+	res = run(t, `db.people.updateMany({"name": "Edsger"}, {"$set": {"score": 4}})`)
+	if res.Affected != 1 || !strings.Contains(res.Messages[0].Text, "1 documents matched") {
+		t.Errorf("the update says %+v (%d)", res.Messages, res.Affected)
+	}
+	res = run(t, `db.people.deleteOne({"name": "Edsger"})`)
+	if res.Affected != 1 {
+		t.Errorf("the delete says %+v", res)
+	}
+	// A script runs its commands in order, and says which is which.
+	ch, err := sess.QueryMulti(ctx, "db.people.countDocuments()\ndb.people.find({})", source.ScriptOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []source.ScriptResult
+	for r := range ch {
+		got = append(got, r)
+	}
+	if len(got) != 2 || got[0].Index != 0 || got[1].Index != 1 || got[1].Statement != "db.people.find({})" {
+		t.Fatalf("the script answered %+v", got)
+	}
+	for _, r := range got {
+		if r.Err != nil {
+			t.Errorf("%s: %v", r.Statement, r.Err)
+		}
+		r.Result.Rows.Close()
+	}
+	// A command the console does not know says so rather than running.
+	if _, err := sess.Query(ctx, source.Statement{SQL: "SELECT 1"}); err == nil {
+		t.Error("SQL was run")
+	}
+	_, err = sess.Query(ctx, source.Statement{SQL: "db.people.explode()"})
+	if err == nil {
+		t.Fatal("a method the console does not know was run")
+	}
+	if !strings.Contains(err.Error(), "not a command this console knows") {
+		t.Errorf("it says %q", err)
+	}
+}
+
+func TestLiveRefusesConsoleWritesWhereItMayNot(t *testing.T) {
+	ctx := context.Background()
+	ro := liveConfig("ikigai_it")
+	ro.Guard = source.Guard{ReadOnly: true}
+	src := open(t, ro)
+	seed(t, src, "ikigai_it")
+	sess, err := src.(source.Sessioner).Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	// A read runs.
+	res, err := sess.Query(ctx, source.Statement{SQL: "db.people.countDocuments()"})
+	if err != nil {
+		t.Fatalf("a read on a read-only connection: %v", err)
+	}
+	res.Rows.Close()
+	// A write does not.
+	for _, text := range []string{
+		`db.people.insertOne({"a": 1})`,
+		`db.people.drop()`,
+		`db.people.aggregate([{"$out": "copies"}])`,
+	} {
+		if _, err := sess.Query(ctx, source.Statement{SQL: text}); !errors.Is(err, source.ErrReadOnly) {
+			t.Errorf("%s ran on a read-only connection: %v", text, err)
+		}
+	}
+	// And a script is refused whole, before any of it runs.
+	if _, err := sess.QueryMulti(ctx, "db.people.countDocuments()\ndb.people.drop()",
+		source.ScriptOptions{}); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a script with a write in it: %v", err)
+	}
+	if n, _ := src.(source.Countable).Count(ctx, model.NewRef(model.KindCollection, "ikigai_it", "people"),
+		source.BrowseOptions{}); n != 2 {
+		t.Errorf("%d documents left, want both: nothing of the script ran", n)
+	}
+}
+
 // TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
 // among the checks yet: a collection takes them in T2.34, and until then the
 // suite skips every check that needs a writable object.
@@ -1090,5 +1270,13 @@ func TestConformance(t *testing.T) {
 			return s
 		},
 		Browsable: model.NewRef(model.KindCollection, "ikigai_it", "people"),
+		// A condition here is a filter document, and JSON has no comments.
+		Conditions: &conformance.Conditions{
+			True:  `{}`,
+			False: `{"_id": {"$exists": false}}`,
+			Refused: []string{
+				`{`, `{} {}`, `not a document`, `[{"a": 1}]`, `"a string"`,
+			},
+		},
 	})
 }
