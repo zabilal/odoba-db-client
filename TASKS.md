@@ -23,9 +23,7 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.29 (the schema cache that fills the completion catalog —
-           until it lands the popup offers the dialect's own words alone),
-           then T2.28 (snippets).
+NEXT TASK: T2.28 (snippets), which finishes 2.D; then 2.E (MongoDB).
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -35,7 +33,8 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-12 — the completion popup (T2.27, ADR-0059), the
+LAST DONE: 2026-09-12 — the schema cache behind completion (T2.29,
+           ADR-0060), the completion popup (T2.27, ADR-0059), the
            tables a statement reads, so that a column can be offered by its
            alias (T2.26, ADR-0058), and the completion engine (T2.25,
            ADR-0057). Before them: exports as SQL INSERT, HTML and XML (T2.24,
@@ -412,7 +411,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.26** **Alias-resolved column completion** → FR-5.2 — *`sqlcomplete.Scope` lists the tables a statement reads, under the names it calls them by, reading the whole statement and only the one the cursor is in; a subquery's tables are in scope inside its brackets alone, and the statement's own within them; a qualifier is an alias before it is a path, matched whatever its case; unqualified, every table in scope offers its columns, saying which table where two are read, and writing a name two of them have qualified (ADR-0058)*
 - [x] **T2.27** Completion popup widget with keyboard navigation → FR-5.2 — *the popup is drawn inside the editor, not as an overlay, so the focus never leaves the text; it opens as a word is typed and after a dot, closes on anything that ends a word, and ⌃Space (Query ▸ Complete) asks outright; ↑↓ move, Page keys by a windowful, Return or Tab accepts the candidate over the whole word as one undoable edit, Escape closes; ten rows at a time, each saying the candidate in its kind's colour, its detail and its kind in words, spoken for anyone who cannot see it (ADR-0059)*
 - [ ] **T2.28** Snippets → FR-5.2
-- [ ] **T2.29** Schema cache feeding completion, invalidated on DDL → FR-5.2
+- [x] **T2.29** Schema cache feeding completion, invalidated on DDL → FR-5.2 — *`app.SchemaCache` is the completion catalog, one per connection, hung off `Live`: it answers with what it holds and loads the rest behind, one request however many keystrokes, telling the popup when something lands; it reads the explorer's own lazy tree, and the tree's shape tells a source with schemas from one whose databases are its schemas from one with a single database; DDL and an explorer refresh empty it, and a load in flight when that happens is dropped (ADR-0060)*
 
 ## 2.E MongoDB
 

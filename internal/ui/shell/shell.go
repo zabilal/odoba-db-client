@@ -830,8 +830,13 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 				s.forgetScratch(t)
 			}
 			t.cancel()
-			if q := t.query; q != nil && q.session != nil {
-				go q.session.Close() // may wait on the network; never on the UI goroutine
+			if q := t.query; q != nil {
+				if q.unschema != nil {
+					q.unschema()
+				}
+				if q.session != nil {
+					go q.session.Close() // may wait on the network; never on the UI goroutine
+				}
 			}
 			s.open = append(s.open[:i], s.open[i+1:]...)
 			break
@@ -921,6 +926,13 @@ func (s *Shell) refreshSelected() {
 		id = explorer.RootID
 	}
 	s.Explorer.Refresh(id)
+	// Refreshing says the structure has changed under us, which is as true
+	// of what completion holds as of the tree (T2.29).
+	for _, connID := range s.d.WS.OpenIDs() {
+		if l, ok := s.d.WS.Get(connID); ok {
+			l.Schema().Invalidate()
+		}
+	}
 }
 
 func (s *Shell) duplicateSelected() {
