@@ -81,7 +81,7 @@ type Scriptable interface {
 // alias to its table requires knowing the dialect's scoping rules.
 type Completer interface {
 	// Complete returns candidates for a cursor position within statement text.
-	Complete(ctx context.Context, req CompletionRequest) ([]Completion, error)
+	Complete(ctx context.Context, req CompletionRequest) (CompletionResult, error)
 }
 
 // CompletionRequest describes where completion was invoked.
@@ -113,6 +113,17 @@ const (
 	CompletionAlias
 	CompletionSnippet
 )
+
+// CompletionResult is what a completion returns.
+type CompletionResult struct {
+	Candidates []Completion
+
+	// Start and End are 0-based rune offsets into the request's Text: the
+	// word being typed, which accepting a candidate replaces. They are equal
+	// where nothing is being typed, so an insertion point alone is a range.
+	// Every candidate replaces the same span, so it is held once.
+	Start, End int
+}
 
 // Completion is one candidate.
 type Completion struct {
