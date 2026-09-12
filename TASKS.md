@@ -23,10 +23,9 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 2.F — Redis (T2.39, driver and connection). 2.D and 2.E are done:
-           MongoDB browses, writes, aggregates, indexes and takes mongosh
-           commands, and the shared suite now holds it to the write contract
-           in a paradigm of its own.
+NEXT TASK: T2.40 — the Redis key browser: SCAN by pattern, the type filter,
+           and the keys of a database in the grid. The connection is done
+           (T2.39); 2.D and 2.E are done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -36,8 +35,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
-           ikigai-mongo (57017).
-LAST DONE: 2026-09-12 — the command console and MongoDB's own query
+           ikigai-mongo (57017), ikigai-redis (56379).
+LAST DONE: 2026-09-12 — the Redis connection, three topologies in one form
+           (T2.39, ADR-0072); the command console and MongoDB's own query
            language (T2.37, ADR-0070); index management (T2.36, ADR-0069),
            the first structural change the app makes; the aggregation
            pipeline (T2.35, ADR-0068);
@@ -441,7 +441,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.F Redis
 
-- [ ] **T2.39** Driver + connection (standalone, sentinel, cluster)
+- [x] **T2.39** Driver + connection (standalone, sentinel, cluster) → FR-1.3, FR-12.2 — *`internal/source/drivers/redis` over go-redis: one form for three topologies, where the mode is a setting and a setting the mode has not got is refused rather than dropped — a cluster has one keyspace, a sentinel set is known by its master's name, a single server has one address. A database is a number here, and the tree lists what the server was configured with, or the ones holding keys where the server refuses CONFIG. The credentials are settings and never part of an address, the sentinels' own password is read under its own name, and `rediss://` means encryption because the scheme says so — `Descriptor.TLSSchemes`, which connstr reads without knowing what Redis is. A failure is said by the server's own code: WRONGPASS, NOAUTH, NOPERM, a cluster that is not one, a master no sentinel knows. Nothing is claimed that is not written; the key browser is T2.40 (ADR-0072)*
 - [ ] **T2.40** Key browser with pattern SCAN + type filter → FR-12.2
 - [ ] **T2.41** Editors: string, hash, list, set, sorted set → FR-12.2
 - [ ] **T2.42** Editors: JSON, stream → FR-12.2

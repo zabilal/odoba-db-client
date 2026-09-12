@@ -50,6 +50,11 @@ type Descriptor struct {
 	// URLSchemes lists the schemes this driver claims when the user pastes a
 	// connection string (FR-1.3), e.g. "postgres", "postgresql".
 	URLSchemes []string
+
+	// TLSSchemes are those of URLSchemes that mean an encrypted connection —
+	// "rediss" beside "redis". A pasted address that says so in its scheme
+	// keeps its encryption, without the parser knowing which engine it is.
+	TLSSchemes []string
 }
 
 // FieldKind determines the widget used for a connection-form field.
