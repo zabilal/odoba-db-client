@@ -48,6 +48,9 @@ type Editor struct {
 
 	mark *errorMark
 
+	completer Completer
+	comp      *completions
+
 	matches    []editor.Match // outlined search matches, sorted
 	matchesRev uint64         // the revision they were found at
 }
@@ -84,6 +87,7 @@ func New(doc *editor.Document, pal uitheme.Palette) *Editor {
 	e := &Editor{doc: doc, pal: pal}
 	e.surface = newSurface(e)
 	e.gutter = newGutter(e)
+	e.comp = newCompletions(e)
 	e.scroll = container.NewScroll(e.surface)
 	e.scroll.OnScrolled = func(fyne.Position) { e.redraw() }
 	e.ExtendBaseWidget(e)
@@ -129,15 +133,20 @@ type editorRenderer struct {
 func (r *editorRenderer) Layout(size fyne.Size) {
 	r.bg.Resize(size)
 	r.content.Resize(size)
+	r.e.comp.place(size)
 }
 func (r *editorRenderer) MinSize() fyne.Size { return r.content.MinSize() }
 func (r *editorRenderer) Refresh() {
 	r.bg.FillColor = r.e.pal.ContentBackground
 	r.bg.Refresh()
+	r.e.comp.place(r.e.Size())
+	r.e.comp.Refresh()
 	r.e.redraw()
 }
-func (r *editorRenderer) Objects() []fyne.CanvasObject { return []fyne.CanvasObject{r.bg, r.content} }
-func (r *editorRenderer) Destroy()                     {}
+func (r *editorRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.bg, r.content, r.e.comp}
+}
+func (r *editorRenderer) Destroy() {}
 
 // metrics are the monospaced grid text is laid on.
 type metrics struct {
@@ -225,6 +234,7 @@ func (s *surface) FocusGained() {
 
 func (s *surface) FocusLost() {
 	s.focused, s.shift = false, false
+	s.e.comp.dismiss()
 	s.e.redraw()
 }
 
@@ -246,10 +256,16 @@ func (s *surface) KeyUp(k *fyne.KeyEvent) {
 	}
 }
 
-func (s *surface) TypedRune(r rune) { s.edit(func() { s.e.doc.Insert(string(r)) }) }
+func (s *surface) TypedRune(r rune) {
+	s.edit(func() { s.e.doc.Insert(string(r)) })
+	s.e.comp.typed(r)
+}
 
 func (s *surface) TypedKey(k *fyne.KeyEvent) {
 	d := s.e.doc
+	if s.e.comp.key(k) {
+		return // the completion popup took it: Up, Down, Return, Tab, Escape
+	}
 	switch k.Name {
 	case fyne.KeyLeft:
 		s.move(editor.Left)
@@ -271,8 +287,10 @@ func (s *surface) TypedKey(k *fyne.KeyEvent) {
 		s.changed()
 	case fyne.KeyBackspace:
 		s.edit(d.Backspace)
+		s.e.comp.retype()
 	case fyne.KeyDelete:
 		s.edit(d.Delete)
+		s.e.comp.retype()
 	case fyne.KeyReturn, fyne.KeyEnter:
 		s.edit(d.Newline)
 	case fyne.KeyTab:
@@ -286,6 +304,7 @@ func (s *surface) TypedKey(k *fyne.KeyEvent) {
 
 func (s *surface) TypedShortcut(sc fyne.Shortcut) {
 	d := s.e.doc
+	s.e.comp.dismiss() // ⌘↵ runs the query; it does not accept a candidate
 	switch sc := sc.(type) {
 	case *fyne.ShortcutCopy:
 		if t := d.SelectedText(); t != "" && sc.Clipboard != nil {
@@ -407,6 +426,7 @@ func Reserved() []fyne.Shortcut {
 }
 
 func (s *surface) MouseDown(ev *desktop.MouseEvent) {
+	s.e.comp.dismiss()
 	if ev.Button != desktop.MouseButtonPrimary {
 		return
 	}
@@ -453,6 +473,7 @@ func (s *surface) page() int {
 }
 
 func (s *surface) move(m editor.Motion) {
+	s.e.comp.dismiss() // the word the popup was offering for is behind the caret
 	s.e.doc.Move(m, s.shift)
 	s.changed()
 }
