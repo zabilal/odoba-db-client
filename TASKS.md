@@ -23,8 +23,9 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.25 (the completion engine: keywords, schemas, tables,
-           functions) — paused here at the owner's word, 2026-09-11.
+NEXT TASK: T2.26 (alias-resolved column completion), then T2.27 (the
+           completion popup) and T2.29 (the schema cache that fills the
+           completion catalog).
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -34,8 +35,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-11 — exports as SQL INSERT, HTML and XML (T2.24,
-           ADR-0056). Before it: an export can be an Excel workbook (T2.23,
+LAST DONE: 2026-09-12 — the completion engine (T2.25, ADR-0057).
+           Before it: exports as SQL INSERT, HTML and XML (T2.24,
+           ADR-0056); an export can be an Excel workbook (T2.23,
            ADR-0055); the import's rows a transaction and what a
            row that would not go in does, the rows left out listed (T2.22,
            ADR-0053, ADR-0054); an import updates the rows whose primary
@@ -404,7 +406,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.D Query editor — stage 2
 
-- [ ] **T2.25** Completion engine: keywords, schemas, tables, functions → FR-5.2
+- [x] **T2.25** Completion engine: keywords, schemas, tables, functions → FR-5.2 — *`internal/source/sqlcomplete` offers what can be typed at a cursor: the token before it and the clause it is in decide whether a name would be a table's or a column's; a dotted chain is read as a schema, a table or both; nothing is offered inside a comment, a string or a parameter; the catalog answers from memory, so no keystroke waits on the server; a name is quoted where it must be, through the source's own quoter, and the result says what it replaces (ADR-0057)*
 - [ ] **T2.26** **Alias-resolved column completion** → FR-5.2
 - [ ] **T2.27** Completion popup widget with keyboard navigation → FR-5.2
 - [ ] **T2.28** Snippets → FR-5.2
