@@ -76,6 +76,14 @@ type Statement struct {
 	// Confirmed records explicit user consent for a mutating statement on a
 	// production connection (FR-4.9).
 	Confirmed bool
+
+	// Op carries a source's own form of the operation this statement renders,
+	// for a source whose writes are calls rather than statements: SQL is text
+	// a driver can execute, and a document store's update is not. It is the
+	// driver's own type, written by its Plan and read by its Apply; nothing
+	// outside the driver reads it, and nothing shows it — SQL is what a
+	// person reviews (FR-4.4).
+	Op any
 }
 
 // ScriptOptions is how a script is run (Queryer.QueryMulti).

@@ -679,6 +679,161 @@ func TestLiveReadingStopsWhenItIsCancelled(t *testing.T) {
 	}
 }
 
+func TestLiveWritesDocuments(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	w, ok := src.(source.Writer)
+	if !ok {
+		t.Fatal("the source cannot write")
+	}
+	id := model.RowIdentity{Kind: model.IdentityDocumentID, Columns: []string{"_id"}, Target: ref}
+	apply := func(t *testing.T, changes ...source.RowChange) *source.WriteOutcome {
+		t.Helper()
+		plan, err := w.Plan(ctx, source.Changeset{Target: ref, Identity: id, Changes: changes})
+		if err != nil {
+			t.Fatalf("plan: %v", err)
+		}
+		out, err := w.Apply(ctx, plan)
+		if err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+		return out
+	}
+	// documents reads the collection back, by name.
+	documents := func(t *testing.T) map[string]bson.M {
+		t.Helper()
+		cur, err := src.(*mongoSource).collection(ref).Find(ctx, bson.D{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var all []bson.M
+		if err := cur.All(ctx, &all); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bson.M{}
+		for _, d := range all {
+			name, _ := d["name"].(string)
+			out[name] = d
+		}
+		return out
+	}
+
+	// A document added, then read back and changed by its own _id.
+	if out := apply(t, source.RowChange{Kind: source.ChangeInsert,
+		Values: map[string]any{"name": "Edsger", "score": int64(3)}}); out.Err != nil || out.Applied != 1 {
+		t.Fatalf("adding a document: %+v", out)
+	}
+	added := documents(t)["Edsger"]
+	if added == nil {
+		t.Fatal("the document was not added")
+	}
+	oid, ok := added["_id"].(bson.ObjectID)
+	if !ok {
+		t.Fatalf("_id is %T, want the ObjectID the server gave it", added["_id"])
+	}
+	key := oid.Hex()
+
+	// Changed by the hex the grid holds, with a field removed and another set.
+	if out := apply(t, source.RowChange{Kind: source.ChangeUpdate, Key: []any{key},
+		Values: map[string]any{"name": "Edsger W.", "score": model.Removed{}, "born": int64(1930)}}); out.Err != nil {
+		t.Fatalf("changing a document: %+v", out)
+	}
+	changed := documents(t)["Edsger W."]
+	if changed == nil {
+		t.Fatal("the document was not changed")
+	}
+	if _, there := changed["score"]; there {
+		t.Errorf("the field removed is there still: %v", changed)
+	}
+	if changed["born"] != int64(1930) {
+		t.Errorf("the field set is %v", changed["born"])
+	}
+
+	// A change to a document that is not there fails, and says so.
+	gone := bson.NewObjectID().Hex()
+	out := apply(t, source.RowChange{Kind: source.ChangeUpdate, Key: []any{gone},
+		Values: map[string]any{"name": "nobody"}})
+	if out.Err == nil || out.FailedAt != 0 {
+		t.Errorf("a change to a document that is not there: %+v", out)
+	}
+	if out.RolledBack {
+		t.Error("the outcome says the writes were undone, and this server undoes nothing")
+	}
+
+	// The writes before a failure stand, and the outcome says how many.
+	out = apply(t,
+		source.RowChange{Kind: source.ChangeInsert, Values: map[string]any{"name": "Barbara"}},
+		source.RowChange{Kind: source.ChangeUpdate, Key: []any{gone}, Values: map[string]any{"name": "nobody"}},
+	)
+	if out.Applied != 1 || out.FailedAt != 1 || out.Err == nil {
+		t.Errorf("a plan that failed halfway: %+v", out)
+	}
+	if documents(t)["Barbara"] == nil {
+		t.Error("the write before the failure was undone, and nothing here undoes one")
+	}
+
+	// Deleted by its _id.
+	if out := apply(t, source.RowChange{Kind: source.ChangeDelete, Key: []any{key}}); out.Err != nil {
+		t.Fatalf("deleting a document: %+v", out)
+	}
+	if documents(t)["Edsger W."] != nil {
+		t.Error("the document is there still")
+	}
+	// Deleting it again fails: it went since it was read (ADR-0031).
+	if out := apply(t, source.RowChange{Kind: source.ChangeDelete, Key: []any{key}}); out.Err == nil {
+		t.Error("a document deleted twice was deleted twice")
+	}
+}
+
+func TestLiveRefusesToWriteWhereItMayNot(t *testing.T) {
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	id := model.RowIdentity{Kind: model.IdentityDocumentID, Columns: []string{"_id"}, Target: ref}
+	change := source.RowChange{Kind: source.ChangeInsert, Values: map[string]any{"name": "nobody"}}
+
+	ro := liveConfig("ikigai_it")
+	ro.Guard = source.Guard{ReadOnly: true}
+	src := open(t, ro)
+	w := src.(source.Writer)
+	plan, err := w.Plan(ctx, source.Changeset{Target: ref, Identity: id, Changes: []source.RowChange{change}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := w.Apply(ctx, plan); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection wrote: %v", err)
+	}
+
+	prod := liveConfig("ikigai_it")
+	prod.Guard = source.Guard{Environment: source.EnvProduction}
+	psrc := open(t, prod)
+	pw := psrc.(source.Writer)
+	plan, err = pw.Plan(ctx, source.Changeset{Target: ref, Identity: id, Changes: []source.RowChange{change}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if !plan.Guarded {
+		t.Error("a production plan is not guarded")
+	}
+	if _, err := pw.Apply(ctx, plan); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	// With consent it writes, and is cleaned up after.
+	plan, err = pw.Plan(ctx, source.Changeset{Target: ref, Identity: id,
+		Changes: []source.RowChange{change}, Confirmed: true})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	out, err := pw.Apply(ctx, plan)
+	if err != nil || out.Err != nil {
+		t.Fatalf("production with consent: %v %+v", err, out)
+	}
+	if _, err := psrc.(*mongoSource).collection(ref).DeleteMany(ctx, bson.D{{Key: "name", Value: "nobody"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
 // among the checks yet: a collection takes them in T2.34, and until then the
 // suite skips every check that needs a writable object.

@@ -165,3 +165,18 @@ func TestNewRowsNeedNoKey(t *testing.T) {
 		t.Error("a row deleted beside them still needs its key")
 	}
 }
+
+func TestARemovedFieldIsRefused(t *testing.T) {
+	// A column belongs to the table, so no row can be without it: only a
+	// store whose rows hold their own fields can remove one (model.Removed).
+	cs := source.Changeset{Target: peopleRef, Identity: byID,
+		Changes: []source.RowChange{{Kind: source.ChangeUpdate, Key: []any{int64(1)},
+			Values: map[string]any{"nickname": model.Removed{}}}}}
+	_, err := PlanWrites(pgLike{}, source.Guard{}, cs, "DEFAULT VALUES")
+	if err == nil {
+		t.Fatal("a column was removed from one row")
+	}
+	if !strings.Contains(err.Error(), "document") {
+		t.Errorf("error %q, want it to say where a field can be removed", err)
+	}
+}

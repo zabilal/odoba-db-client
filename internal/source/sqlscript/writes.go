@@ -67,7 +67,10 @@ func write(d source.Dialect, table string, keys []string, c source.RowChange, de
 		return d.Placeholder(len(st.Args))
 	}
 	names := make([]string, 0, len(c.Values))
-	for name := range c.Values {
+	for name, v := range c.Values {
+		if _, ok := v.(model.Removed); ok {
+			return st, "", fmt.Errorf("%s: %w", name, errRemoveField)
+		}
 		names = append(names, name)
 	}
 	slices.Sort(names)
@@ -134,6 +137,10 @@ func bindable(v any) any {
 	}
 	return v
 }
+
+// errRemoveField says what a relational store cannot do: a column belongs to
+// the table, so no row can be without it (model.Removed).
+var errRemoveField = errors.New("a field can be removed only where a row's fields are its own, as a document's are")
 
 // AllowWrites asks the guard whether a plan may run, with the consent each
 // of its statements carries (FR-4.9).
