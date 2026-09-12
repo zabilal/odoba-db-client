@@ -23,10 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.38 (conformance green for MongoDB) is what is left of 2.E: the
-           suite runs green for everything the driver claims, and its write
-           checks still assume a declared schema with server defaults, which
-           a collection has not. Then 2.F (Redis). 2.D is done.
+NEXT TASK: 2.F — Redis (T2.39, driver and connection). 2.D and 2.E are done:
+           MongoDB browses, writes, aggregates, indexes and takes mongosh
+           commands, and the shared suite now holds it to the write contract
+           in a paradigm of its own.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -42,7 +42,8 @@ LAST DONE: 2026-09-12 — the command console and MongoDB's own query
            the first structural change the app makes; the aggregation
            pipeline (T2.35, ADR-0068);
            documents written and edited as JSON (T2.34, ADR-0066, ADR-0067); the conformance suite run against
-           MongoDB, and the two faults it found fixed (T2.38, partly); a collection's
+           MongoDB, writes among the checks and in a paradigm of its own, and the
+           three faults it found fixed (T2.38, ADR-0071); a collection's
            documents in the grid and as JSON (T2.33, ADR-0065), its shape read from a sample of them
            (T2.32, ADR-0064), the MongoDB tree (T2.31, ADR-0063)
            and its connection (T2.30, ADR-0062). Before them, 2.D: snippets (T2.28, ADR-0061), the schema
@@ -436,7 +437,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.35** Aggregation-pipeline editor → FR-12.1 — *`source.Aggregator`, paired with `Data.Pipeline` and checked by the conformance suite: the stages are the person's own text, a pipeline says its own matching and order so filters and sorts beside it are refused, only paging is added and only where it reads, and a pipeline that writes (`$out`, `$merge`) asks the guard first; the columns are the fields it produced and nothing it produces is written back. `app.PipelineSource` feeds the grid as a browse does, and the editor sits above the grid with Show Documents to go back (ADR-0068)*
 - [x] **T2.36** Index management → FR-12.1 — *`source.IndexManager`, paired with `Schema.Indexes` and checked by the conformance suite: a change is planned as the call it would make and applied only once it has been shown (FR-6.4), guarded as DDL so nothing runs read-only and production asks again; every index at once and the `_id` index are refused. The structure tab offers Add Index… and Drop Index… under the indexes it lists, fields typed as `name, score:-1, body:text`, and reads the structure again once a change has run (ADR-0069)*
 - [x] **T2.37** `mongosh`-compatible command console → FR-12.1 — *the console reads the commands a person types at a prompt — `db.people.find({…})`, `show collections`, `use shop` — in extended JSON with JavaScript's quotes, one call a line, and says by name what it does not read; mongosh is the source's query language, with a lexer dialect of its own (double-quoted strings, `//` comments); every command is classified and put to the guard before any of a script runs, a session holds the database `use` changes, and a condition typed in the grid is now a filter document, ANDed with its filters and refused where it is more than one (ADR-0070)*
-- [~] **T2.38** Conformance green — *the suite runs against the MongoDB driver and is green for everything it claims: the lifecycle, the capabilities, the tree, browsing, cancellation and paging; the write checks skip until a collection takes writes (T2.34). It found two faults, both fixed: a database whose collections are all the server's own opened onto nothing, and a cursor's batch went on being read after its context was cancelled*
+- [x] **T2.38** Conformance green — *the suite runs against the MongoDB driver and is green for everything it claims: the lifecycle, the capabilities, the tree, browsing, cancellation, paging and now writing. The write checks had been written against a table — a numbered key, server defaults, a rollback — none of which a collection has, so the suite gained a paradigm of its own: `checkWriter` dispatches on `Capabilities().Paradigm`, and the document checks assume only the contract (a change writes the fields it names, a field can be taken away, a change to a document that is gone fails, new documents need no key, a plan's atomicity is what the source claims), with the guard checked in both paradigms in the same words. A writable object's identity is asked of it rather than assumed (ADR-0071). It found three faults, all fixed: a database whose collections are all the server's own opened onto nothing, a cursor's batch went on being read after its context was cancelled, and `{} {}` was taken as one condition*
 
 ## 2.F Redis
 
