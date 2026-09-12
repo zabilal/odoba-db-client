@@ -131,6 +131,10 @@ type Completion struct {
 
 	// Label is shown in the popup; Insert is what is written, which differs
 	// when an identifier needs quoting.
+	//
+	// A CompletionSnippet's Insert carries the places a person fills in, as
+	// ${1:name} in the order they are stepped through and $0 where the caret
+	// ends. No other kind's Insert is read that way: it is written as it is.
 	Label  string
 	Insert string
 

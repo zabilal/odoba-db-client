@@ -543,3 +543,42 @@ func TestCompleteColumnsWhereRowsAreWritten(t *testing.T) {
 		t.Errorf("candidates %v, want the table's columns in an update", labels(res))
 	}
 }
+
+func TestCompleteOffersSnippets(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "sel|", 0)
+	c, ok := find(res, "sel")
+	if !ok {
+		t.Fatalf("candidates %v, want the snippet", labels(res))
+	}
+	if c.Kind != source.CompletionSnippet {
+		t.Errorf("sel is %v, want a snippet", c.Kind)
+	}
+	if !strings.Contains(c.Insert, "${1:") || !strings.Contains(c.Insert, "from ${2:table}") {
+		t.Errorf("insert %q, want the places to fill in", c.Insert)
+	}
+	if c.Detail == "" {
+		t.Errorf("the snippet says nothing about what it writes")
+	}
+	// The keyword those letters begin comes first; the snippet is under it.
+	if rankOf(res, "SELECT") > rankOf(res, "sel") {
+		t.Errorf("candidates %v, want the keyword above the snippet", labels(res))
+	}
+	// It is written in the case being typed.
+	if c, _ := find(complete(t, e, "SEL|", 0), "sel"); !strings.Contains(c.Insert, "SELECT") {
+		t.Errorf("insert %q after typing upper case, want upper case", c.Insert)
+	}
+	if c, _ := find(complete(t, e, "sel|", 0), "sel"); !strings.Contains(c.Insert, "select") {
+		t.Errorf("insert %q after typing lower case, want lower case", c.Insert)
+	}
+}
+
+func TestCompleteOffersNoSnippetWhereAStatementCannotBegin(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	if res := complete(t, e, "select * from se|", 0); rankOf(res, "sel") >= 0 {
+		t.Errorf("candidates %v, want no snippet where a table goes", labels(res))
+	}
+	if res := complete(t, e, "select orders.se| from orders", 0); rankOf(res, "sel") >= 0 {
+		t.Errorf("candidates %v, want no snippet after a dot", labels(res))
+	}
+}
