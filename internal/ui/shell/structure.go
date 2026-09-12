@@ -123,6 +123,21 @@ func structureView(desc any) fyne.CanvasObject {
 		}
 		add(section("Columns", columnRows(v.Columns)))
 		add(section("Indexes", indexRows(v.Indexes)))
+	case *model.Collection:
+		if v.Attrs["type"] == "view" {
+			add(plain("A view: its documents are another collection's, through a pipeline."))
+		}
+		if v.Attrs["readOnly"] == "true" {
+			add(quietLabel("Read-only."))
+		}
+		if v.DocumentsEstimate >= 0 {
+			add(quietLabel(fmt.Sprintf("About %d documents, as the server estimates it.", v.DocumentsEstimate)))
+		}
+		if v.Shape != nil {
+			add(quietLabel(fmt.Sprintf("Fields seen in %d documents sampled.", v.Shape.Sampled)))
+			add(section("Fields", fieldRows(v.Shape.Fields)))
+		}
+		add(section("Indexes", documentIndexRows(v.Indexes)))
 	default:
 		add(plain("The structure of this kind of object cannot be shown yet."))
 	}
@@ -147,6 +162,54 @@ func columnRows(cols []model.Column) [][]string {
 			details = append(details, "generated as "+c.Generated)
 		}
 		rows = append(rows, []string{c.Name, c.Type.Native, null, c.Default, strings.Join(details, ", "), c.Comment})
+	}
+	return rows
+}
+
+// documentIndexRows renders a collection's indexes. They are not a table's:
+// a key can be a kind of index rather than a direction, and a document store
+// has sparse and expiring indexes where a relational one has partial ones.
+func documentIndexRows(idx []model.DocumentIndex) [][]string {
+	rows := [][]string{{"Name", "Keys", "Kind", "Expires after"}}
+	for _, ix := range idx {
+		var keys []string
+		for _, k := range ix.Keys {
+			switch {
+			case k.Expression != "":
+				keys = append(keys, k.Name+" "+k.Expression)
+			case k.Descending:
+				keys = append(keys, k.Name+" DESC")
+			default:
+				keys = append(keys, k.Name)
+			}
+		}
+		var kind []string
+		if ix.Unique {
+			kind = append(kind, "unique")
+		}
+		if ix.Sparse {
+			kind = append(kind, "sparse")
+		}
+		ttl := ""
+		if ix.TTL > 0 {
+			ttl = fmt.Sprintf("%d seconds", ix.TTL)
+		}
+		rows = append(rows, []string{ix.Name, strings.Join(keys, ", "), strings.Join(kind, ", "), ttl})
+	}
+	return rows
+}
+
+// fieldRows renders an inferred shape: what was seen, and how often, never as
+// though the server had declared it (FR-12.4).
+func fieldRows(fields []model.InferredField) [][]string {
+	rows := [][]string{{"Field", "Types", "In"}}
+	for _, f := range fields {
+		var types []string
+		for _, t := range f.Types {
+			types = append(types, t.Type.Native)
+		}
+		rows = append(rows, []string{f.Name, strings.Join(types, ", "),
+			fmt.Sprintf("%.0f%% of those sampled", f.Presence*100)})
 	}
 	return rows
 }

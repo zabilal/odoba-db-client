@@ -67,3 +67,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0060](0060-what-completion-knows-about-a-schema.md) | What completion knows about a schema | Accepted |
 | [0061](0061-snippets.md) | Snippets | Accepted |
 | [0062](0062-the-mongodb-connection.md) | The MongoDB connection | Accepted |
+| [0063](0063-the-mongodb-tree.md) | The MongoDB tree | Accepted |

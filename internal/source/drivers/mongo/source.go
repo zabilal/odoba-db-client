@@ -230,9 +230,10 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// document is written into it, so CreateDatabase stays false until
 		// the writes that would do it exist.
 		Structure: capability.Structure{MultipleDatabases: true},
+		// A field is an object too, once inference has found one (T2.32).
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
-			model.KindCollection: true, model.KindIndex: true, model.KindField: true,
+			model.KindCollection: true, model.KindIndex: true,
 		},
 	}
 }
@@ -279,25 +280,13 @@ func (s *mongoSource) Close() (err error) {
 	return s.client.Disconnect(ctx)
 }
 
-// errNotYet is what the parts of the contract this task does not reach return.
-// Introspection is T2.31 and browsing is T2.33; a stub that says so is better
-// than one that answers with nothing, which would read as an empty server.
+// errNotYet is what the parts of the contract not written yet return.
+// Browsing a collection is T2.33; a stub that says so is better than one that
+// answers with nothing, which would read as an empty collection.
 var errNotYet = errors.New("mongodb: not implemented yet")
 
 func (s *mongoSource) Root(ctx context.Context) ([]model.Node, error) {
 	return s.databases(ctx)
-}
-
-func (s *mongoSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
-	return nil, fmt.Errorf("%w: listing what is in a database", errNotYet)
-}
-
-func (s *mongoSource) Describe(context.Context, model.ObjectRef) (any, error) {
-	return nil, fmt.Errorf("%w: describing an object", errNotYet)
-}
-
-func (s *mongoSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
-	return model.Badge{}, false, nil
 }
 
 func (s *mongoSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {

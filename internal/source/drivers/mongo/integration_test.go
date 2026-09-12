@@ -11,8 +11,13 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	mongodriver "go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -48,19 +53,59 @@ func open(t *testing.T, cfg source.ConnectionConfig) source.Source {
 	return src
 }
 
-// seed writes documents into a database, so there is something to list.
+// seed writes a database with something of each kind in it: two collections,
+// a view over one, and an index beyond the _id every collection has.
 func seed(t *testing.T, src source.Source, db string) {
 	t.Helper()
 	s := src.(*mongoSource)
 	ctx := context.Background()
-	coll := s.client.Database(db).Collection("people")
-	if err := coll.Drop(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := coll.InsertOne(ctx, map[string]any{"name": "Ada", "score": 42}); err != nil {
+	d := s.client.Database(db)
+	if err := d.Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.client.Database(db).Drop(context.Background()) })
+	people := d.Collection("people")
+	if _, err := people.InsertMany(ctx, []any{
+		map[string]any{"name": "Ada", "score": 42},
+		map[string]any{"name": "Grace", "score": 7},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Collection("orders").InsertOne(ctx, map[string]any{"total": 3}); err != nil {
+		t.Fatal(err)
+	}
+	unique := true
+	if _, err := people.Indexes().CreateOne(ctx, mongodriver.IndexModel{
+		Keys:    bson.D{{Key: "name", Value: 1}, {Key: "score", Value: -1}},
+		Options: options.Index().SetName("name_score").SetUnique(unique),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.CreateView(ctx, "high_scores", "people", mongodriver.Pipeline{
+		bson.D{{Key: "$match", Value: bson.D{{Key: "score", Value: bson.D{{Key: "$gt", Value: 10}}}}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// child finds one node by name.
+func child(t *testing.T, nodes []model.Node, name string) model.Node {
+	t.Helper()
+	for _, n := range nodes {
+		if n.Ref.Name() == name || n.Label == name {
+			return n
+		}
+	}
+	t.Fatalf("no %q among %v", name, labelsOf(nodes))
+	return model.Node{}
+}
+
+func labelsOf(nodes []model.Node) []string {
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, n.Label)
+	}
+	return out
 }
 
 func TestLiveConnects(t *testing.T) {
@@ -117,13 +162,156 @@ func TestLiveListsDatabases(t *testing.T) {
 
 func TestLiveRefusesWhatIsNotWrittenYet(t *testing.T) {
 	src := open(t, liveConfig("ikigai_it"))
-	ctx := context.Background()
-	ref := model.NewRef(model.KindDatabase, "ikigai_it")
-	if _, err := src.Children(ctx, ref); !errors.Is(err, errNotYet) {
-		t.Errorf("children: %v, want it said plainly that it is not written yet", err)
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	if _, err := src.Browse(context.Background(), ref, source.BrowseOptions{}); !errors.Is(err, errNotYet) {
+		t.Errorf("browse: %v, want it said plainly that it is not written yet", err)
 	}
-	if _, err := src.Browse(ctx, ref, source.BrowseOptions{}); !errors.Is(err, errNotYet) {
-		t.Errorf("browse: %v", err)
+}
+
+func TestLiveListsTheTree(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	db := model.NewRef(model.KindDatabase, "ikigai_it")
+
+	classes, err := src.Children(ctx, db)
+	if err != nil {
+		t.Fatalf("classes: %v", err)
+	}
+	if len(classes) != 1 {
+		t.Fatalf("classes %v, want collections alone", labelsOf(classes))
+	}
+	class := classes[0]
+	if kind, ok := model.ClassOf(class.Ref); !ok || kind != model.KindCollection {
+		t.Fatalf("class %+v, want the collections", class)
+	}
+	if class.Badge == nil || class.Badge.Text != "3" || !class.Badge.Exact {
+		t.Errorf("badge %+v, want an exact three", class.Badge)
+	}
+
+	colls, err := src.Children(ctx, class.Ref)
+	if err != nil {
+		t.Fatalf("collections: %v", err)
+	}
+	// The server's own collections are not the person's: system.views holds
+	// what the tree already shows as a view.
+	for _, n := range colls {
+		if strings.HasPrefix(n.Label, "system.") {
+			t.Errorf("collections %v, want none of the server's own", labelsOf(colls))
+		}
+	}
+	if got := labelsOf(colls); len(got) != 3 || got[0] != "high_scores" || got[1] != "orders" {
+		t.Errorf("collections %v, want them in name order", got)
+	}
+	people := child(t, colls, "people")
+	if people.Ref.Kind != model.KindCollection || !people.Browsable || !people.HasChildren {
+		t.Errorf("people %+v, want a browsable collection with children", people)
+	}
+	if people.Attrs["type"] != "" {
+		t.Errorf("people is marked %q, want nothing: it is an ordinary collection", people.Attrs["type"])
+	}
+	if got := child(t, colls, "high_scores").Attrs["type"]; got != "view" {
+		t.Errorf("high_scores is marked %q, want a view", got)
+	}
+
+	// A collection holds its indexes.
+	inner, err := src.Children(ctx, people.Ref)
+	if err != nil {
+		t.Fatalf("collection classes: %v", err)
+	}
+	if len(inner) != 1 {
+		t.Fatalf("classes %v, want the indexes alone", labelsOf(inner))
+	}
+	idxClass := inner[0]
+	if kind, ok := model.ClassOf(idxClass.Ref); !ok || kind != model.KindIndex {
+		t.Fatalf("class %+v, want the indexes", idxClass)
+	}
+	indexes, err := src.Children(ctx, idxClass.Ref)
+	if err != nil {
+		t.Fatalf("indexes: %v", err)
+	}
+	if got := labelsOf(indexes); len(got) != 2 || got[0] != "_id_" {
+		t.Errorf("indexes %v, want _id_ first", got)
+	}
+	if got := child(t, indexes, "name_score").Attrs["type"]; got != "name, score ↓ · unique" {
+		t.Errorf("the index says %q", got)
+	}
+}
+
+func TestLiveDescribesACollection(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+
+	desc, err := src.Describe(ctx, model.NewRef(model.KindCollection, "ikigai_it", "people"))
+	if err != nil {
+		t.Fatalf("describe: %v", err)
+	}
+	coll, ok := desc.(*model.Collection)
+	if !ok {
+		t.Fatalf("described as %T, want a collection", desc)
+	}
+	if coll.Name != "people" || coll.DocumentsEstimate != 2 {
+		t.Errorf("collection %+v", coll)
+	}
+	if len(coll.Indexes) != 2 || coll.Indexes[0].Name != "_id_" {
+		t.Fatalf("indexes %+v", coll.Indexes)
+	}
+	if idx := coll.Indexes[1]; !idx.Unique || len(idx.Keys) != 2 || !idx.Keys[1].Descending {
+		t.Errorf("index %+v, want the unique compound one", idx)
+	}
+	// A view says it is one, and has neither indexes nor a count of its
+	// own: the server refuses both, which is not a failure to report.
+	desc, err = src.Describe(ctx, model.NewRef(model.KindCollection, "ikigai_it", "high_scores"))
+	if err != nil {
+		t.Fatalf("describe: %v", err)
+	}
+	view := desc.(*model.Collection)
+	if view.Attrs["type"] != "view" {
+		t.Errorf("the view is marked %q", view.Attrs["type"])
+	}
+	if view.Attrs["readOnly"] != "true" {
+		t.Errorf("the view %+v, want it marked as not writable", view.Attrs)
+	}
+	// A view has no indexes of its own: the server refuses to list them,
+	// which is not a failure to report.
+	if len(view.Indexes) != 0 {
+		t.Errorf("view %+v, want no indexes", view.Indexes)
+	}
+	// Nor classes in the tree.
+	classes, err := src.Children(ctx, model.NewRef(model.KindCollection, "ikigai_it", "high_scores"))
+	if err != nil {
+		t.Errorf("a view's classes: %v", err)
+	}
+	if len(classes) != 0 {
+		t.Errorf("a view holds %v", labelsOf(classes))
+	}
+	// Nothing else has a structure to read, whatever its path.
+	if _, err := src.Describe(ctx, model.NewRef(model.KindDatabase, "ikigai_it")); err == nil {
+		t.Error("a database was described")
+	}
+	if _, err := src.Describe(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_")); err == nil {
+		t.Error("an index was described as though it were the collection")
+	}
+}
+
+func TestLiveCountsDocuments(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	badge, ok, err := src.Badge(ctx, model.NewRef(model.KindCollection, "ikigai_it", "people"))
+	if err != nil || !ok {
+		t.Fatalf("badge: %v %v", badge, err)
+	}
+	if badge.Text != "2" || badge.Exact {
+		t.Errorf("badge %+v, want two, said to be an estimate", badge)
+	}
+	// Nothing else carries a count, whatever its path.
+	if _, ok, err := src.Badge(ctx, model.NewRef(model.KindDatabase, "ikigai_it")); ok || err != nil {
+		t.Errorf("a database carries a badge: %v", err)
+	}
+	if _, ok, err := src.Badge(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_")); ok || err != nil {
+		t.Errorf("an index carries its collection's count: %v", err)
 	}
 }
 
