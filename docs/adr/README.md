@@ -62,3 +62,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0055](0055-exporting-an-excel-workbook.md) | Exporting an Excel workbook | Accepted |
 | [0056](0056-sql-html-and-xml-exports.md) | SQL, HTML and XML exports | Accepted |
 | [0057](0057-what-can-be-typed-next.md) | What can be typed next | Accepted |
+| [0058](0058-the-tables-a-statement-reads.md) | The tables a statement reads | Accepted |

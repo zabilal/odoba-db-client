@@ -33,6 +33,7 @@ const DefaultLimit = 50
 // position: a column above a table above a keyword, in a WHERE clause.
 const (
 	scoreColumn   = 600
+	scoreAlias    = 550
 	scoreTable    = 500
 	scoreView     = 480
 	scoreSchema   = 400
@@ -104,7 +105,7 @@ func (e *Engine) Complete(req source.CompletionRequest) source.CompletionResult 
 		return res
 	}
 
-	cands := e.gather(ctx, req)
+	cands := e.gather(ctx, req, cursor)
 	lower := strings.ToLower(ctx.Prefix)
 	out := make([]source.Completion, 0, len(cands))
 	for _, c := range cands {
@@ -150,7 +151,7 @@ func rank(prefix, lowerPrefix, label string) (int, bool) {
 }
 
 // gather collects every candidate the context allows, unranked.
-func (e *Engine) gather(ctx Context, req source.CompletionRequest) []source.Completion {
+func (e *Engine) gather(ctx Context, req source.CompletionRequest, cursor int) []source.Completion {
 	var out []source.Completion
 	db, schema := req.Database, req.Schema
 
@@ -212,20 +213,106 @@ func (e *Engine) gather(ctx Context, req source.CompletionRequest) []source.Comp
 			})
 		}
 	}
-	if ctx.Want.Has(WantColumn) && len(ctx.Qualifier) > 0 {
-		// The chain before the dot, read as a table: `orders.` in the
-		// session's schema, `public.orders.`, `sales.public.orders.`. Where
-		// the catalog knows such a table, its columns go there. A name that
-		// is an alias for one is T2.26's work.
-		cdb, cschema, table := columnPath(db, schema, ctx.Qualifier)
-		for _, col := range e.catalog.Columns(cdb, cschema, table) {
+	if ctx.Want.Has(WantColumn) {
+		out = append(out, e.columns(ctx, req, cursor)...)
+	}
+	return out
+}
+
+// columns offers the columns a position can take: the named table's where
+// the cursor is after a dot, and otherwise those of every table the
+// statement reads, with the names it reads them under.
+func (e *Engine) columns(ctx Context, req source.CompletionRequest, cursor int) []source.Completion {
+	db, schema := req.Database, req.Schema
+	rels := Scope(e.dialect, req.Text, cursor)
+	var out []source.Completion
+
+	if len(ctx.Qualifier) > 0 {
+		// A single name is the one the statement calls a table by — an
+		// alias, or the table's own name. Failing that, the chain is read as
+		// a path: `public.orders.`, `sales.public.orders.`.
+		var cols []Column
+		named := false
+		if len(ctx.Qualifier) == 1 {
+			if r, ok := findRelation(rels, ctx.Qualifier[0]); ok {
+				named, cols = true, e.relationColumns(r, db, schema)
+			}
+		}
+		if !named {
+			cols = e.catalog.Columns(columnPath(db, schema, ctx.Qualifier))
+		}
+		for _, col := range cols {
 			out = append(out, source.Completion{
 				Kind: source.CompletionColumn, Label: col.Name,
 				Insert: e.insert(col.Name, ctx), Detail: col.Type, Score: scoreColumn,
 			})
 		}
+		return out
+	}
+
+	// Unqualified: every table in scope. A name more than one of them has
+	// is written qualified, because unqualified the server would refuse it.
+	held := map[string]int{}
+	for _, r := range rels {
+		for _, col := range e.relationColumns(r, db, schema) {
+			held[strings.ToLower(col.Name)]++
+		}
+	}
+	for _, r := range rels {
+		for _, col := range e.relationColumns(r, db, schema) {
+			c := source.Completion{
+				Kind: source.CompletionColumn, Label: col.Name,
+				Insert: e.insert(col.Name, ctx), Detail: col.Type, Score: scoreColumn,
+			}
+			if len(rels) > 1 {
+				c.Detail = r.Name + " · " + col.Type
+			}
+			if held[strings.ToLower(col.Name)] > 1 {
+				c.Insert = e.insert(r.Name, ctx) + "." + e.insert(col.Name, ctx)
+			}
+			out = append(out, c)
+		}
+	}
+	// The names themselves, so that a qualifier can be typed with help.
+	for _, r := range rels {
+		if r.Name == "" {
+			continue
+		}
+		out = append(out, source.Completion{
+			Kind: source.CompletionAlias, Label: r.Name,
+			Insert: e.insert(r.Name, ctx), Detail: r.Table, Score: scoreAlias,
+		})
 	}
 	return out
+}
+
+// relationColumns are a relation's columns, taken from where the statement
+// says the table is, and from the session's own database and schema where it
+// does not say.
+func (e *Engine) relationColumns(r Relation, db, schema string) []Column {
+	if r.Table == "" {
+		return nil // a derived table; its columns are the subquery's
+	}
+	return e.catalog.Columns(or(r.Database, db), or(r.Schema, schema), r.Table)
+}
+
+// findRelation matches a qualifier against the names a statement reads its
+// tables under. Unquoted SQL names are matched without regard to case, which
+// is how every engine here resolves them.
+func findRelation(rels []Relation, name string) (Relation, bool) {
+	for _, r := range rels {
+		if strings.EqualFold(r.Name, name) {
+			return r, true
+		}
+	}
+	return Relation{}, false
+}
+
+func or(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // columnPath reads a dotted chain as the table whose columns are wanted,

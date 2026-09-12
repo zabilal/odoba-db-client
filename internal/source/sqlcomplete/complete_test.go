@@ -16,7 +16,11 @@ func testCatalog() *Static {
 		Column{Name: "order_date", Type: "date"},
 		Column{Name: "Customer Id", Type: "integer"},
 	)
-	c.AddObject("shop", "public", Object{Name: "order_items"}, Column{Name: "qty", Type: "integer"})
+	c.AddObject("shop", "public", Object{Name: "order_items"},
+		Column{Name: "id", Type: "integer"},
+		Column{Name: "order_id", Type: "integer"},
+		Column{Name: "qty", Type: "integer"},
+	)
 	c.AddObject("shop", "public", Object{Name: "open_orders", Kind: model.KindView})
 	c.AddObject("shop", "audit", Object{Name: "changes"}, Column{Name: "at", Type: "timestamptz"})
 	c.AddObject("warehouse", "public", Object{Name: "pallets"})
@@ -376,5 +380,166 @@ func TestCompleteIsStableAcrossRuns(t *testing.T) {
 				t.Fatalf("run %d: candidate %d is %q, want %q", i, j, got[j], first[j])
 			}
 		}
+	}
+}
+
+func TestCompleteColumnsOfAnAliasedTable(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	for _, text := range []string{
+		"select o.| from orders o",
+		"select o.| from orders as o",
+		"select * from orders o where o.|",
+		"update orders o set o.| = 1",
+	} {
+		res := complete(t, e, text, 0)
+		if rankOf(res, "order_date") < 0 || rankOf(res, "id") < 0 {
+			t.Errorf("%q: candidates %v, want the aliased table's columns", text, labels(res))
+		}
+		if rankOf(res, "qty") >= 0 {
+			t.Errorf("%q: candidates %v include another table's column", text, labels(res))
+		}
+	}
+	// The name is matched whatever its case, as the server matches it.
+	if res := complete(t, e, "select O.| from orders o", 0); rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want the table's columns", labels(res))
+	}
+	// An alias hides a table of the same name: o is orders here, not the
+	// table named o.
+	cat := testCatalog()
+	cat.AddObject("shop", "public", Object{Name: "o"}, Column{Name: "not_ordered", Type: "text"})
+	res := complete(t, New(sqllex.PostgreSQL, cat, nil), "select o.| from orders o", 0)
+	if rankOf(res, "not_ordered") >= 0 {
+		t.Errorf("candidates %v, want the alias to win over a table of its name", labels(res))
+	}
+}
+
+func TestCompleteColumnsOfATableNamedWhereItIs(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	// The statement says the schema, not the session.
+	res := complete(t, e, "select c.| from audit.changes c", 0)
+	if rankOf(res, "at") < 0 {
+		t.Errorf("candidates %v, want the columns of audit.changes", labels(res))
+	}
+	res = complete(t, e, "select p.| from warehouse.public.pallets p", 0)
+	if len(res.Candidates) != 0 {
+		t.Errorf("candidates %v, want none: that table has no columns recorded", labels(res))
+	}
+}
+
+func TestCompleteColumnsOfEveryTableInScope(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "select | from orders o join order_items i on i.order_id = o.id", 0)
+	for _, want := range []string{"order_date", "qty"} {
+		if rankOf(res, want) < 0 {
+			t.Errorf("candidates %v, want %s among them", labels(res), want)
+		}
+	}
+	// Which table a column comes from is said, since two are read.
+	if c, _ := find(res, "qty"); c.Detail != "i · integer" {
+		t.Errorf("qty is detailed %q, want %q", c.Detail, "i · integer")
+	}
+	// The names the statement reads its tables under are offered too.
+	c, ok := find(res, "i")
+	if !ok || c.Kind != source.CompletionAlias {
+		t.Errorf("candidates %v, want the alias i", labels(res))
+	}
+	if c.Detail != "order_items" {
+		t.Errorf("the alias i is detailed %q, want the table it stands for", c.Detail)
+	}
+	// A column both tables have cannot be written bare.
+	if c, _ := find(res, "id"); c.Insert != "o.id" {
+		t.Errorf("id is written %q, want it qualified: both tables have one", c.Insert)
+	}
+	// One only one table has is written as it is.
+	if c, _ := find(res, "qty"); c.Insert != "qty" {
+		t.Errorf("qty is written %q, want it bare", c.Insert)
+	}
+}
+
+func TestCompleteColumnsOfOneTableAreNotSaidTwice(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "select | from orders", 0)
+	if c, _ := find(res, "order_date"); c.Detail != "date" {
+		t.Errorf("order_date is detailed %q, want its type alone", c.Detail)
+	}
+	if c, _ := find(res, "id"); c.Insert != "id" {
+		t.Errorf("id is written %q, want it bare where only one table has one", c.Insert)
+	}
+	// The table's own name stands for it where there is no alias.
+	if c, ok := find(res, "orders"); !ok || c.Kind != source.CompletionAlias {
+		t.Errorf("candidates %v, want the table's own name to qualify with", labels(res))
+	}
+}
+
+func TestCompleteColumnsWhereAColumnIsTypedBeforeItsTable(t *testing.T) {
+	// The FROM clause comes after the cursor, and is still what says where
+	// the column is from.
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "select order_d| from orders", 0)
+	if got := labels(res); len(got) == 0 || got[0] != "order_date" {
+		t.Errorf("candidates %v, want the column first", got)
+	}
+}
+
+func TestCompleteColumnsInsideASubquery(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	// Inside, both the subquery's table and the statement's own are read.
+	res := complete(t, e, "select * from orders o where o.id in (select | from order_items i)", 0)
+	if rankOf(res, "qty") < 0 || rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want both tables' columns inside a subquery", labels(res))
+	}
+	// Outside, the subquery's table is not in scope.
+	res = complete(t, e, "select | from orders o where o.id in (select order_id from order_items i)", 0)
+	if rankOf(res, "qty") >= 0 {
+		t.Errorf("candidates %v, want no column of a table read only inside a subquery", labels(res))
+	}
+	if rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want the statement's own columns", labels(res))
+	}
+}
+
+func TestCompleteDerivedTableOffersItsNameAndNoColumns(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "select d.| from (select id from orders) d", 0)
+	if len(res.Candidates) != 0 {
+		t.Errorf("candidates %v, want none: a subquery's columns are not the catalog's", labels(res))
+	}
+	// A table of that name is not read in its place.
+	cat := testCatalog()
+	cat.AddObject("shop", "public", Object{Name: "d"}, Column{Name: "wrong", Type: "text"})
+	res = complete(t, New(sqllex.PostgreSQL, cat, nil), "select d.| from (select id from orders) d", 0)
+	if rankOf(res, "wrong") >= 0 {
+		t.Errorf("candidates %v, want no table read in a derived table's place", labels(res))
+	}
+	// Its name is still offered, so it can be typed.
+	res = complete(t, e, "select | from (select id from orders) d", 0)
+	if c, ok := find(res, "d"); !ok || c.Kind != source.CompletionAlias {
+		t.Errorf("candidates %v, want the derived table's name", labels(res))
+	}
+}
+
+func TestCompleteColumnsOfTheStatementTheCursorIsIn(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	res := complete(t, e, "select at from audit.changes;\nselect | from orders", 0)
+	if rankOf(res, "at") >= 0 {
+		t.Errorf("candidates %v, want no column of the statement before", labels(res))
+	}
+	if rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want this statement's columns", labels(res))
+	}
+	// And nothing from the statement after it either.
+	res = complete(t, e, "select | from orders;\nselect at from audit.changes", 0)
+	if rankOf(res, "at") >= 0 {
+		t.Errorf("candidates %v, want no column of the statement after", labels(res))
+	}
+}
+
+func TestCompleteColumnsWhereRowsAreWritten(t *testing.T) {
+	e := New(sqllex.PostgreSQL, testCatalog(), nil)
+	if res := complete(t, e, "insert into orders (|", 0); rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want the table's columns in an insert's list", labels(res))
+	}
+	if res := complete(t, e, "update orders set |", 0); rankOf(res, "order_date") < 0 {
+		t.Errorf("candidates %v, want the table's columns in an update", labels(res))
 	}
 }
