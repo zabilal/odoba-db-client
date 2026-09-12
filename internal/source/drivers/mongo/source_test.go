@@ -202,7 +202,7 @@ func TestCapabilitiesAreTheDocumentParadigms(t *testing.T) {
 	if !c.Structure.MultipleDatabases || c.Structure.Schemas {
 		t.Errorf("structure %+v, want databases and no schemas", c.Structure)
 	}
-	if !c.Supports(model.KindCollection) || c.Supports(model.KindTable) {
+	if !c.Supports(model.KindCollection) || !c.Supports(model.KindIndex) || c.Supports(model.KindTable) {
 		t.Errorf("objects %v, want collections and no tables", c.Objects)
 	}
 	// Nothing is claimed that is not written yet: a capability claimed

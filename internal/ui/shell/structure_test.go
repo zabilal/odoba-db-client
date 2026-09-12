@@ -103,3 +103,44 @@ func TestAStructureTabComesBack(t *testing.T) {
 	}
 	pump(t, fx.q, func() bool { return showsAll(r, "items_pkey") })
 }
+
+func TestStructureShowsACollectionsShape(t *testing.T) {
+	coll := &model.Collection{
+		Name: "people", DocumentsEstimate: 41,
+		Indexes: []model.DocumentIndex{
+			{Name: "_id_", Keys: []model.IndexColumn{{Name: "_id"}}},
+			{Name: "name_score", Unique: true, Sparse: true, Keys: []model.IndexColumn{
+				{Name: "name"}, {Name: "score", Descending: true}}},
+			{Name: "seen_ttl", TTL: 3600, Keys: []model.IndexColumn{{Name: "seen"}}},
+			{Name: "body_text", Keys: []model.IndexColumn{{Name: "body", Expression: "text"}}},
+		},
+		Shape: &model.DocumentShape{Sampled: 200, Fields: []model.InferredField{
+			{Name: "name", Presence: 1, Types: []model.ObservedType{{Type: model.DataType{Native: "string"}}}},
+			{Name: "score", Presence: 0.5, Types: []model.ObservedType{
+				{Type: model.DataType{Native: "int"}}, {Type: model.DataType{Native: "string"}}}},
+		}},
+	}
+	got := strings.Join(labelTexts(structureView(coll)), "\n")
+	for _, want := range []string{
+		"About 41 documents", "Indexes", "_id_", "name_score", "name, score DESC", "unique, sparse",
+		"seen_ttl", "3600 seconds", "body text",
+		"Fields", "name", "100% of those sampled", "int, string", "50% of those sampled",
+		"Fields seen in 200 documents sampled",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the collection's structure does not say %q:\n%s", want, got)
+		}
+	}
+	// A view says what it is, and shows nothing it has not got.
+	view := &model.Collection{Name: "high_scores", DocumentsEstimate: -1,
+		Attrs: map[string]string{"type": "view", "readOnly": "true"}}
+	got = strings.Join(labelTexts(structureView(view)), "\n")
+	for _, want := range []string{"A view", "Read-only"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the view's structure does not say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "documents, as the server") || strings.Contains(got, "Fields") {
+		t.Errorf("the view's structure shows what it has not got:\n%s", got)
+	}
+}
