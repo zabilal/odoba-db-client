@@ -305,7 +305,10 @@ type redisSource struct {
 	closed bool
 }
 
-var _ source.Source = (*redisSource)(nil)
+var (
+	_ source.Source    = (*redisSource)(nil)
+	_ source.Countable = (*redisSource)(nil)
+)
 
 func (s *redisSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
@@ -313,6 +316,10 @@ func (s *redisSource) Capabilities() capability.Capabilities {
 		// A numbered database is not created or dropped: there are as many as
 		// the server was configured with, and a cluster has one.
 		Structure: capability.Structure{MultipleDatabases: s.mode != modeCluster},
+		// The server matches the names and the kind while it walks the
+		// keyspace, and holds the number of keys a database has. There is no
+		// order to sort by: SCAN walks a hash table.
+		Data: capability.Data{ServerFilter: true, ExactCount: true, ApproximateCount: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindKey: true,
 		},
@@ -382,8 +389,8 @@ func (s *redisSource) Close() (err error) {
 }
 
 // errNotYet is what the parts of the contract this task does not reach
-// return. The key browser is T2.40 and the editors T2.41; a stub that says so
-// is better than one that answers with nothing, which would read as an empty
+// return. The editors are T2.41 and the console T2.44; a stub that says so is
+// better than one that answers with nothing, which would read as an empty
 // server.
 var errNotYet = errors.New("redis: not implemented yet")
 
@@ -391,20 +398,15 @@ func (s *redisSource) Root(ctx context.Context) ([]model.Node, error) {
 	return s.databases(ctx)
 }
 
+// Children is nothing: a database holds keys, and keys are rows rather than
+// a tree. A keyspace of millions would be a tree nobody could read, and the
+// grid is where a pattern narrows it down (T2.40).
 func (s *redisSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
-	return nil, fmt.Errorf("%w: listing a database's keys", errNotYet)
+	return nil, nil
 }
 
 func (s *redisSource) Describe(context.Context, model.ObjectRef) (any, error) {
 	return nil, fmt.Errorf("%w: describing a key", errNotYet)
-}
-
-func (s *redisSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
-	return model.Badge{}, false, nil
-}
-
-func (s *redisSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
-	return nil, fmt.Errorf("%w: reading a database's keys", errNotYet)
 }
 
 // databases lists the numbered databases the server holds.
@@ -484,9 +486,11 @@ func (s *redisSource) databaseCount(ctx context.Context) (int, bool) {
 	return n, true
 }
 
+// databaseNode is one numbered database. Its keys are rows rather than
+// children: opening it is how they are read (T2.40).
 func databaseNode(n int, current bool) model.Node {
 	name := "db" + strconv.Itoa(n)
-	node := model.Node{Ref: model.NewRef(model.KindDatabase, name), Label: name, HasChildren: true}
+	node := model.Node{Ref: model.NewRef(model.KindDatabase, name), Label: name, Browsable: true}
 	if current {
 		node.Attrs = map[string]string{"current": "true"}
 	}

@@ -289,8 +289,17 @@ func TestWhatTheConnectionClaims(t *testing.T) {
 	if (&redisSource{mode: modeCluster}).Capabilities().Structure.MultipleDatabases {
 		t.Error("a cluster has one keyspace, and claiming more would offer a database that is not there")
 	}
-	// Nothing is claimed that T2.39 has not written: the key browser is
-	// T2.40, its editors T2.41.
+	// The server matches names and kinds while it walks, and holds the
+	// number of keys a database has.
+	if !single.Data.ServerFilter || !single.Data.ExactCount || !single.Data.ApproximateCount {
+		t.Errorf("data %+v", single.Data)
+	}
+	// There is no order to sort by: SCAN walks a hash table.
+	if single.Data.ServerSort {
+		t.Error("claims an order the keyspace has not got")
+	}
+	// Nothing is claimed that is not written: the editors are T2.41, the
+	// console T2.44.
 	if single.Query.Supported || single.Data.Insert || single.Schema.Indexes {
 		t.Errorf("claims more than it does: %+v", single)
 	}
@@ -339,8 +348,10 @@ func TestTheDatabasesAreTheServersOwnAndTheCurrentOneIsMarked(t *testing.T) {
 		t.Fatalf("databases %v", labels(nodes))
 	}
 	for i, n := range nodes {
-		if !n.HasChildren {
-			t.Errorf("%s holds keys", n.Label)
+		// A database's keys are rows, not children: a keyspace of millions
+		// would be a tree nobody could read.
+		if !n.Browsable || n.HasChildren {
+			t.Errorf("%s opens as %v, expands as %v", n.Label, n.Browsable, n.HasChildren)
 		}
 		if got := n.Attrs["current"] == "true"; got != (i == 3) {
 			t.Errorf("%s marked current %v", n.Label, got)

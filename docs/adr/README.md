@@ -77,3 +77,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0070](0070-the-command-console.md) | The command console | Accepted |
 | [0071](0071-a-suite-with-two-paradigms.md) | A conformance suite with two paradigms | Accepted |
 | [0072](0072-the-redis-connection.md) | The Redis connection | Accepted |
+| [0073](0073-the-key-browser.md) | The key browser | Accepted |
