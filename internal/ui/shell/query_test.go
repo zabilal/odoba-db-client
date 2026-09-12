@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -407,5 +408,44 @@ func TestQuittingClosesQuerySessionsBeforeTheirConnections(t *testing.T) {
 	}
 	if session < 0 || source < 0 || session > source {
 		t.Errorf("close order %v; the session must close before its connection", events)
+	}
+}
+
+// typeKey sends one key to the editor, as the window would.
+func typeKey(q *queryTab, name fyne.KeyName) {
+	q.editor.Focusable().(interface{ TypedKey(*fyne.KeyEvent) }).TypedKey(&fyne.KeyEvent{Name: name})
+}
+
+func TestQueryTabCompletesAsYouType(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	q.editor.Focus()
+	test.Type(q.editor.Focusable(), "sel")
+	if !q.editor.CompletionOpen() {
+		t.Fatal("nothing offered while typing a keyword")
+	}
+	fx.s.run(cmdQueryComplete)
+	typeKey(q, fyne.KeyReturn)
+	if got := q.editor.Document().Text(); got != "select" {
+		t.Errorf("text %q, want the keyword written in", got)
+	}
+}
+
+func TestQueryTabCompletionIsAskedForOnlyInTheEditor(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	q.editor.Focus()
+	if !fx.s.canComplete() {
+		t.Error("completion is not offered with the caret in the editor")
+	}
+	q.editor.Document().SetText("select 1")
+	fx.s.win.Canvas().Unfocus()
+	if fx.s.canComplete() {
+		t.Error("completion is offered with the focus outside the editor")
+	}
+	// Asking for it anyway does nothing rather than panicking.
+	fx.s.run(cmdQueryComplete)
+	if q.editor.CompletionOpen() {
+		t.Error("the popup opened with the focus outside the editor")
 	}
 }

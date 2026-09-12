@@ -42,6 +42,7 @@ const (
 	cmdMoveToPane     = "window.moveToOtherPane"
 	cmdJoinPanes      = "window.joinPanes"
 	cmdQueryNew       = "query.new"
+	cmdQueryComplete  = "query.complete"
 	cmdQueryRun       = "query.run"
 	cmdQueryRunAll    = "query.runAll"
 	cmdQueryStop      = "query.stop"
@@ -151,7 +152,8 @@ var menuBar = []struct {
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
 		item(cmdReconnect), item(cmdDisconnect),
 	}},
-	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator, item(cmdHistory)}},
+	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
+		item(cmdQueryComplete), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
 		item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},

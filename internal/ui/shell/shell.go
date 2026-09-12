@@ -462,6 +462,9 @@ func (s *Shell) registerCommands() {
 					s.OpenQuery(id)
 				}
 			}},
+		{ID: cmdQueryComplete, Category: "Query", Title: "Complete",
+			Keywords: []string{"autocomplete", "suggest", "candidates", "intellisense", "column", "table"},
+			Shortcut: sc("Space", commands.ModControl), Enabled: s.canComplete, Run: s.completeQuery},
 		{ID: cmdQueryRun, Category: "Query", Title: "Run", Keywords: []string{"execute", "statement", "selection"},
 			Shortcut: sc("Return", commands.ModShortcut), Enabled: s.canRun, Run: func() { s.runQuery(false) }},
 		{ID: cmdQueryRunAll, Category: "Query", Title: "Run All", Keywords: []string{"execute", "script"},

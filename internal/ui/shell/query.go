@@ -14,6 +14,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/sqlcomplete"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor"
@@ -57,6 +58,12 @@ type queryTab struct {
 	keeping   bool
 
 	find *findBar
+
+	// completion offers what can be typed in the editor (FR-5.2). It is
+	// built for the source's dialect once the tab connects, and asks a
+	// catalog that the schema cache fills (T2.29).
+	completion *sqlcomplete.Engine
+	database   string // the connection's database, for what completion offers
 }
 
 // OpenQuery opens a query tab on a connection. Typing can start at once; the
@@ -82,6 +89,8 @@ func (s *Shell) newQueryTab(connID string) *tab {
 		opened:    time.Now(),
 	}
 	q.messages.Wrapping = fyne.TextWrapWord
+	q.completion = sqlcomplete.New(sqllex.DialectFor(""), nil, nil)
+	q.editor.SetCompleter(q.complete)
 	q.results = container.NewAppTabs(container.NewTabItem("Messages", container.NewVScroll(q.messages)))
 	q.results.OnSelected = func(*container.TabItem) { s.sync() } // Export follows the result on show
 
@@ -113,12 +122,21 @@ func (s *Shell) newQueryTab(connID string) *tab {
 	return t
 }
 
+// complete is what the editor asks for candidates. It runs on the UI
+// goroutine, on the keystroke path, and never reaches the server: the engine
+// answers from the dialect and the catalog alone (ADR-0057).
+func (q *queryTab) complete(text string, cursor int) source.CompletionResult {
+	return q.completion.Complete(source.CompletionRequest{
+		Text: text, Cursor: cursor, Database: q.database,
+	})
+}
+
 // connectQuery opens a query tab's session in the background. Typing can go
 // on meanwhile.
 func (s *Shell) connectQuery(t *tab) {
 	q, ctx, connID := t.query, t.ctx, t.connID
 	go func() {
-		qs, lang, err := s.querySession(ctx, connID)
+		qs, lang, quote, err := s.querySession(ctx, connID)
 		s.d.Run(func() {
 			if ctx.Err() != nil {
 				if qs != nil {
@@ -133,6 +151,10 @@ func (s *Shell) connectQuery(t *tab) {
 			}
 			q.session = qs
 			q.editor.Document().Highlighter().SetDialect(sqllex.DialectFor(lang))
+			if c, ok := s.d.Conns.Get(connID); ok {
+				q.database = c.Database
+			}
+			q.completion = sqlcomplete.New(sqllex.DialectFor(lang), nil, quote)
 			q.editor.Refresh()
 			t.footer.SetText("Ready")
 			s.sync()
@@ -141,15 +163,20 @@ func (s *Shell) connectQuery(t *tab) {
 }
 
 // querySession connects a query tab. lang is the source's query language, for
-// the editor's highlighting (capability.Query.Language).
-func (s *Shell) querySession(ctx context.Context, connID string) (*app.QuerySession, string, error) {
+// the editor's highlighting (capability.Query.Language), and quote is how the
+// source writes an identifier, for what completion inserts (ARCH-2).
+func (s *Shell) querySession(ctx context.Context, connID string) (*app.QuerySession, string, func(string) string, error) {
 	live, err := s.d.WS.Connect(ctx, connID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	c, _ := s.d.Conns.Get(connID)
 	qs, err := app.NewQuerySession(ctx, live, app.QueryOptions{History: s.d.History, Database: c.Database})
-	return qs, live.Source.Capabilities().Query.Language, err
+	var quote func(string) string
+	if d, ok := live.Source.(source.Dialect); ok {
+		quote = d.QuoteIdentifier
+	}
+	return qs, live.Source.Capabilities().Query.Language, quote, err
 }
 
 func (s *Shell) activeQuery() (*tab, *queryTab) {
@@ -158,6 +185,20 @@ func (s *Shell) activeQuery() (*tab, *queryTab) {
 		return nil, nil
 	}
 	return t, t.query
+}
+
+// canComplete is true where the editor has the focus: completion writes into
+// it, so offering it while the focus is in the grid would write nowhere.
+func (s *Shell) canComplete() bool {
+	_, q := s.activeQuery()
+	return q != nil && q.editor.Focused()
+}
+
+// completeQuery opens the completion popup where the caret is (⌃Space).
+func (s *Shell) completeQuery() {
+	if _, q := s.activeQuery(); q != nil {
+		q.editor.Complete()
+	}
 }
 
 func (s *Shell) canRun() bool {
