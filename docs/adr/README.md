@@ -71,3 +71,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0064](0064-a-shape-read-from-documents.md) | A shape read from documents | Accepted |
 | [0065](0065-a-collections-documents-in-the-grid.md) | A collection's documents, in the grid and as JSON | Accepted |
 | [0066](0066-writing-a-document.md) | Writing a document | Accepted |
+| [0067](0067-editing-a-document.md) | Editing a document | Accepted |

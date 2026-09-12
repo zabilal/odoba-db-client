@@ -40,9 +40,10 @@ func (s *Shell) review(e *edits) {
 		e.show()
 		return
 	}
+	cs := e.pending.Changeset(false)
 	d := dialog.NewCustomConfirm("Review Changes", "Commit", "Cancel", reviewBody(plan), func(ok bool) {
 		if ok {
-			s.commit(e, plan)
+			s.commit(e, plan, cs)
 		}
 	}, s.win)
 	d.SetConfirmImportance(widget.HighImportance)
@@ -109,7 +110,10 @@ func valueText(v any) string {
 
 // commit writes a plan. On a production connection it asks first; the plan
 // is made again with the consent, since nothing has run yet (FR-4.9).
-func (s *Shell) commit(e *edits, plan *source.WritePlan) {
+// commit writes a plan, asking first where the connection is marked
+// Production: consent is not a flag a plan can be given after the fact, so
+// the changeset is planned again with it (FR-4.9).
+func (s *Shell) commit(e *edits, plan *source.WritePlan, cs source.Changeset) {
 	if !plan.Guarded {
 		s.apply(e, plan)
 		return
@@ -123,7 +127,8 @@ func (s *Shell) commit(e *edits, plan *source.WritePlan) {
 				e.show()
 				return
 			}
-			confirmed, err := e.writes.Plan(e.ctx, e.pending.Changeset(true))
+			cs.Confirmed = true
+			confirmed, err := e.writes.Plan(e.ctx, cs)
 			if err != nil {
 				e.say("Could not plan the changes: " + err.Error())
 				e.show()
