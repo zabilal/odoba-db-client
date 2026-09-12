@@ -36,13 +36,9 @@ func (s *mongoSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	if ref.Kind != model.KindCollection || len(ref.Path) < 2 {
 		return nil, fmt.Errorf("mongodb: %s holds no documents", ref)
 	}
-	if strings.TrimSpace(opt.Where) != "" {
-		// REQ-DRV-3: a source with no query language refuses one. MongoDB's
-		// own is the console's (T2.37), and until it is there a filter
-		// document would be a language nothing else in the app knows.
-		return nil, errors.New("mongodb: this connection takes filters, not a query")
-	}
-	filter, err := filterOf(opt.Filters)
+	// A condition a person types is a filter document, which is what a
+	// condition is in this language (ADR-0070).
+	filter, err := browseFilter(opt)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +73,7 @@ func (s *mongoSource) Count(ctx context.Context, ref model.ObjectRef, opt source
 	if ref.Kind != model.KindCollection || len(ref.Path) < 2 {
 		return 0, fmt.Errorf("mongodb: %s holds no documents", ref)
 	}
-	filter, err := filterOf(opt.Filters)
+	filter, err := browseFilter(opt)
 	if err != nil {
 		return 0, err
 	}

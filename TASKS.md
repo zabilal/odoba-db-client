@@ -23,10 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.37 (the mongosh-compatible command console), which finishes
-           2.E but for T2.38. T2.38's suite runs green for what the driver
-           claims; its write checks still assume a declared schema. 2.D is
-           done.
+NEXT TASK: T2.38 (conformance green for MongoDB) is what is left of 2.E: the
+           suite runs green for everything the driver claims, and its write
+           checks still assume a declared schema with server defaults, which
+           a collection has not. Then 2.F (Redis). 2.D is done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -37,9 +37,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
            ikigai-mongo (57017).
-LAST DONE: 2026-09-12 — index management (T2.36, ADR-0069), the first
-           structural change the app makes; the aggregation pipeline
-           (T2.35, ADR-0068);
+LAST DONE: 2026-09-12 — the command console and MongoDB's own query
+           language (T2.37, ADR-0070); index management (T2.36, ADR-0069),
+           the first structural change the app makes; the aggregation
+           pipeline (T2.35, ADR-0068);
            documents written and edited as JSON (T2.34, ADR-0066, ADR-0067); the conformance suite run against
            MongoDB, and the two faults it found fixed (T2.38, partly); a collection's
            documents in the grid and as JSON (T2.33, ADR-0065), its shape read from a sample of them
@@ -434,7 +435,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.34** Schema-aware JSON document editor → FR-12.1 — *`source.Writer` over a collection: a plan carrying the mongosh call it renders (`Statement.Op`), a document keyed by its `_id` and nothing else, `model.Removed` for a field a change takes away (`$unset`; a relational store refuses it), nothing undone on a standalone server and the plan saying so (ADR-0066). The JSON view edits one document: what is saved is what differs, a whole number stays whole, the `_id` cannot be edited, and the shape says which fields are empty here and where a type is not the rest's — said once, never refused; saving goes through the same writer, guard and commit as the grid's own changes (ADR-0067)*
 - [x] **T2.35** Aggregation-pipeline editor → FR-12.1 — *`source.Aggregator`, paired with `Data.Pipeline` and checked by the conformance suite: the stages are the person's own text, a pipeline says its own matching and order so filters and sorts beside it are refused, only paging is added and only where it reads, and a pipeline that writes (`$out`, `$merge`) asks the guard first; the columns are the fields it produced and nothing it produces is written back. `app.PipelineSource` feeds the grid as a browse does, and the editor sits above the grid with Show Documents to go back (ADR-0068)*
 - [x] **T2.36** Index management → FR-12.1 — *`source.IndexManager`, paired with `Schema.Indexes` and checked by the conformance suite: a change is planned as the call it would make and applied only once it has been shown (FR-6.4), guarded as DDL so nothing runs read-only and production asks again; every index at once and the `_id` index are refused. The structure tab offers Add Index… and Drop Index… under the indexes it lists, fields typed as `name, score:-1, body:text`, and reads the structure again once a change has run (ADR-0069)*
-- [ ] **T2.37** `mongosh`-compatible command console → FR-12.1
+- [x] **T2.37** `mongosh`-compatible command console → FR-12.1 — *the console reads the commands a person types at a prompt — `db.people.find({…})`, `show collections`, `use shop` — in extended JSON with JavaScript's quotes, one call a line, and says by name what it does not read; mongosh is the source's query language, with a lexer dialect of its own (double-quoted strings, `//` comments); every command is classified and put to the guard before any of a script runs, a session holds the database `use` changes, and a condition typed in the grid is now a filter document, ANDed with its filters and refused where it is more than one (ADR-0070)*
 - [~] **T2.38** Conformance green — *the suite runs against the MongoDB driver and is green for everything it claims: the lifecycle, the capabilities, the tree, browsing, cancellation and paging; the write checks skip until a collection takes writes (T2.34). It found two faults, both fixed: a database whose collections are all the server's own opened onto nothing, and a cursor's batch went on being read after its context was cancelled*
 
 ## 2.F Redis

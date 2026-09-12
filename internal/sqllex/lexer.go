@@ -78,6 +78,10 @@ type State struct {
 	// single boolean would mis-colour the remainder of a file.
 	Depth uint8
 
+	// Quote is the character a string opened with, where a dialect has more
+	// than one (mongosh's ' and "). Zero means the dialect's own.
+	Quote byte
+
 	// Tag is the dollar-quote tag body, e.g. "" for $$ or "fn" for $fn$.
 	Tag string
 }
@@ -85,7 +89,7 @@ type State struct {
 // Equal reports whether two states are interchangeable, which is how the
 // incremental highlighter decides it can stop cascading.
 func (s State) Equal(o State) bool {
-	return s.Kind == o.Kind && s.Depth == o.Depth && s.Tag == o.Tag
+	return s.Kind == o.Kind && s.Depth == o.Depth && s.Tag == o.Tag && s.Quote == o.Quote
 }
 
 // Dialect parameterises the lexer per engine.
@@ -116,6 +120,13 @@ type Dialect struct {
 	// BackslashEscapes enables \' inside strings (MySQL). Standard SQL
 	// escapes a quote by doubling it, which is handled everywhere.
 	BackslashEscapes bool
+
+	// DoubleQuotedStrings makes "..." a string rather than an identifier,
+	// which is what a JavaScript-shaped language does (mongosh).
+	DoubleQuotedStrings bool
+
+	// SlashComment enables // line comments (mongosh).
+	SlashComment bool
 }
 
 // Lexer tokenises one line at a time, resuming from a caller-held state.
@@ -176,6 +187,10 @@ func (l *Lexer) LexLine(line string, in State) ([]Token, State) {
 			l.emit(TokComment, i, n)
 			i = n
 
+		case l.d.SlashComment && c == '/' && i+1 < n && line[i+1] == '/':
+			l.emit(TokComment, i, n)
+			i = n
+
 		case c == '/' && i+1 < n && line[i+1] == '*':
 			// Scan from past the opener: continueBlockComment's nesting check
 			// would otherwise count this same "/*" a second time.
@@ -184,6 +199,12 @@ func (l *Lexer) LexLine(line string, in State) ([]Token, State) {
 
 		case c == '\'':
 			st = State{Kind: StateString}
+			i, st = l.continueString(line, i, st)
+
+		case l.d.DoubleQuotedStrings && c == '"':
+			// A string, not a name: in mongosh every key and value that is
+			// text is written this way.
+			st = State{Kind: StateString, Quote: '"'}
 			i, st = l.continueString(line, i, st)
 
 		case c == l.d.QuoteIdent:
@@ -294,22 +315,28 @@ func (l *Lexer) continueBlockComment(line string, tokenStart, scan int32, st Sta
 	return n, st
 }
 
-// continueString consumes a single-quoted string. SQL escapes a quote by
-// doubling it; some dialects also allow a backslash escape.
+// continueString consumes a quoted string. SQL escapes a quote by doubling
+// it; some dialects also allow a backslash escape. A dialect with two kinds
+// of string carries which one opened it in the state, so a ' inside a
+// "…" does not end it.
 func (l *Lexer) continueString(line string, i int32, st State) (int32, State) {
 	n := int32(len(line))
 	start := i
-	if i < n && line[i] == '\'' {
+	quote := byte('\'')
+	if st.Quote != 0 {
+		quote = st.Quote
+	}
+	if i < n && line[i] == quote {
 		i++ // opening quote
 	}
 	for i < n {
 		c := line[i]
-		if l.d.BackslashEscapes && c == '\\' && i+1 < n {
+		if (l.d.BackslashEscapes || l.d.DoubleQuotedStrings) && c == '\\' && i+1 < n {
 			i += 2
 			continue
 		}
-		if c == '\'' {
-			if i+1 < n && line[i+1] == '\'' {
+		if c == quote {
+			if i+1 < n && line[i+1] == quote {
 				i += 2 // doubled quote is an escaped quote, not a terminator
 				continue
 			}
