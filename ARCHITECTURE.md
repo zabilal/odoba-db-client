@@ -74,7 +74,8 @@ No UI file changes (REQ-DB-1).
 
 `Queryer` · `Sessioner` · `Dialect` · `Writer` · `Explainer` · `Transactor` · `Killer` ·
 `Snapshotter` · `Searcher` · `Countable` · `DistinctLister` · `BulkLoader` ·
-`Scriptable` · `Completer` · `StreamAdmin` · `StreamProducer` · `SchemaRegistry`
+`Scriptable` · `Completer` · `ShapeInferrer` · `StreamAdmin` · `StreamProducer` ·
+`SchemaRegistry`
 
 Each optional interface has a corresponding capability field. The conformance
 suite fails a driver that *claims* a capability without implementing the

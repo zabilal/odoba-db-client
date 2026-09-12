@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
@@ -14,6 +15,18 @@ import (
 func Describe(ctx context.Context, src source.Source, ref model.ObjectRef) (_ any, err error) {
 	defer panics.Recover(&err, "describing an object")
 	return src.Describe(ctx, ref)
+}
+
+// InferShape samples an object's documents and reports the fields they hold
+// (FR-12.4). A source whose structure the server declares has none to infer,
+// and says so rather than answering with an empty shape.
+func InferShape(ctx context.Context, src source.Source, ref model.ObjectRef, n int) (_ *model.DocumentShape, err error) {
+	defer panics.Recover(&err, "sampling an object's documents")
+	inf, ok := src.(source.ShapeInferrer)
+	if !ok {
+		return nil, errors.New("this source's structure is the server's own, not sampled from its data")
+	}
+	return inf.InferShape(ctx, ref, n)
 }
 
 // Referrers lists the foreign keys of other tables that refer to a table,

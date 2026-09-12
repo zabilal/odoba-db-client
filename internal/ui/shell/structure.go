@@ -63,16 +63,60 @@ func (s *Shell) OpenStructure(connID string, n model.Node) *tab {
 				s.crashed(connID, err)
 				return
 			}
-			t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc))}
-			t.body.Refresh()
+			s.showStructure(t, connID, desc, live.Source.Capabilities().Structure.InferredShape)
 		})
 	}()
 	return t
 }
 
+// sampleSize is how many documents Sample reads. Enough for a rare field to
+// show up, few enough to come back while a person is looking at the panel.
+const sampleSize = 200
+
+// showStructure draws what was described, with the sampling offered where the
+// source's structure is its data's (FR-12.4).
+func (s *Shell) showStructure(t *tab, connID string, desc any, inferred bool) {
+	var sample func()
+	if coll, ok := desc.(*model.Collection); ok && inferred {
+		sample = func() { s.sampleShape(t, connID, coll) }
+	}
+	t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc, sample))}
+	t.body.Refresh()
+}
+
+// sampleShape reads documents and redraws the structure with what they hold.
+// It never runs unasked: inference reads data, and a person chooses when.
+func (s *Shell) sampleShape(t *tab, connID string, coll *model.Collection) {
+	ctx, ref := t.ctx, t.ref
+	t.footer.SetText(fmt.Sprintf("Reading %d documents…", sampleSize))
+	go func() {
+		live, err := s.d.WS.Connect(ctx, connID)
+		var shape *model.DocumentShape
+		if err == nil {
+			shape, err = app.InferShape(ctx, live.Source, ref, sampleSize)
+		}
+		s.d.Run(func() {
+			if ctx.Err() != nil {
+				return // the tab closed while it was reading
+			}
+			if err != nil {
+				t.footer.SetText("")
+				s.showError(fmt.Errorf("could not sample the documents: %w", err))
+				return
+			}
+			coll.Shape = shape
+			t.footer.SetText("")
+			s.showStructure(t, connID, coll, true)
+		})
+	}()
+}
+
 // structureView lays out what Describe returned. Sections with nothing in
 // them are left out (UX principle 2).
-func structureView(desc any) fyne.CanvasObject {
+//
+// sample, where there is one, reads documents to say what an object holds:
+// only a source whose structure is its data's has one.
+func structureView(desc any, sample func()) fyne.CanvasObject {
 	box := container.NewVBox()
 	add := func(o fyne.CanvasObject) { box.Add(o) }
 	switch v := desc.(type) {
@@ -136,6 +180,18 @@ func structureView(desc any) fyne.CanvasObject {
 		if v.Shape != nil {
 			add(quietLabel(fmt.Sprintf("Fields seen in %d documents sampled.", v.Shape.Sampled)))
 			add(section("Fields", fieldRows(v.Shape.Fields)))
+		}
+		if sample != nil {
+			// A collection has no declared fields; reading some of its
+			// documents is the only way to say what it holds, and it is
+			// offered rather than done (FR-12.4).
+			label := fmt.Sprintf("Sample %d documents", sampleSize)
+			if v.Shape != nil {
+				label = "Sample again"
+			}
+			b := widget.NewButton(label, sample)
+			b.Importance = widget.LowImportance
+			add(container.NewHBox(b))
 		}
 		add(section("Indexes", documentIndexRows(v.Indexes)))
 	default:

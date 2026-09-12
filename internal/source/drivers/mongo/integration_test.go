@@ -336,3 +336,71 @@ func TestLiveSaysWhatIsWrongWithAConnection(t *testing.T) {
 		t.Errorf("bad credentials: %v", err)
 	}
 }
+
+func TestLiveInfersAShape(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	s := src.(*mongoSource)
+	// A field only some documents have, one holding two kinds, and an array
+	// of documents: what inference is for.
+	if _, err := s.client.Database("ikigai_it").Collection("people").InsertMany(ctx, []any{
+		map[string]any{"name": "Edsger", "score": "high", "tags": []any{"a", "b"},
+			"items": []any{map[string]any{"sku": "x", "qty": 2}, map[string]any{"sku": "y"}}},
+		map[string]any{"name": "Barbara"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	inf, ok := src.(source.ShapeInferrer)
+	if !ok {
+		t.Fatal("the source cannot infer a shape")
+	}
+	shape, err := inf.InferShape(ctx, model.NewRef(model.KindCollection, "ikigai_it", "people"), 0)
+	if err != nil {
+		t.Fatalf("infer: %v", err)
+	}
+	if shape.Sampled != 4 {
+		t.Fatalf("sampled %d, want the four documents there are", shape.Sampled)
+	}
+	byName := map[string]model.InferredField{}
+	for _, f := range shape.Fields {
+		byName[f.Name] = f
+	}
+	if shape.Fields[0].Name != "_id" {
+		t.Errorf("fields %v, want the identifier first", shape.Fields)
+	}
+	if got := byName["name"].Presence; got != 1 {
+		t.Errorf("name is in %v of them, want all four", got)
+	}
+	score := byName["score"]
+	if score.Presence != 0.75 || len(score.Types) != 2 {
+		t.Errorf("score %+v, want it in three of four and of two types", score)
+	}
+	if got := byName["items"].Children; len(got) != 2 || got[0].Name != "sku" {
+		t.Errorf("items hold %v, want sku and qty", got)
+	}
+	if got := byName["tags"].Types[0].Type.Native; got != "array<string>" {
+		t.Errorf("tags are %q", got)
+	}
+	// The number asked for bounds what is read.
+	small, err := inf.InferShape(ctx, model.NewRef(model.KindCollection, "ikigai_it", "people"), 2)
+	if err != nil {
+		t.Fatalf("infer: %v", err)
+	}
+	if small.Sampled != 2 {
+		t.Errorf("sampled %d, want the two asked for", small.Sampled)
+	}
+	// A view is sampled too: its documents are a pipeline's, and a person
+	// browsing one needs its shape as much as a collection's.
+	if _, err := inf.InferShape(ctx, model.NewRef(model.KindCollection, "ikigai_it", "high_scores"), 10); err != nil {
+		t.Errorf("a view could not be sampled: %v", err)
+	}
+	// Nothing else has documents to sample.
+	if _, err := inf.InferShape(ctx, model.NewRef(model.KindDatabase, "ikigai_it"), 10); err == nil {
+		t.Error("a database was sampled")
+	}
+	if _, err := inf.InferShape(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_"), 10); err == nil {
+		t.Error("an index was sampled")
+	}
+}

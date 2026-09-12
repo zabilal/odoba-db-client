@@ -33,3 +33,15 @@ func TestDescribePassesThroughAndContainsAPanic(t *testing.T) {
 		t.Errorf("a panicking describe should come back as an error, got %v", err)
 	}
 }
+
+func TestInferShapeNeedsASourceThatSamples(t *testing.T) {
+	// A source whose structure the server declares has none to sample, and
+	// says so rather than panicking on a nil interface.
+	_, err := InferShape(context.Background(), &fakeSource{}, model.NewRef(model.KindTable, "t"), 10)
+	if err == nil {
+		t.Fatal("a source that cannot sample was asked to")
+	}
+	if !strings.Contains(err.Error(), "sampled") {
+		t.Errorf("error %q, want it to say why", err)
+	}
+}

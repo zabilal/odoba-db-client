@@ -55,6 +55,11 @@ type Structure struct {
 
 	// CreateDatabase reports whether new databases can be created.
 	CreateDatabase bool
+
+	// InferredShape reports source.ShapeInferrer: an object whose fields are
+	// sampled from its data rather than declared by the server (FR-12.4).
+	// The UI offers the sampling; it never runs it unasked.
+	InferredShape bool
 }
 
 // Query describes text-query support.
