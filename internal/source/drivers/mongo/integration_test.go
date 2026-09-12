@@ -9,6 +9,8 @@ package mongo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -65,9 +67,11 @@ func seed(t *testing.T, src source.Source, db string) {
 	}
 	t.Cleanup(func() { s.client.Database(db).Drop(context.Background()) })
 	people := d.Collection("people")
+	// Each document holds a field the others do not, so what the columns
+	// are cannot be read from any one of them.
 	if _, err := people.InsertMany(ctx, []any{
-		map[string]any{"name": "Ada", "score": 42},
-		map[string]any{"name": "Grace", "score": 7},
+		map[string]any{"name": "Ada", "score": 42, "born": 1815},
+		map[string]any{"name": "Grace", "score": 7, "rank": "rear admiral"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -160,11 +164,16 @@ func TestLiveListsDatabases(t *testing.T) {
 	}
 }
 
-func TestLiveRefusesWhatIsNotWrittenYet(t *testing.T) {
+func TestLiveRefusesAQueryItHasNoLanguageFor(t *testing.T) {
 	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
 	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
-	if _, err := src.Browse(context.Background(), ref, source.BrowseOptions{}); !errors.Is(err, errNotYet) {
-		t.Errorf("browse: %v, want it said plainly that it is not written yet", err)
+	_, err := src.Browse(context.Background(), ref, source.BrowseOptions{Where: "score > 1"})
+	if err == nil {
+		t.Fatal("a condition was taken in a language this source has none of")
+	}
+	if !strings.Contains(err.Error(), "filters") {
+		t.Errorf("error %q, want it to say what it takes instead", err)
 	}
 }
 
@@ -402,5 +411,217 @@ func TestLiveInfersAShape(t *testing.T) {
 	}
 	if _, err := inf.InferShape(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_"), 10); err == nil {
 		t.Error("an index was sampled")
+	}
+}
+
+// read drains a stream into rows.
+func read(t *testing.T, rs model.RowStream) []model.Row {
+	t.Helper()
+	var out []model.Row
+	for {
+		row, err := rs.Next(context.Background())
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		if err != nil {
+			t.Fatalf("next: %v", err)
+		}
+		out = append(out, row)
+	}
+}
+
+func colNames(rs model.RowStream) []string {
+	out := make([]string, 0, len(rs.Columns()))
+	for _, c := range rs.Columns() {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+func TestLiveBrowsesACollection(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+
+	rs, err := src.Browse(ctx, ref, source.BrowseOptions{Limit: 10, Sorts: []source.Sort{{Column: "name"}}})
+	if err != nil {
+		t.Fatalf("browse: %v", err)
+	}
+	defer rs.Close()
+
+	// The columns are the fields the documents hold — all of them, not one
+	// document's — with the identifier first.
+	got := colNames(rs)
+	if len(got) == 0 || got[0] != "_id" {
+		t.Fatalf("columns %v, want the identifier first", got)
+	}
+	for _, want := range []string{"name", "score", "born", "rank"} {
+		if !has(got, want) {
+			t.Errorf("columns %v, want %s among them: some document has one", got, want)
+		}
+	}
+	rows := read(t, rs)
+	if len(rows) != 2 {
+		t.Fatalf("%d rows, want the two documents", len(rows))
+	}
+	at := func(row model.Row, name string) any {
+		for i, c := range rs.Columns() {
+			if c.Name == name {
+				return row[i]
+			}
+		}
+		return nil
+	}
+	if at(rows[0], "name") != "Ada" || at(rows[1], "name") != "Grace" {
+		t.Errorf("rows %v, want them in name order", rows)
+	}
+	if _, ok := at(rows[0], "_id").(string); !ok {
+		t.Errorf("_id is %T, want it written out", at(rows[0], "_id"))
+	}
+	// A document is told from another by its _id, which is what makes a
+	// collection's rows editable (FR-4.7).
+	id := model.IdentityOf(rs)
+	if id.Kind != model.IdentityDocumentID || len(id.Columns) != 1 || id.Columns[0] != "_id" {
+		t.Errorf("identity %+v", id)
+	}
+	if err := rs.Close(); err != nil {
+		t.Errorf("close: %v", err)
+	}
+	if err := rs.Close(); err != nil {
+		t.Errorf("close again: %v", err)
+	}
+
+	// A limit is what is read, not what is there.
+	one, err := src.Browse(ctx, ref, source.BrowseOptions{Limit: 1})
+	if err != nil {
+		t.Fatalf("browse: %v", err)
+	}
+	defer one.Close()
+	if got := len(read(t, one)); got != 1 {
+		t.Errorf("%d rows under a limit of one", got)
+	}
+}
+
+// has reports whether a list holds a string.
+func has(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLiveBrowseFiltersSortsAndPages(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	names := func(opt source.BrowseOptions) []string {
+		t.Helper()
+		rs, err := src.Browse(ctx, ref, opt)
+		if err != nil {
+			t.Fatalf("browse: %v", err)
+		}
+		defer rs.Close()
+		var out []string
+		for _, row := range read(t, rs) {
+			for i, c := range rs.Columns() {
+				if c.Name == "name" {
+					out = append(out, fmt.Sprint(row[i]))
+				}
+			}
+		}
+		return out
+	}
+	if got := names(source.BrowseOptions{Filters: []source.Filter{
+		{Column: "score", Op: source.OpGreater, Values: []any{int32(10)}}}}); len(got) != 1 || got[0] != "Ada" {
+		t.Errorf("filtered to %v, want Ada alone", got)
+	}
+	if got := names(source.BrowseOptions{Sorts: []source.Sort{{Column: "name", Descending: true}}}); got[0] != "Grace" {
+		t.Errorf("sorted to %v, want Grace first", got)
+	}
+	if got := names(source.BrowseOptions{Sorts: []source.Sort{{Column: "name"}}, Offset: 1}); len(got) != 1 || got[0] != "Grace" {
+		t.Errorf("the second page is %v", got)
+	}
+	if got := names(source.BrowseOptions{Filters: []source.Filter{
+		{Column: "name", Op: source.OpLike, Values: []any{"A%"}}}}); len(got) != 1 || got[0] != "Ada" {
+		t.Errorf("a pattern found %v", got)
+	}
+	// The columns asked for are the columns given, with the identifier.
+	rs, err := src.Browse(ctx, ref, source.BrowseOptions{Columns: []string{"name"}})
+	if err != nil {
+		t.Fatalf("browse: %v", err)
+	}
+	defer rs.Close()
+	if got := colNames(rs); len(got) != 1 || got[0] != "name" {
+		t.Errorf("columns %v, want the one asked for", got)
+	}
+}
+
+func TestLiveCountsWhatABrowseWouldReturn(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	c, ok := src.(source.Countable)
+	if !ok {
+		t.Fatal("the source cannot count")
+	}
+	if n, err := c.Count(ctx, ref, source.BrowseOptions{}); err != nil || n != 2 {
+		t.Errorf("counted %d (%v), want both documents", n, err)
+	}
+	n, err := c.Count(ctx, ref, source.BrowseOptions{Filters: []source.Filter{
+		{Column: "score", Op: source.OpGreater, Values: []any{int32(10)}}}})
+	if err != nil || n != 1 {
+		t.Errorf("counted %d (%v) with a filter, want the one", n, err)
+	}
+	if _, err := c.Count(ctx, model.NewRef(model.KindDatabase, "ikigai_it"), source.BrowseOptions{}); err == nil {
+		t.Error("a database was counted")
+	}
+	if _, err := c.Count(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_"), source.BrowseOptions{}); err == nil {
+		t.Error("an index was counted as though it were its collection")
+	}
+}
+
+func TestLiveBrowsesAViewAndAnEmptyCollection(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	// A view is browsed like a collection: its documents are a pipeline's.
+	rs, err := src.Browse(ctx, model.NewRef(model.KindCollection, "ikigai_it", "high_scores"), source.BrowseOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("browse a view: %v", err)
+	}
+	defer rs.Close()
+	if got := len(read(t, rs)); got != 1 {
+		t.Errorf("%d documents in the view, want the one over ten", got)
+	}
+	// An empty collection still has the field every document gets, so the
+	// grid has a column to draw rather than nothing at all.
+	s := src.(*mongoSource)
+	if err := s.client.Database("ikigai_it").CreateCollection(ctx, "empty"); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := src.Browse(ctx, model.NewRef(model.KindCollection, "ikigai_it", "empty"), source.BrowseOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("browse an empty collection: %v", err)
+	}
+	defer empty.Close()
+	if got := colNames(empty); len(got) != 1 || got[0] != "_id" {
+		t.Errorf("columns %v, want the identifier alone", got)
+	}
+	if got := read(t, empty); len(got) != 0 {
+		t.Errorf("%d rows in an empty collection", len(got))
+	}
+	// Nothing else holds documents, whatever its path.
+	if _, err := src.Browse(ctx, model.NewRef(model.KindDatabase, "ikigai_it"), source.BrowseOptions{}); err == nil {
+		t.Error("a database was browsed")
+	}
+	// Even where the columns are given, so nothing else would notice.
+	idx := model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_")
+	if _, err := src.Browse(ctx, idx, source.BrowseOptions{Columns: []string{"name"}}); err == nil {
+		t.Error("an index was browsed as though it were its collection")
 	}
 }

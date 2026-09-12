@@ -165,6 +165,7 @@ type tab struct {
 	holders map[*grid.TableGrid]*fyne.Container
 	viewers map[*grid.TableGrid]*cellViewer
 	forms   map[*grid.TableGrid]*formView
+	jsons   map[*grid.TableGrid]*jsonView
 	// said is what the last action said, such as where an export went. A
 	// table\'s footer keeps it beside the row count, as it keeps problem.
 	said string
@@ -364,6 +365,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdFormView, Category: "View", Title: "Form View", Keywords: []string{"record", "row", "vertical", "fields", "wide"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleForm},
+		{ID: cmdJSONView, Category: "View", Title: "JSON View", Keywords: []string{"document", "mongo", "nested", "raw", "json"},
+			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
+			Run:     s.toggleJSON},
 		{ID: cmdGoToReferenced, Category: "View", Title: "Go to Referenced Row", Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
 			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
 		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
