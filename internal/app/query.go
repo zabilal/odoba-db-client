@@ -240,6 +240,25 @@ func (qs *QuerySession) reads(stmt string) bool {
 	return qs.dialect != nil && qs.dialect.Classify(stmt) == source.AccessRead
 }
 
+// Alters reports whether a script changes structure, so that what completion
+// knows about the schema can be thrown away after it (FR-5.2).
+//
+// A source whose dialect cannot classify a statement is taken to have
+// changed everything: emptying a cache costs a reload, and offering names
+// that are no longer there costs the person their trust in the popup.
+func (qs *QuerySession) Alters(script string) (yes bool) {
+	defer panics.Catch("classifying the statements", func(error) { yes = true })
+	if qs.dialect == nil {
+		return true
+	}
+	for _, st := range qs.dialect.SplitScript(script) {
+		if qs.dialect.Classify(st.Text) == source.AccessDDL {
+			return true
+		}
+	}
+	return false
+}
+
 // Plan renders a result's changes as the statements that would write them,
 // running nothing (FR-4.4).
 func (qs *QuerySession) Plan(ctx context.Context, cs source.Changeset) (_ *source.WritePlan, err error) {

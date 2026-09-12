@@ -114,8 +114,20 @@ func (fakeSource) Root(context.Context) ([]model.Node, error) {
 }
 
 func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
-	if ref.Kind == model.KindDatabase {
+	switch ref.Kind {
+	case model.KindDatabase:
 		return []model.Node{itemsNode}, nil
+	case model.KindTable:
+		// A table's columns, as every driver lists them, with the type the
+		// explorer and completion both read from Attrs (T2.29).
+		var out []model.Node
+		for _, c := range []struct{ name, typ string }{{"id", "integer"}, {"name", "text"}} {
+			out = append(out, model.Node{
+				Ref:   model.NewRef(model.KindColumn, append(append([]string{}, ref.Path...), c.name)...),
+				Label: c.name, Attrs: map[string]string{"type": c.typ},
+			})
+		}
+		return out, nil
 	}
 	return nil, nil
 }

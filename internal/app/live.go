@@ -86,6 +86,7 @@ type Live struct {
 	status Status
 	subs   map[int]func(Status)
 	nextID int
+	schema *SchemaCache // what completion knows about this connection (FR-5.2)
 
 	kick      chan struct{}
 	stop      chan struct{}
@@ -225,8 +226,26 @@ func backoff(cfg MonitorConfig, attempt int) time.Duration {
 
 // Close stops monitoring and closes the connection. Safe to call more than
 // once.
+// Schema is what completion knows about this connection's objects, shared by
+// every tab on it and filled in the background (T2.29). It is built on first
+// use: a connection nobody types a query on never introspects for one.
+func (l *Live) Schema() *SchemaCache {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.schema == nil {
+		l.schema = NewSchemaCache(l.Source)
+	}
+	return l.schema
+}
+
 func (l *Live) Close() error {
 	l.closeOnce.Do(func() {
+		l.mu.Lock()
+		schema := l.schema
+		l.mu.Unlock()
+		if schema != nil {
+			schema.Close()
+		}
 		close(l.stop)
 		<-l.done
 		l.closeErr = l.closeSource()

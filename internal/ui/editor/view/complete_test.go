@@ -454,3 +454,32 @@ func TestCompletionMarksTheChosenRow(t *testing.T) {
 		t.Errorf("rows filled %v after moving, want the second alone", got)
 	}
 }
+
+func TestCompletionRefreshesWithoutLosingWhatWasChosen(t *testing.T) {
+	e, _ := setup(t, "")
+	items := []source.Completion{
+		{Kind: source.CompletionKeyword, Label: "SELECT", Insert: "select"},
+		{Kind: source.CompletionKeyword, Label: "SET", Insert: "set"},
+	}
+	e.SetCompleter(func(string, int) source.CompletionResult {
+		return source.CompletionResult{Candidates: items, Start: 0, End: 1}
+	})
+	test.Type(e.surface, "s")
+	e.surface.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+	if e.comp.sel != 1 {
+		t.Fatalf("chosen %d, want the second", e.comp.sel)
+	}
+	// The cache has loaded: more candidates, and the chosen one moves down
+	// the list. What was about to be accepted is still what is chosen.
+	items = append([]source.Completion{{Kind: source.CompletionTable, Label: "sales", Insert: "sales"}}, items...)
+	e.RefreshCompletion()
+	if got := e.comp.items[e.comp.sel].Label; got != "SET" {
+		t.Errorf("chosen %q after the list grew, want SET", got)
+	}
+	// Closed, it stays closed.
+	e.comp.dismiss()
+	e.RefreshCompletion()
+	if e.CompletionOpen() {
+		t.Error("refreshing opened the popup")
+	}
+}

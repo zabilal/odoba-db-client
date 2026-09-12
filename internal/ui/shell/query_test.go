@@ -48,8 +48,11 @@ func (fakeSource) BuildBrowse(_ model.ObjectRef, opt source.BrowseOptions) (sour
 	return source.Statement{SQL: sql + " LIMIT ?", Args: []any{opt.Limit}}, nil
 }
 func (fakeSource) Classify(stmt string) source.Access {
-	if strings.HasPrefix(strings.TrimSpace(stmt), "update") {
+	switch first, _, _ := strings.Cut(strings.TrimSpace(stmt), " "); strings.ToLower(first) {
+	case "update", "insert", "delete":
 		return source.AccessWrite
+	case "create", "alter", "drop", "truncate":
+		return source.AccessDDL
 	}
 	return source.AccessRead
 }
@@ -447,5 +450,67 @@ func TestQueryTabCompletionIsAskedForOnlyInTheEditor(t *testing.T) {
 	fx.s.run(cmdQueryComplete)
 	if q.editor.CompletionOpen() {
 		t.Error("the popup opened with the focus outside the editor")
+	}
+}
+
+// completed asks the editor's completer until a candidate appears, as the
+// popup does when the schema cache says it has loaded something.
+func completed(t *testing.T, fx *fixture, q *queryTab, marked string) []string {
+	t.Helper()
+	i := strings.IndexByte(marked, '|')
+	if i < 0 {
+		t.Fatalf("no cursor in %q", marked)
+	}
+	text, cursor := marked[:i]+marked[i+1:], utf8.RuneCountInString(marked[:i])
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		res := q.complete(text, cursor)
+		var out []string
+		for _, c := range res.Candidates {
+			out = append(out, c.Label)
+		}
+		if len(out) > 0 || time.Now().After(deadline) {
+			return out
+		}
+		fx.q.Flush()
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestQueryTabCompletesTheConnectionsTables(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	if got := completed(t, fx, q, "select * from it|"); !has(got, "items") {
+		t.Errorf("offering %v, want the connection's table", got)
+	}
+	// And its columns, by the name the statement reads it under.
+	if got := completed(t, fx, q, "select i.| from items i"); !has(got, "id") || !has(got, "name") {
+		t.Errorf("offering %v, want the table's columns", got)
+	}
+}
+
+func TestQueryTabForgetsTheSchemaAfterDDL(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	completed(t, fx, q, "select * from it|")
+	if q.schema == nil {
+		t.Fatal("the tab has no schema cache")
+	}
+	// A read leaves what completion knows alone.
+	q.editor.Document().SetText("rows 1;")
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return !q.executing })
+	if got := q.complete("select * from it", len("select * from it")); len(got.Candidates) == 0 {
+		t.Error("a read emptied what completion knows")
+	}
+	// DDL empties it, and it loads again.
+	q.editor.Document().SetText("create table t (id int);")
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return !q.executing })
+	if got := q.complete("select * from it", len("select * from it")); len(got.Candidates) != 0 {
+		t.Errorf("offering %v straight after DDL, want it emptied", got.Candidates)
+	}
+	if got := completed(t, fx, q, "select * from it|"); !has(got, "items") {
+		t.Errorf("offering %v, want the tables read again", got)
 	}
 }

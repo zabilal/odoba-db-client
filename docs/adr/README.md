@@ -64,3 +64,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0057](0057-what-can-be-typed-next.md) | What can be typed next | Accepted |
 | [0058](0058-the-tables-a-statement-reads.md) | The tables a statement reads | Accepted |
 | [0059](0059-the-completion-popup.md) | The completion popup | Accepted |
+| [0060](0060-what-completion-knows-about-a-schema.md) | What completion knows about a schema | Accepted |

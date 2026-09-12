@@ -43,6 +43,15 @@ func (e *Editor) SetCompleter(fn Completer) {
 // typed: the Query ▸ Complete command (⌃Space).
 func (e *Editor) Complete() { e.comp.query() }
 
+// RefreshCompletion asks again where the popup is open, for a caller whose
+// candidates have changed under it: a schema cache that has just loaded the
+// names it did not have a moment ago (T2.29). It never opens the popup.
+func (e *Editor) RefreshCompletion() {
+	if e.comp.Visible() {
+		e.comp.ask(true)
+	}
+}
+
 // CompletionOpen reports whether the completion popup is showing.
 func (e *Editor) CompletionOpen() bool { return e.comp.Visible() }
 
@@ -75,10 +84,20 @@ func newCompletions(e *Editor) *completions {
 // query asks the completer about the caret's position and shows what comes
 // back. Nothing to offer closes the popup: an empty one says nothing and
 // hides the text.
-func (c *completions) query() {
+func (c *completions) query() { c.ask(false) }
+
+// ask asks and shows what comes back. Keeping holds on to the candidate that
+// was chosen where it is still offered: a list that grew under the popup,
+// because the schema cache has loaded, must not move what a person was about
+// to accept.
+func (c *completions) ask(keeping bool) {
 	if c.e.completer == nil {
 		c.dismiss()
 		return
+	}
+	chosen := ""
+	if keeping && c.sel < len(c.items) {
+		chosen = c.items[c.sel].Label
 	}
 	doc := c.e.doc
 	text := doc.Text()
@@ -90,6 +109,15 @@ func (c *completions) query() {
 	c.items = res.Candidates
 	c.start, c.end = byteOffset(text, res.Start), byteOffset(text, res.End)
 	c.sel, c.top = 0, 0
+	if chosen != "" {
+		for i, it := range c.items {
+			if it.Label == chosen {
+				c.sel = i
+				break
+			}
+		}
+		c.move(0) // brings the chosen one into the drawn window
+	}
 	c.Show()
 	c.e.Refresh()
 }
