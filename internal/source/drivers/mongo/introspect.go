@@ -54,9 +54,16 @@ func (s *mongoSource) databaseClasses(ctx context.Context, ref model.ObjectRef) 
 	if err != nil {
 		return nil, err
 	}
-	return model.ClassNodes(ref, map[model.ObjectKind]int64{
+	out := model.ClassNodes(ref, map[model.ObjectKind]int64{
 		model.KindCollection: int64(len(specs)),
-	}), nil
+	})
+	if len(out) == 0 {
+		// A database holding nothing a person put there still shows its
+		// collections, empty: a node that opens onto nothing reads as a
+		// tree that failed rather than a database that is empty.
+		out = []model.Node{model.ClassNode(ref, model.KindCollection, 0)}
+	}
+	return out, nil
 }
 
 // collections lists a database's collections and views, in name order.
@@ -80,8 +87,10 @@ func (s *mongoSource) collections(ctx context.Context, class model.ObjectRef) ([
 			Browsable:   true,
 		}
 		if spec.Type != "" && spec.Type != "collection" {
-			// "view" and "timeseries" are what a server says here.
+			// "view" and "timeseries" are what a server says here. A view
+			// has no indexes of its own, so it holds nothing to expand.
 			n.Attrs = map[string]string{"type": spec.Type}
+			n.HasChildren = spec.Type != "view"
 		}
 		out = append(out, n)
 	}
@@ -97,6 +106,11 @@ func (s *mongoSource) collectionClasses(ctx context.Context, ref model.ObjectRef
 	specs, err := s.indexSpecs(ctx, ref.Path[0], ref.Path[1])
 	if err != nil && !unsupportedHere(err) {
 		return nil, err
+	}
+	if len(specs) == 0 {
+		// A view has no indexes, and its node says it has no children
+		// either, so nothing opens onto nothing.
+		return nil, nil
 	}
 	return model.ClassNodes(ref, map[model.ObjectKind]int64{
 		model.KindIndex: int64(len(specs)),
