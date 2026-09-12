@@ -160,6 +160,11 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Data.Pipeline but does not implement Aggregator")
 		}
 	}
+	if caps.Schema.Indexes {
+		if _, ok := src.(source.IndexManager); !ok {
+			t.Error("claims Schema.Indexes but does not implement IndexManager")
+		}
+	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")

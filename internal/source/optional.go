@@ -175,6 +175,23 @@ type Aggregator interface {
 	Aggregate(ctx context.Context, ref model.ObjectRef, pipeline string, opt BrowseOptions, confirmed bool) (model.RowStream, error)
 }
 
+// IndexManager is an optional Introspector refinement for sources whose
+// indexes are made and unmade on their own, apart from the object they are
+// on (FR-6.3, FR-12.1).
+//
+// Every change is planned before it runs, as a write is: the plan says what
+// will be sent, and nothing reaches the server until it is applied (FR-6.4).
+type IndexManager interface {
+	// PlanIndex renders making an index on an object.
+	PlanIndex(ctx context.Context, ref model.ObjectRef, idx model.DocumentIndex, confirmed bool) (*WritePlan, error)
+
+	// PlanDropIndex renders unmaking one, by name.
+	PlanDropIndex(ctx context.Context, ref model.ObjectRef, name string, confirmed bool) (*WritePlan, error)
+
+	// ApplyIndex runs a plan one of the two made.
+	ApplyIndex(ctx context.Context, plan *WritePlan) (*WriteOutcome, error)
+}
+
 // Killer is an optional interface for cancelling work server-side.
 //
 // Separate from context cancellation because several engines require a second

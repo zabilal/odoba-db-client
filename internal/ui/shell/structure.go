@@ -69,18 +69,60 @@ func (s *Shell) OpenStructure(connID string, n model.Node) *tab {
 	return t
 }
 
+// reopenStructure reads an object's structure again, after something
+// changed it. The tab stays where it is; only what it shows is read again.
+func (s *Shell) reopenStructure(t *tab) {
+	ctx, ref, connID := t.ctx, t.ref, t.connID
+	go func() {
+		live, err := s.d.WS.Connect(ctx, connID)
+		var desc any
+		var inferred bool
+		if err == nil {
+			desc, err = app.Describe(ctx, live.Source, ref)
+			inferred = live.Source.Capabilities().Structure.InferredShape
+		}
+		s.d.Run(func() {
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				s.showError(fmt.Errorf("could not read the structure: %w", err))
+				return
+			}
+			s.showStructure(t, connID, desc, inferred)
+		})
+	}()
+}
+
 // sampleSize is how many documents Sample reads. Enough for a rare field to
 // show up, few enough to come back while a person is looking at the panel.
 const sampleSize = 200
 
+// indexActions are what a structure tab offers for an object's indexes,
+// where the source makes and unmakes them on their own (FR-6.3).
+type indexActions struct {
+	add  func()
+	drop func(names []string)
+}
+
 // showStructure draws what was described, with the sampling offered where the
-// source's structure is its data's (FR-12.4).
+// source's structure is its data's (FR-12.4), and the indexes where it makes
+// them on their own (FR-6.3).
 func (s *Shell) showStructure(t *tab, connID string, desc any, inferred bool) {
 	var sample func()
-	if coll, ok := desc.(*model.Collection); ok && inferred {
-		sample = func() { s.sampleShape(t, connID, coll) }
+	var idx *indexActions
+	if coll, ok := desc.(*model.Collection); ok {
+		if inferred {
+			sample = func() { s.sampleShape(t, connID, coll) }
+		}
+		if live, ok := s.d.WS.Get(connID); ok && live.Source.Capabilities().Schema.Indexes {
+			idx = &indexActions{
+				add:  func() { s.addIndex(t) },
+				drop: func(names []string) { s.dropIndex(t, names) },
+			}
+		}
 	}
-	t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc, sample))}
+	t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc, sample, idx))}
 	t.body.Refresh()
 }
 
@@ -116,7 +158,7 @@ func (s *Shell) sampleShape(t *tab, connID string, coll *model.Collection) {
 //
 // sample, where there is one, reads documents to say what an object holds:
 // only a source whose structure is its data's has one.
-func structureView(desc any, sample func()) fyne.CanvasObject {
+func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject {
 	box := container.NewVBox()
 	add := func(o fyne.CanvasObject) { box.Add(o) }
 	switch v := desc.(type) {
@@ -194,6 +236,15 @@ func structureView(desc any, sample func()) fyne.CanvasObject {
 			add(container.NewHBox(b))
 		}
 		add(section("Indexes", documentIndexRows(v.Indexes)))
+		if idx != nil {
+			addIdx := widget.NewButton("Add Index…", func() { idx.add() })
+			dropIdx := widget.NewButton("Drop Index…", func() { idx.drop(indexNames(v)) })
+			addIdx.Importance, dropIdx.Importance = widget.LowImportance, widget.LowImportance
+			if len(indexNames(v)) == 0 {
+				dropIdx.Disable()
+			}
+			add(container.NewHBox(addIdx, dropIdx))
+		}
 	default:
 		add(plain("The structure of this kind of object cannot be shown yet."))
 	}

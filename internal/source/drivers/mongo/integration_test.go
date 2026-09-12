@@ -947,6 +947,133 @@ func TestLiveRefusesAPipelineThatWritesWhereItMayNot(t *testing.T) {
 	}
 }
 
+func TestLiveMakesAndUnmakesIndexes(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	im, ok := src.(source.IndexManager)
+	if !ok {
+		t.Fatal("the source cannot manage indexes")
+	}
+	names := func(t *testing.T) []string {
+		t.Helper()
+		specs, err := src.(*mongoSource).indexSpecs(ctx, "ikigai_it", "people")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, s := range specs {
+			out = append(out, s.Name)
+		}
+		return out
+	}
+
+	// Planned, nothing has happened yet.
+	plan, err := im.PlanIndex(ctx, ref, model.DocumentIndex{Name: "born_1",
+		Keys: []model.IndexColumn{{Name: "born"}}, Sparse: true}, false)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if has(names(t), "born_1") {
+		t.Fatal("planning made the index")
+	}
+	out, err := im.ApplyIndex(ctx, plan)
+	if err != nil || out.Err != nil || out.Applied != 1 {
+		t.Fatalf("making an index: %v %+v", err, out)
+	}
+	if !has(names(t), "born_1") {
+		t.Fatalf("the index was not made: %v", names(t))
+	}
+	// It is what was asked for.
+	specs, err := src.(*mongoSource).indexSpecs(ctx, "ikigai_it", "people")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range specs {
+		if s.Name != "born_1" {
+			continue
+		}
+		if idx := indexOf(s); !idx.Sparse || len(idx.Keys) != 1 || idx.Keys[0].Name != "born" {
+			t.Errorf("the index made is %+v", idx)
+		}
+	}
+	// The same index again is the server's to refuse, and the outcome says
+	// which call failed.
+	dup, err := im.PlanIndex(ctx, ref, model.DocumentIndex{Name: "born_1",
+		Keys: []model.IndexColumn{{Name: "born", Descending: true}}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := im.ApplyIndex(ctx, dup); err != nil || out.Err == nil || out.FailedAt != 0 {
+		t.Errorf("an index made twice: %v %+v", err, out)
+	}
+
+	// Dropped by name.
+	drop, err := im.PlanDropIndex(ctx, ref, "born_1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := im.ApplyIndex(ctx, drop); err != nil || out.Err != nil {
+		t.Fatalf("dropping an index: %v %+v", err, out)
+	}
+	if has(names(t), "born_1") {
+		t.Errorf("the index is there still: %v", names(t))
+	}
+	// Dropping one that is not there fails, and says so.
+	if out, err := im.ApplyIndex(ctx, drop); err != nil || out.Err == nil {
+		t.Errorf("dropping an index that is not there: %v %+v", err, out)
+	}
+}
+
+func TestLiveRefusesIndexChangesWhereItMayNot(t *testing.T) {
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	idx := model.DocumentIndex{Name: "nope_1", Keys: []model.IndexColumn{{Name: "nope"}}}
+
+	ro := liveConfig("ikigai_it")
+	ro.Guard = source.Guard{ReadOnly: true}
+	src := open(t, ro)
+	seed(t, src, "ikigai_it")
+	im := src.(source.IndexManager)
+	plan, err := im.PlanIndex(ctx, ref, idx, false)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := im.ApplyIndex(ctx, plan); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection made an index: %v", err)
+	}
+
+	prod := liveConfig("ikigai_it")
+	prod.Guard = source.Guard{Environment: source.EnvProduction}
+	psrc := open(t, prod)
+	pim := psrc.(source.IndexManager)
+	plan, err = pim.PlanIndex(ctx, ref, idx, false)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if !plan.Guarded {
+		t.Error("a production plan is not guarded")
+	}
+	if _, err := pim.ApplyIndex(ctx, plan); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	consented, err := pim.PlanIndex(ctx, ref, idx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := pim.ApplyIndex(ctx, consented); err != nil || out.Err != nil {
+		t.Fatalf("production with consent: %v %+v", err, out)
+	}
+	drop, err := pim.PlanDropIndex(ctx, ref, "nope_1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := pim.ApplyIndex(ctx, drop); err != nil || out.Err != nil {
+		t.Fatalf("cleaning up: %v %+v", err, out)
+	}
+}
+
 // TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
 // among the checks yet: a collection takes them in T2.34, and until then the
 // suite skips every check that needs a writable object.

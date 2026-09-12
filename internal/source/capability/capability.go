@@ -142,6 +142,10 @@ type Schema struct {
 	// DDL reports whether structure can be modified at all.
 	DDL bool
 
+	// Indexes reports source.IndexManager: indexes made and unmade on their
+	// own, apart from the object they are on (FR-6.3, FR-12.1).
+	Indexes bool
+
 	// Diff reports participation in schema comparison (FR-7).
 	Diff bool
 

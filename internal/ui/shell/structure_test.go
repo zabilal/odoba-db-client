@@ -120,7 +120,7 @@ func TestStructureShowsACollectionsShape(t *testing.T) {
 				{Type: model.DataType{Native: "int"}}, {Type: model.DataType{Native: "string"}}}},
 		}},
 	}
-	got := strings.Join(labelTexts(structureView(coll, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(coll, nil, nil)), "\n")
 	for _, want := range []string{
 		"About 41 documents", "Indexes", "_id_", "name_score", "name, score DESC", "unique, sparse",
 		"seen_ttl", "3600 seconds", "body text",
@@ -134,7 +134,7 @@ func TestStructureShowsACollectionsShape(t *testing.T) {
 	// A view says what it is, and shows nothing it has not got.
 	view := &model.Collection{Name: "high_scores", DocumentsEstimate: -1,
 		Attrs: map[string]string{"type": "view", "readOnly": "true"}}
-	got = strings.Join(labelTexts(structureView(view, nil)), "\n")
+	got = strings.Join(labelTexts(structureView(view, nil, nil)), "\n")
 	for _, want := range []string{"A view", "Read-only"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the view's structure does not say %q:\n%s", want, got)

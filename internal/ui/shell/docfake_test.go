@@ -49,6 +49,7 @@ func (d *docSource) Capabilities() capability.Capabilities {
 		Paradigm:  model.ParadigmDocument,
 		Structure: capability.Structure{MultipleDatabases: true, InferredShape: !d.declared},
 		Data:      capability.Data{Pipeline: true},
+		Schema:    capability.Schema{Indexes: !d.declared},
 		Objects:   map[model.ObjectKind]bool{model.KindDatabase: true, model.KindCollection: true},
 	}
 }
@@ -74,8 +75,98 @@ func (*docSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) 
 	if ref.Kind != model.KindCollection {
 		return nil, errors.New("docfake: nothing to describe")
 	}
-	return &model.Collection{Name: ref.Name(), DocumentsEstimate: 12,
-		Indexes: []model.DocumentIndex{{Name: "_id_", Keys: []model.IndexColumn{{Name: "_id"}}}}}, nil
+	docIndexes.Lock()
+	defer docIndexes.Unlock()
+	idx := []model.DocumentIndex{{Name: "_id_", Keys: []model.IndexColumn{{Name: "_id"}}}}
+	idx = append(idx, docIndexes.made...)
+	return &model.Collection{Name: ref.Name(), DocumentsEstimate: 12, Indexes: idx}, nil
+}
+
+// docIndexes are the indexes the fake has made, and the plans it ran.
+var docIndexes struct {
+	sync.Mutex
+	made  []model.DocumentIndex
+	plans []*source.WritePlan
+	fail  bool
+}
+
+func indexPlans() []*source.WritePlan {
+	docIndexes.Lock()
+	defer docIndexes.Unlock()
+	return append([]*source.WritePlan(nil), docIndexes.plans...)
+}
+
+func madeIndexes() []model.DocumentIndex {
+	docIndexes.Lock()
+	defer docIndexes.Unlock()
+	return append([]model.DocumentIndex(nil), docIndexes.made...)
+}
+
+func forgetIndexes() {
+	docIndexes.Lock()
+	defer docIndexes.Unlock()
+	docIndexes.made, docIndexes.plans, docIndexes.fail = nil, nil, false
+}
+
+// indexOp is what a planned index change would do.
+type indexOp struct {
+	idx  model.DocumentIndex
+	drop string
+}
+
+func (d *docSource) PlanIndex(_ context.Context, ref model.ObjectRef, idx model.DocumentIndex,
+	confirmed bool) (*source.WritePlan, error) {
+	if len(idx.Keys) == 0 {
+		return nil, errors.New("docfake: an index is on at least one field")
+	}
+	return d.plan(ref, "createIndex("+idx.Name+")", "Make an index on "+idx.Keys[0].Name,
+		&indexOp{idx: idx}, confirmed), nil
+}
+
+func (d *docSource) PlanDropIndex(_ context.Context, ref model.ObjectRef, name string,
+	confirmed bool) (*source.WritePlan, error) {
+	return d.plan(ref, "dropIndex("+name+")", "Drop the index "+name, &indexOp{drop: name}, confirmed), nil
+}
+
+func (d *docSource) plan(ref model.ObjectRef, call, desc string, op *indexOp, confirmed bool) *source.WritePlan {
+	guard := source.Guard{}
+	if d.production {
+		guard.Environment = source.EnvProduction
+	}
+	return &source.WritePlan{Target: ref, Statements: []source.Statement{{SQL: call, Op: op, Confirmed: confirmed}},
+		Descriptions: []string{desc}, Guarded: guard.RequiresConfirmation(source.AccessDDL)}
+}
+
+func (d *docSource) ApplyIndex(_ context.Context, plan *source.WritePlan) (*source.WriteOutcome, error) {
+	for _, st := range plan.Statements {
+		if d.production && !st.Confirmed {
+			return nil, source.ErrConfirmationRequired
+		}
+	}
+	docIndexes.Lock()
+	defer docIndexes.Unlock()
+	docIndexes.plans = append(docIndexes.plans, plan)
+	if docIndexes.fail {
+		return &source.WriteOutcome{FailedAt: 0, Err: errors.New("docfake: the server said no")}, nil
+	}
+	for _, st := range plan.Statements {
+		op, ok := st.Op.(*indexOp)
+		if !ok {
+			return &source.WriteOutcome{FailedAt: 0, Err: errors.New("docfake: not planned here")}, nil
+		}
+		if op.drop != "" {
+			kept := docIndexes.made[:0]
+			for _, idx := range docIndexes.made {
+				if idx.Name != op.drop {
+					kept = append(kept, idx)
+				}
+			}
+			docIndexes.made = kept
+			continue
+		}
+		docIndexes.made = append(docIndexes.made, op.idx)
+	}
+	return &source.WriteOutcome{Applied: len(plan.Statements), FailedAt: -1}, nil
 }
 
 func (*docSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
@@ -176,7 +267,11 @@ func (*docSource) InferShape(_ context.Context, ref model.ObjectRef, n int) (*mo
 // openCollection opens the structure of a document store's collection.
 func openCollection(t *testing.T, fx *fixture, host string) *tab {
 	t.Helper()
-	c, err := fx.conns.Create(store.SavedConnection{Name: host, Driver: "docfake", Host: host}, nil)
+	conn := store.SavedConnection{Name: host, Driver: "docfake", Host: host}
+	if host == "prod" {
+		conn.Environment = "production"
+	}
+	c, err := fx.conns.Create(conn, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

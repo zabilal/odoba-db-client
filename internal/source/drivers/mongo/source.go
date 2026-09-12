@@ -226,6 +226,7 @@ var (
 	_ source.Countable     = (*mongoSource)(nil)
 	_ source.Writer        = (*mongoSource)(nil)
 	_ source.Aggregator    = (*mongoSource)(nil)
+	_ source.IndexManager  = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -241,6 +242,9 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, ApproximateCount: true,
 			Insert: true, Update: true, Delete: true, Pipeline: true},
 		// A field is an object too, once inference has found one (T2.32).
+		// An index is made and unmade on its own; a collection has no DDL
+		// to alter (T2.36).
+		Schema: capability.Schema{Indexes: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
 			model.KindCollection: true, model.KindIndex: true,
