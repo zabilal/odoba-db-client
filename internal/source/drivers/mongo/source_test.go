@@ -205,9 +205,12 @@ func TestCapabilitiesAreTheDocumentParadigms(t *testing.T) {
 	if !c.Supports(model.KindCollection) || !c.Supports(model.KindIndex) || c.Supports(model.KindTable) {
 		t.Errorf("objects %v, want collections and no tables", c.Objects)
 	}
+	if !c.Data.ServerSort || !c.Data.ServerFilter || !c.Data.ExactCount {
+		t.Errorf("data %+v, want the server doing the work", c.Data)
+	}
 	// Nothing is claimed that is not written yet: a capability claimed
 	// without its interface is what the conformance suite fails a driver for.
-	if c.Query.Supported || c.Data.Insert || c.Data.ServerSort {
+	if c.Query.Supported || c.Data.Insert || c.Data.Update || c.Data.Delete {
 		t.Errorf("capabilities %+v claim what is not written yet", c)
 	}
 }

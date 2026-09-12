@@ -10,7 +10,6 @@ package mongo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"strconv"
@@ -224,6 +223,7 @@ type mongoSource struct {
 var (
 	_ source.Source        = (*mongoSource)(nil)
 	_ source.ShapeInferrer = (*mongoSource)(nil)
+	_ source.Countable     = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -233,6 +233,9 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// document is written into it, so CreateDatabase stays false until
 		// the writes that would do it exist.
 		Structure: capability.Structure{MultipleDatabases: true, InferredShape: true},
+		// The server does the filtering, the ordering and the counting; the
+		// writes are T2.34's.
+		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, ApproximateCount: true},
 		// A field is an object too, once inference has found one (T2.32).
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
@@ -283,17 +286,8 @@ func (s *mongoSource) Close() (err error) {
 	return s.client.Disconnect(ctx)
 }
 
-// errNotYet is what the parts of the contract not written yet return.
-// Browsing a collection is T2.33; a stub that says so is better than one that
-// answers with nothing, which would read as an empty collection.
-var errNotYet = errors.New("mongodb: not implemented yet")
-
 func (s *mongoSource) Root(ctx context.Context) ([]model.Node, error) {
 	return s.databases(ctx)
-}
-
-func (s *mongoSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
-	return nil, fmt.Errorf("%w: reading a collection's documents", errNotYet)
 }
 
 // databases lists what the connection may see.

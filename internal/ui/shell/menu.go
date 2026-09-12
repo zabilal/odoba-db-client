@@ -77,6 +77,7 @@ const (
 	cmdCopyInsert     = "grid.copyInsert"
 	cmdCellViewer     = "grid.viewer"
 	cmdFormView       = "grid.form"
+	cmdJSONView       = "grid.json"
 	cmdGoToReferenced = "data.goToReferenced"
 	cmdShowReferring  = "data.showReferring"
 	cmdDetail         = "data.detail"
@@ -140,7 +141,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), item(cmdFormView), item(cmdGoToReferenced), item(cmdShowReferring), item(cmdDetail),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdGoToReferenced), item(cmdShowReferring), item(cmdDetail),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),

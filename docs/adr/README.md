@@ -69,3 +69,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0062](0062-the-mongodb-connection.md) | The MongoDB connection | Accepted |
 | [0063](0063-the-mongodb-tree.md) | The MongoDB tree | Accepted |
 | [0064](0064-a-shape-read-from-documents.md) | A shape read from documents | Accepted |
+| [0065](0065-a-collections-documents-in-the-grid.md) | A collection's documents, in the grid and as JSON | Accepted |
