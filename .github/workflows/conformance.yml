@@ -103,4 +103,8 @@ jobs:
           IKIGAI_REQUIRE_MYSQL: "1"
           IKIGAI_MYSQL_PORT: "3306"
           IKIGAI_MARIADB_PORT: "3307"
+          IKIGAI_REQUIRE_MONGO: "1"
+          IKIGAI_MONGO_PORT: "27017"
+          IKIGAI_REQUIRE_REDIS: "1"
+          IKIGAI_REDIS_PORT: "6379"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/

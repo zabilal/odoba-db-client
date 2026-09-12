@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 )
 
@@ -219,5 +220,40 @@ func TestParseSeedListScheme(t *testing.T) {
 	}
 	if plain.Conn.Port != 27017 {
 		t.Errorf("port %d", plain.Conn.Port)
+	}
+}
+
+func TestParseSchemeThatMeansEncryption(t *testing.T) {
+	// rediss is redis over TLS, and the scheme is the whole of the choice: a
+	// pasted address that says so keeps its encryption, verified (NFR-S3).
+	r, err := Parse("rediss://ada:hunter2@cache.example.com:6380/3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Conn.Driver != "redis" || r.Conn.TLS.Mode != "verify-full" {
+		t.Errorf("connection %+v", r.Conn)
+	}
+	if r.Conn.Host != "cache.example.com" || r.Conn.Port != 6380 || r.Conn.Database != "3" {
+		t.Errorf("connection %+v", r.Conn)
+	}
+	if r.Secrets["password"] != "hunter2" {
+		t.Errorf("the password did not reach the keychain: %v", r.Secrets)
+	}
+	// The plain scheme is plain, and says nothing about TLS either way: the
+	// driver's own default decides, and the person can still choose.
+	plain, err := Parse("redis://cache.example.com/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Conn.Driver != "redis" || plain.Conn.TLS.Mode != "" {
+		t.Errorf("connection %+v", plain.Conn)
+	}
+	// A parameter after the scheme is still the explicit choice (ADR-0008).
+	off, err := Parse("rediss://cache.example.com/0?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.Conn.TLS.Mode != "disable" {
+		t.Errorf("TLS %q, want the parameter to have the last word", off.Conn.TLS.Mode)
 	}
 }

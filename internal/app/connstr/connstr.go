@@ -73,6 +73,15 @@ func parseURL(s string, jdbc bool) (Result, error) {
 	}
 
 	r := newResult(desc.ID)
+	for _, scheme := range desc.TLSSchemes {
+		// A scheme that means encryption is a choice already made, and the
+		// strongest reading of it is the verified one (NFR-S3). A query
+		// parameter below may still turn it down, which is the explicit
+		// choice ADR-0008 asks for.
+		if strings.EqualFold(scheme, u.Scheme) {
+			r.Conn.TLS.Mode = "verify-full"
+		}
+	}
 	if strings.HasSuffix(strings.ToLower(u.Scheme), "+srv") {
 		// A "+srv" scheme means the host names one DNS record listing the
 		// servers, rather than a server: mongodb+srv, and whatever else
