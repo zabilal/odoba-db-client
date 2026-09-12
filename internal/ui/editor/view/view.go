@@ -50,6 +50,7 @@ type Editor struct {
 
 	completer Completer
 	comp      *completions
+	snippet   *snippetRun
 
 	matches    []editor.Match // outlined search matches, sorted
 	matchesRev uint64         // the revision they were found at
@@ -235,6 +236,7 @@ func (s *surface) FocusGained() {
 func (s *surface) FocusLost() {
 	s.focused, s.shift = false, false
 	s.e.comp.dismiss()
+	s.e.endSnippet()
 	s.e.redraw()
 }
 
@@ -294,9 +296,12 @@ func (s *surface) TypedKey(k *fyne.KeyEvent) {
 	case fyne.KeyReturn, fyne.KeyEnter:
 		s.edit(d.Newline)
 	case fyne.KeyTab:
-		if s.shift {
+		switch {
+		case s.e.snippet != nil && !s.shift:
+			s.e.nextStop() // the next place in the snippet being filled in
+		case s.shift:
 			s.edit(d.Outdent)
-		} else {
+		default:
 			s.edit(d.Tab)
 		}
 	}
@@ -427,6 +432,7 @@ func Reserved() []fyne.Shortcut {
 
 func (s *surface) MouseDown(ev *desktop.MouseEvent) {
 	s.e.comp.dismiss()
+	s.e.endSnippet()
 	if ev.Button != desktop.MouseButtonPrimary {
 		return
 	}
@@ -474,14 +480,25 @@ func (s *surface) page() int {
 
 func (s *surface) move(m editor.Motion) {
 	s.e.comp.dismiss() // the word the popup was offering for is behind the caret
+	s.e.endSnippet()
 	s.e.doc.Move(m, s.shift)
 	s.changed()
 }
 
 // edit runs a document operation and reports it if the text changed.
 func (s *surface) edit(fn func()) {
-	rev := s.e.doc.Revision()
+	rev, before := s.e.doc.Revision(), 0
+	at := s.e.doc.Offset(s.e.doc.Caret())
+	if s.e.snippet != nil {
+		before = len(s.e.doc.Text())
+		if from, _, sel := s.e.doc.Selection(); sel {
+			at = s.e.doc.Offset(from)
+		}
+	}
 	fn()
+	if s.e.snippet != nil {
+		s.e.shift(at, len(s.e.doc.Text())-before)
+	}
 	s.changed()
 	if s.e.doc.Revision() != rev && s.e.OnChanged != nil {
 		s.e.OnChanged()

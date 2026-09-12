@@ -43,6 +43,11 @@ const (
 	scoreKeyword  = 100
 	scoreType     = 90
 
+	// A snippet writes several lines from two or three letters, which is
+	// more than a person asks for by accident. It goes under the keyword
+	// those letters may have begun.
+	scoreSnippet = 50
+
 	// bonusPrefix goes to a candidate the typed letters start. It is smaller
 	// than the gap between two kinds: a column is still offered above a
 	// keyword the letters happen to start, because in a column's position
@@ -172,6 +177,14 @@ func (e *Engine) gather(ctx Context, req source.CompletionRequest, cursor int) [
 	if ctx.Want.Has(WantKeyword) {
 		addWords(e.dialect.Keywords, source.CompletionKeyword, scoreKeyword)
 		addWords(e.dialect.Types, source.CompletionKeyword, scoreType)
+		// Snippets go where a keyword goes: they are statements and clauses,
+		// and nothing else can begin one.
+		for _, s := range snippetCandidates(ctx.Prefix) {
+			out = append(out, source.Completion{
+				Kind: source.CompletionSnippet, Label: s.label,
+				Insert: s.insert, Detail: s.detail, Score: scoreSnippet,
+			})
+		}
 	}
 	if ctx.Want.Has(WantFunction) {
 		if len(ctx.Qualifier) == 0 {

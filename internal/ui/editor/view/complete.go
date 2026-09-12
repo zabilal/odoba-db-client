@@ -158,11 +158,18 @@ func (c *completions) accept() {
 	item := c.items[c.sel]
 	c.dismiss()
 	doc := c.e.doc
+	text, marks := item.Insert, []snippetStop(nil)
+	if item.Kind == source.CompletionSnippet {
+		text, marks = parseSnippet(item.Insert)
+	}
+	c.e.endSnippet()
+	start := c.start
 	c.e.surface.edit(func() {
-		doc.SetCaret(doc.PosAt(c.start), false)
+		doc.SetCaret(doc.PosAt(start), false)
 		doc.SetCaret(doc.PosAt(c.end), true)
-		doc.Insert(item.Insert)
+		doc.Insert(text)
 	})
+	c.e.begin(marks, start)
 }
 
 // key handles the keys the popup takes while it is open, and reports whether
