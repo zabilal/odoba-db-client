@@ -34,9 +34,15 @@ func checkWriter(t *testing.T, target Target) {
 		if err != nil {
 			t.Fatalf("Plan: %v", err)
 		}
-		if len(plan.Statements) != len(changes) || len(plan.Descriptions) != len(changes) || !plan.Atomic {
-			t.Fatalf("a plan of %d statements, %d descriptions, atomic %v for %d changes",
-				len(plan.Statements), len(plan.Descriptions), plan.Atomic, len(changes))
+		if len(plan.Statements) != len(changes) || len(plan.Descriptions) != len(changes) {
+			t.Fatalf("a plan of %d statements and %d descriptions for %d changes",
+				len(plan.Statements), len(plan.Descriptions), len(changes))
+		}
+		// A plan says what the source claims: a source without transactions
+		// must not promise one, and one with them must keep it (FR-4.5).
+		if atomic := src.Capabilities().Data.TransactionalWrite; plan.Atomic != atomic {
+			t.Fatalf("a plan that says atomic %v, where the source claims TransactionalWrite %v",
+				plan.Atomic, atomic)
 		}
 		return plan
 	}

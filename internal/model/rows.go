@@ -146,6 +146,16 @@ type Default struct{}
 
 func (Default) String() string { return "DEFAULT" }
 
+// Removed stands, in a change, for a field that is to be there no longer.
+//
+// It has meaning only where a row's fields are its own — a document store,
+// where a field that is absent and a field that is null are different things
+// (FR-12.1). A store whose columns are the table's refuses it: there, a
+// column cannot be removed from one row.
+type Removed struct{}
+
+func (Removed) String() string { return "REMOVED" }
+
 // Identified is an optional RowStream refinement exposing row identity.
 //
 // A stream that does not implement it is treated as read-only, which is the

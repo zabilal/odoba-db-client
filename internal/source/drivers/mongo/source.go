@@ -224,6 +224,7 @@ var (
 	_ source.Source        = (*mongoSource)(nil)
 	_ source.ShapeInferrer = (*mongoSource)(nil)
 	_ source.Countable     = (*mongoSource)(nil)
+	_ source.Writer        = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -233,9 +234,11 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// document is written into it, so CreateDatabase stays false until
 		// the writes that would do it exist.
 		Structure: capability.Structure{MultipleDatabases: true, InferredShape: true},
-		// The server does the filtering, the ordering and the counting; the
-		// writes are T2.34's.
-		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, ApproximateCount: true},
+		// The server does the filtering, the ordering and the counting. A
+		// standalone server has no transaction, so a write that fails leaves
+		// the writes before it, and the UI says so before committing.
+		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, ApproximateCount: true,
+			Insert: true, Update: true, Delete: true},
 		// A field is an object too, once inference has found one (T2.32).
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,

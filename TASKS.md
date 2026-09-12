@@ -23,11 +23,11 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.34 (writing a document: the source.Writer a collection needs,
-           then the schema-aware JSON editor), then T2.35 (the
-           aggregation-pipeline editor). T2.38's suite runs green already for
-           what the driver claims; it is re-run as each claim is added. 2.D
-           is done.
+NEXT TASK: T2.34's other half — the JSON document editor: editing a
+           document in the JSON view, saved through the writer that is now
+           there. Then T2.35 (the aggregation-pipeline editor). T2.38's
+           suite runs green for what the driver claims; its write checks
+           still assume a declared schema. 2.D is done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -38,8 +38,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
            ikigai-mongo (57017).
-LAST DONE: 2026-09-12 — the conformance suite run against MongoDB, and the
-           two faults it found fixed (T2.38, partly); a collection's
+LAST DONE: 2026-09-12 — documents written: the writer a collection needs
+           (T2.34, partly, ADR-0066); the conformance suite run against
+           MongoDB, and the two faults it found fixed (T2.38, partly); a collection's
            documents in the grid and as JSON (T2.33, ADR-0065), its shape read from a sample of them
            (T2.32, ADR-0064), the MongoDB tree (T2.31, ADR-0063)
            and its connection (T2.30, ADR-0062). Before them, 2.D: snippets (T2.28, ADR-0061), the schema
@@ -429,7 +430,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.31** Introspection: databases, collections, indexes — *the document tree in the relational shape: a database holds a class of collections, a collection a class of indexes; a view is a collection marked as one, the server's own `system.` collections are hidden, collections come in name order and `_id_` leads the indexes; a refusal a view earns is not a failure; a badge is the count the server already holds, said to be an estimate; the structure tab reads a collection's indexes, its document estimate and the shape inference will find (ADR-0063)*
 - [x] **T2.32** Document shape inference over a sample → FR-12.4 — *`source.ShapeInferrer`, paired with `Structure.InferredShape` and checked by the conformance suite: MongoDB samples with `$sample`, reads into embedded documents and arrays four levels down, and answers with its evidence — how many documents were read, every type each field was seen with and in what fraction of them; the structure tab offers the sampling and never runs it unasked, saying how many it read (ADR-0064)*
 - [x] **T2.33** Table view + JSON view toggle → FR-12.1 — *a collection browses into the grid: the columns are the fields a fifty-document sample holds, a document keeps what they do not show, values come back as themselves (a map, a slice, an instant, a decimal's digits), and the server does the filtering, ordering, paging and counting; a document is told from another by its `_id`. View ▸ JSON View shows the documents in the grid's place, fifty at a time, opening where the grid was looking (ADR-0065)*
-- [ ] **T2.34** Schema-aware JSON document editor → FR-12.1
+- [~] **T2.34** Schema-aware JSON document editor → FR-12.1 — *the writes are done: `source.Writer` over a collection, a plan carrying the mongosh call it renders (`Statement.Op`), a document keyed by its `_id` and nothing else, `model.Removed` for a field a change takes away (`$unset`; a relational store refuses it), and nothing undone on a standalone server, which the plan says rather than promising a transaction (ADR-0066). The JSON editor itself — editing a document in the JSON view, with the inferred shape behind it — is what is left*
 - [ ] **T2.35** Aggregation-pipeline editor → FR-12.1
 - [ ] **T2.36** Index management → FR-12.1
 - [ ] **T2.37** `mongosh`-compatible command console → FR-12.1

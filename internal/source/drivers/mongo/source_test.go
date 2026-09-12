@@ -208,9 +208,17 @@ func TestCapabilitiesAreTheDocumentParadigms(t *testing.T) {
 	if !c.Data.ServerSort || !c.Data.ServerFilter || !c.Data.ExactCount {
 		t.Errorf("data %+v, want the server doing the work", c.Data)
 	}
+	if !c.Data.Insert || !c.Data.Update || !c.Data.Delete {
+		t.Errorf("data %+v, want documents written", c.Data)
+	}
+	// A standalone server has no transaction, and the UI must not say there
+	// is one: a write that fails leaves the writes before it.
+	if c.Data.TransactionalWrite {
+		t.Errorf("data %+v claims a transaction this server has not got", c.Data)
+	}
 	// Nothing is claimed that is not written yet: a capability claimed
 	// without its interface is what the conformance suite fails a driver for.
-	if c.Query.Supported || c.Data.Insert || c.Data.Update || c.Data.Delete {
+	if c.Query.Supported || c.Data.BulkLoad || c.Data.DistinctValues {
 		t.Errorf("capabilities %+v claim what is not written yet", c)
 	}
 }
