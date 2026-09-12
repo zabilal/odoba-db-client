@@ -116,9 +116,21 @@ var secretKeyHints = []string{
 	"credential", "auth", "passphrase", "jaas",
 }
 
+// notSecretKeys are the names "auth" catches that are not secrets: a
+// MongoDB connection's authSource is a database's name and its
+// authMechanism is SCRAM-SHA-256. Redacting them would lose a connection's
+// settings on the way in and tell a person nothing on the way out.
+var notSecretKeys = map[string]bool{
+	"authsource": true, "authmechanism": true, "authmechanismproperties": true,
+	"authdb": true, "authdatabase": true, "authenticationdatabase": true,
+}
+
 // IsSecretKey reports whether a parameter name denotes a secret.
 func IsSecretKey(key string) bool {
 	k := strings.ToLower(key)
+	if notSecretKeys[k] {
+		return false
+	}
 	for _, hint := range secretKeyHints {
 		if strings.Contains(k, hint) {
 			return true

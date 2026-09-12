@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 )
@@ -185,5 +186,38 @@ user=override
 	}
 	if _, err := ParseMyCnf(strings.NewReader(file)); err == nil {
 		t.Error("ParseMyCnf should refuse while no MySQL driver is installed")
+	}
+}
+
+func TestParseSeedListScheme(t *testing.T) {
+	r, err := Parse("mongodb+srv://reader:pw@cluster0.abc.mongodb.net/shop?authSource=admin&retryWrites=true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Conn.Driver != "mongodb" {
+		t.Errorf("driver %q, want the MongoDB driver", r.Conn.Driver)
+	}
+	if r.Conn.Params["srv"] != "true" {
+		t.Errorf("params %v, want the seed list marked", r.Conn.Params)
+	}
+	if r.Conn.Host != "cluster0.abc.mongodb.net" || r.Conn.Database != "shop" || r.Conn.User != "reader" {
+		t.Errorf("connection %+v", r.Conn)
+	}
+	if r.Secrets["password"] != "pw" {
+		t.Errorf("the password did not reach the keychain: %v", r.Secrets)
+	}
+	if r.Conn.Params["authSource"] != "admin" || r.Conn.Params["retryWrites"] != "true" {
+		t.Errorf("params %v, want the driver's own options kept", r.Conn.Params)
+	}
+	// A server named outright is not a seed list.
+	plain, err := Parse("mongodb://localhost:27017/shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Conn.Params["srv"] != "" {
+		t.Errorf("params %v, want no seed list", plain.Conn.Params)
+	}
+	if plain.Conn.Port != 27017 {
+		t.Errorf("port %d", plain.Conn.Port)
 	}
 }

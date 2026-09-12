@@ -73,6 +73,12 @@ func parseURL(s string, jdbc bool) (Result, error) {
 	}
 
 	r := newResult(desc.ID)
+	if strings.HasSuffix(strings.ToLower(u.Scheme), "+srv") {
+		// A "+srv" scheme means the host names one DNS record listing the
+		// servers, rather than a server: mongodb+srv, and whatever else
+		// borrows the convention. The driver takes it as a setting.
+		r.Conn.Params = map[string]string{"srv": "true"}
+	}
 	if u.User != nil {
 		r.Conn.User = u.User.Username()
 		if pw, set := u.User.Password(); set && pw != "" {
