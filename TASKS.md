@@ -23,8 +23,9 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 2.E — the MongoDB driver (T2.30), which starts the document
-           paradigm. 2.D (the query editor's second stage) is done.
+NEXT TASK: T2.31 (MongoDB introspection: databases, collections, indexes),
+           then T2.32 (document shape over a sample) and T2.33 (the table and
+           JSON views). 2.D is done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -33,8 +34,10 @@ NEXT TASK: 2.E — the MongoDB driver (T2.30), which starts the document
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
-           ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307).
-LAST DONE: 2026-09-12 — 2.D done: snippets (T2.28, ADR-0061), the schema
+           ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
+           ikigai-mongo (57017).
+LAST DONE: 2026-09-12 — the MongoDB connection (T2.30, ADR-0062).
+           Before it, 2.D: snippets (T2.28, ADR-0061), the schema
            cache behind completion (T2.29,
            ADR-0060), the completion popup (T2.27, ADR-0059), the
            tables a statement reads, so that a column can be offered by its
@@ -417,7 +420,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.E MongoDB
 
-- [ ] **T2.30** Driver + connection (incl. `mongodb+srv://`) → FR-1.3
+- [x] **T2.30** Driver + connection (incl. `mongodb+srv://`) → FR-1.3 — *`internal/source/drivers/mongo` over the official driver: a form of fields rather than a URI, credentials set apart from the URI the driver takes so no error quotes a password, a seed list carrying no port and refusing encryption outright where it is refused, failures said in terms of what to fix, and a server that will not list its databases still showing the one the connection names; a pasted `+srv` scheme sets the seed-list setting, and `authSource` is no longer taken for a secret (ADR-0062). Listing collections is T2.31*
 - [ ] **T2.31** Introspection: databases, collections, indexes
 - [ ] **T2.32** Document shape inference over a sample → FR-12.4
 - [ ] **T2.33** Table view + JSON view toggle → FR-12.1

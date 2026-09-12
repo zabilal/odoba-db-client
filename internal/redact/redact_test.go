@@ -107,3 +107,19 @@ func TestIsSecretKey(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSecretKeyKnowsWhatIsNotOne(t *testing.T) {
+	for _, k := range []string{"password", "PASSWD", "api_key", "auth_token", "authToken", "credential"} {
+		if !IsSecretKey(k) {
+			t.Errorf("%q is not taken for a secret", k)
+		}
+	}
+	// A MongoDB connection's authSource is a database's name, and its
+	// mechanism is SCRAM-SHA-256: neither is a secret, and redacting them
+	// would lose the connection's settings.
+	for _, k := range []string{"authSource", "authmechanism", "authDatabase"} {
+		if IsSecretKey(k) {
+			t.Errorf("%q is taken for a secret", k)
+		}
+	}
+}
