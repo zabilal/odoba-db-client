@@ -285,6 +285,9 @@ func (p *Pending) IsRow(row model.Row, key []any) bool {
 	return k == keyString(key)
 }
 
+// Identity is how these rows are told apart, as their stream said (FR-4.7).
+func (p *Pending) Identity() model.RowIdentity { return p.id }
+
 // Changeset is the changes as the source's writer takes them: each row read
 // by the key it had, an update with only the columns changed, so an edit to
 // one cell does not write over a change another made to another; deletions
