@@ -23,6 +23,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/conformance"
 )
 
 func port() int {
@@ -624,4 +625,75 @@ func TestLiveBrowsesAViewAndAnEmptyCollection(t *testing.T) {
 	if _, err := src.Browse(ctx, idx, source.BrowseOptions{Columns: []string{"name"}}); err == nil {
 		t.Error("an index was browsed as though it were its collection")
 	}
+}
+
+func TestLiveNothingOpensOntoNothing(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+
+	// The server's own admin database holds only the server's collections,
+	// which the tree hides. It still shows its collections, empty, because a
+	// node that opens onto nothing reads as a tree that failed.
+	classes, err := src.Children(ctx, model.NewRef(model.KindDatabase, "admin"))
+	if err != nil {
+		t.Fatalf("admin: %v", err)
+	}
+	if len(classes) != 1 {
+		t.Fatalf("admin holds %v, want its collections alone", labelsOf(classes))
+	}
+	if classes[0].HasChildren {
+		t.Errorf("%+v opens, though there is nothing in it", classes[0])
+	}
+	if classes[0].Badge == nil || classes[0].Badge.Text != "0" {
+		t.Errorf("badge %+v, want an exact none", classes[0].Badge)
+	}
+	// A view has no indexes, and says so rather than opening onto none.
+	colls, err := src.Children(ctx, model.ClassRef(model.NewRef(model.KindDatabase, "ikigai_it"), model.KindCollection))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view := child(t, colls, "high_scores"); view.HasChildren {
+		t.Errorf("%+v opens, though a view holds no index", view)
+	}
+	if people := child(t, colls, "people"); !people.HasChildren {
+		t.Errorf("%+v does not open, though it has indexes", people)
+	}
+}
+
+func TestLiveReadingStopsWhenItIsCancelled(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	rs, err := src.Browse(context.Background(), ref, source.BrowseOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("browse: %v", err)
+	}
+	defer rs.Close()
+	// The cursor holds a batch, so a cancelled read would go on handing out
+	// documents it already has unless the stream itself stops (NFR-P9).
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := rs.Next(ctx); !errors.Is(err, context.Canceled) {
+		t.Errorf("a cancelled read returned %v, want it stopped", err)
+	}
+}
+
+// TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
+// among the checks yet: a collection takes them in T2.34, and until then the
+// suite skips every check that needs a writable object.
+func TestConformance(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it")) // skips early where no server runs
+	seed(t, src, "ikigai_it")
+	conformance.Run(t, conformance.Target{
+		Name: "mongodb",
+		Open: func(ctx context.Context, t *testing.T) source.Source {
+			s, err := Driver{}.Open(ctx, liveConfig("ikigai_it"))
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			return s
+		},
+		Browsable: model.NewRef(model.KindCollection, "ikigai_it", "people"),
+	})
 }

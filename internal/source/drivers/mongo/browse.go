@@ -157,6 +157,12 @@ func (d *documents) Identity() model.RowIdentity {
 
 func (d *documents) Next(ctx context.Context) (_ model.Row, err error) {
 	defer panics.Recover(&err, "reading a document")
+	// The cursor holds a batch, and reads it out without asking the context:
+	// a cancelled read would go on returning documents until the batch ran
+	// out (NFR-P9).
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !d.cur.Next(ctx) {
 		if err := d.cur.Err(); err != nil {
 			return nil, err

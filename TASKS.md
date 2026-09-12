@@ -23,8 +23,11 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.34 (the schema-aware JSON document editor), then T2.35 (the
-           aggregation-pipeline editor). 2.D is done.
+NEXT TASK: T2.34 (writing a document: the source.Writer a collection needs,
+           then the schema-aware JSON editor), then T2.35 (the
+           aggregation-pipeline editor). T2.38's suite runs green already for
+           what the driver claims; it is re-run as each claim is added. 2.D
+           is done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -35,8 +38,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
            ikigai-mongo (57017).
-LAST DONE: 2026-09-12 — a collection's documents in the grid and as JSON
-           (T2.33, ADR-0065), its shape read from a sample of them
+LAST DONE: 2026-09-12 — the conformance suite run against MongoDB, and the
+           two faults it found fixed (T2.38, partly); a collection's
+           documents in the grid and as JSON (T2.33, ADR-0065), its shape read from a sample of them
            (T2.32, ADR-0064), the MongoDB tree (T2.31, ADR-0063)
            and its connection (T2.30, ADR-0062). Before them, 2.D: snippets (T2.28, ADR-0061), the schema
            cache behind completion (T2.29,
@@ -429,7 +433,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T2.35** Aggregation-pipeline editor → FR-12.1
 - [ ] **T2.36** Index management → FR-12.1
 - [ ] **T2.37** `mongosh`-compatible command console → FR-12.1
-- [ ] **T2.38** Conformance green
+- [~] **T2.38** Conformance green — *the suite runs against the MongoDB driver and is green for everything it claims: the lifecycle, the capabilities, the tree, browsing, cancellation and paging; the write checks skip until a collection takes writes (T2.34). It found two faults, both fixed: a database whose collections are all the server's own opened onto nothing, and a cursor's batch went on being read after its context was cancelled*
 
 ## 2.F Redis
 
