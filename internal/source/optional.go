@@ -157,6 +157,24 @@ type ShapeInferrer interface {
 	InferShape(ctx context.Context, ref model.ObjectRef, n int) (*model.DocumentShape, error)
 }
 
+// Aggregator is an optional Browser refinement for sources read by a
+// pipeline of stages rather than by a filter over a table (FR-12.1).
+//
+// A pipeline is the person's own text, in the source's own form. It is never
+// a filter and never a sort: a pipeline says its own matching and its own
+// order, and a source that takes one refuses the browse options that would
+// contradict it.
+type Aggregator interface {
+	// Aggregate runs a pipeline over an object and streams what it produces.
+	// Only opt's Offset and Limit apply, and a limit is required: a pipeline
+	// may produce more than memory holds (NFR-P11).
+	//
+	// A pipeline that writes — MongoDB's $out and $merge — is a mutation,
+	// and the guard is asked before it runs, with the caller's consent
+	// (FR-4.9).
+	Aggregate(ctx context.Context, ref model.ObjectRef, pipeline string, opt BrowseOptions, confirmed bool) (model.RowStream, error)
+}
+
 // Killer is an optional interface for cancelling work server-side.
 //
 // Separate from context cancellation because several engines require a second

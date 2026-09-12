@@ -104,6 +104,10 @@ func (b *BrowseSource) InsertRows(cols []model.ColumnDef, rows []model.Row) (_ s
 	return rs.InsertRows(b.ref, cols, rows)
 }
 
+// CanPipeline reports whether the source reads by a pipeline of stages
+// (capability.Data.Pipeline, FR-12.1).
+func (b *BrowseSource) CanPipeline() bool { return b.src.Capabilities().Data.Pipeline }
+
 // CanWhere reports whether the grid can take a WHERE clause typed by the
 // person (FR-3.6): the source needs a query language to write it in.
 func (b *BrowseSource) CanWhere() bool {

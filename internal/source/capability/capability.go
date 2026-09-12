@@ -131,6 +131,10 @@ type Data struct {
 	// ExactCount reports whether an exact count is affordable. False for
 	// large-scale engines where COUNT(*) is a full scan.
 	ExactCount bool
+
+	// Pipeline reports source.Aggregator: rows read by a pipeline of stages
+	// the person writes, rather than by filters over an object (FR-12.1).
+	Pipeline bool
 }
 
 // Schema describes structural editing and comparison.

@@ -225,6 +225,7 @@ var (
 	_ source.ShapeInferrer = (*mongoSource)(nil)
 	_ source.Countable     = (*mongoSource)(nil)
 	_ source.Writer        = (*mongoSource)(nil)
+	_ source.Aggregator    = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -238,7 +239,7 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// standalone server has no transaction, so a write that fails leaves
 		// the writes before it, and the UI says so before committing.
 		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, ApproximateCount: true,
-			Insert: true, Update: true, Delete: true},
+			Insert: true, Update: true, Delete: true, Pipeline: true},
 		// A field is an object too, once inference has found one (T2.32).
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,

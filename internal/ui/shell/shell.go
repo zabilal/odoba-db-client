@@ -158,8 +158,9 @@ type tab struct {
 	applied   []grid.SortKey
 	filtered  []string
 	picked    map[int]pick    // filters chosen from a column\'s picklist
-	top       *fyne.Container // above the grid: the WHERE bar, when shown
+	top       *fyne.Container // above the grid: the WHERE bar or the pipeline, when shown
 	where     *whereBar
+	pipeline  *pipelineBar
 	// holders are where each grid's view lives, viewers their cell viewers
 	// and forms their form views, so all go when the tab does.
 	holders map[*grid.TableGrid]*fyne.Container
@@ -365,6 +366,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdFormView, Category: "View", Title: "Form View", Keywords: []string{"record", "row", "vertical", "fields", "wide"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleForm},
+		{ID: cmdPipeline, Category: "Data", Title: "Aggregation Pipeline…",
+			Keywords: []string{"mongo", "aggregate", "stages", "group", "match", "document"},
+			Enabled:  s.canPipeline, Run: s.togglePipeline},
 		{ID: cmdJSONView, Category: "View", Title: "JSON View", Keywords: []string{"document", "mongo", "nested", "raw", "json"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleJSON},

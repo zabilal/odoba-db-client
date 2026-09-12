@@ -834,6 +834,119 @@ func TestLiveRefusesToWriteWhereItMayNot(t *testing.T) {
 	}
 }
 
+func TestLiveRunsAPipeline(t *testing.T) {
+	src := open(t, liveConfig("ikigai_it"))
+	seed(t, src, "ikigai_it")
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	agg, ok := src.(source.Aggregator)
+	if !ok {
+		t.Fatal("the source cannot run a pipeline")
+	}
+	run := func(t *testing.T, pipeline string, opt source.BrowseOptions) model.RowStream {
+		t.Helper()
+		rs, err := agg.Aggregate(ctx, ref, pipeline, opt, false)
+		if err != nil {
+			t.Fatalf("aggregate: %v", err)
+		}
+		t.Cleanup(func() { rs.Close() })
+		return rs
+	}
+
+	// A pipeline's columns are the fields it produced, not the collection's.
+	rs := run(t, `[{"$group": {"_id": "$name", "total": {"$sum": "$score"}}}, {"$sort": {"_id": 1}}]`,
+		source.BrowseOptions{Limit: 10})
+	if got := colNames(rs); len(got) != 2 || got[0] != "_id" || got[1] != "total" {
+		t.Fatalf("columns %v, want what the pipeline made", got)
+	}
+	rows := read(t, rs)
+	if len(rows) != 2 {
+		t.Fatalf("%d rows, want one a person", len(rows))
+	}
+	if rows[0][0] != "Ada" || rows[0][1] != int64(42) {
+		t.Errorf("the first row is %v, want Ada's total", rows[0])
+	}
+	if rows[1][0] != "Grace" || rows[1][1] != int64(7) {
+		t.Errorf("the second row is %v, want Grace's total", rows[1])
+	}
+	// Nothing of the pipeline's making can be written back: its documents
+	// are computed, and a collection may not even be behind them.
+	if id := model.IdentityOf(rs); id.Editable() {
+		t.Errorf("a pipeline's rows are editable: %+v", id)
+	}
+
+	// A page is what was asked for.
+	if got := len(read(t, run(t, `[{"$sort": {"name": 1}}]`, source.BrowseOptions{Limit: 1}))); got != 1 {
+		t.Errorf("%d rows under a limit of one", got)
+	}
+	if got := read(t, run(t, `[{"$sort": {"name": 1}}]`, source.BrowseOptions{Offset: 1, Limit: 10})); len(got) != 1 {
+		t.Errorf("%d rows after the first", len(got))
+	}
+	// A stage that is not one is the server's to refuse, and it says so.
+	if _, err := agg.Aggregate(ctx, ref, `[{"$nonsense": 1}]`, source.BrowseOptions{Limit: 1}, false); err == nil {
+		t.Error("a stage the server has no notion of was run")
+	}
+	// A pipeline is its own matching and its own order.
+	_, err := agg.Aggregate(ctx, ref, `[{"$match": {}}]`, source.BrowseOptions{Limit: 1,
+		Sorts: []source.Sort{{Column: "name"}}}, false)
+	if err == nil || !strings.Contains(err.Error(), "pipeline says its own") {
+		t.Errorf("a sort beside a pipeline: %v", err)
+	}
+	// Nothing else holds documents to run one over, whatever its path.
+	if _, err := agg.Aggregate(ctx, model.NewRef(model.KindDatabase, "ikigai_it"), `[{"$match": {}}]`,
+		source.BrowseOptions{Limit: 1}, false); err == nil {
+		t.Error("a database was aggregated")
+	}
+	if _, err := agg.Aggregate(ctx, model.NewRef(model.KindIndex, "ikigai_it", "people", "_id_"),
+		`[{"$match": {}}]`, source.BrowseOptions{Limit: 1}, false); err == nil {
+		t.Error("an index was aggregated as though it were its collection")
+	}
+}
+
+func TestLiveRefusesAPipelineThatWritesWhereItMayNot(t *testing.T) {
+	ctx := context.Background()
+	ref := model.NewRef(model.KindCollection, "ikigai_it", "people")
+	const out = `[{"$match": {}}, {"$out": "copies"}]`
+
+	ro := liveConfig("ikigai_it")
+	ro.Guard = source.Guard{ReadOnly: true}
+	src := open(t, ro)
+	seed(t, src, "ikigai_it")
+	agg := src.(source.Aggregator)
+	if _, err := agg.Aggregate(ctx, ref, out, source.BrowseOptions{Limit: 1}, false); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a pipeline that writes ran on a read-only connection: %v", err)
+	}
+	// One that only reads runs there, because it changes nothing.
+	if _, err := agg.Aggregate(ctx, ref, `[{"$match": {}}]`, source.BrowseOptions{Limit: 1}, false); err != nil {
+		t.Errorf("a pipeline that reads was refused on a read-only connection: %v", err)
+	}
+
+	prod := liveConfig("ikigai_it")
+	prod.Guard = source.Guard{Environment: source.EnvProduction}
+	psrc := open(t, prod)
+	pagg := psrc.(source.Aggregator)
+	if _, err := pagg.Aggregate(ctx, ref, out, source.BrowseOptions{Limit: 1}, false); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	// With consent it runs, and what it wrote is there. A writing pipeline
+	// ends in the stage that writes, so nothing is added after it.
+	rs, err := pagg.Aggregate(ctx, ref, out, source.BrowseOptions{Limit: 1}, true)
+	if err != nil {
+		t.Fatalf("production with consent: %v", err)
+	}
+	if got := read(t, rs); len(got) != 0 {
+		t.Errorf("a pipeline that writes produced %d documents", len(got))
+	}
+	rs.Close()
+	n, err := psrc.(*mongoSource).client.Database("ikigai_it").Collection("copies").CountDocuments(ctx, bson.D{})
+	if err != nil || n != 2 {
+		t.Errorf("%d documents were written (%v), want both", n, err)
+	}
+	if err := psrc.(*mongoSource).client.Database("ikigai_it").Collection("copies").Drop(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
 // among the checks yet: a collection takes them in T2.34, and until then the
 // suite skips every check that needs a writable object.

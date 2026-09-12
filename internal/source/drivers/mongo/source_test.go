@@ -211,6 +211,9 @@ func TestCapabilitiesAreTheDocumentParadigms(t *testing.T) {
 	if !c.Data.Insert || !c.Data.Update || !c.Data.Delete {
 		t.Errorf("data %+v, want documents written", c.Data)
 	}
+	if !c.Data.Pipeline {
+		t.Errorf("data %+v, want a pipeline read", c.Data)
+	}
 	// A standalone server has no transaction, and the UI must not say there
 	// is one: a write that fails leaves the writes before it.
 	if c.Data.TransactionalWrite {

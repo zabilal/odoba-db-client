@@ -3,7 +3,9 @@ package shell
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -31,13 +33,14 @@ func (docFake) Describe() source.Descriptor {
 func (docFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Source, error) {
 	// A host of "declared" is a document store whose structure the server
 	// holds: it has collections, and nothing to sample.
-	return &docSource{declared: cfg.Host == "declared"}, nil
+	return &docSource{declared: cfg.Host == "declared",
+		production: cfg.Guard.Environment == source.EnvProduction}, nil
 }
 
 // sampled counts the documents the latest inference was asked for.
 var sampled atomic.Int64
 
-type docSource struct{ declared bool }
+type docSource struct{ declared, production bool }
 
 var peopleRef = model.NewRef(model.KindCollection, "main", "people")
 
@@ -45,6 +48,7 @@ func (d *docSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm:  model.ParadigmDocument,
 		Structure: capability.Structure{MultipleDatabases: true, InferredShape: !d.declared},
+		Data:      capability.Data{Pipeline: true},
 		Objects:   map[model.ObjectKind]bool{model.KindDatabase: true, model.KindCollection: true},
 	}
 }
@@ -78,8 +82,84 @@ func (*docSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, er
 	return model.Badge{}, false, nil
 }
 
-func (*docSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
-	return nil, errors.New("docfake: no documents to browse")
+// docRows are the documents the fake holds, and docCols their fields.
+var (
+	docCols = []model.ColumnDef{{Name: "_id"}, {Name: "name"}, {Name: "score"}}
+	docRows = []model.Row{
+		{"d1", "Ada", int64(42)},
+		{"d2", "Grace", int64(7)},
+		{"d3", "Edsger", int64(3)},
+	}
+)
+
+func (*docSource) Browse(_ context.Context, ref model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+	if ref.Kind != model.KindCollection {
+		return nil, errors.New("docfake: no documents to browse")
+	}
+	return &docStream{cols: docCols, rows: page(docRows, opt)}, nil
+}
+
+// page is the rows a browse's offset and limit ask for.
+func page(rows []model.Row, opt source.BrowseOptions) []model.Row {
+	if opt.Offset >= int64(len(rows)) {
+		return nil
+	}
+	rows = rows[opt.Offset:]
+	if opt.Limit > 0 && opt.Limit < int64(len(rows)) {
+		rows = rows[:opt.Limit]
+	}
+	return rows
+}
+
+// ran records what the latest pipeline was, and whether it was consented to.
+var ran struct {
+	sync.Mutex
+	pipeline  string
+	confirmed bool
+}
+
+func lastPipeline() (string, bool) {
+	ran.Lock()
+	defer ran.Unlock()
+	return ran.pipeline, ran.confirmed
+}
+
+// Aggregate answers a pipeline: "$bad" is one the server refuses, "$out" one
+// that writes, and anything else produces two documents of its own shape.
+func (d *docSource) Aggregate(_ context.Context, ref model.ObjectRef, pipeline string,
+	opt source.BrowseOptions, confirmed bool) (model.RowStream, error) {
+	ran.Lock()
+	ran.pipeline, ran.confirmed = pipeline, confirmed
+	ran.Unlock()
+	if ref.Kind != model.KindCollection {
+		return nil, errors.New("docfake: nothing to aggregate")
+	}
+	if strings.Contains(pipeline, "$bad") {
+		return nil, errors.New("docfake: $bad is not a stage")
+	}
+	if strings.Contains(pipeline, "$out") && d.production && !confirmed {
+		return nil, source.ErrConfirmationRequired
+	}
+	cols := []model.ColumnDef{{Name: "_id"}, {Name: "n"}}
+	rows := []model.Row{{"Ada", int64(1)}, {"Grace", int64(2)}}
+	return &docStream{cols: cols, rows: page(rows, opt)}, nil
+}
+
+// docStream is a stream over rows already in hand.
+type docStream struct {
+	cols []model.ColumnDef
+	rows []model.Row
+	at   int
+}
+
+func (s *docStream) Columns() []model.ColumnDef { return s.cols }
+func (s *docStream) Close() error               { return nil }
+func (s *docStream) Next(context.Context) (model.Row, error) {
+	if s.at >= len(s.rows) {
+		return nil, io.EOF
+	}
+	s.at++
+	return s.rows[s.at-1], nil
 }
 
 func (*docSource) InferShape(_ context.Context, ref model.ObjectRef, n int) (*model.DocumentShape, error) {

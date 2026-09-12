@@ -155,6 +155,11 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Structure.InferredShape but does not implement ShapeInferrer")
 		}
 	}
+	if caps.Data.Pipeline {
+		if _, ok := src.(source.Aggregator); !ok {
+			t.Error("claims Data.Pipeline but does not implement Aggregator")
+		}
+	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")
