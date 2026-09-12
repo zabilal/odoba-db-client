@@ -150,6 +150,11 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Query.Explain but does not implement Explainer")
 		}
 	}
+	if caps.Structure.InferredShape {
+		if _, ok := src.(source.ShapeInferrer); !ok {
+			t.Error("claims Structure.InferredShape but does not implement ShapeInferrer")
+		}
+	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")

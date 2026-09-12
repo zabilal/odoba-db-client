@@ -221,7 +221,10 @@ type mongoSource struct {
 	closed bool
 }
 
-var _ source.Source = (*mongoSource)(nil)
+var (
+	_ source.Source        = (*mongoSource)(nil)
+	_ source.ShapeInferrer = (*mongoSource)(nil)
+)
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
@@ -229,7 +232,7 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// A collection is not created by a statement here; it appears when a
 		// document is written into it, so CreateDatabase stays false until
 		// the writes that would do it exist.
-		Structure: capability.Structure{MultipleDatabases: true},
+		Structure: capability.Structure{MultipleDatabases: true, InferredShape: true},
 		// A field is an object too, once inference has found one (T2.32).
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,

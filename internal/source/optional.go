@@ -145,6 +145,18 @@ type Completion struct {
 	Score int
 }
 
+// ShapeInferrer is an optional refinement for sources whose structure is
+// observed rather than declared: a document store's shape is whatever its
+// documents happen to hold (FR-12.4).
+//
+// Inference is always asked for, never implicit: it reads documents, and a
+// person must be able to see that it did, choose how many, and stop it.
+type ShapeInferrer interface {
+	// InferShape samples up to n documents of an object and reports the
+	// fields they hold, with every type seen and how often.
+	InferShape(ctx context.Context, ref model.ObjectRef, n int) (*model.DocumentShape, error)
+}
+
 // Killer is an optional interface for cancelling work server-side.
 //
 // Separate from context cancellation because several engines require a second
