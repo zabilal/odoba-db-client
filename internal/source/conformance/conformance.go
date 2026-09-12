@@ -38,10 +38,14 @@ type Target struct {
 	Browsable model.ObjectRef
 
 	// Writable is an object the suite may modify. Zero disables write checks,
-	// which is the correct setting against any server holding real data. It
-	// must be an empty table with columns id, an integer primary key the
-	// server numbers from 1 when it is not given; name, text that cannot be
-	// NULL, 'none' by default; and n, an integer that can be NULL.
+	// which is the correct setting against any server holding real data.
+	//
+	// For a store with declared columns it must be an empty table with
+	// columns id, an integer primary key the server numbers from 1 when it
+	// is not given; name, text that cannot be NULL, 'none' by default; and
+	// n, an integer that can be NULL. For a document store it must be an
+	// empty collection, which the checks fill themselves: a document has no
+	// shape until one is written.
 	Writable model.ObjectRef
 
 	// OpenGuarded opens a connection with a guard, for the write checks'
@@ -479,7 +483,7 @@ func checkReadOnlyGuard(t *testing.T, target Target) {
 	// relies on the UI hiding the button fails here.
 	cs := source.Changeset{
 		Target:   target.Writable,
-		Identity: model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: target.Writable},
+		Identity: writableIdentity(ctx, t, src, target.Writable),
 		Changes: []source.RowChange{{
 			Kind:   source.ChangeDelete,
 			Key:    []any{int64(-999999)},

@@ -1254,12 +1254,19 @@ func TestLiveRefusesConsoleWritesWhereItMayNot(t *testing.T) {
 	}
 }
 
-// TestConformance runs the shared driver suite (REQ-DRV-1). Writes are not
-// among the checks yet: a collection takes them in T2.34, and until then the
-// suite skips every check that needs a writable object.
+// TestConformance runs the shared driver suite (REQ-DRV-1), writes among the
+// checks: the suite has a document paradigm of its own, which asks of a
+// collection only what a collection has.
 func TestConformance(t *testing.T) {
 	src := open(t, liveConfig("ikigai_it")) // skips early where no server runs
 	seed(t, src, "ikigai_it")
+	// The suite writes into a collection of its own, which it fills itself:
+	// an empty one is made here so that it is there to browse, as a document
+	// store makes a collection only when something is written to it.
+	writes := model.NewRef(model.KindCollection, "ikigai_it", "writes")
+	if err := src.(*mongoSource).client.Database("ikigai_it").CreateCollection(context.Background(), "writes"); err != nil {
+		t.Fatal(err)
+	}
 	conformance.Run(t, conformance.Target{
 		Name: "mongodb",
 		Open: func(ctx context.Context, t *testing.T) source.Source {
@@ -1270,6 +1277,16 @@ func TestConformance(t *testing.T) {
 			return s
 		},
 		Browsable: model.NewRef(model.KindCollection, "ikigai_it", "people"),
+		Writable:  writes,
+		OpenGuarded: func(ctx context.Context, t *testing.T, g source.Guard) source.Source {
+			cfg := liveConfig("ikigai_it")
+			cfg.Guard = g
+			s, err := Driver{}.Open(ctx, cfg)
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			return s
+		},
 		// A condition here is a filter document, and JSON has no comments.
 		Conditions: &conformance.Conditions{
 			True:  `{}`,

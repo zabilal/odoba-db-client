@@ -12,9 +12,13 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
-// checkWriter plans and applies changes to the Writable table (FR-4.4,
+// checkWriter plans and applies changes to the Writable object (FR-4.4,
 // FR-4.5, ADR-0031): each change written by its key, all of a plan or none
 // of it, and the guard asked first.
+//
+// A store whose rows are documents is checked apart: it has no declared
+// columns, no server-given defaults and no numbered key, so the relational
+// checks below would be about a shape it does not have.
 func checkWriter(t *testing.T, target Target) {
 	if target.Writable.IsZero() {
 		t.Skip("no Writable target configured")
@@ -25,6 +29,10 @@ func checkWriter(t *testing.T, target Target) {
 	w, ok := src.(source.Writer)
 	if !ok {
 		t.Skip("source does not implement Writer")
+	}
+	if src.Capabilities().Paradigm == model.ParadigmDocument {
+		checkDocumentWriter(t, target, src, w)
+		return
 	}
 	ref := target.Writable
 	byID := model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: ref}
