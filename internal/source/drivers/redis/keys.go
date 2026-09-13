@@ -43,9 +43,12 @@ var keyTypes = map[string]bool{
 	"hash": true, "stream": true, "ReJSON-RL": true,
 }
 
-// Browse reads a database's keys.
+// Browse reads a database's keys, or what one key holds (T2.41).
 func (s *redisSource) Browse(ctx context.Context, ref model.ObjectRef, opt source.BrowseOptions) (_ model.RowStream, err error) {
 	defer panics.Recover(&err, "reading the keys")
+	if ref.Kind == model.KindKey {
+		return s.browseValue(ctx, ref, opt)
+	}
 	db, err := databaseOf(ref)
 	if err != nil {
 		return nil, err
@@ -95,6 +98,9 @@ const (
 // for and what the cursor makes interruptible.
 func (s *redisSource) Count(ctx context.Context, ref model.ObjectRef, opt source.BrowseOptions) (_ int64, err error) {
 	defer panics.Recover(&err, "counting the keys")
+	if ref.Kind == model.KindKey {
+		return s.countValue(ctx, ref, opt)
+	}
 	db, err := databaseOf(ref)
 	if err != nil {
 		return 0, err
@@ -546,4 +552,21 @@ func ttlOf(cmd *goredis.DurationCmd) (any, bool) {
 func (k *keyStream) Close() error {
 	k.done()
 	return nil
+}
+
+// ObjectOf is the key a row of a database's keyspace names: its value opens
+// as rows of its own (FR-12.2, T2.41).
+func (s *redisSource) ObjectOf(ref model.ObjectRef, cols []model.ColumnDef, row model.Row) (model.ObjectRef, bool) {
+	if _, err := databaseOf(ref); err != nil {
+		return model.ObjectRef{}, false
+	}
+	i := slicesIndex(cols, "key")
+	if i < 0 || i >= len(row) {
+		return model.ObjectRef{}, false
+	}
+	name, ok := row[i].(string)
+	if !ok || name == "" {
+		return model.ObjectRef{}, false
+	}
+	return model.NewRef(model.KindKey, ref.Path[0], name), true
 }

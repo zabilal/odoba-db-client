@@ -135,6 +135,11 @@ type Data struct {
 	// Pipeline reports source.Aggregator: rows read by a pipeline of stages
 	// the person writes, rather than by filters over an object (FR-12.1).
 	Pipeline bool
+
+	// RowObjects reports source.RowObject: a row that is an object of its
+	// own, which opens as rows in turn — a Redis key in a database's
+	// keyspace, whose value is its own table (FR-12.2).
+	RowObjects bool
 }
 
 // Schema describes structural editing and comparison.
