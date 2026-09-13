@@ -308,6 +308,8 @@ type redisSource struct {
 var (
 	_ source.Source    = (*redisSource)(nil)
 	_ source.Countable = (*redisSource)(nil)
+	_ source.Writer    = (*redisSource)(nil)
+	_ source.RowObject = (*redisSource)(nil)
 )
 
 func (s *redisSource) Capabilities() capability.Capabilities {
@@ -318,8 +320,11 @@ func (s *redisSource) Capabilities() capability.Capabilities {
 		Structure: capability.Structure{MultipleDatabases: s.mode != modeCluster},
 		// The server matches the names and the kind while it walks the
 		// keyspace, and holds the number of keys a database has. There is no
-		// order to sort by: SCAN walks a hash table.
-		Data: capability.Data{ServerFilter: true, ExactCount: true, ApproximateCount: true},
+		// order to sort by: SCAN walks a hash table. What a key holds is
+		// edited as rows, one command at a time, with no transaction around
+		// them (T2.41).
+		Data: capability.Data{ServerFilter: true, ExactCount: true, ApproximateCount: true,
+			Insert: true, Update: true, Delete: true, RowObjects: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindKey: true,
 		},

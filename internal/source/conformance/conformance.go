@@ -204,6 +204,12 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Schema.Indexes but does not implement IndexManager")
 		}
 	}
+	if caps.Data.RowObjects {
+		if _, ok := src.(source.RowObject); !ok {
+			t.Error("claims Data.RowObjects but does not implement RowObject; " +
+				"the grid would offer to open a row that names nothing")
+		}
+	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")

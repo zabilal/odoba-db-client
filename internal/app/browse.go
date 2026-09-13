@@ -104,6 +104,25 @@ func (b *BrowseSource) InsertRows(cols []model.ColumnDef, rows []model.Row) (_ s
 	return rs.InsertRows(b.ref, cols, rows)
 }
 
+// CanOpenRows reports whether a row of this object is an object of its own —
+// a Redis key in a database's keyspace (capability.Data.RowObjects, FR-12.2).
+func (b *BrowseSource) CanOpenRows() bool {
+	_, ok := b.src.(source.RowObject)
+	return ok && b.src.Capabilities().Data.RowObjects
+}
+
+// ObjectOf is what a row names, or false where it names nothing. The source
+// answers it: what a row is is as much the engine's business as what its
+// columns are (REQ-DB-1).
+func (b *BrowseSource) ObjectOf(row model.Row) (_ model.ObjectRef, _ bool) {
+	defer panics.Catch("reading what a row names", func(error) {})
+	ro, ok := b.src.(source.RowObject)
+	if !ok || !b.CanOpenRows() {
+		return model.ObjectRef{}, false
+	}
+	return ro.ObjectOf(b.ref, b.cols, row)
+}
+
 // CanPipeline reports whether the source reads by a pipeline of stages
 // (capability.Data.Pipeline, FR-12.1).
 func (b *BrowseSource) CanPipeline() bool { return b.src.Capabilities().Data.Pipeline }

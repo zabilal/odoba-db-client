@@ -298,9 +298,17 @@ func TestWhatTheConnectionClaims(t *testing.T) {
 	if single.Data.ServerSort {
 		t.Error("claims an order the keyspace has not got")
 	}
-	// Nothing is claimed that is not written: the editors are T2.41, the
-	// console T2.44.
-	if single.Query.Supported || single.Data.Insert || single.Schema.Indexes {
+	// What a key holds is edited as rows, one command at a time, and a row
+	// of a database's keyspace is a key that opens on its own (T2.41).
+	if !single.Data.Insert || !single.Data.Update || !single.Data.Delete || !single.Data.RowObjects {
+		t.Errorf("data %+v", single.Data)
+	}
+	// The commands go one at a time, and a plan must not promise otherwise.
+	if single.Data.TransactionalWrite {
+		t.Error("claims a transaction around a plan's commands")
+	}
+	// Nothing is claimed that is not written: the console is T2.44.
+	if single.Query.Supported || single.Schema.Indexes || single.Data.BulkLoad {
 		t.Errorf("claims more than it does: %+v", single)
 	}
 }

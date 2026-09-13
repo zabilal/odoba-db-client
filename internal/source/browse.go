@@ -170,6 +170,19 @@ type Countable interface {
 	Count(ctx context.Context, ref model.ObjectRef, opt BrowseOptions) (int64, error)
 }
 
+// RowObject is an optional Browser refinement for rows that are objects of
+// their own (FR-12.2). A Redis database browses as its keys, and each of
+// those rows is a key whose value opens as rows in turn.
+//
+// It is the source's to answer, not the UI's to work out: what a row names
+// is as much the engine's business as what its columns are (REQ-DB-1). It is
+// paired with capability.Data.RowObjects.
+type RowObject interface {
+	// ObjectOf is what the row browsed from ref names, or false where it
+	// names nothing. cols describes the row, as the browse returned it.
+	ObjectOf(ref model.ObjectRef, cols []model.ColumnDef, row model.Row) (model.ObjectRef, bool)
+}
+
 // DistinctLister is an optional Browser refinement supplying the Excel-style
 // filter picklist (FR-3.4).
 type DistinctLister interface {

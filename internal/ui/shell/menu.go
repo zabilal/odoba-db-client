@@ -80,6 +80,7 @@ const (
 	cmdJSONView       = "grid.json"
 	cmdPipeline       = "data.pipeline"
 	cmdGoToReferenced = "data.goToReferenced"
+	cmdOpenRowObject  = "data.openRowObject"
 	cmdShowReferring  = "data.showReferring"
 	cmdDetail         = "data.detail"
 	cmdHideColumn     = "grid.hideColumn"
@@ -142,7 +143,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdGoToReferenced), item(cmdShowReferring), item(cmdDetail),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),
