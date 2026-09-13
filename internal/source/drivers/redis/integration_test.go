@@ -405,9 +405,10 @@ func TestLiveRefusesWhatTheServerCannotDo(t *testing.T) {
 	ctx := context.Background()
 	refused := map[string]source.BrowseOptions{
 		"an order the keyspace has not": {Sorts: []source.Sort{{Column: "key"}}},
-		"a condition with no language":  {Where: "key = 'user:1'"},
-		"a column a key has not got":    {Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"x"}}}},
-		"a column that is not shown":    {Columns: []string{"value"}},
+		"a condition beside a pattern": {Where: "user:*", Filters: []source.Filter{
+			{Column: "key", Op: source.OpLike, Values: []any{"a%"}}}},
+		"a column a key has not got": {Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"x"}}}},
+		"a column that is not shown": {Columns: []string{"value"}},
 	}
 	for what, opt := range refused {
 		rs, err := src.Browse(ctx, db, opt)
@@ -770,7 +771,9 @@ func TestLiveRefusesWhatAValueCannotBeAsked(t *testing.T) {
 	}{
 		"an order the server does not hold": {valueRef("user:1:profile"), source.BrowseOptions{
 			Sorts: []source.Sort{{Column: "field"}}}},
-		"a condition with no language": {valueRef("user:1:profile"), source.BrowseOptions{Where: "field = 'city'"}},
+		"a condition beside a pattern": {valueRef("user:1:profile"), source.BrowseOptions{Where: "c*",
+			Filters: []source.Filter{{Column: "field", Op: source.OpLike, Values: []any{"t%"}}}}},
+		"a condition about a list": {valueRef("queue"), source.BrowseOptions{Where: "a*"}},
 		"part of a list": {valueRef("queue"), source.BrowseOptions{
 			Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"a"}}}}},
 		"part of a string": {valueRef("user:1"), source.BrowseOptions{
@@ -1373,5 +1376,194 @@ func TestLiveRefusesToChangeAKeyWhereItMayNot(t *testing.T) {
 	}
 	if n, err := conn(t, src, 1).Exists(ctx, "tags").Result(); err != nil || n != 1 {
 		t.Errorf("the key is gone before anybody consented: %v %v", n, err)
+	}
+}
+
+// ran is what one console command answered with.
+func ran(t *testing.T, c source.Session, command string) *source.Result {
+	t.Helper()
+	res, err := c.Query(context.Background(), source.Statement{SQL: command})
+	if err != nil {
+		t.Fatalf("%s: %v", command, err)
+	}
+	return res
+}
+
+// answered is a result's rows, read out.
+func answered(t *testing.T, res *source.Result) []model.Row {
+	t.Helper()
+	if res.Rows == nil {
+		return nil
+	}
+	defer res.Rows.Close()
+	var out []model.Row
+	for {
+		row, err := res.Rows.Next(context.Background())
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		if err != nil {
+			t.Fatalf("reading a reply: %v", err)
+		}
+		out = append(out, row)
+	}
+}
+
+func TestLiveRunsConsoleCommands(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	c, err := src.(source.Sessioner).Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	// A word, a number, a list of them, and the pairs of a map.
+	if rows := answered(t, ran(t, c, "GET user:1")); len(rows) != 1 || rows[0][0] != "Ada" {
+		t.Errorf("GET answered %v", rows)
+	}
+	if res := ran(t, c, "DBSIZE"); res.Affected != 7 {
+		t.Errorf("DBSIZE answered %d", res.Affected)
+	}
+	// RESP3 answers a hash as the pairs of a map, which is drawn as two
+	// columns rather than as one list of everything.
+	res3 := ran(t, c, "HGETALL user:1:profile")
+	if rows := answered(t, res3); len(rows) != 1 || rows[0][0] != "city" || rows[0][1] != "London" {
+		t.Errorf("HGETALL answered %v", rows)
+	}
+	if cols := res3.Rows.Columns(); len(cols) != 2 || cols[0].Name != "name" {
+		t.Errorf("HGETALL's columns are %+v", cols)
+	}
+	if rows := answered(t, ran(t, c, "CONFIG GET maxmemory")); len(rows) != 1 || rows[0][0] != "maxmemory" {
+		t.Errorf("CONFIG GET answered %v", rows)
+	}
+	// A reply of nothing is an answer, not a failure.
+	res := ran(t, c, "GET nobody")
+	if len(answered(t, res)) != 0 || len(res.Messages) != 1 || res.Messages[0].Text != "(nil)" {
+		t.Errorf("a key that is not there answered %+v", res)
+	}
+	// A command the server refuses is the server's own error, said as it
+	// said it.
+	if _, err := c.Query(ctx, source.Statement{SQL: "GET user:1 and more"}); err == nil ||
+		!strings.Contains(strings.ToLower(err.Error()), "wrong number of arguments") {
+		t.Errorf("a command the server refuses: %v", err)
+	}
+
+	// A console holds a connection of its own, so SELECT moves this console
+	// and nothing else.
+	if _, err := c.Query(ctx, source.Statement{SQL: "SELECT 5"}); err != nil {
+		t.Fatalf("SELECT: %v", err)
+	}
+	if res := ran(t, c, "DBSIZE"); res.Affected != 0 {
+		t.Errorf("db5 holds %d keys", res.Affected)
+	}
+	other, err := src.(source.Sessioner).Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if res := ran(t, other, "DBSIZE"); res.Affected != 7 {
+		t.Errorf("another console is on a database holding %d keys", res.Affected)
+	}
+	// What a browse sends is shown once something has read the key: a ref
+	// says which key, and only the server says what is in it.
+	d := src.(source.Dialect)
+	queue := valueRef("queue")
+	if _, err := d.BuildBrowse(queue, source.BrowseOptions{}); err == nil {
+		t.Error("a command was written for a key nothing had read")
+	}
+	rows(t, src, queue, source.BrowseOptions{})
+	if st, err := d.BuildBrowse(queue, source.BrowseOptions{Limit: 200}); err != nil ||
+		st.SQL != "LRANGE queue 0 199" {
+		t.Errorf("what a list's browse sends: %q, %v", st.SQL, err)
+	}
+
+	// A command run without a console of one's own gets one of its own.
+	res, err = src.(source.Queryer).Query(ctx, source.Statement{SQL: "DBSIZE"})
+	if err != nil || res.Affected != 7 {
+		t.Errorf("a command on a console of its own: %+v %v", res, err)
+	}
+}
+
+func TestLiveRunsAScriptOfCommands(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	q := src.(source.Queryer)
+	results, err := q.QueryMulti(ctx, "# two of them\nSET counter 1\nINCR counter\n", source.ScriptOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []source.ScriptResult
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 2 {
+		t.Fatalf("%d results", len(got))
+	}
+	if got[0].Err != nil || got[1].Err != nil {
+		t.Fatalf("results %+v", got)
+	}
+	if got[1].Result.Affected != 2 {
+		t.Errorf("INCR answered %d", got[1].Result.Affected)
+	}
+	// A script stops at its first failure, as SQL's does.
+	results, err = q.QueryMulti(ctx, "INCR user:1\nSET after 1\n", source.ScriptOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = nil
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 1 || got[0].Err == nil {
+		t.Fatalf("a script that fails: %+v", got)
+	}
+	if n, err := conn(t, src, 1).Exists(ctx, "after").Result(); err != nil || n != 0 {
+		t.Error("the command after the failure ran")
+	}
+}
+
+func TestLiveRefusesConsoleCommandsWhereItMayNot(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+
+	ro := liveConfig("1")
+	ro.Guard = source.Guard{ReadOnly: true}
+	rq := live(t, ro).(source.Queryer)
+	if _, err := rq.Query(ctx, source.Statement{SQL: "SET user:1 nobody"}); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only console wrote: %v", err)
+	}
+	if _, err := rq.Query(ctx, source.Statement{SQL: "GET user:1"}); err != nil {
+		t.Errorf("a read-only console did not read: %v", err)
+	}
+
+	prod := liveConfig("1")
+	prod.Guard = source.Guard{Environment: source.EnvProduction}
+	pq := live(t, prod).(source.Queryer)
+	if _, err := pq.Query(ctx, source.Statement{SQL: "DEL tags"}); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	if n, err := conn(t, src, 1).Exists(ctx, "tags").Result(); err != nil || n != 1 {
+		t.Error("the key went before anybody consented")
+	}
+	if _, err := pq.Query(ctx, source.Statement{SQL: "DEL tags", Confirmed: true}); err != nil {
+		t.Errorf("production with consent: %v", err)
+	}
+	// Every command of a script is put to the guard before the first runs.
+	results, err := pq.QueryMulti(ctx, "GET user:1\nFLUSHDB\n", source.ScriptOptions{})
+	if err == nil {
+		for range results {
+		}
+		t.Error("a script with a flush in it ran")
+	}
+	if n, err := conn(t, src, 1).DBSize(ctx).Result(); err != nil || n == 0 {
+		t.Errorf("the database was flushed: %d %v", n, err)
+	}
+	// And what this console will not run at all is refused whoever asks.
+	if _, err := src.(source.Queryer).Query(ctx, source.Statement{SQL: "SUBSCRIBE news"}); err == nil {
+		t.Error("a subscription was run")
 	}
 }

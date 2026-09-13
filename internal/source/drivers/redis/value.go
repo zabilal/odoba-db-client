@@ -107,6 +107,9 @@ func (s *redisSource) browseValue(ctx context.Context, ref model.ObjectRef, opt 
 	if kind == "none" {
 		return nil, fmt.Errorf("redis: there is no key called %q", name)
 	}
+	// What the key holds is remembered, so that the grid can be shown the
+	// command this browse sends: a ref says which key, not what is in it.
+	s.kindSeen(ref, kind)
 	cols, id, err := valueColumns(kind)
 	if err != nil {
 		return nil, err
@@ -221,14 +224,17 @@ func memberMatch(kind string, cols []model.ColumnDef, opt source.BrowseOptions) 
 	if len(opt.Sorts) > 0 {
 		return "", errors.New("redis: a value is read in the order the server holds it, and cannot be sorted")
 	}
-	if strings.TrimSpace(opt.Where) != "" {
-		return "", errors.New("redis: there is no query language here, so there is no condition to write")
+	walked := kind == "hash" || kind == "set" || kind == "zset"
+	where := strings.TrimSpace(opt.Where)
+	if where != "" && !walked {
+		return "", fmt.Errorf("redis: the server cannot pick out part of a %s", kind)
 	}
-	if len(opt.Filters) == 0 {
+	if where == "" && len(opt.Filters) == 0 {
 		return "", nil
 	}
-	walked := kind == "hash" || kind == "set" || kind == "zset"
-	var match string
+	// A condition here is a pattern the part a row is known by is matched
+	// by, which is what the server can be told about one (FR-3.6).
+	match := where
 	for _, f := range opt.Filters {
 		if !walked {
 			return "", fmt.Errorf("redis: the server cannot pick out part of a %s", kind)
@@ -511,4 +517,29 @@ func value(s string) any {
 		return s
 	}
 	return []byte(s)
+}
+
+// kindSeen remembers what a key held when it was last read, and kindRead is
+// that, or nothing where no browse has read it.
+//
+// It is a note of what was seen and never an answer in itself: a key whose
+// kind is not known is read from the server as any other is.
+func (s *redisSource) kindSeen(ref model.ObjectRef, kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.kinds == nil {
+		s.kinds = map[string]string{}
+	}
+	if len(s.kinds) > 1000 {
+		// A tab a key at a time will not fill this; a script that browsed
+		// thousands would, and the note is worth less than the memory.
+		s.kinds = map[string]string{}
+	}
+	s.kinds[ref.String()] = kind
+}
+
+func (s *redisSource) kindRead(ref model.ObjectRef) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.kinds[ref.String()]
 }

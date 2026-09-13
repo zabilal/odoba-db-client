@@ -10,6 +10,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
 // cfg is a connection as the settings would hold one.
@@ -307,8 +308,18 @@ func TestWhatTheConnectionClaims(t *testing.T) {
 	if single.Data.TransactionalWrite {
 		t.Error("claims a transaction around a plan's commands")
 	}
-	// Nothing is claimed that is not written: the console is T2.44.
-	if single.Query.Supported || single.Schema.Indexes || single.Data.BulkLoad {
+	// The console is the query language: Redis's own commands, and the
+	// lexer knows them by that name (T2.44).
+	if !single.Query.Supported || single.Query.Language != "redis" || !single.Query.MultiStatement {
+		t.Errorf("query %+v", single.Query)
+	}
+	if !sqllex.Known(single.Query.Language) {
+		t.Errorf("the lexer does not know %q, so a console would be coloured by another engine's rules",
+			single.Query.Language)
+	}
+	// A command is cancelled by cancelling its context, so there is nothing
+	// to kill; nothing else is claimed that is not written.
+	if single.Query.Cancel || single.Schema.Indexes || single.Data.BulkLoad || single.Query.Transactions {
 		t.Errorf("claims more than it does: %+v", single)
 	}
 }

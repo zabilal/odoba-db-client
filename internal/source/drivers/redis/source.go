@@ -303,6 +303,9 @@ type redisSource struct {
 
 	mu     sync.Mutex
 	closed bool
+	// kinds is what each key held when it was last read, for the grid to be
+	// shown the command a browse sends (dialect.go).
+	kinds map[string]string
 }
 
 var (
@@ -310,6 +313,9 @@ var (
 	_ source.Countable = (*redisSource)(nil)
 	_ source.Writer    = (*redisSource)(nil)
 	_ source.RowObject = (*redisSource)(nil)
+	_ source.Dialect   = (*redisSource)(nil)
+	_ source.Queryer   = (*redisSource)(nil)
+	_ source.Sessioner = (*redisSource)(nil)
 )
 
 func (s *redisSource) Capabilities() capability.Capabilities {
@@ -325,6 +331,11 @@ func (s *redisSource) Capabilities() capability.Capabilities {
 		// them (T2.41).
 		Data: capability.Data{ServerFilter: true, ExactCount: true, ApproximateCount: true,
 			Insert: true, Update: true, Delete: true, RowObjects: true},
+		// The console is the query language: Redis's own commands, as a
+		// person types them at a prompt (T2.44). A command is cancelled by
+		// cancelling its context, which the client does itself, so no Killer
+		// is needed.
+		Query: capability.Query{Supported: true, Language: "redis", MultiStatement: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindKey: true,
 		},

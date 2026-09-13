@@ -362,3 +362,37 @@ func render(line string, toks []Token) string {
 	}
 	return b.String()
 }
+
+func TestRedisIsItsOwnLanguage(t *testing.T) {
+	// A console's script is commands, one to a line: the words of a command
+	// are its own, a # line is a comment, and "…" is a string rather than a
+	// name in quotes.
+	if DialectFor("redis") != Redis || DialectFor("valkey") != Redis {
+		t.Fatal("a Redis console resolves elsewhere")
+	}
+	if !Known("redis") || !Known("valkey") {
+		t.Error("the lexer does not know what a Redis console speaks")
+	}
+	lx := NewLexer(Redis)
+	line := `SET greeting "hello world" # said once`
+	toks, _ := lx.LexLine(line, State{})
+	kinds := map[TokenKind]int{}
+	for _, tk := range toks {
+		kinds[tk.Kind]++
+	}
+	// A double-quoted argument is a string: a command's arguments are text,
+	// and nothing here is a name in quotes.
+	if kinds[TokString] != 1 {
+		t.Errorf("%d strings, want one: %s", kinds[TokString], render(line, toks))
+	}
+	if kinds[TokQuotedIdent] != 0 {
+		t.Errorf("a name in quotes: %s", render(line, toks))
+	}
+	// A # line is a comment, as it is in a Redis configuration file.
+	if kinds[TokComment] != 1 {
+		t.Errorf("%d comments, want one: %s", kinds[TokComment], render(line, toks))
+	}
+	if kinds[TokKeyword] == 0 {
+		t.Errorf("SET is one of the language's own words: %s", render(line, toks))
+	}
+}

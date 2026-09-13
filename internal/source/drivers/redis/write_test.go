@@ -301,14 +301,21 @@ func TestOnlyWhatTheServerWalksTakesAPattern(t *testing.T) {
 	if err != nil || got != "a*" {
 		t.Errorf("a set's members: %q, %v", got, err)
 	}
+	// A condition typed in the grid is a pattern the members are matched by.
+	if got, err := memberMatch("set", cols, source.BrowseOptions{Where: " A* "}); err != nil || got != "A*" {
+		t.Errorf("a condition: %q, %v", got, err)
+	}
 	// A list is read by position and a string is one value: neither is
 	// narrowed by the server, so neither is narrowed at all.
-	for _, kind := range []string{"list", "string"} {
+	for _, kind := range []string{"list", "string", "stream", "ReJSON-RL"} {
 		cols, _, _ := valueColumns(kind)
 		byFirst := source.BrowseOptions{Filters: []source.Filter{
 			{Column: cols[0].Name, Op: source.OpLike, Values: []any{"a%"}}}}
 		if _, err := memberMatch(kind, cols, byFirst); err == nil {
 			t.Errorf("a %s was narrowed", kind)
+		}
+		if _, err := memberMatch(kind, cols, source.BrowseOptions{Where: "a*"}); err == nil {
+			t.Errorf("a %s was narrowed by a condition", kind)
 		}
 	}
 	// One pattern, on the part a row is known by, and nothing else about it.
@@ -321,7 +328,8 @@ func TestOnlyWhatTheServerWalksTakesAPattern(t *testing.T) {
 		"members that do not match": {Filters: []source.Filter{
 			{Column: "member", Op: source.OpLike, Values: []any{"a%"}, Negate: true}}},
 		"an order the server does not hold": {Sorts: []source.Sort{{Column: "member"}}},
-		"a condition":                       {Where: "member = 'Ada'"},
+		"a condition beside a pattern": {Where: "A*", Filters: []source.Filter{
+			{Column: "member", Op: source.OpLike, Values: []any{"b%"}}}},
 	}
 	for what, opt := range refused {
 		if _, err := memberMatch("zset", cols, opt); err == nil {
