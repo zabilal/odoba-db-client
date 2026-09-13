@@ -394,9 +394,9 @@ func (s *redisSource) Close() (err error) {
 }
 
 // errNotYet is what the parts of the contract this task does not reach
-// return. The editors are T2.41 and the console T2.44; a stub that says so is
-// better than one that answers with nothing, which would read as an empty
-// server.
+// return. A key's structure is T2.43's, where its time to live is shown, and
+// the console is T2.44; a stub that says so is better than one that answers
+// with nothing, which would read as an empty server.
 var errNotYet = errors.New("redis: not implemented yet")
 
 func (s *redisSource) Root(ctx context.Context) ([]model.Node, error) {

@@ -2,8 +2,10 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -215,6 +217,10 @@ func writeOf(kind, name string, cols []model.ColumnDef, id []string, c source.Ro
 		return setWrite(name, c)
 	case "zset":
 		return zsetWrite(name, c, now)
+	case "stream":
+		return streamWrite(name, c)
+	case "ReJSON-RL":
+		return documentWrite(name, c)
 	}
 	_ = id
 	return nil, "", fmt.Errorf("redis: nothing here writes a %s", kind)
@@ -523,6 +529,101 @@ func zsetWrite(name string, c source.RowChange, now held) (*valueWrite, string, 
 	return nil, "", fmt.Errorf("a change of unknown kind %d", c.Kind)
 }
 
+// streamWrite adds an entry to a stream or takes one out. An entry is
+// written once: a stream is a log, and a log that can be rewritten is not one.
+func streamWrite(name string, c source.RowChange) (*valueWrite, string, error) {
+	switch c.Kind {
+	case source.ChangeInsert:
+		fields, err := entryFields(c.Values["fields"])
+		if err != nil {
+			return nil, "", err
+		}
+		w := &valueWrite{command: fmt.Sprintf("XADD %s * %s", quote(name), pairs(fields))}
+		w.send = func(ctx context.Context, node writer, name string) (int64, error) {
+			// The server gives the entry its id, which is when it was added
+			// and what orders it among the rest.
+			if err := node.XAdd(ctx, &goredis.XAddArgs{Stream: name, Values: fields}).Err(); err != nil {
+				return 0, err
+			}
+			return 1, nil
+		}
+		return w, "Add an entry", nil
+	case source.ChangeDelete:
+		id, err := one(c.Key, "id")
+		if err != nil {
+			return nil, "", err
+		}
+		w := &valueWrite{command: fmt.Sprintf("XDEL %s %s", quote(name), quote(id))}
+		w.send = func(ctx context.Context, node writer, name string) (int64, error) {
+			return node.XDel(ctx, name, id).Result()
+		}
+		return w, "Delete the entry " + id, nil
+	case source.ChangeUpdate:
+		return nil, "", errors.New("a stream's entries are written once: an entry is added or deleted, never changed")
+	}
+	return nil, "", fmt.Errorf("a change of unknown kind %d", c.Kind)
+}
+
+// entryFields reads the fields an entry is to be written with, which are
+// given as the one value they are read as.
+func entryFields(v any) (map[string]any, error) {
+	text := strings.TrimSpace(str(v))
+	if text == "" {
+		return nil, errors.New("an entry with no fields in it")
+	}
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(text), &fields); err != nil {
+		return nil, fmt.Errorf("an entry's fields are a JSON object of them: %w", err)
+	}
+	if len(fields) == 0 {
+		return nil, errors.New("an entry with no fields in it")
+	}
+	return fields, nil
+}
+
+// pairs writes an entry's fields as they would be typed, in a settled order
+// so that the same change reads the same way twice.
+func pairs(fields map[string]any) string {
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names)*2)
+	for _, name := range names {
+		out = append(out, quote(name), quote(str(fields[name])))
+	}
+	return strings.Join(out, " ")
+}
+
+// documentWrite sets what a JSON key holds. A document is one value, as a
+// string is, so it is set rather than added to or deleted from a row at a
+// time.
+func documentWrite(name string, c source.RowChange) (*valueWrite, string, error) {
+	switch c.Kind {
+	case source.ChangeUpdate:
+		if _, renamed := c.Values["key"]; renamed {
+			return nil, "", errors.New("a key is renamed on its own, not by editing the value it holds")
+		}
+		v, ok := c.Values["value"]
+		if !ok {
+			return nil, "", errors.New("an update that changes nothing")
+		}
+		text := strings.TrimSpace(str(v))
+		if !json.Valid([]byte(text)) {
+			return nil, "", errors.New("a JSON key holds JSON, and this is not")
+		}
+		w := &valueWrite{command: fmt.Sprintf("JSON.SET %s $ %s", quote(name), text)}
+		w.send = func(ctx context.Context, node writer, name string) (int64, error) {
+			return 1, node.JSONSet(ctx, name, "$", text).Err()
+		}
+		return w, "Set the document " + name, nil
+	case source.ChangeInsert, source.ChangeDelete:
+		return nil, "", errors.New("a JSON key holds one document: it is set, and the key itself is added or deleted")
+	}
+	return nil, "", fmt.Errorf("a change of unknown kind %d", c.Kind)
+}
+
 // writer is what the commands that change a value run on.
 type writer interface {
 	keyReader
@@ -542,6 +643,9 @@ type writer interface {
 	ZAdd(ctx context.Context, key string, members ...goredis.Z) *goredis.IntCmd
 	ZRem(ctx context.Context, key string, members ...any) *goredis.IntCmd
 	ZScore(ctx context.Context, key, member string) *goredis.FloatCmd
+	XAdd(ctx context.Context, a *goredis.XAddArgs) *goredis.StringCmd
+	XDel(ctx context.Context, stream string, ids ...string) *goredis.IntCmd
+	JSONSet(ctx context.Context, key, path string, value any) *goredis.StatusCmd
 	TxPipeline() goredis.Pipeliner
 }
 
