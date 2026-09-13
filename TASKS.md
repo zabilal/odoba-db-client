@@ -23,10 +23,11 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.45 — the memory and keyspace info panel. What is left of 2.F
-           after it is T2.46 (conformance green, which will want a key-value
-           paradigm in the shared suite as T2.38 wanted a document one).
-           2.D and 2.E are done.
+NEXT TASK: T2.46 — conformance green for Redis, which is what is left of 2.F.
+           The shared suite will want a key-value paradigm as T2.38 gave it a
+           document one: its write checks dispatch on the paradigm, and a
+           keyspace's rows are keys rather than rows of a table. 2.D and 2.E
+           are done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -40,8 +41,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            (56380, redis-stack, for the JSON module), and
            ikigai-redis-cluster (three shards on 7001-7003, published as
            themselves so each is reachable where it announces itself).
-LAST DONE: 2026-09-13 — the Redis console, its commands being its language
-           (T2.44, ADR-0077); a key's own time to live and name, edited in
+LAST DONE: 2026-09-13 — what a server says about itself, in the structure
+           tab (T2.45, ADR-0078); the Redis console, its commands being its
+           language (T2.44, ADR-0077); a key's own time to live and name, edited in
            the keyspace (T2.43, ADR-0076); a stream's entries and a JSON
            document, the last two kinds a key holds (T2.42, ADR-0075); the editors for what a key
            holds, which are the grid five times (T2.41, ADR-0074); the Redis key browser, a database's
@@ -457,7 +459,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.42** Editors: JSON, stream → FR-12.2 — *a stream is its entries in the order they were written, the id beside the fields it was added with — one value rather than columns, because they are the entry's own — paged by id with `XRANGE` from the last one read; an entry is written once, added or deleted and never changed, and the server gives it the id that orders it. A JSON document is one value as a string is: one row, the key beside the document, typed as JSON so the cell viewer reads and writes the structure, set whole with `JSON.SET $` and refused before it is sent if it is not JSON. Neither is narrowed by the server, and a kind nothing here reads is said to be that by name (ADR-0075)*
 - [x] **T2.43** TTL display and edit → FR-12.2 — *the keyspace's rows are edited where they are shown: a change to one is a change to the key itself rather than to what it holds, so the writer takes a database as a target as well as a key. A time to live is read however it is written — a bare number is seconds, anything else a length of time as Go writes one, and nothing at all (an empty cell, a value taken away, the -1 the server itself answers) is a key that never expires, which is `PERSIST` and no failure to do twice. An expiry of nothing does not delete the key, a key is renamed with `RENAMENX` so another is never written over, and a key is deleted from the keyspace and never added there, because a key comes into being when something is written to it. A cluster sends each command to the shard that holds the key it names (ADR-0076)*
 - [x] **T2.44** Raw command console → FR-12.2 — *Redis's own commands are its query language: a command is a line, read as redis-cli reads one (words apart, `"…"` with its escapes, `'…'` where only the quote is, a quote left open an error), and a `#` line is a comment. A console holds a connection of its own, so `SELECT` moves it and nothing else and `MULTI` and `WATCH` are its own state; a cluster's console is the cluster, each command going to the shard its key names. What a command does is read from its name — the reading ones listed, the server-changing ones listed, everything else a write — and every command of a script is put to the guard before the first runs; `SUBSCRIBE` and `MONITOR` are refused outright, being commands that stop a connection answering. A reply is drawn as what it is: a word, a number, a list, a list of lists, the pairs of a map, with what is nested shown as the structure it is and a reply of nothing an answer. Redis is a lexer dialect of its own, a condition typed in the grid is the pattern names are matched by, and the grid is shown the command a browse sends (ADR-0077)*
-- [ ] **T2.45** Memory / keyspace info panel → FR-12.2
+- [x] **T2.45** Memory / keyspace info panel → FR-12.2 — *a keyspace and a key are model types of their own beside a table and a collection, neither having columns: a database says how many keys it holds and how many are set to expire, with the server's own figures under INFO's own headings and by INFO's own names, in a settled order, a figure the server did not report left out and a heading with nothing under it not shown; a server that will not say is not a failure. A cluster's shards are a group of their own, each with its keys and its memory. A key is described by asking after it — `TYPE`, `TTL`, `MEMORY USAGE`, `OBJECT ENCODING` and the length its kind is counted in. Open Structure now shows whatever a person is looking at: the explorer's choice, or the object the tab in front is on, which is the only way to reach a key at all (ADR-0078)*
 - [ ] **T2.46** Conformance green
 
 ## 2.G Cassandra

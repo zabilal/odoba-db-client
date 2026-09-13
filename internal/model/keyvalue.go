@@ -2,53 +2,58 @@ package model
 
 import "time"
 
-// Types in this file describe key-value structure.
+// What a key-value store is made of (FR-12.2, ADR-0078).
 //
-// A key-value store has no schema at all: the unit of structure is the
-// individual key, and its type determines which editor applies (FR-12.2).
+// A database here is a keyspace and a key is one value in it. Neither has
+// columns, so neither is a Table; what there is to say about them is what the
+// server itself reports, under the names it reports them by.
 
-// ValueKind is the type of a key-value entry. Each maps to a dedicated editor.
-type ValueKind string
+// Keyspace is a numbered database, and what the server is spending on it.
+type Keyspace struct {
+	Name string
 
-const (
-	ValueString    ValueKind = "string"
-	ValueList      ValueKind = "list"
-	ValueSet       ValueKind = "set"
-	ValueSortedSet ValueKind = "zset"
-	ValueHash      ValueKind = "hash"
-	ValueStreamLog ValueKind = "stream"
-	ValueJSONDoc   ValueKind = "json"
-	ValueOther     ValueKind = "other"
-)
+	// Keys and Expiring are -1 where the server did not say.
+	Keys     int64
+	Expiring int64
 
-// KeyEntry is one key in a key-value store, as listed by the key browser.
-//
-// Values are never loaded during listing — a listing may cover millions of
-// keys, so the browser shows metadata and fetches a value only on selection.
-type KeyEntry struct {
-	Key  string
-	Kind ValueKind
-
-	// TTL is the remaining lifetime. Nil means the key does not expire.
-	TTL *time.Duration
-
-	// Size is the element count for containers, or byte length for strings.
-	// -1 when not cheaply available.
-	Size int64
-
-	// MemoryBytes is the engine's own memory accounting, -1 when unknown.
-	MemoryBytes int64
+	// Figures are the server's own numbers, under the headings it gives
+	// them. They keep the server's names — used_memory_human is what a
+	// person searching for it will search for, and a friendlier name would
+	// only be one more thing to translate.
+	Figures []FigureGroup
 }
 
-// KeyPattern is a saved or active scan pattern in the key browser.
-type KeyPattern struct {
-	// Match is the glob pattern applied server-side during the scan.
-	Match string
+// FigureGroup is a heading and the numbers under it.
+type FigureGroup struct {
+	Title  string
+	Values []Figure
+}
 
-	// Kind filters results to one value kind. Empty means all kinds.
-	Kind ValueKind
+// Figure is one of a server's numbers.
+type Figure struct {
+	Name  string
+	Value string
+}
 
-	// Count is the server-side scan batch hint. Scans are always incremental
-	// and cancellable: a blocking full-keyspace enumeration is never issued.
-	Count int64
+// StoredKey is one key: what it holds, how long it has left, and what it
+// costs the server to hold.
+type StoredKey struct {
+	Name string
+
+	// Kind is the server's own word for what the key holds: string, hash,
+	// list, set, zset, stream, or a module's own.
+	Kind string
+
+	// TTL is how long the key has left, and 0 where it never expires.
+	TTL time.Duration
+
+	// Bytes and Length are -1 where the server did not say. Length is in
+	// whatever the kind is counted in: characters, fields, elements,
+	// members, entries.
+	Bytes  int64
+	Length int64
+
+	// Encoding is how the server is holding the value — listpack, skiplist,
+	// embstr — which is its own word and worth showing as it is.
+	Encoding string
 }

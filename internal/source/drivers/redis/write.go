@@ -649,6 +649,10 @@ type writer interface {
 	ZAdd(ctx context.Context, key string, members ...goredis.Z) *goredis.IntCmd
 	ZRem(ctx context.Context, key string, members ...any) *goredis.IntCmd
 	ZScore(ctx context.Context, key, member string) *goredis.FloatCmd
+	TTL(ctx context.Context, key string) *goredis.DurationCmd
+	StrLen(ctx context.Context, key string) *goredis.IntCmd
+	MemoryUsage(ctx context.Context, key string, samples ...int) *goredis.IntCmd
+	ObjectEncoding(ctx context.Context, key string) *goredis.StringCmd
 	Del(ctx context.Context, keys ...string) *goredis.IntCmd
 	Exists(ctx context.Context, keys ...string) *goredis.IntCmd
 	Persist(ctx context.Context, key string) *goredis.BoolCmd

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -57,7 +58,18 @@ func (*keySource) Root(context.Context) ([]model.Node, error) {
 	return []model.Node{{Ref: keyDB, Label: "db0", Browsable: true}}, nil
 }
 func (*keySource) Children(context.Context, model.ObjectRef) ([]model.Node, error) { return nil, nil }
-func (*keySource) Describe(context.Context, model.ObjectRef) (any, error) {
+
+// Describe is a keyspace or a key, as a key-value store describes itself.
+func (*keySource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
+	switch ref.Kind {
+	case model.KindDatabase:
+		return &model.Keyspace{Name: "db0", Keys: 3, Expiring: 1, Figures: []model.FigureGroup{
+			{Title: "Memory", Values: []model.Figure{{Name: "used_memory_human", Value: "1.05M"}}},
+		}}, nil
+	case model.KindKey:
+		return &model.StoredKey{Name: ref.Path[1], Kind: "hash", TTL: 90 * time.Second,
+			Bytes: 104, Length: 2, Encoding: "listpack"}, nil
+	}
 	return nil, errors.New("keyfake: nothing to describe")
 }
 func (*keySource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {

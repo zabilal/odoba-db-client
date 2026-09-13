@@ -404,12 +404,6 @@ func (s *redisSource) Close() (err error) {
 	return s.client.Close()
 }
 
-// errNotYet is what the parts of the contract this task does not reach
-// return. A key's structure is T2.43's, where its time to live is shown, and
-// the console is T2.44; a stub that says so is better than one that answers
-// with nothing, which would read as an empty server.
-var errNotYet = errors.New("redis: not implemented yet")
-
 func (s *redisSource) Root(ctx context.Context) ([]model.Node, error) {
 	return s.databases(ctx)
 }
@@ -419,10 +413,6 @@ func (s *redisSource) Root(ctx context.Context) ([]model.Node, error) {
 // grid is where a pattern narrows it down (T2.40).
 func (s *redisSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
 	return nil, nil
-}
-
-func (s *redisSource) Describe(context.Context, model.ObjectRef) (any, error) {
-	return nil, fmt.Errorf("%w: describing a key", errNotYet)
 }
 
 // databases lists the numbered databases the server holds.

@@ -345,7 +345,7 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptUpdate, Category: "Explorer", Title: "Script as UPDATE", Keywords: []string{"change", "row", "template", "sql"},
 			Enabled: s.selectionIsTable, Run: func() { s.scriptSelected(app.ScriptUpdate) }},
 		{ID: cmdStructure, Category: "Explorer", Title: "Open Structure", Keywords: []string{"columns", "indexes", "keys", "schema", "describe"},
-			Shortcut: sc("O", commands.ModShortcut|commands.ModAlt), Enabled: s.selectionBrowsable, Run: s.openSelectedStructure},
+			Shortcut: sc("O", commands.ModShortcut|commands.ModAlt), Enabled: s.canOpenStructure, Run: s.openSelectedStructure},
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},
