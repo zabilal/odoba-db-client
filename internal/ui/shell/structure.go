@@ -3,7 +3,9 @@ package shell
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -23,11 +25,33 @@ func structureKey(connID string, ref model.ObjectRef) string {
 	return "structure:" + view.NodeID(connID, ref)
 }
 
-// openSelectedStructure opens the structure of the explorer's selection.
+// openSelectedStructure opens the structure of whatever a person is looking
+// at: the explorer's selection, or the object the tab in front is on.
 func (s *Shell) openSelectedStructure() {
-	if conn, n, ok := s.Explorer.SelectedNode(); ok && n.Browsable {
+	if conn, n, ok := s.structureTarget(); ok {
 		s.OpenStructure(conn, n)
 	}
+}
+
+// structureTarget is the object whose structure to show. The explorer's
+// selection comes first, being the more deliberate choice; where there is
+// none, it is the object the tab in front is on — which is the only way to
+// reach one that is not in the tree at all, a Redis key among them.
+func (s *Shell) structureTarget() (string, model.Node, bool) {
+	if conn, n, ok := s.Explorer.SelectedNode(); ok && n.Browsable {
+		return conn, n, true
+	}
+	t := s.activeTab()
+	if t == nil || t.structure || t.query != nil || t.ref.Kind == "" {
+		return "", model.Node{}, false
+	}
+	return t.connID, model.Node{Ref: t.ref, Label: t.ref.Name(), Browsable: true}, true
+}
+
+// canOpenStructure reports whether there is anything to show the structure of.
+func (s *Shell) canOpenStructure() bool {
+	_, _, ok := s.structureTarget()
+	return ok
 }
 
 // OpenStructure shows an object's structure in a tab, or brings its tab
@@ -245,6 +269,40 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 			}
 			add(container.NewHBox(addIdx, dropIdx))
 		}
+	case *model.Keyspace:
+		// A keyspace has no columns: what there is to say about it is how
+		// much it holds and what the server is spending on it (FR-12.2).
+		if v.Keys >= 0 {
+			held := fmt.Sprintf("%d keys.", v.Keys)
+			if v.Expiring >= 0 {
+				held = fmt.Sprintf("%d keys, %d of them set to expire.", v.Keys, v.Expiring)
+			}
+			add(quietLabel(held))
+		}
+		if len(v.Figures) == 0 {
+			add(plain("This server says nothing about itself."))
+		}
+		for _, g := range v.Figures {
+			add(section(g.Title, figureRows(g.Values)))
+		}
+	case *model.StoredKey:
+		add(quietLabel(keyHolds(v)))
+		rows := [][]string{{"Name", "Value"}, {"Kind", v.Kind}}
+		if v.Encoding != "" {
+			rows = append(rows, []string{"Held as", v.Encoding})
+		}
+		if v.Length >= 0 {
+			rows = append(rows, []string{"Length", strconv.FormatInt(v.Length, 10)})
+		}
+		if v.Bytes >= 0 {
+			rows = append(rows, []string{"Bytes", strconv.FormatInt(v.Bytes, 10)})
+		}
+		expires := "never"
+		if v.TTL > 0 {
+			expires = "in " + v.TTL.Round(time.Second).String()
+		}
+		rows = append(rows, []string{"Expires", expires})
+		add(section("Key", rows))
 	default:
 		add(plain("The structure of this kind of object cannot be shown yet."))
 	}
@@ -392,4 +450,32 @@ func quietLabel(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.Importance = widget.LowImportance
 	return l
+}
+
+// figureRows renders a server's own numbers, by its own names for them.
+func figureRows(values []model.Figure) [][]string {
+	rows := [][]string{{"Name", "Value"}}
+	for _, f := range values {
+		rows = append(rows, []string{f.Name, f.Value})
+	}
+	return rows
+}
+
+// keyHolds says in a line what a key is.
+func keyHolds(k *model.StoredKey) string {
+	what := map[string]string{
+		"string": "A string: one value.",
+		"hash":   "A hash: fields and their values.",
+		"list":   "A list: elements in the order they were put there.",
+		"set":    "A set: members, each of them once.",
+		"zset":   "A sorted set: members, ordered by their scores.",
+		"stream": "A stream: entries, written once and read in order.",
+	}
+	if said, ok := what[k.Kind]; ok {
+		return said
+	}
+	if k.Kind == "ReJSON-RL" {
+		return "A JSON document: one value, with a structure of its own."
+	}
+	return "A " + k.Kind + "."
 }

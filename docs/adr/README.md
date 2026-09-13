@@ -82,3 +82,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0075](0075-a-log-and-a-document.md) | A log and a document, among a key's kinds | Accepted |
 | [0076](0076-a-key-itself.md) | A key itself: how long it has left, and what it is called | Accepted |
 | [0077](0077-the-redis-console.md) | The Redis console | Accepted |
+| [0078](0078-what-a-server-says-about-itself.md) | What a server says about itself | Accepted |

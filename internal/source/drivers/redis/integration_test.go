@@ -224,16 +224,11 @@ func TestLiveSaysWhatIsWrongWithAConnection(t *testing.T) {
 	}
 }
 
-func TestLiveSaysWhatIsNotWrittenYet(t *testing.T) {
+func TestLiveHasNothingUnderADatabase(t *testing.T) {
 	src := live(t, liveConfig(""))
-	ctx := context.Background()
-	db := model.NewRef(model.KindDatabase, "db0")
 	// A database holds keys, and keys are rows: there is nothing under it.
-	if nodes, err := src.Children(ctx, db); err != nil || len(nodes) != 0 {
+	if nodes, err := src.Children(context.Background(), model.NewRef(model.KindDatabase, "db0")); err != nil || len(nodes) != 0 {
 		t.Errorf("under a database: %v %v", labels(nodes), err)
-	}
-	if _, err := src.Describe(ctx, db); !errors.Is(err, errNotYet) {
-		t.Errorf("describing: %v", err)
 	}
 }
 
@@ -523,6 +518,34 @@ func TestLiveWalksAClustersKeyspace(t *testing.T) {
 	}
 	if n, err := c.Exists(ctx, "scores").Result(); err != nil || n != 0 {
 		t.Errorf("the key deleted is still there: %v %v", n, err)
+	}
+
+	// A key is described on the shard that holds it, as it is read there.
+	if err := c.HSet(ctx, "queue:desc", "city", "London").Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Del(context.Background(), "queue:desc") })
+	if d, err := src.Describe(ctx, model.NewRef(model.KindKey, "db0", "queue:desc")); err != nil {
+		t.Errorf("describing a key in a cluster: %v", err)
+	} else if key := d.(*model.StoredKey); key.Kind != "hash" || key.Length != 1 {
+		t.Errorf("the key on its shard is %+v", key)
+	}
+
+	// A cluster's shards are what it holds, and the panel says each one's.
+	if d, err := src.Describe(ctx, nodes[0].Ref); err != nil {
+		t.Errorf("describing a cluster: %v", err)
+	} else if ks, ok := d.(*model.Keyspace); !ok {
+		t.Errorf("a cluster's keyspace is %T", d)
+	} else {
+		shards := false
+		for _, g := range ks.Figures {
+			if g.Title == "Shards" {
+				shards = len(g.Values) == 3
+			}
+		}
+		if !shards {
+			t.Errorf("the shards are %+v", ks.Figures)
+		}
 	}
 
 	// What a key holds is read from the shard that holds the key, whichever
@@ -1566,4 +1589,127 @@ func TestLiveRefusesConsoleCommandsWhereItMayNot(t *testing.T) {
 	if _, err := src.(source.Queryer).Query(ctx, source.Statement{SQL: "SUBSCRIBE news"}); err == nil {
 		t.Error("a subscription was run")
 	}
+}
+
+func TestLiveDescribesAKeyspace(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	// One key set to expire, so the panel has both numbers to say.
+	desc, err := src.Describe(ctx, model.NewRef(model.KindDatabase, "db1"))
+	if err != nil {
+		t.Fatalf("describe: %v", err)
+	}
+	ks, ok := desc.(*model.Keyspace)
+	if !ok {
+		t.Fatalf("a database is described as %T", desc)
+	}
+	if ks.Name != "db1" || ks.Keys != 7 || ks.Expiring != 1 {
+		t.Errorf("the keyspace is %+v", ks)
+	}
+	titles := map[string]bool{}
+	for _, g := range ks.Figures {
+		titles[g.Title] = true
+		if len(g.Values) == 0 {
+			t.Errorf("%s is shown with nothing under it", g.Title)
+		}
+	}
+	for _, want := range []string{"Server", "Memory", "Clients", "Statistics"} {
+		if !titles[want] {
+			t.Errorf("%s is not among %v", want, titles)
+		}
+	}
+	// The server's own names and numbers, as it reports them.
+	var used string
+	for _, g := range ks.Figures {
+		for _, f := range g.Values {
+			if f.Name == "used_memory_human" {
+				used = f.Value
+			}
+		}
+	}
+	if used == "" {
+		t.Error("the server did not say what it is using, or it was not kept")
+	}
+}
+
+func TestLiveSaysWhatItCanOfAServerThatWillNotAnswer(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	// A server that will not say is not a failure: a managed service may
+	// refuse INFO, and the keys a database holds are still worth showing.
+	// A closed connection is the same refusal, and the nearest one to hand.
+	if err := src.Close(); err != nil {
+		t.Fatal(err)
+	}
+	desc, err := src.Describe(context.Background(), model.NewRef(model.KindDatabase, "db1"))
+	if err != nil {
+		t.Fatalf("a server that says nothing: %v", err)
+	}
+	ks, ok := desc.(*model.Keyspace)
+	if !ok || ks.Name != "db1" || len(ks.Figures) != 0 {
+		t.Errorf("the keyspace is %+v", desc)
+	}
+}
+
+func TestLiveDescribesAKey(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	cases := map[string]struct {
+		kind   string
+		length int64
+	}{
+		"user:1":         {"string", 3},
+		"user:1:profile": {"hash", 1},
+		"queue":          {"list", 3},
+		"tags":           {"set", 2},
+		"scores":         {"zset", 1},
+		"events":         {"stream", 1},
+	}
+	for name, want := range cases {
+		desc, err := src.Describe(ctx, valueRef(name))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		key, ok := desc.(*model.StoredKey)
+		if !ok {
+			t.Errorf("%s is described as %T", name, desc)
+			continue
+		}
+		if key.Name != name || key.Kind != want.kind || key.Length != want.length {
+			t.Errorf("%s is %+v", name, key)
+		}
+		if key.Bytes <= 0 {
+			t.Errorf("%s costs %d bytes", name, key.Bytes)
+		}
+		if key.Encoding == "" {
+			t.Errorf("%s is held as nothing", name)
+		}
+	}
+	// A key with an expiry says how long it has left, and one without says
+	// nothing rather than a negative number.
+	expiring, err := src.Describe(ctx, valueRef("user:2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left := expiring.(*model.StoredKey).TTL; left <= 0 || left > time.Hour {
+		t.Errorf("user:2 has %v left", left)
+	}
+	if left := desc(t, src, "user:1").TTL; left != 0 {
+		t.Errorf("user:1 has %v left, and it never expires", left)
+	}
+	if _, err := src.Describe(ctx, valueRef("nobody")); err == nil {
+		t.Error("a key that is not there was described")
+	}
+}
+
+// desc is one key's description.
+func desc(t *testing.T, src source.Source, name string) *model.StoredKey {
+	t.Helper()
+	d, err := src.Describe(context.Background(), valueRef(name))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return d.(*model.StoredKey)
 }
