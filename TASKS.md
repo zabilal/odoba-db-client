@@ -23,10 +23,9 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.42 — the JSON and stream values (RedisJSON's ReJSON-RL and a
-           stream's entries), which T2.41 named and refused. The connection
-           (T2.39), the key browser (T2.40) and the five editors (T2.41) are
-           done; 2.D and 2.E are done.
+NEXT TASK: T2.43 — a key's time to live, shown and edited. The connection
+           (T2.39), the key browser (T2.40) and the editors for every kind a
+           key holds (T2.41, T2.42) are done; 2.D and 2.E are done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -36,11 +35,13 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
            interactive run, and a push to a remote so CI runs. Test servers:
            ikigai-pg (55432), ikigai-mysql (53306), ikigai-mariadb (53307),
-           ikigai-mongo (57017), ikigai-redis (56379), and
+           ikigai-mongo (57017), ikigai-redis (56379), ikigai-redis-json
+           (56380, redis-stack, for the JSON module), and
            ikigai-redis-cluster (three shards on 7001-7003, published as
            themselves so each is reachable where it announces itself).
-LAST DONE: 2026-09-13 — the editors for what a key holds, which are the grid
-           five times (T2.41, ADR-0074); the Redis key browser, a database's
+LAST DONE: 2026-09-13 — a stream's entries and a JSON document, the last two
+           kinds a key holds (T2.42, ADR-0075); the editors for what a key
+           holds, which are the grid five times (T2.41, ADR-0074); the Redis key browser, a database's
            keys in the grid (T2.40, ADR-0073). 2026-09-12 — the Redis connection, three
            topologies in one form
            (T2.39, ADR-0072); the command console and MongoDB's own query
@@ -450,7 +451,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.39** Driver + connection (standalone, sentinel, cluster) → FR-1.3, FR-12.2 — *`internal/source/drivers/redis` over go-redis: one form for three topologies, where the mode is a setting and a setting the mode has not got is refused rather than dropped — a cluster has one keyspace, a sentinel set is known by its master's name, a single server has one address. A database is a number here, and the tree lists what the server was configured with, or the ones holding keys where the server refuses CONFIG. The credentials are settings and never part of an address, the sentinels' own password is read under its own name, and `rediss://` means encryption because the scheme says so — `Descriptor.TLSSchemes`, which connstr reads without knowing what Redis is. A failure is said by the server's own code: WRONGPASS, NOAUTH, NOPERM, a cluster that is not one, a master no sentinel knows. Nothing is claimed that is not written; the key browser is T2.40 (ADR-0072)*
 - [x] **T2.40** Key browser with pattern SCAN + type filter → FR-12.2 — *a database's keys are its rows, not a tree: the node opens into the grid, and a key shows its name, its kind and what is left of it — not its value, which is a command for each and a different one by kind (T2.41). The pattern and the type are the server's to match (`MATCH`, `SCAN TYPE`), where the grid's own `%` and `_` become the server's `*` and `?` and a name holding either is looked for as it is; an order the keyspace has not got, a typed condition, a filter on the time left and a second pattern are refused. A page is walked rather than sought, a piece of the keyspace at a time; a key that went between the walk and the question is no row; the database is chosen on the connection that walks it and put back afterwards; a cluster is walked shard by shard, each asked about its own keys. `DBSIZE` is the count and the tree's badge, exact (ADR-0073)*
 - [x] **T2.41** Editors: string, hash, list, set, sorted set → FR-12.2 — *every kind of value is rows of its own shape, so the five editors are the grid five times: a hash is its fields, a list its elements in order, a set its members, a sorted set its members and scores, a string the one value it is. The column a row is known by is the one the server addresses it with, and the two that are addresses rather than contents — a key's name, an element's position — are read-only. A row of a keyspace is an object of its own: `source.RowObject` with `Data.RowObjects`, and View ▸ Open What the Row Holds, so the UI still knows nothing about Redis. A plan asks what the key is before it writes a word; each change looks before it writes, so a part that has gone fails as a row changed since it was read and one that is there already is refused rather than written over; a part renamed moves in one transaction carrying what it holds. What Redis cannot do is refused in its own words, a value is text where it is text and bytes where it is not, and setting a string keeps its expiry (ADR-0074)*
-- [ ] **T2.42** Editors: JSON, stream → FR-12.2
+- [x] **T2.42** Editors: JSON, stream → FR-12.2 — *a stream is its entries in the order they were written, the id beside the fields it was added with — one value rather than columns, because they are the entry's own — paged by id with `XRANGE` from the last one read; an entry is written once, added or deleted and never changed, and the server gives it the id that orders it. A JSON document is one value as a string is: one row, the key beside the document, typed as JSON so the cell viewer reads and writes the structure, set whole with `JSON.SET $` and refused before it is sent if it is not JSON. Neither is narrowed by the server, and a kind nothing here reads is said to be that by name (ADR-0075)*
 - [ ] **T2.43** TTL display and edit → FR-12.2
 - [ ] **T2.44** Raw command console → FR-12.2
 - [ ] **T2.45** Memory / keyspace info panel → FR-12.2

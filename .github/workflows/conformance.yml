@@ -61,6 +61,15 @@ jobs:
           --health-cmd "redis-cli ping" --health-interval 5s
           --health-timeout 5s --health-retries 10
 
+      # The JSON module is not something a plain server can be asked for, so
+      # the keys that need it are read against a server that has it.
+      redis-json:
+        image: redis/redis-stack-server:latest
+        ports: ["6380:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
       cassandra:
         image: cassandra:5
         ports: ["9042:9042"]
@@ -107,4 +116,6 @@ jobs:
           IKIGAI_MONGO_PORT: "27017"
           IKIGAI_REQUIRE_REDIS: "1"
           IKIGAI_REDIS_PORT: "6379"
+          IKIGAI_REQUIRE_REDIS_JSON: "1"
+          IKIGAI_REDIS_JSON_PORT: "6380"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/

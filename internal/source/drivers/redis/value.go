@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -52,8 +53,21 @@ func valueColumns(kind string) ([]model.ColumnDef, []string, error) {
 			{Name: "member", Type: text},
 			{Name: "score", Type: model.DataType{Class: model.TypeFloat}},
 		}, []string{"member"}, nil
-	case "stream", "ReJSON-RL":
-		return nil, nil, fmt.Errorf("%w: reading a %s", errNotYet, kind)
+	case "stream":
+		// A stream's entry is its id and the fields it was written with,
+		// which are its own and not the stream's: one entry's are not
+		// another's, so they are one value rather than columns (FR-12.2).
+		return []model.ColumnDef{
+			{Name: "id", Type: text, ReadOnly: true},
+			{Name: "fields", Type: model.DataType{Class: model.TypeJSON}},
+		}, []string{"id"}, nil
+	case "ReJSON-RL":
+		// A JSON document is one value, as a string is, and the cell viewer
+		// is where a long one is read and written (ADR-0075).
+		return []model.ColumnDef{
+			{Name: "key", Type: text, ReadOnly: true},
+			{Name: "value", Type: model.DataType{Class: model.TypeJSON}},
+		}, []string{"key"}, nil
 	}
 	return nil, nil, fmt.Errorf("redis: nothing here reads a %s", kind)
 }
@@ -120,6 +134,10 @@ func (s *redisSource) browseValue(ctx context.Context, ref model.ObjectRef, opt 
 		// rather than walked to.
 		v.read = listRows(node, name, opt.Offset, limit)
 		v.skip = 0
+	case "stream":
+		v.read = streamRows(node, name, batchOf(limit))
+	case "ReJSON-RL":
+		v.read = documentRows(node, name, cols)
 	}
 	ok = true
 	return v, nil
@@ -164,8 +182,10 @@ func (s *redisSource) countValue(ctx context.Context, ref model.ObjectRef, opt s
 		return -1, nil
 	}
 	switch kind {
-	case "string":
+	case "string", "ReJSON-RL":
 		return 1, nil
+	case "stream":
+		return node.XLen(ctx, name).Result()
 	case "hash":
 		return node.HLen(ctx, name).Result()
 	case "list":
@@ -240,6 +260,9 @@ type keyReader interface {
 	LLen(ctx context.Context, key string) *goredis.IntCmd
 	LRange(ctx context.Context, key string, start, stop int64) *goredis.StringSliceCmd
 	SCard(ctx context.Context, key string) *goredis.IntCmd
+	XLen(ctx context.Context, key string) *goredis.IntCmd
+	XRangeN(ctx context.Context, stream, start, stop string, count int64) *goredis.XMessageSliceCmd
+	JSONGet(ctx context.Context, key string, paths ...string) *goredis.JSONCmd
 	SScan(ctx context.Context, key string, cursor uint64, match string, count int64) *goredis.ScanCmd
 	ZCard(ctx context.Context, key string) *goredis.IntCmd
 	ZScan(ctx context.Context, key string, cursor uint64, match string, count int64) *goredis.ScanCmd
@@ -417,6 +440,67 @@ func listRows(node keyReader, name string, offset, limit int64) piece {
 		}
 		return rows, 0, nil
 	}
+}
+
+// streamRows reads a stream's entries in the order they were written. There
+// is no cursor: a piece of a stream is read from the last id seen, which is
+// carried here rather than in the walk, because it is an id and not a number.
+func streamRows(node keyReader, name string, batch int64) piece {
+	from := "-"
+	return func(ctx context.Context, _ uint64) ([]model.Row, uint64, error) {
+		entries, err := node.XRangeN(ctx, name, from, "+", batch).Result()
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(entries) == 0 {
+			return nil, 0, nil
+		}
+		rows := make([]model.Row, 0, len(entries))
+		for _, e := range entries {
+			rows = append(rows, model.Row{e.ID, fieldsOf(e.Values)})
+		}
+		// The next piece begins after the last entry read: a stream's ids
+		// are ordered, and ( makes the bound exclusive.
+		from = "(" + entries[len(entries)-1].ID
+		return rows, 1, nil
+	}
+}
+
+// fieldsOf is an entry's fields as the one value they are. A stream's fields
+// are the entry's own, so they are shown together rather than as columns
+// some entries have and others do not.
+func fieldsOf(values map[string]any) any {
+	b, err := json.Marshal(values)
+	if err != nil {
+		return fmt.Sprint(values)
+	}
+	return model.JSON(b)
+}
+
+// documentRows is the one document a JSON key holds. The server answers the
+// root path as an array of the values it matched, which is one here.
+func documentRows(node keyReader, name string, cols []model.ColumnDef) piece {
+	return func(ctx context.Context, _ uint64) ([]model.Row, uint64, error) {
+		text, err := node.JSONGet(ctx, name, "$").Result()
+		if errors.Is(err, goredis.Nil) || text == "" {
+			return nil, 0, nil
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		return []model.Row{{name, document(text)}}, 0, nil
+	}
+}
+
+// document unwraps what JSON.GET answers for the root path: the one value it
+// matched, as JSON, or what the server said where it is not the array of one
+// that it should be.
+func document(text string) any {
+	var matched []json.RawMessage
+	if err := json.Unmarshal([]byte(text), &matched); err != nil || len(matched) != 1 {
+		return model.JSON(text)
+	}
+	return model.JSON(matched[0])
 }
 
 // value is what the server held, as the grid takes it. Redis strings are

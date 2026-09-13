@@ -1,7 +1,6 @@
 package redis
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -80,6 +79,13 @@ func TestAChangeIsTheCommandItWouldSend(t *testing.T) {
 		{"zset", source.RowChange{Kind: source.ChangeUpdate, Key: []any{"Grace"},
 			Values: map[string]any{"member": "Hopper"}}, "ZREM user:1 Grace ; ZADD user:1 7 Hopper", "Change Grace"},
 		{"zset", source.RowChange{Kind: source.ChangeDelete, Key: []any{"Grace"}}, "ZREM user:1 Grace", "Remove Grace"},
+		{"stream", source.RowChange{Kind: source.ChangeInsert,
+			Values: map[string]any{"fields": `{"what":"started","by":"Ada"}`}},
+			"XADD user:1 * by Ada what started", "Add an entry"},
+		{"stream", source.RowChange{Kind: source.ChangeDelete, Key: []any{"1700000000000-0"}},
+			"XDEL user:1 1700000000000-0", "Delete the entry 1700000000000-0"},
+		{"ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate, Key: []any{"user:1"},
+			Values: map[string]any{"value": `{"a": 1}`}}, `JSON.SET user:1 $ {"a": 1}`, "Set the document user:1"},
 	}
 	for _, c := range cases {
 		command, said := rendered(t, c.kind, "user:1", c.change)
@@ -125,6 +131,18 @@ func TestAChangeAKindCannotTakeIsRefused(t *testing.T) {
 			Key: []any{"city"}, Values: map[string]any{"value": model.Removed{}}}, "take away"},
 		{"a score is a number", "zset", source.RowChange{Kind: source.ChangeInsert,
 			Values: map[string]any{"member": "Grace", "score": "high"}}, "not a score"},
+		{"an entry is written once", "stream", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"1-0"}, Values: map[string]any{"fields": `{"a":1}`}}, "written once"},
+		{"an entry's fields are an object of them", "stream", source.RowChange{Kind: source.ChangeInsert,
+			Values: map[string]any{"fields": `["a", 1]`}}, "JSON object"},
+		{"an entry with nothing in it", "stream", source.RowChange{Kind: source.ChangeInsert,
+			Values: map[string]any{"fields": "{}"}}, "no fields"},
+		{"a document is one value", "ReJSON-RL", source.RowChange{Kind: source.ChangeInsert,
+			Values: map[string]any{"value": "{}"}}, "one document"},
+		{"and a key is renamed on its own", "ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"user:1"}, Values: map[string]any{"key": "user:2"}}, "renamed"},
+		{"a JSON key holds JSON", "ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"user:1"}, Values: map[string]any{"value": "{not json"}}, "is not"},
 	}
 	for _, c := range cases {
 		if says := refused(t, c.kind, "user:1", c.change); !strings.Contains(says, c.says) {
@@ -134,19 +152,19 @@ func TestAChangeAKindCannotTakeIsRefused(t *testing.T) {
 }
 
 func TestNothingHereReadsWhatItCannotWrite(t *testing.T) {
-	// The kinds T2.42 brings are named as what they are, and a kind nothing
-	// knows is not taken for one of them.
-	for _, kind := range []string{"stream", "ReJSON-RL"} {
+	// A kind nothing here reads is said to be that, by name: a time series
+	// is a module's, as JSON is, and nothing pretends to read one.
+	for _, kind := range []string{"timeseries", "TSDB-TYPE", "MBbloom--"} {
 		_, _, err := valueColumns(kind)
-		if !errors.Is(err, errNotYet) || !strings.Contains(err.Error(), kind) {
-			t.Errorf("%s: %v; it is coming, and the message says which", kind, err)
+		if err == nil || !strings.Contains(err.Error(), kind) {
+			t.Errorf("a kind nothing here reads: %v", err)
 		}
 	}
-	// A kind nothing here reads is not one of those: it is not coming, it is
-	// unknown, and saying otherwise would promise a task that is not there.
-	_, _, err := valueColumns("timeseries")
-	if err == nil || errors.Is(err, errNotYet) {
-		t.Errorf("a kind nothing here reads: %v", err)
+	// And the kinds that are read are read: every one the server names.
+	for _, kind := range []string{"string", "hash", "list", "set", "zset", "stream", "ReJSON-RL"} {
+		if _, _, err := valueColumns(kind); err != nil {
+			t.Errorf("%s: %v", kind, err)
+		}
 	}
 }
 
@@ -155,11 +173,13 @@ func TestWhatAKindOfValueLooksLike(t *testing.T) {
 		cols []string
 		id   string
 	}{
-		"string": {[]string{"key", "value"}, "key"},
-		"hash":   {[]string{"field", "value"}, "field"},
-		"list":   {[]string{"index", "value"}, "index"},
-		"set":    {[]string{"member"}, "member"},
-		"zset":   {[]string{"member", "score"}, "member"},
+		"string":    {[]string{"key", "value"}, "key"},
+		"stream":    {[]string{"id", "fields"}, "id"},
+		"ReJSON-RL": {[]string{"key", "value"}, "key"},
+		"hash":      {[]string{"field", "value"}, "field"},
+		"list":      {[]string{"index", "value"}, "index"},
+		"set":       {[]string{"member"}, "member"},
+		"zset":      {[]string{"member", "score"}, "member"},
 	}
 	for kind, want := range cases {
 		cols, id, err := valueColumns(kind)
@@ -190,6 +210,17 @@ func TestWhatAKindOfValueLooksLike(t *testing.T) {
 	zset, _, _ := valueColumns("zset")
 	if zset[1].Type.Class != model.TypeFloat {
 		t.Errorf("a score is %v", zset[1].Type.Class)
+	}
+	// An entry's id is the server's to give, and a document's key is its
+	// address: neither is typed over. Both values are JSON, so the cell
+	// viewer shows them as the structure they are.
+	stream, _, _ := valueColumns("stream")
+	doc, _, _ := valueColumns("ReJSON-RL")
+	if !stream[0].ReadOnly || !doc[0].ReadOnly {
+		t.Error("the address of a value is not something to type over")
+	}
+	if stream[1].Type.Class != model.TypeJSON || doc[1].Type.Class != model.TypeJSON {
+		t.Errorf("an entry's fields are %v and a document is %v", stream[1].Type.Class, doc[1].Type.Class)
 	}
 }
 

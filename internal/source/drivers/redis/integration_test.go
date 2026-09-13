@@ -760,9 +760,10 @@ func TestLiveRefusesWhatAValueCannotBeAsked(t *testing.T) {
 			Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"Ada"}}}}},
 		"anything but the part a row is known by": {valueRef("scores"), source.BrowseOptions{
 			Filters: []source.Filter{{Column: "score", Op: source.OpGreater, Values: []any{1}}}}},
+		"part of a stream": {valueRef("events"), source.BrowseOptions{
+			Filters: []source.Filter{{Column: "id", Op: source.OpEqual, Values: []any{"1-0"}}}}},
 		"a key that is not there":   {valueRef("nobody"), source.BrowseOptions{}},
 		"a key with no name at all": {model.NewRef(model.KindKey, "db1", ""), source.BrowseOptions{}},
-		"a kind nothing here reads": {valueRef("events"), source.BrowseOptions{}},
 	}
 	for what, c := range refused {
 		rs, err := src.Browse(ctx, c.ref, c.opt)
@@ -778,9 +779,13 @@ func TestLiveRefusesWhatAValueCannotBeAsked(t *testing.T) {
 		t.Errorf("a key that is not there: %v", err)
 	}
 
-	// The kind that is not read yet says which task brings it.
-	if _, err := src.Browse(ctx, valueRef("events"), source.BrowseOptions{}); !errors.Is(err, errNotYet) {
-		t.Errorf("a stream: %v", err)
+	// A kind nothing here reads is said to be that, by name, rather than
+	// read as something it is not. A time series is a module's, as JSON is.
+	if err := conn(t, src, 1).Do(ctx, "set", "counter", "1").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := valueColumns("TSDB-TYPE"); err == nil || !strings.Contains(err.Error(), "TSDB-TYPE") {
+		t.Errorf("a time series: %v", err)
 	}
 }
 
@@ -1078,5 +1083,157 @@ func TestLiveSaysWhatARowOfTheKeyspaceNames(t *testing.T) {
 	}
 	if _, named := ro.ObjectOf(db, cols, model.Row{nil, "string", nil}); named {
 		t.Error("a row with no name named a key")
+	}
+}
+
+// jsonPort is a Redis with the JSON module, which is a container of its own:
+// a plain server holds no document, and a module is not something it can be
+// asked for.
+func jsonPort() int {
+	if v := os.Getenv("IKIGAI_REDIS_JSON_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			return p
+		}
+	}
+	return 56380
+}
+
+func TestLiveReadsAndWritesAStream(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	c := conn(t, src, 1)
+	events := valueRef("events")
+
+	// An entry's fields are its own, so they are one value rather than
+	// columns some entries have and others do not.
+	entries, cols := rows(t, src, events, source.BrowseOptions{})
+	if len(cols) != 2 || cols[0].Name != "id" || cols[1].Name != "fields" {
+		t.Fatalf("a stream shows %+v", cols)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("the stream holds %v", entries)
+	}
+	if fields, ok := entries[0][1].(model.JSON); !ok || !strings.Contains(string(fields), `"what":"started"`) {
+		t.Errorf("the entry holds %v", entries[0][1])
+	}
+
+	// More entries than the server hands back at once, read in the order
+	// they were written and paged through by id.
+	for i := 0; i < 300; i++ {
+		if err := c.XAdd(ctx, &goredis.XAddArgs{Stream: "events",
+			Values: map[string]any{"n": i}}).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := src.(source.Countable).Count(ctx, events, source.BrowseOptions{}); err != nil || n != 301 {
+		t.Errorf("the stream holds %d entries: %v", n, err)
+	}
+	all, _ := rows(t, src, events, source.BrowseOptions{Limit: 301})
+	if len(all) != 301 {
+		t.Fatalf("the stream read to %d entries", len(all))
+	}
+	for _, offset := range []int64{0, 137, 251} {
+		page, _ := rows(t, src, events, source.BrowseOptions{Offset: offset, Limit: 25})
+		if len(page) != 25 {
+			t.Fatalf("the page at %d holds %d entries", offset, len(page))
+		}
+		for i, row := range page {
+			if want := all[offset+int64(i)][0]; row[0] != want {
+				t.Fatalf("the page at %d holds %v where the stream holds %v", offset, row[0], want)
+			}
+		}
+	}
+
+	// An entry is added and deleted, and never changed.
+	added := change(t, src, events, []string{"id"}, source.RowChange{
+		Kind: source.ChangeInsert, Values: map[string]any{"fields": `{"what":"stopped","by":"Grace"}`}})
+	if added.Err != nil || added.Applied != 1 {
+		t.Fatalf("adding an entry: %+v", added)
+	}
+	last, err := c.XRevRangeN(ctx, "events", "+", "-", 1).Result()
+	if err != nil || len(last) != 1 || last[0].Values["by"] != "Grace" {
+		t.Fatalf("the entry added is %v: %v", last, err)
+	}
+	deleted := change(t, src, events, []string{"id"}, source.RowChange{
+		Kind: source.ChangeDelete, Key: []any{last[0].ID}})
+	if deleted.Err != nil {
+		t.Errorf("deleting an entry: %+v", deleted)
+	}
+	if n, err := c.XLen(ctx, "events").Result(); err != nil || n != 301 {
+		t.Errorf("the stream holds %d entries after the delete: %v", n, err)
+	}
+	// An entry that has gone is a row changed since it was read.
+	gone := change(t, src, events, []string{"id"}, source.RowChange{
+		Kind: source.ChangeDelete, Key: []any{last[0].ID}})
+	if !errors.Is(gone.Err, sqlscript.ErrNoRow) {
+		t.Errorf("deleting an entry that has gone: %+v", gone)
+	}
+}
+
+func TestLiveReadsAndWritesAJSONDocument(t *testing.T) {
+	cfg := source.ConnectionConfig{DriverID: driverID, Host: "127.0.0.1", Port: jsonPort(), Database: "0",
+		TLS: source.TLSConfig{Mode: "disable"}}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	src, err := Driver{}.Open(ctx, cfg)
+	if err != nil {
+		if os.Getenv("IKIGAI_REQUIRE_REDIS_JSON") != "" {
+			t.Fatalf("a redis with the JSON module is required but unavailable: %v", err)
+		}
+		t.Skipf("no redis with JSON on port %d (docker start ikigai-redis-json): %v", jsonPort(), err)
+	}
+	defer src.Close()
+	c := src.(*redisSource).client.(*goredis.Client)
+	if err := c.JSONSet(ctx, "profile", "$", `{"name":"Ada","tags":["maths","engines"]}`).Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Del(context.Background(), "profile") })
+
+	profile := model.NewRef(model.KindKey, "db0", "profile")
+	held, cols := rows(t, src, profile, source.BrowseOptions{})
+	if len(cols) != 2 || cols[1].Name != "value" || cols[1].Type.Class != model.TypeJSON {
+		t.Fatalf("a document shows %+v", cols)
+	}
+	if len(held) != 1 || held[0][0] != "profile" {
+		t.Fatalf("the key holds %v", held)
+	}
+	// The server answers the root path as an array of what it matched, and
+	// the one it matched is the document.
+	doc, ok := held[0][1].(model.JSON)
+	if !ok || !strings.HasPrefix(strings.TrimSpace(string(doc)), "{") {
+		t.Fatalf("the document is %v", held[0][1])
+	}
+	if !strings.Contains(string(doc), `"Ada"`) {
+		t.Errorf("the document holds %s", doc)
+	}
+	if n, err := src.(source.Countable).Count(ctx, profile, source.BrowseOptions{}); err != nil || n != 1 {
+		t.Errorf("a document is %d rows: %v", n, err)
+	}
+
+	// It is set whole, as a string is.
+	out := change(t, src, profile, []string{"key"}, source.RowChange{Kind: source.ChangeUpdate,
+		Key: []any{"profile"}, Values: map[string]any{"value": `{"name":"Grace","rank":"rear admiral"}`}})
+	if out.Err != nil {
+		t.Fatalf("setting a document: %+v", out)
+	}
+	after, err := c.JSONGet(ctx, "profile", "$.name").Result()
+	if err != nil || !strings.Contains(after, "Grace") {
+		t.Errorf("the document holds %s: %v", after, err)
+	}
+	// A key that is not a document is not read as one, and a document is not
+	// filtered or sorted: it is one value.
+	if err := c.Set(ctx, "plain", "text", 0).Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Del(context.Background(), "plain") })
+	plain, _ := rows(t, src, model.NewRef(model.KindKey, "db0", "plain"), source.BrowseOptions{})
+	if len(plain) != 1 || plain[0][1] != "text" {
+		t.Errorf("a string on a server with modules holds %v", plain)
+	}
+	if rs, err := src.Browse(ctx, profile, source.BrowseOptions{
+		Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"x"}}}}); err == nil {
+		rs.Close()
+		t.Error("a document was narrowed")
 	}
 }
