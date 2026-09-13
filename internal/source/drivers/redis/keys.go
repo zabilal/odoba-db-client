@@ -218,8 +218,11 @@ func scanOf(opt source.BrowseOptions) (scanTerms, error) {
 	if len(opt.Sorts) > 0 {
 		return t, errors.New("redis: SCAN walks the keyspace in no order, so keys cannot be sorted")
 	}
-	if strings.TrimSpace(opt.Where) != "" {
-		return t, errors.New("redis: there is no query language here, so there is no condition to write")
+	if where := strings.TrimSpace(opt.Where); where != "" {
+		// A condition here is a pattern the names are matched by: it is what
+		// the server can be told about a name, so it is what the box that
+		// takes a condition means (FR-3.6).
+		t.match = where
 	}
 	for _, f := range opt.Filters {
 		if f.Negate {

@@ -23,10 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.44 — the raw command console, which is Redis's own language at
-           a prompt. The connection (T2.39), the key browser (T2.40), the
-           editors for every kind a key holds (T2.41, T2.42) and a key's own
-           time to live (T2.43) are done; 2.D and 2.E are done.
+NEXT TASK: T2.45 — the memory and keyspace info panel. What is left of 2.F
+           after it is T2.46 (conformance green, which will want a key-value
+           paradigm in the shared suite as T2.38 wanted a document one).
+           2.D and 2.E are done.
            T2.21's new table waits on the table designer (3.A). What is
            open in Phase 1
            waits on other work: T1.58 on the MongoDB and Redis drivers,
@@ -40,8 +40,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            (56380, redis-stack, for the JSON module), and
            ikigai-redis-cluster (three shards on 7001-7003, published as
            themselves so each is reachable where it announces itself).
-LAST DONE: 2026-09-13 — a key's own time to live and name, edited in the
-           keyspace (T2.43, ADR-0076); a stream's entries and a JSON
+LAST DONE: 2026-09-13 — the Redis console, its commands being its language
+           (T2.44, ADR-0077); a key's own time to live and name, edited in
+           the keyspace (T2.43, ADR-0076); a stream's entries and a JSON
            document, the last two kinds a key holds (T2.42, ADR-0075); the editors for what a key
            holds, which are the grid five times (T2.41, ADR-0074); the Redis key browser, a database's
            keys in the grid (T2.40, ADR-0073). 2026-09-12 — the Redis connection, three
@@ -455,7 +456,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.41** Editors: string, hash, list, set, sorted set → FR-12.2 — *every kind of value is rows of its own shape, so the five editors are the grid five times: a hash is its fields, a list its elements in order, a set its members, a sorted set its members and scores, a string the one value it is. The column a row is known by is the one the server addresses it with, and the two that are addresses rather than contents — a key's name, an element's position — are read-only. A row of a keyspace is an object of its own: `source.RowObject` with `Data.RowObjects`, and View ▸ Open What the Row Holds, so the UI still knows nothing about Redis. A plan asks what the key is before it writes a word; each change looks before it writes, so a part that has gone fails as a row changed since it was read and one that is there already is refused rather than written over; a part renamed moves in one transaction carrying what it holds. What Redis cannot do is refused in its own words, a value is text where it is text and bytes where it is not, and setting a string keeps its expiry (ADR-0074)*
 - [x] **T2.42** Editors: JSON, stream → FR-12.2 — *a stream is its entries in the order they were written, the id beside the fields it was added with — one value rather than columns, because they are the entry's own — paged by id with `XRANGE` from the last one read; an entry is written once, added or deleted and never changed, and the server gives it the id that orders it. A JSON document is one value as a string is: one row, the key beside the document, typed as JSON so the cell viewer reads and writes the structure, set whole with `JSON.SET $` and refused before it is sent if it is not JSON. Neither is narrowed by the server, and a kind nothing here reads is said to be that by name (ADR-0075)*
 - [x] **T2.43** TTL display and edit → FR-12.2 — *the keyspace's rows are edited where they are shown: a change to one is a change to the key itself rather than to what it holds, so the writer takes a database as a target as well as a key. A time to live is read however it is written — a bare number is seconds, anything else a length of time as Go writes one, and nothing at all (an empty cell, a value taken away, the -1 the server itself answers) is a key that never expires, which is `PERSIST` and no failure to do twice. An expiry of nothing does not delete the key, a key is renamed with `RENAMENX` so another is never written over, and a key is deleted from the keyspace and never added there, because a key comes into being when something is written to it. A cluster sends each command to the shard that holds the key it names (ADR-0076)*
-- [ ] **T2.44** Raw command console → FR-12.2
+- [x] **T2.44** Raw command console → FR-12.2 — *Redis's own commands are its query language: a command is a line, read as redis-cli reads one (words apart, `"…"` with its escapes, `'…'` where only the quote is, a quote left open an error), and a `#` line is a comment. A console holds a connection of its own, so `SELECT` moves it and nothing else and `MULTI` and `WATCH` are its own state; a cluster's console is the cluster, each command going to the shard its key names. What a command does is read from its name — the reading ones listed, the server-changing ones listed, everything else a write — and every command of a script is put to the guard before the first runs; `SUBSCRIBE` and `MONITOR` are refused outright, being commands that stop a connection answering. A reply is drawn as what it is: a word, a number, a list, a list of lists, the pairs of a map, with what is nested shown as the structure it is and a reply of nothing an answer. Redis is a lexer dialect of its own, a condition typed in the grid is the pattern names are matched by, and the grid is shown the command a browse sends (ADR-0077)*
 - [ ] **T2.45** Memory / keyspace info panel → FR-12.2
 - [ ] **T2.46** Conformance green
 

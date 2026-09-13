@@ -76,6 +76,11 @@ func TestTheServerIsAskedForThePatternAndTheKind(t *testing.T) {
 		{"a pattern", source.BrowseOptions{Filters: []source.Filter{keyFilter("key", source.OpLike, "user:%")}}, "user:*", ""},
 		{"one character", source.BrowseOptions{Filters: []source.Filter{keyFilter("key", source.OpLike, "user:_")}}, "user:?", ""},
 		{"a kind", source.BrowseOptions{Filters: []source.Filter{keyFilter("type", source.OpEqual, "hash")}}, "", "hash"},
+		// A condition typed in the grid is a pattern, as the server matches
+		// names by, and it is taken as it is written.
+		{"a condition", source.BrowseOptions{Where: " user:* "}, "user:*", ""},
+		{"a condition and a kind", source.BrowseOptions{Where: "user:*",
+			Filters: []source.Filter{keyFilter("type", source.OpEqual, "set")}}, "user:*", "set"},
 		{"both", source.BrowseOptions{Filters: []source.Filter{
 			keyFilter("key", source.OpLike, "user:%"), keyFilter("type", source.OpEqual, "zset")}}, "user:*", "zset"},
 	}
@@ -121,14 +126,16 @@ func TestAGlobMatchesTheNameAndNothingElse(t *testing.T) {
 
 func TestWhatTheServerCannotDoIsRefused(t *testing.T) {
 	cases := map[string]source.BrowseOptions{
-		"an order the keyspace has not":              {Sorts: []source.Sort{{Column: "key"}}},
-		"a condition in a language there is none of": {Where: "key like 'a%'"},
-		"a column a key has not got":                 {Filters: []source.Filter{keyFilter("value", source.OpEqual, "x")}},
-		"keys picked by how long they have left":     {Filters: []source.Filter{keyFilter("ttl", source.OpGreater, 60)}},
-		"a kind no key is":                           {Filters: []source.Filter{keyFilter("type", source.OpEqual, "table")}},
-		"a kind asked for as a range":                {Filters: []source.Filter{keyFilter("type", source.OpGreater, "hash")}},
-		"names matched by a regular expression":      {Filters: []source.Filter{keyFilter("key", source.OpRegex, "^user")}},
-		"names that do not match":                    {Filters: []source.Filter{{Column: "key", Op: source.OpEqual, Values: []any{"a"}, Negate: true}}},
+		"an order the keyspace has not": {Sorts: []source.Sort{{Column: "key"}}},
+		// A condition here is a pattern, and a walk takes one pattern.
+		"a condition beside a pattern": {Where: "user:*", Filters: []source.Filter{
+			keyFilter("key", source.OpLike, "a%")}},
+		"a column a key has not got":             {Filters: []source.Filter{keyFilter("value", source.OpEqual, "x")}},
+		"keys picked by how long they have left": {Filters: []source.Filter{keyFilter("ttl", source.OpGreater, 60)}},
+		"a kind no key is":                       {Filters: []source.Filter{keyFilter("type", source.OpEqual, "table")}},
+		"a kind asked for as a range":            {Filters: []source.Filter{keyFilter("type", source.OpGreater, "hash")}},
+		"names matched by a regular expression":  {Filters: []source.Filter{keyFilter("key", source.OpRegex, "^user")}},
+		"names that do not match":                {Filters: []source.Filter{{Column: "key", Op: source.OpEqual, Values: []any{"a"}, Negate: true}}},
 		"two patterns at once": {Filters: []source.Filter{
 			keyFilter("key", source.OpLike, "a%"), keyFilter("key", source.OpLike, "b%")}},
 		"a pattern of several values": {Filters: []source.Filter{keyFilter("key", source.OpLike, "a%", "b%")}},

@@ -152,6 +152,34 @@ var Mongosh = &Dialect{
 	BackslashEscapes:    true,
 }
 
+// Redis is the console's language: commands, one to a line, whose arguments
+// are words or quoted strings. It is not SQL at all, and shares this lexer
+// because what the editor needs of a language — its strings, its comments and
+// its words — is the same either way.
+var Redis = &Dialect{
+	Name: "redis",
+	Keywords: words(`
+		get set setnx setex getset getdel getex mget mset msetnx append strlen setrange getrange incr decr
+		incrby decrby incrbyfloat del unlink exists expire pexpire expireat pexpireat persist ttl pttl
+		type rename renamenx keys scan randomkey touch dump restore copy move select swapdb
+		hget hset hsetnx hmget hmset hdel hgetall hkeys hvals hlen hexists hincrby hscan hrandfield
+		lpush rpush lpushx rpushx lpop rpop lrange llen lindex lset linsert lrem ltrim lmove lpos
+		sadd srem smembers scard sismember smismember spop srandmember sscan sinter sunion sdiff
+		sinterstore sunionstore sdiffstore smove
+		zadd zrem zscore zmscore zincrby zcard zcount zrange zrangebyscore zrevrange zrank zrevrank
+		zscan zpopmin zpopmax zrandmember zremrangebyrank zremrangebyscore
+		xadd xdel xrange xrevrange xlen xtrim xinfo xgroup xread xack xautoclaim xpending
+		json.get json.set json.del json.type json.arrappend json.arrlen json.objkeys json.objlen
+		multi exec discard watch unwatch
+		info dbsize ping echo time lastsave flushdb flushall config client acl cluster command object
+		memory latency slowlog script function debug module save bgsave bgrewriteaof shutdown
+		match count limit nx xx gt lt ex px exat pxat keepttl withscores rev byscore bylex store
+	`),
+	DoubleQuotedStrings: true,
+	BackslashEscapes:    true,
+	HashComment:         true,
+}
+
 // dialects maps a source's declared query language (capability.Query.Language)
 // to a lexer dialect.
 var dialects = map[string]*Dialect{
@@ -168,6 +196,8 @@ var dialects = map[string]*Dialect{
 	"cassandra":   CQL,
 	"mongosh":     Mongosh,
 	"mongodb":     Mongosh,
+	"redis":       Redis,
+	"valkey":      Redis,
 }
 
 // Known reports whether a language name resolves to a dialect of its own
