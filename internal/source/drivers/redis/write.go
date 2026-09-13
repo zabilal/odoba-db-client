@@ -39,6 +39,9 @@ var _ source.Writer = (*redisSource)(nil)
 // Plan renders a changeset as the commands it would send.
 func (s *redisSource) Plan(ctx context.Context, cs source.Changeset) (_ *source.WritePlan, err error) {
 	defer panics.Recover(&err, "planning a write")
+	if cs.Target.Kind == model.KindDatabase {
+		return s.planKeyspace(cs)
+	}
 	_, name, err := keyOf(cs.Target)
 	if err != nil {
 		return nil, err
@@ -79,6 +82,9 @@ func (s *redisSource) Apply(ctx context.Context, plan *source.WritePlan) (_ *sou
 	defer panics.Recover(&err, "writing a value")
 	if err := sqlscript.AllowWrites(s.cfg.Guard, plan); err != nil {
 		return nil, err
+	}
+	if plan.Target.Kind == model.KindDatabase {
+		return s.applyKeyspace(ctx, plan)
 	}
 	_, name, err := keyOf(plan.Target)
 	if err != nil {
@@ -643,6 +649,11 @@ type writer interface {
 	ZAdd(ctx context.Context, key string, members ...goredis.Z) *goredis.IntCmd
 	ZRem(ctx context.Context, key string, members ...any) *goredis.IntCmd
 	ZScore(ctx context.Context, key, member string) *goredis.FloatCmd
+	Del(ctx context.Context, keys ...string) *goredis.IntCmd
+	Exists(ctx context.Context, keys ...string) *goredis.IntCmd
+	Persist(ctx context.Context, key string) *goredis.BoolCmd
+	PExpire(ctx context.Context, key string, expiration time.Duration) *goredis.BoolCmd
+	RenameNX(ctx context.Context, key, newkey string) *goredis.BoolCmd
 	XAdd(ctx context.Context, a *goredis.XAddArgs) *goredis.StringCmd
 	XDel(ctx context.Context, stream string, ids ...string) *goredis.IntCmd
 	JSONSet(ctx context.Context, key, path string, value any) *goredis.StatusCmd
@@ -755,4 +766,62 @@ func quote(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// planKeyspace renders changes to a database's keys: how long each has left,
+// what it is called, and whether it is there at all (T2.43).
+func (s *redisSource) planKeyspace(cs source.Changeset) (*source.WritePlan, error) {
+	if _, err := keyspaceOf(cs.Target); err != nil {
+		return nil, err
+	}
+	if !insertsOnly(cs.Changes) && !cs.Identity.Editable() {
+		return nil, errors.New("these keys have nothing to tell them apart, so they cannot be written")
+	}
+	if k := cs.Identity.Columns; len(cs.Changes) > 0 && !insertsOnly(cs.Changes) && (len(k) != 1 || k[0] != "key") {
+		return nil, fmt.Errorf("a key is told from another by its name, and these changes are keyed by %s",
+			strings.Join(k, ", "))
+	}
+	plan := &source.WritePlan{
+		Target:  cs.Target,
+		Atomic:  false,
+		Guarded: s.cfg.Guard.RequiresConfirmation(source.AccessWrite),
+	}
+	for i, c := range cs.Changes {
+		w, desc, err := keyspaceWrite(c)
+		if err != nil {
+			return nil, fmt.Errorf("change %d: %w", i+1, err)
+		}
+		plan.Statements = append(plan.Statements, source.Statement{SQL: w.command, Op: w, Confirmed: cs.Confirmed})
+		plan.Descriptions = append(plan.Descriptions, desc)
+	}
+	return plan, nil
+}
+
+// applyKeyspace sends a keyspace plan's commands in order.
+func (s *redisSource) applyKeyspace(ctx context.Context, plan *source.WritePlan) (*source.WriteOutcome, error) {
+	var node writer
+	var done func()
+	return sqlscript.ApplyWith(plan, func(st source.Statement) (int64, error) {
+		w, ok := st.Op.(*valueWrite)
+		if !ok {
+			return 0, errors.New("redis: this plan was not made here")
+		}
+		if node == nil {
+			var err error
+			if node, done, err = s.keyspaceNode(ctx, plan.Target); err != nil {
+				return 0, err
+			}
+		}
+		return w.run(ctx, node, "")
+	}, func() error {
+		if done != nil {
+			done()
+		}
+		return nil
+	}, func() error {
+		if done != nil {
+			done()
+		}
+		return errNoRollback
+	}), nil
 }
