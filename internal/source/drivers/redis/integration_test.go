@@ -507,6 +507,23 @@ func TestLiveWalksAClustersKeyspace(t *testing.T) {
 		t.Error("a cluster answered about a numbered database")
 	}
 
+	// A change to one key has one place to go, wherever the walk began: the
+	// client sends each command to the shard that holds the key it names.
+	if out := change(t, src, nodes[0].Ref, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"alpha"}, Values: map[string]any{"ttl": "30m"}}); out.Err != nil {
+		t.Fatalf("setting an expiry in a cluster: %+v", out)
+	}
+	if left, err := c.TTL(ctx, "alpha").Result(); err != nil || left <= 0 {
+		t.Errorf("alpha has %v left: %v", left, err)
+	}
+	if out := change(t, src, nodes[0].Ref, []string{"key"}, source.RowChange{
+		Kind: source.ChangeDelete, Key: []any{"scores"}}); out.Err != nil {
+		t.Fatalf("deleting a key in a cluster: %+v", out)
+	}
+	if n, err := c.Exists(ctx, "scores").Result(); err != nil || n != 0 {
+		t.Errorf("the key deleted is still there: %v %v", n, err)
+	}
+
 	// What a key holds is read from the shard that holds the key, whichever
 	// shard the connection began with.
 	if err := c.HSet(ctx, "queue:fields", "city", "London").Err(); err != nil {
@@ -1235,5 +1252,126 @@ func TestLiveReadsAndWritesAJSONDocument(t *testing.T) {
 		Filters: []source.Filter{{Column: "value", Op: source.OpEqual, Values: []any{"x"}}}}); err == nil {
 		rs.Close()
 		t.Error("a document was narrowed")
+	}
+}
+
+func TestLiveChangesAKeyItself(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	c := conn(t, src, 1)
+	db := model.NewRef(model.KindDatabase, "db1")
+
+	// How long a key has left is set where it is shown.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"user:1"}, Values: map[string]any{"ttl": "30m"}}); out.Err != nil {
+		t.Fatalf("setting an expiry: %+v", out)
+	}
+	left, err := c.TTL(ctx, "user:1").Result()
+	if err != nil || left <= 29*time.Minute || left > 30*time.Minute {
+		t.Errorf("user:1 has %v left: %v", left, err)
+	}
+	// And taken away: a key that never expires is what an empty cell means.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"user:1"}, Values: map[string]any{"ttl": nil}}); out.Err != nil {
+		t.Fatalf("taking an expiry away: %+v", out)
+	}
+	if left, err := c.TTL(ctx, "user:1").Result(); err != nil || left >= 0 {
+		t.Errorf("user:1 has %v left: %v", left, err)
+	}
+	// Doing that again is no failure: it already never expires.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"user:1"}, Values: map[string]any{"ttl": ""}}); out.Err != nil {
+		t.Errorf("a key that never expires, told not to: %+v", out)
+	}
+
+	// A key is renamed, and not onto one that is there.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"user:1"}, Values: map[string]any{"key": "user:9"}}); out.Err != nil {
+		t.Fatalf("renaming a key: %+v", out)
+	}
+	if v, err := c.Get(ctx, "user:9").Result(); err != nil || v != "Ada" {
+		t.Errorf("the key renamed holds %q: %v", v, err)
+	}
+	onto := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeUpdate, Key: []any{"user:9"}, Values: map[string]any{"key": "user:2"}})
+	if onto.Err == nil || !strings.Contains(onto.Err.Error(), "already") {
+		t.Errorf("a key renamed onto one that is there: %+v", onto)
+	}
+	if v, err := c.Get(ctx, "user:2").Result(); err != nil || v != "Grace" {
+		t.Errorf("the key renamed onto holds %q: %v", v, err)
+	}
+
+	// A key is deleted here, which is the only place a whole one can be.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{
+		Kind: source.ChangeDelete, Key: []any{"queue"}}); out.Err != nil {
+		t.Fatalf("deleting a key: %+v", out)
+	}
+	if n, err := c.Exists(ctx, "queue").Result(); err != nil || n != 0 {
+		t.Errorf("the key deleted is still there: %v %v", n, err)
+	}
+
+	// A key that has gone is a row changed since it was read, whichever
+	// change it was.
+	for what, ch := range map[string]source.RowChange{
+		"deleting":   {Kind: source.ChangeDelete, Key: []any{"queue"}},
+		"expiring":   {Kind: source.ChangeUpdate, Key: []any{"queue"}, Values: map[string]any{"ttl": "1h"}},
+		"persisting": {Kind: source.ChangeUpdate, Key: []any{"queue"}, Values: map[string]any{"ttl": nil}},
+		"renaming":   {Kind: source.ChangeUpdate, Key: []any{"queue"}, Values: map[string]any{"key": "line"}},
+	} {
+		if out := change(t, src, db, []string{"key"}, ch); !errors.Is(out.Err, sqlscript.ErrNoRow) {
+			t.Errorf("%s a key that has gone: %+v", what, out)
+		}
+	}
+
+	// A key is added by writing a value, not a row.
+	added, err := src.(source.Writer).Plan(ctx, source.Changeset{Target: db,
+		Identity: model.RowIdentity{Kind: model.IdentityKeyName, Columns: []string{"key"}, Target: db},
+		Changes:  []source.RowChange{{Kind: source.ChangeInsert, Values: map[string]any{"key": "nobody"}}}})
+	if err == nil {
+		t.Errorf("a key added as a row: %+v", added)
+	}
+	// And the keys are told apart by their names, not by anything else.
+	if _, err := src.(source.Writer).Plan(ctx, source.Changeset{Target: db,
+		Identity: model.RowIdentity{Kind: model.IdentityKeyName, Columns: []string{"type"}, Target: db},
+		Changes:  []source.RowChange{{Kind: source.ChangeDelete, Key: []any{"string"}}}}); err == nil {
+		t.Error("keys keyed by their kind")
+	}
+}
+
+func TestLiveRefusesToChangeAKeyWhereItMayNot(t *testing.T) {
+	src := live(t, liveConfig("1"))
+	seed(t, src, 1)
+	ctx := context.Background()
+	db := model.NewRef(model.KindDatabase, "db1")
+	cs := source.Changeset{Target: db,
+		Identity: model.RowIdentity{Kind: model.IdentityKeyName, Columns: []string{"key"}, Target: db},
+		Changes:  []source.RowChange{{Kind: source.ChangeDelete, Key: []any{"tags"}}}}
+
+	ro := liveConfig("1")
+	ro.Guard = source.Guard{ReadOnly: true}
+	rw := live(t, ro).(source.Writer)
+	plan, err := rw.Plan(ctx, cs)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := rw.Apply(ctx, plan); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection deleted a key: %v", err)
+	}
+	prod := liveConfig("1")
+	prod.Guard = source.Guard{Environment: source.EnvProduction}
+	pw := live(t, prod).(source.Writer)
+	plan, err = pw.Plan(ctx, cs)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if !plan.Guarded {
+		t.Error("a production plan is not guarded")
+	}
+	if _, err := pw.Apply(ctx, plan); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	if n, err := conn(t, src, 1).Exists(ctx, "tags").Result(); err != nil || n != 1 {
+		t.Errorf("the key is gone before anybody consented: %v %v", n, err)
 	}
 }
