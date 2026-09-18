@@ -299,6 +299,28 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 		for _, g := range v.Figures {
 			add(section(g.Title, figureRows(g.Values)))
 		}
+	case *model.Cluster:
+		// A cluster has no columns either. What there is to say is who its
+		// brokers are, which of them answers for the whole, and what it calls
+		// itself (FR-13.1).
+		add(quietLabel(clusterHolds(v)))
+		if len(v.Brokers) == 0 {
+			add(plain("This cluster named no brokers."))
+		} else {
+			rows := [][]string{{"Broker", "Address", "Rack"}}
+			for _, b := range v.Brokers {
+				name := fmt.Sprintf("%d", b.ID)
+				if b.ID == v.Controller {
+					// Said on the row rather than in a legend elsewhere.
+					name += " (controller)"
+				}
+				rows = append(rows, []string{name, fmt.Sprintf("%s:%d", b.Host, b.Port), b.Rack})
+			}
+			add(section("Brokers", rows))
+		}
+		if len(v.Attrs) > 0 {
+			add(section("What it says about itself", attrRows(v.Attrs)))
+		}
 	case *model.StoredKey:
 		add(quietLabel(keyHolds(v)))
 		rows := [][]string{{"Name", "Value"}, {"Kind", v.Kind}}
@@ -480,6 +502,19 @@ func quietLabel(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.Importance = widget.LowImportance
 	return l
+}
+
+// clusterHolds is a cluster in one line: how many brokers it has, and what it
+// calls itself.
+func clusterHolds(c *model.Cluster) string {
+	brokers := fmt.Sprintf("%d brokers", len(c.Brokers))
+	if len(c.Brokers) == 1 {
+		brokers = "one broker"
+	}
+	if c.ID == "" {
+		return brokers + "."
+	}
+	return fmt.Sprintf("%s, calling itself %s.", brokers, c.ID)
 }
 
 // figureRows renders a server's own numbers, by its own names for them.
