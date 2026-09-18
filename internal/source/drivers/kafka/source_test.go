@@ -286,12 +286,17 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if caps.Data.ServerFilter || caps.Data.ServerSort || caps.Data.ExactCount {
 		t.Errorf("the grid is promised something: %+v", caps.Data)
 	}
-	// The cluster and its topics are in the tree now; partitions and consumer
-	// groups wait for the task that lists them.
-	if !caps.Objects[model.KindCluster] || !caps.Objects[model.KindTopic] {
-		t.Errorf("the tree claims %v", caps.Objects)
+	// The cluster, its topics, their partitions and the groups reading them
+	// are all in the tree now (T2.62). Schema-registry subjects are not: they
+	// wait on a registry client to ask (T2.69).
+	for _, listed := range []model.ObjectKind{
+		model.KindCluster, model.KindTopic, model.KindPartition, model.KindConsumerGroup,
+	} {
+		if !caps.Objects[listed] {
+			t.Errorf("%s is in the tree and not in the claim: %v", listed, caps.Objects)
+		}
 	}
-	for _, unwritten := range []model.ObjectKind{model.KindPartition, model.KindConsumerGroup} {
+	for _, unwritten := range []model.ObjectKind{model.KindSubject} {
 		if caps.Objects[unwritten] {
 			t.Errorf("%s is claimed and is not listed yet", unwritten)
 		}

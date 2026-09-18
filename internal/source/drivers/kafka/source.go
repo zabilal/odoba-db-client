@@ -357,6 +357,7 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// partitions and consumer groups are T2.62.
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
+			model.KindPartition: true, model.KindConsumerGroup: true,
 		},
 	}
 }

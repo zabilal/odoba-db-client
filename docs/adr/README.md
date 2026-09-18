@@ -98,3 +98,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0091](0091-the-cluster-in-the-tree.md) | The cluster in the tree | Accepted |
 | [0092](0092-what-a-topic-list-costs.md) | What a topic list costs | Accepted |
 | [0093](0093-what-a-partition-says.md) | What a partition says | Accepted |
+| [0094](0094-what-hangs-under-what.md) | What hangs under what | Accepted |

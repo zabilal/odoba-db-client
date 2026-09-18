@@ -35,10 +35,23 @@ func TestLiveTheTreeIsTheCluster(t *testing.T) {
 	if err != nil || len(kids) == 0 {
 		t.Fatalf("the cluster holds %v: %v", kids, err)
 	}
+	// Everything under a cluster is a class the model knows, and its topics
+	// are among them. Which others there are is each task's to add — subjects
+	// wait on a registry (T2.69) — so this says what must be true rather than
+	// forbidding what is still to come.
+	topics := false
 	for _, k := range kids {
-		if kind, ok := model.ClassOf(k.Ref); !ok || kind != model.KindTopic {
-			t.Errorf("the cluster holds %+v, which is no class of topics", k)
+		kind, ok := model.ClassOf(k.Ref)
+		if !ok {
+			t.Errorf("the cluster holds %+v, which is no class at all", k)
+			continue
 		}
+		if kind == model.KindTopic {
+			topics = true
+		}
+	}
+	if !topics {
+		t.Errorf("the cluster holds no class of topics: %+v", kids)
 	}
 }
 
