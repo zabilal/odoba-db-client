@@ -87,3 +87,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0080](0080-the-cassandra-connection.md) | The Cassandra connection | Accepted |
 | [0081](0081-the-cassandra-tree.md) | The Cassandra tree | Accepted |
 | [0082](0082-the-cql-dialect.md) | The CQL dialect | Accepted |
+| [0083](0083-running-cql.md) | Running CQL | Accepted |

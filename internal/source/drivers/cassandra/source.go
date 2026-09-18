@@ -315,9 +315,11 @@ func (s *cassandraSource) Capabilities() capability.Capabilities {
 		// A keyspace is this paradigm's database: a cluster holds several,
 		// and a connection can be opened on any of them.
 		Structure: capability.Structure{MultipleDatabases: true},
-		// The language is T2.49 and reading rows T2.51, and neither is
-		// claimed until it is written: a claim is a promise the conformance
-		// suite holds a driver to (REQ-DRV-1).
+		// CQL is the language, and a script of it runs a statement at a
+		// time. Reading a table's rows is T2.51, and is not claimed until it
+		// is written: a claim is a promise the conformance suite holds a
+		// driver to (REQ-DRV-1).
+		Query: capability.Query{Supported: true, Language: "cql", MultiStatement: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
 			model.KindTable: true, model.KindMaterializedView: true,
