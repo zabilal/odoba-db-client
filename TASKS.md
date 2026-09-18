@@ -23,14 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.63 — the message browser (FR-13.4): consume from a topic into
-           the standard data grid, with columns for partition, offset,
-           timestamp, key, value and headers. This is where the stream
-           paradigm meets a grid built for rows, and where T2.81's rule
-           binds hardest: browsing must never join a consumer group or
-           commit anybody's offsets — explicit partition assignment only —
-           and every consume is bounded and cancellable (T2.82). Seeking is
-           T2.64, so this one starts from the beginning and stops.
+NEXT TASK: T2.64 — seek modes (FR-13.5): from the beginning, from the end
+           (the last N), from a given offset, and from a timestamp, per
+           partition or across all of them. source.Seek already names all
+           four and franz-go answers each — NewOffset().AtStart(), AtEnd(),
+           At(n), AfterMilli(ms) — so the work is honouring Seek in Browse
+           and refusing what a log cannot do: a count back from the end is
+           per partition, and asking for the last N of a topic means the
+           last N of each of its logs.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -525,7 +525,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.62** Object-explorer integration: topics, partitions, groups, schemas → FR-2.2 — *the tree now goes cluster → topics → partitions, and cluster → consumer groups, which is what somebody connecting to Kafka came to look at. A partition is a leaf: what is under it is records, and a log of a million offsets is not a thing to expand — that is the grid's business (T2.63). Listing a topic's partitions costs the metadata and the offsets and nothing else; what a topic occupies on disk is a request to every broker holding a replica, and that is asked when somebody describes a topic rather than when they expand one, expanding a node and asking about it being different acts. A group node needs nothing described, the listing already carrying each group's state and protocol — describing every group to draw a list is the shape ADR-0092 refused for topics and would be worse here, a cluster having thousands of groups. Opening a cluster now costs two requests, the metadata that names its topics and a listing of its groups, both bounded by the size of the cluster rather than by what it holds, which is the line ADR-0092 actually drew. A partition says what is wrong with it and nothing when nothing is: it carries its leader and where its log runs, and how many copies are in sync only when that is fewer than the copies that exist, a remark on every healthy partition being noise that hides the one unhealthy one. Subjects are not here: they need a registry to ask (T2.69), and `KindSubject` stays unclaimed until then. A group exists only while something is reading, so the tests join one and stay joined while they look — which creates `__consumer_offsets`, and with it the first live proof of the internal-topic filter, which T2.60 could only hold with a unit test because no test cluster had an internal topic (ADR-0094)*
 
 ### Messages
-- [ ] **T2.63** Message browser rendering into the **standard data grid** (partition, offset, timestamp, key, value, headers) → FR-13.4
+- [x] **T2.63** Message browser rendering into the **standard data grid** (partition, offset, timestamp, key, value, headers) → FR-13.4 — *the grid reads rows and a log has records, and the difference runs through every decision: no order to ask for, a partition being ordered by itself and nothing ordering across partitions; nothing to filter on, a broker handing over bytes and asking no questions about them; and no language to write a condition in. What a log has instead is a position and a bound. A browse reads the log as it stands — where each partition ends is asked before any record is read, so a read that has caught up ends because it is known to have caught up rather than because nothing arrived within some timeout, and records written after it began are not in it, which is the only reading that can end at all. Partitions are assigned explicitly and no group is ever joined and nothing is committed, so looking at a topic cannot move anybody else's place in it (FR-13.19): not an option a caller sets, there being no way to ask this driver for the other thing. Every read is bounded, an unbounded read of a log being an unbounded read of a disk. What a log cannot be asked it refuses in its own words — a condition, a filter, an order, a row offset, a position, a log to follow — rather than ignoring it, with seeking and following saying they are written next. A key and a value are bytes, what they mean being a decoder's business (T2.68). Headers are a list rather than a map, Kafka letting a name repeat and a map quietly keeping one. A partition that fails is reported rather than read as a log that ended. This is also the first stream source the shared suite has met, and it passes what every driver passes while the checks for what it does not claim skip — the WHERE check of its own accord, this driver implementing no dialect (ADR-0095)*
 - [ ] **T2.64** Seek modes: beginning, end/last-N, specific offset, **timestamp** → FR-13.5
 - [ ] **T2.65** **Live tail with pause/resume and a bounded ring buffer** → FR-13.6, NFR-P10
 - [ ] **T2.66** Message detail view: decoded value, headers table, raw hex, copy → FR-13.8

@@ -140,7 +140,9 @@ func (s *kafkaSource) topicNodes(ctx context.Context, class model.ObjectRef) ([]
 			Label: d.Topic,
 			// Its partitions are under it, and there is always at least one.
 			HasChildren: len(d.Partitions) > 0,
-			Badge:       &model.Badge{Text: strconv.Itoa(len(d.Partitions)), Exact: true},
+			// And its records can be read (T2.63).
+			Browsable: true,
+			Badge:     &model.Badge{Text: strconv.Itoa(len(d.Partitions)), Exact: true},
 		})
 	}
 	return out, nil

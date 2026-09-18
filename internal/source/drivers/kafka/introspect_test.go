@@ -4,8 +4,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
@@ -61,6 +63,50 @@ func TestKafkasOwnTopicsAreNotListed(t *testing.T) {
 	}
 	if ordinary(kadm.TopicDetails{}) == nil {
 		t.Error("a cluster with no topics of its own reads as no list at all")
+	}
+}
+
+func TestARecordAsTheGridHoldsIt(t *testing.T) {
+	when := time.Date(2026, 9, 18, 22, 0, 0, 0, time.UTC)
+	row := rowOf(&kgo.Record{
+		Partition: 2, Offset: 41, Timestamp: when,
+		Key: []byte("k"), Value: []byte("v"),
+		Headers: []kgo.RecordHeader{
+			{Key: "trace", Value: []byte("one")},
+			{Key: "trace", Value: []byte("two")},
+		},
+	})
+	if len(row) != len(recordColumns) {
+		t.Fatalf("a record reads as %d values and there are %d columns", len(row), len(recordColumns))
+	}
+	// Where it was, when it arrived, and what it carried — in that order.
+	if row[0] != int64(2) || row[1] != int64(41) || row[2] != when {
+		t.Errorf("a record reads as %v", row[:3])
+	}
+	if string(row[3].([]byte)) != "k" || string(row[4].([]byte)) != "v" {
+		t.Errorf("its key and value read as %v, %v", row[3], row[4])
+	}
+	// Kafka lets a header name repeat, so both are kept: a map would have
+	// quietly dropped one of them.
+	headers, ok := row[5].([]any)
+	if !ok || len(headers) != 2 {
+		t.Fatalf("its headers read as %v", row[5])
+	}
+	for i, want := range []string{"one", "two"} {
+		h := headers[i].(map[string]any)
+		if h["key"] != "trace" || string(h["value"].([]byte)) != want {
+			t.Errorf("header %d reads as %v", i, h)
+		}
+	}
+
+	// A record with no key has none, rather than an empty one: the difference
+	// is a fact about how it was written.
+	bare := rowOf(&kgo.Record{Partition: 0, Offset: 0, Timestamp: when, Value: []byte("v")})
+	if bare[3] != nil {
+		t.Errorf("a record with no key reads as %#v", bare[3])
+	}
+	if bare[5] != nil {
+		t.Errorf("a record with no headers reads as %#v", bare[5])
 	}
 }
 

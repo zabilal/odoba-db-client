@@ -280,8 +280,14 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if caps.Query.Supported || caps.Query.Language != "" {
 		t.Errorf("a query language is claimed: %+v", caps.Query)
 	}
-	if (caps.Stream != capability.Stream{}) {
-		t.Errorf("a stream operation is claimed: %+v", caps.Stream)
+	// Records can be read now (T2.63). Everything else a stream source might
+	// do waits for the task that writes it.
+	if !caps.Stream.Consume {
+		t.Error("records are read and consuming is not claimed")
+	}
+	unwritten := capability.Stream{Consume: true}
+	if caps.Stream != unwritten {
+		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
 	if caps.Data.ServerFilter || caps.Data.ServerSort || caps.Data.ExactCount {
 		t.Errorf("the grid is promised something: %+v", caps.Data)
@@ -302,11 +308,36 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 		}
 	}
 
-	// And records are still nobody's to read.
+	// What a log cannot be asked reaches no broker: every one of these is
+	// refused before anything is dialled, which is why this needs no cluster.
 	s := &kafkaSource{}
 	ctx := context.Background()
-	if _, err := s.Browse(ctx, model.NewRef(model.KindTopic, "t"), source.BrowseOptions{}); err == nil {
-		t.Error("records were read from a driver that cannot read them")
+	topic := model.NewRef(model.KindTopic, "c", "t")
+	// Each refusal names what it is refusing: a guard that stopped guarding
+	// would still fail this, because the words would be the wrong ones.
+	for name, c := range map[string]struct {
+		opt  source.BrowseOptions
+		says string
+	}{
+		"a condition in a language it has not got": {source.BrowseOptions{Where: "value = 1"}, "language"},
+		"a filter a broker will not apply":         {source.BrowseOptions{Filters: []source.Filter{{Column: "key", Op: source.OpEqual, Values: []any{1}}}}, "filter"},
+		"an order a log does not have":             {source.BrowseOptions{Sorts: []source.Sort{{Column: "offset"}}}, "order"},
+		"a position that is not written yet":       {source.BrowseOptions{Seek: &source.Seek{}}, "seeking"},
+		"a log followed before following is":       {source.BrowseOptions{Follow: true}, "following"},
+		"rows skipped rather than a place named":   {source.BrowseOptions{Offset: 10}, "position"},
+	} {
+		_, err := s.Browse(ctx, topic, c.opt)
+		if err == nil {
+			t.Errorf("%s was accepted", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.says) {
+			t.Errorf("%s is refused with %q, which does not say %q", name, err, c.says)
+		}
+	}
+	// And nothing but a topic holds records at all.
+	if _, err := s.Browse(ctx, model.NewRef(model.KindConsumerGroup, "c", "g"), source.BrowseOptions{}); err == nil {
+		t.Error("a consumer group was read as though it held records")
 	}
 	// Describing a kind this driver does not keep asks the cluster nothing,
 	// which is why this reaches no broker and still answers.
