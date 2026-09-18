@@ -359,7 +359,7 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// capability.Query exists to be left zeroed. Records can be read now
 		// (T2.63); producing, groups, seeking by time and following a log
 		// each wait for the task that writes them.
-		Stream: capability.Stream{Consume: true},
+		Stream: capability.Stream{Consume: true, SeekTimestamp: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,

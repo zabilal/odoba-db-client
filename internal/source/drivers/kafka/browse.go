@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -56,8 +57,11 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	if len(opt.Sorts) > 0 {
 		return nil, errors.New("kafka: records are in the order they were written, which is the only order a log has")
 	}
-	if opt.Seek != nil {
-		return nil, errors.New("kafka: this connection reads from the beginning of a log; seeking is not written yet")
+	if opt.Seek != nil && opt.Seek.Mode == source.SeekEnd {
+		// The end of a log is where nothing has been written yet. Reading
+		// from there means waiting for what comes next, which is following
+		// it rather than reading it (T2.65).
+		return nil, errors.New("kafka: reading from the end of a log is following it, which is not written yet")
 	}
 	if opt.Follow {
 		return nil, errors.New("kafka: this connection reads the log as it stands; following it is not written yet")
@@ -75,32 +79,51 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	}
 
 	topic := ref.Name()
-	ends, err := s.admin.ListEndOffsets(ctx, topic)
+	// Where each log begins and ends, asked now: the first is what a read
+	// from the beginning means, and the second is what lets a read end.
+	listedEnds, err := s.admin.ListEndOffsets(ctx, topic)
 	if err != nil {
 		return nil, err
 	}
-	starts, err := s.admin.ListStartOffsets(ctx, topic)
+	listedStarts, err := s.admin.ListStartOffsets(ctx, topic)
+	if err != nil {
+		return nil, err
+	}
+	begins, err := offsets(listedStarts[topic])
+	if err != nil {
+		return nil, err
+	}
+	ends, err := offsets(listedEnds[topic])
 	if err != nil {
 		return nil, err
 	}
 
-	// Where to begin, and where there is nothing more to read: both asked now,
-	// so that a log which is caught up says so rather than being waited on.
+	// A time is a third question, and only asked when somebody asked by time.
+	timed := map[int32]int64{}
+	if opt.Seek != nil && opt.Seek.Mode == source.SeekTimestamp {
+		listed, err := s.admin.ListOffsetsAfterMilli(ctx, opt.Seek.Time.UnixMilli(), topic)
+		if err != nil {
+			return nil, err
+		}
+		for partition, o := range listed[topic] {
+			// A partition with nothing at or after that time answers with its
+			// end offset, and is then dropped by the check below that there
+			// is nothing to read past the end. It needs no guard of its own.
+			if o.Err == nil {
+				timed[partition] = o.Offset
+			}
+		}
+	}
+
+	spans, err := spansOf(begins, ends, timed, opt.Seek)
+	if err != nil {
+		return nil, err
+	}
 	at := map[string]map[int32]kgo.Offset{topic: {}}
 	until := map[int32]int64{}
-	for partition, o := range starts[topic] {
-		if o.Err != nil {
-			return nil, fmt.Errorf("kafka: partition %d: %w", partition, o.Err)
-		}
-		end, ok := ends[topic][partition]
-		if !ok || end.Err != nil {
-			return nil, fmt.Errorf("kafka: partition %d: where its log ends could not be read", partition)
-		}
-		if end.Offset <= o.Offset {
-			continue // nothing in it
-		}
-		at[topic][partition] = kgo.NewOffset().At(o.Offset)
-		until[partition] = end.Offset
+	for partition, sp := range spans {
+		at[topic][partition] = kgo.NewOffset().At(sp.from)
+		until[partition] = sp.to
 	}
 
 	opts, err := clientOf(s.cfg)
@@ -116,6 +139,79 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 			Hint: "These settings could not become a reader.", Err: err}
 	}
 	return &recordRows{client: client, topic: topic, until: until, left: limit}, nil
+}
+
+// span is where one partition's read begins, and the offset it stops before.
+type span struct {
+	from int64
+	to   int64
+}
+
+// offsets are what a listing said, by partition, or the first failure in it. A
+// partition nobody could read the offsets of is not a partition that is empty.
+func offsets(listed map[int32]kadm.ListedOffset) (map[int32]int64, error) {
+	out := make(map[int32]int64, len(listed))
+	for partition, o := range listed {
+		if o.Err != nil {
+			return nil, fmt.Errorf("kafka: partition %d: %w", partition, o.Err)
+		}
+		out[partition] = o.Offset
+	}
+	return out, nil
+}
+
+// spansOf is where each partition's read begins and ends (FR-13.5).
+//
+// A count back from the end is a count back from each partition's own end,
+// because each log has one: asking for the last hundred records of a topic of
+// eight partitions asks for the last hundred of each. Anything before a log
+// begins is the beginning of it — a log is aged out from the front, and a
+// position that has been aged past is not an error — and a partition with
+// nothing left to read is left out rather than waited on.
+func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek) (map[int32]span, error) {
+	only := map[int32]bool{}
+	if seek != nil {
+		for _, p := range seek.Partitions {
+			only[p] = true
+		}
+	}
+	out := map[int32]span{}
+	for partition, start := range begins {
+		if len(only) > 0 && !only[partition] {
+			continue
+		}
+		end, ok := ends[partition]
+		if !ok {
+			continue
+		}
+		from := start
+		if seek != nil {
+			switch seek.Mode {
+			case source.SeekBeginning:
+			case source.SeekOffset:
+				from = seek.Offset
+			case source.SeekLast:
+				from = end - seek.Count
+			case source.SeekTimestamp:
+				at, found := timed[partition]
+				if !found {
+					// Nothing in this log at or after that time.
+					continue
+				}
+				from = at
+			default:
+				return nil, fmt.Errorf("kafka: there is no way to read a log from %d", seek.Mode)
+			}
+		}
+		if from < start {
+			from = start
+		}
+		if from >= end {
+			continue
+		}
+		out[partition] = span{from: from, to: end}
+	}
+	return out, nil
 }
 
 // recordRows is a bounded read of a topic's records.
