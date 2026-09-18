@@ -93,3 +93,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0086](0086-the-kafka-connection.md) | The Kafka connection | Accepted |
 | [0087](0087-proving-who-you-are-to-a-broker.md) | Proving who you are to a broker | Accepted |
 | [0088](0088-a-token-instead-of-a-password.md) | A token instead of a password | Accepted |
+| [0089](0089-signing-in-to-a-managed-cluster.md) | Signing in to a managed cluster | Accepted |

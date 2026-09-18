@@ -28,6 +28,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl"
+	"github.com/twmb/franz-go/pkg/sasl/aws"
 	"github.com/twmb/franz-go/pkg/sasl/oauth"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
@@ -72,10 +73,11 @@ func (Driver) Describe() source.Descriptor {
 				Options: mechanisms,
 				Help:    "How the broker is told who you are. PLAIN sends the password as text, so it wants TLS unless the broker is your own."},
 			{Key: "user", Label: "User", Kind: source.FieldText,
-				Help: "The name the mechanism authenticates."},
-			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true},
+				Help: "The name the mechanism authenticates. For AWS_MSK_IAM it is the access key id."},
+			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true,
+				Help: "For AWS_MSK_IAM: the secret access key, which signs rather than being sent."},
 			{Key: "token", Label: "Token", Kind: source.FieldPassword, Secret: true,
-				Help: "For OAUTHBEARER: the bearer token itself. Whoever issued it decides how long it lasts."},
+				Help: "For OAUTHBEARER: the bearer token itself, whose issuer decides how long it lasts. For AWS_MSK_IAM: the session token, where the credentials are temporary ones."},
 		},
 	}
 }
@@ -148,9 +150,9 @@ func clientOf(cfg source.ConnectionConfig) ([]kgo.Opt, error) {
 //
 // GSSAPI is not here, and not for want of trying: franz-go ships no Kerberos
 // mechanism at all, so speaking it means a Kerberos library of this project's
-// own and a KDC to prove it against. AWS MSK IAM is T2.57. A mechanism
-// appears in this list when the driver can actually speak it.
-var mechanisms = []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"}
+// own and a KDC to prove it against. A mechanism appears in this list when the
+// driver can actually speak it.
+var mechanisms = []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER", "AWS_MSK_IAM"}
 
 // mechNone is what a connection to a broker that asks nothing uses.
 const mechNone = "None"
@@ -194,6 +196,21 @@ func mechanismOf(cfg source.ConnectionConfig) (sasl.Mechanism, error) {
 				Hint: "OAUTHBEARER carries a token rather than a password."}
 		}
 		return oauth.Auth{Token: token, Zid: user}.AsMechanism(), nil
+
+	case "AWS_MSK_IAM":
+		// AWS signs the request rather than sending a secret: the access key
+		// names the identity, the secret key signs, and a session token comes
+		// with credentials that are temporary. Nothing here asks for a
+		// region — franz-go reads it from the broker's own address, or from
+		// AWS_REGION — and nothing reads the environment for the keys
+		// themselves: an ambient identity nobody typed is FR-1.14's business,
+		// deliberately and separately.
+		if user == "" || password == "" {
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: "AWS_MSK_IAM signs with an access key id and a secret access key, and needs both."}
+		}
+		return aws.Auth{AccessKey: user, SecretKey: password, SessionToken: token}.
+			AsManagedStreamingIAMMechanism(), nil
 
 	case "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512":
 		if user == "" {
@@ -284,6 +301,13 @@ func classifyConnectError(err error) error {
 	var ne net.Error
 	text := strings.ToLower(err.Error())
 	switch {
+	// Signing for a managed cluster needs a region, which is read from the
+	// broker's address and then from the environment. Where neither says, the
+	// failure arrives mid-handshake and would otherwise read as a cluster
+	// nobody could reach — when what is missing is a setting.
+	case strings.Contains(text, "determine the region"):
+		return &source.ConnectError{Kind: source.ConnectConfig,
+			Hint: "The AWS region could not be read from the broker's address; set AWS_REGION.", Err: err}
 	// A broker that will not take a token says so inside the OAUTHBEARER
 	// exchange itself, which franz-go reports as unexpected data in an oauth
 	// response. That is a refusal, not a cluster nobody could reach, and the

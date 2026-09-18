@@ -57,12 +57,12 @@ func TestTheFormAsksHowToProveWhoYouAre(t *testing.T) {
 	// are real mechanisms and are not here, because offering one that nothing
 	// implements would be a setting that fails at the broker.
 	offered := strings.Join(mech.Options, " ")
-	for _, want := range []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"} {
+	for _, want := range []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER", "AWS_MSK_IAM"} {
 		if !strings.Contains(offered, want) {
 			t.Errorf("%s is not offered: %q", want, offered)
 		}
 	}
-	for _, unwritten := range []string{"GSSAPI", "AWS_MSK_IAM"} {
+	for _, unwritten := range []string{"GSSAPI"} {
 		if strings.Contains(offered, unwritten) {
 			t.Errorf("%s is offered and is not written", unwritten)
 		}
@@ -184,6 +184,37 @@ func TestHowAConnectionProvesWhoItIs(t *testing.T) {
 		t.Errorf("a token with nothing chosen: %v", err)
 	}
 
+	// Signing for a managed cluster: the access key names who this is and the
+	// secret key signs, so both are wanted and neither is sent.
+	got, err = as("AWS_MSK_IAM", "AKIAEXAMPLE", "a-secret-key")
+	if err != nil || got == nil || got.Name() != "AWS_MSK_IAM" {
+		t.Errorf("an access key and a secret key: %v, %v", got, err)
+	}
+	for _, missing := range []struct{ user, password string }{
+		{"", "a-secret-key"}, {"AKIAEXAMPLE", ""}, {"", ""},
+	} {
+		_, err = as("AWS_MSK_IAM", missing.user, missing.password)
+		if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "needs both") {
+			t.Errorf("signing with %q/%q: %v", missing.user, missing.password, err)
+		}
+	}
+	// Temporary credentials carry a session token as well, which is welcome
+	// here where the password mechanisms refuse one.
+	got, err = mechanismOf(source.ConnectionConfig{Host: "b", User: "AKIAEXAMPLE",
+		Params: map[string]string{"mechanism": "AWS_MSK_IAM"},
+		Secret: func(key string) (string, error) {
+			switch key {
+			case "token":
+				return "a-session-token", nil
+			case "password":
+				return "a-secret-key", nil
+			}
+			return "", nil
+		}})
+	if err != nil || got == nil || got.Name() != "AWS_MSK_IAM" {
+		t.Errorf("temporary credentials: %v, %v", got, err)
+	}
+
 	// A keychain that will not answer is a fault in the settings, not a
 	// refusal by the broker.
 	_, err = mechanismOf(source.ConnectionConfig{Host: "b", User: "ikigai",
@@ -283,6 +314,7 @@ func TestAFailureSaysWhatToFix(t *testing.T) {
 		"plaintext to a TLS listener": {errors.New("first record does not look like a TLS handshake"), source.ConnectTLS},
 		"credentials":                 {errors.New("SASL authentication failed"), source.ConnectAuth},
 		"a token refused":             {errors.New("unexpected data in oauth response"), source.ConnectAuth},
+		"a region nobody named":       {errors.New(`cannot determine the region in "kafka.example.com"`), source.ConnectConfig},
 		"something else":              {errors.New("the broker said no"), source.ConnectUnknown},
 	} {
 		got := classifyConnectError(c.err)
@@ -295,6 +327,12 @@ func TestAFailureSaysWhatToFix(t *testing.T) {
 			t.Errorf("%s says nothing to fix: %v", name, got)
 		}
 	}
+	// The region is a setting, so the refusal names the setting to fix rather
+	// than leaving somebody looking at a broker that is answering fine.
+	if got := classifyConnectError(errors.New(`cannot determine the region in "kafka.example.com"`)); !strings.Contains(got.Error(), "AWS_REGION") {
+		t.Errorf("a region nobody named says %q", got)
+	}
+
 	// A failure already classified is not classified twice.
 	first := classifyConnectError(errors.New("connection refused"))
 	if got := classifyConnectError(first); got != first {
