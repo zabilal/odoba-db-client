@@ -308,11 +308,13 @@ func (s *cassandraSource) Capabilities() capability.Capabilities {
 		// A keyspace is this paradigm's database: a cluster holds several,
 		// and a connection can be opened on any of them.
 		Structure: capability.Structure{MultipleDatabases: true},
-		// Nothing else is claimed yet: the tree is T2.48, the language T2.49,
-		// and reading rows T2.51. A claim is a promise the suite holds a
-		// driver to (REQ-DRV-1), so it waits for the thing it promises.
+		// The language is T2.49 and reading rows T2.51, and neither is
+		// claimed until it is written: a claim is a promise the conformance
+		// suite holds a driver to (REQ-DRV-1).
 		Objects: map[model.ObjectKind]bool{
-			model.KindDatabase: true, model.KindTable: true,
+			model.KindDatabase: true, model.KindFolder: true,
+			model.KindTable: true, model.KindMaterializedView: true,
+			model.KindColumn: true, model.KindIndex: true, model.KindUserType: true,
 		},
 	}
 }
@@ -344,23 +346,6 @@ func (s *cassandraSource) Close() (err error) {
 	// driver's own would say the same thing twice.
 	s.session.Close()
 	return nil
-}
-
-// Root is nothing yet: the keyspaces a cluster holds, and the tables in them,
-// are T2.48. An empty tree is what a driver that cannot introspect shows,
-// and it says so rather than inventing a node.
-func (s *cassandraSource) Root(context.Context) ([]model.Node, error) { return nil, nil }
-
-func (s *cassandraSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
-	return nil, nil
-}
-
-func (s *cassandraSource) Describe(context.Context, model.ObjectRef) (any, error) {
-	return nil, nil
-}
-
-func (s *cassandraSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
-	return model.Badge{}, false, nil
 }
 
 // Browse reads no rows yet (T2.51): a page of a Cassandra table is a walk of

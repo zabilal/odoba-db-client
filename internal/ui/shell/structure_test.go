@@ -104,6 +104,36 @@ func TestAStructureTabComesBack(t *testing.T) {
 	pump(t, fx.q, func() bool { return showsAll(r, "items_pkey") })
 }
 
+func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
+	// A keyspace has no columns: what there is to say about it is how many
+	// copies of a row there are and where they are kept (FR-12.3).
+	schema := &model.Schema{Name: "ikigai_it", Attrs: map[string]string{
+		"strategy": "NetworkTopologyStrategy", "dc1": "3", "durable writes": "true",
+	}, Tables: []model.Table{{Name: "people"}, {Name: "orders"}},
+		Views:     []model.View{{Name: "people_by_score", Materialized: true}},
+		UserTypes: []model.UserType{{Name: "address"}}}
+	got := strings.Join(labelTexts(structureView(schema, nil, nil)), "\n")
+	for _, want := range []string{
+		"Replication", "strategy", "NetworkTopologyStrategy", "dc1", "3", "durable writes",
+		"What it holds", "Tables", "2", "Materialized views", "1", "Types",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a keyspace's structure does not say %q:\n%s", want, got)
+		}
+	}
+	// By name, so that the same keyspace reads the same way twice.
+	if strings.Index(got, "dc1") > strings.Index(got, "durable writes") ||
+		strings.Index(got, "durable writes") > strings.Index(got, "strategy") {
+		t.Errorf("the replication is not in name order:\n%s", got)
+	}
+	// A keyspace with neither views nor types shows neither.
+	bare := &model.Schema{Name: "shop", Attrs: map[string]string{"strategy": "SimpleStrategy"}}
+	got = strings.Join(labelTexts(structureView(bare, nil, nil)), "\n")
+	if strings.Contains(got, "Materialized views") || strings.Contains(got, "Types") {
+		t.Errorf("a keyspace shows what it has not got:\n%s", got)
+	}
+}
+
 func TestStructureShowsACollectionsShape(t *testing.T) {
 	coll := &model.Collection{
 		Name: "people", DocumentsEstimate: 41,

@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -269,6 +270,19 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 			}
 			add(container.NewHBox(addIdx, dropIdx))
 		}
+	case *model.Schema:
+		// A keyspace's structure is how it is replicated: how many copies of
+		// a row there are, and where they are kept (FR-12.3). What it holds
+		// is counted rather than listed; the tree is where it is read.
+		add(section("Replication", attrRows(v.Attrs)))
+		rows := [][]string{{"Holds", "How many"}, {"Tables", strconv.Itoa(len(v.Tables))}}
+		if n := len(v.Views); n > 0 {
+			rows = append(rows, []string{"Materialized views", strconv.Itoa(n)})
+		}
+		if n := len(v.UserTypes); n > 0 {
+			rows = append(rows, []string{"Types", strconv.Itoa(n)})
+		}
+		add(section("What it holds", rows))
 	case *model.Keyspace:
 		// A keyspace has no columns: what there is to say about it is how
 		// much it holds and what the server is spending on it (FR-12.2).
@@ -434,6 +448,22 @@ func section(title string, rows [][]string) fyne.CanvasObject {
 		}
 	}
 	return container.NewVBox(bold(title), grid, widget.NewSeparator())
+}
+
+// attrRows are an object's engine-specific properties, by name. They keep
+// the engine's own words, as a Redis figure does: a person looking one up
+// looks up what the server calls it.
+func attrRows(attrs map[string]string) [][]string {
+	rows := [][]string{{"Name", "Value"}}
+	names := make([]string, 0, len(attrs))
+	for name := range attrs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		rows = append(rows, []string{name, attrs[name]})
+	}
+	return rows
 }
 
 func bold(text string) *widget.Label {
