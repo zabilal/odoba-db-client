@@ -147,8 +147,10 @@ func TestLiveTheTreeHoldsTheClusterAndRecordsWait(t *testing.T) {
 	if _, err := src.Browse(ctx, model.NewRef(model.KindTopic, "anything"), source.BrowseOptions{}); err == nil {
 		t.Error("records were read from a driver that does not read them yet")
 	}
-	// And nothing is claimed that is not written.
-	if caps := src.Capabilities(); caps.Paradigm != model.ParadigmStream || len(caps.Objects) != 1 {
+	// And nothing is claimed that is not written. Which kinds those are is
+	// the unit test's business, by name; here it is enough that the paradigm
+	// is the log's and that something is claimed at all.
+	if caps := src.Capabilities(); caps.Paradigm != model.ParadigmStream || len(caps.Objects) == 0 {
 		t.Errorf("the driver claims %+v", caps)
 	}
 }

@@ -286,12 +286,12 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if caps.Data.ServerFilter || caps.Data.ServerSort || caps.Data.ExactCount {
 		t.Errorf("the grid is promised something: %+v", caps.Data)
 	}
-	// The cluster is in the tree now (T2.59), and nothing else is: topics and
-	// consumer groups wait for the task that lists them.
-	if len(caps.Objects) != 1 || !caps.Objects[model.KindCluster] {
+	// The cluster and its topics are in the tree now; partitions and consumer
+	// groups wait for the task that lists them.
+	if !caps.Objects[model.KindCluster] || !caps.Objects[model.KindTopic] {
 		t.Errorf("the tree claims %v", caps.Objects)
 	}
-	for _, unwritten := range []model.ObjectKind{model.KindTopic, model.KindPartition, model.KindConsumerGroup} {
+	for _, unwritten := range []model.ObjectKind{model.KindPartition, model.KindConsumerGroup} {
 		if caps.Objects[unwritten] {
 			t.Errorf("%s is claimed and is not listed yet", unwritten)
 		}
@@ -303,10 +303,10 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, err := s.Browse(ctx, model.NewRef(model.KindTopic, "t"), source.BrowseOptions{}); err == nil {
 		t.Error("records were read from a driver that cannot read them")
 	}
-	// Describing something that is not a cluster asks the cluster nothing,
+	// Describing a kind this driver does not keep asks the cluster nothing,
 	// which is why this reaches no broker and still answers.
-	if got, err := s.Describe(ctx, model.NewRef(model.KindTopic, "t")); got != nil || err != nil {
-		t.Errorf("a topic is described as %v: %v", got, err)
+	if got, err := s.Describe(ctx, model.NewRef(model.KindPartition, "t", "0")); got != nil || err != nil {
+		t.Errorf("a partition is described as %v: %v", got, err)
 	}
 }
 

@@ -23,14 +23,12 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.60 — the topic list (FR-13.2): topics with their partition
-           count, replication factor, message count and size on disk, and
-           internal topics filtered. kadm's ListTopics answers the shape;
-           the counts come from watermarks per partition, which the model
-           names honestly — MessageCount is an upper bound on what is
-           retained, not what was ever written, and the UI must say so. The
-           cluster node starts claiming children here, or at T2.62 when the
-           classes go into the tree.
+NEXT TASK: T2.61 — topic detail (FR-13.3): per-partition leader, replicas,
+           in-sync replicas, earliest and latest offset, and lag. The driver
+           already reads all but lag when it describes a topic, so the work
+           is the partition table in the structure tab and whatever lag
+           means without a consumer group to measure it against — which may
+           belong with T2.76, where a group's lag is the subject.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -519,7 +517,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Browse
 - [x] **T2.59** Cluster overview: brokers, controller, cluster id, API versions → FR-13.1 — *every source so far had something to choose between at the top of its tree; a Kafka connection has none, being a connection to one cluster. So the root is the cluster itself, one node, with everything else to hang beneath it as it is written — a root left empty would say a connected source has nothing in it. Brokers are not nodes: the model has no object kind for one, deliberately, having been designed against Kafka before any driver existed (T0.29), and `model.Cluster` already carries them as a field — so they are part of what a cluster is, arriving through Describe into the structure tab beside how a Cassandra keyspace shows its replication. The node claims no children until it has some, topics and consumer groups being T2.62: that is the rule the conformance suite was taught to hold at every depth in T2.53, and it binds the driver that added the rule as much as the one it caught. A seed is not a broker — the addresses a connection started from are not nodes of the cluster, franz-go marking a seed by numbering it very negatively and giving it no rack — so seeds are dropped rather than shown as brokers nobody can find. The version is an attribute rather than a field, a broker never stating its release, only which API versions it speaks. The structure tab gained a cluster: brokers by id with their addresses and racks, the controller marked on its own row rather than explained in a legend elsewhere, one broker reading as one broker, and a cluster that named none saying so instead of showing an empty table (ADR-0091)*
-- [ ] **T2.60** Topic list with partitions, RF, message count, size; internal-topic filter → FR-13.2
+- [x] **T2.60** Topic list with partitions, RF, message count, size; internal-topic filter → FR-13.2 — *the four numbers the requirement asks for do not cost the same: partition count and replication factor come free with the metadata that names the topics at all, a message count needs the earliest and latest offset of every partition, and a size needs a log-directory description from every broker holding a replica, sharded across the cluster. On a cluster of thousands of topics, drawing a list would mean thousands of partitions' offsets and a fan-out to every broker each time somebody opens a node. So the list carries what listing costs — topics in the tree, badged with how many logs each is cut into — and the expensive numbers belong to a topic somebody asked about, which is the rule that keeps a Cassandra table unbadged (NFR-P11). A count of records says "up to": it is the sum of high minus low watermark, an upper bound on what is retained rather than what was ever written, because a log is aged out and compacted behind its readers, and a number labelled "messages" would be believed. A size is replicated bytes and says so, a topic kept three times being reported three times over. Kafka's own topics are hidden as PostgreSQL's system schemas and Cassandra's system keyspaces are, and the filter is a pure function over the metadata so a test can prove it with an internal topic this rig has never had — the live cluster has none, and a mutation nothing could catch would have called it covered. Where the offsets cannot be read the watermarks stay unknown rather than reading as a log with nothing in it (ADR-0092)*
 - [ ] **T2.61** Topic detail: leader, replicas, ISR, earliest/latest offset, lag → FR-13.3
 - [ ] **T2.62** Object-explorer integration: topics, partitions, groups, schemas → FR-2.2
 

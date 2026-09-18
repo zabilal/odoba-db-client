@@ -134,6 +134,49 @@ func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
 	}
 }
 
+func TestStructureShowsHowATopicIsSpread(t *testing.T) {
+	topic := &model.Topic{Name: "orders", ReplicationFactor: 3,
+		Partitions: []model.Partition{
+			{ID: 0, LowWatermark: 0, HighWatermark: 100},
+			{ID: 1, LowWatermark: 40, HighWatermark: 60},
+		},
+		Attrs: map[string]string{"size on disk": "12 MB across all replicas"}}
+	got := strings.Join(labelTexts(structureView(topic, nil, nil)), "\n")
+	for _, want := range []string{
+		"2 partitions", "on 3 brokers", "up to 120 records",
+		"What it says about itself", "size on disk", "12 MB across all replicas",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a topic's structure does not say %q:\n%s", want, got)
+		}
+	}
+	// What is retained is not what was written, and the words have to say so.
+	if !strings.Contains(got, "up to") {
+		t.Errorf("a topic counts its records as though none had aged out:\n%s", got)
+	}
+
+	// One partition reads as one, and a topic of Kafka's own says whose it is.
+	own := &model.Topic{Name: "__consumer_offsets", Internal: true, ReplicationFactor: 1,
+		Partitions: []model.Partition{{ID: 0}}}
+	got = strings.Join(labelTexts(structureView(own, nil, nil)), "\n")
+	for _, want := range []string{"one partition", "on one broker", "Kafka's own"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("an internal topic does not say %q:\n%s", want, got)
+		}
+	}
+	// An empty log holds nothing, and says nothing about how much.
+	if strings.Contains(got, "up to") {
+		t.Errorf("an empty topic claims records:\n%s", got)
+	}
+
+	// Replication that varies by partition is said, not averaged away.
+	varies := &model.Topic{Name: "mixed", ReplicationFactor: -1,
+		Partitions: []model.Partition{{ID: 0}, {ID: 1}}}
+	if got := strings.Join(labelTexts(structureView(varies, nil, nil)), "\n"); !strings.Contains(got, "replicated differently") {
+		t.Errorf("a topic replicated unevenly says:\n%s", got)
+	}
+}
+
 func TestStructureShowsWhatAClusterIs(t *testing.T) {
 	// A cluster has no columns either: what there is to say is who its brokers
 	// are and which of them answers for the whole (FR-13.1).

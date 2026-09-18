@@ -353,9 +353,11 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// There is no query language to claim — Kafka has none, which is why
 		// capability.Query exists to be left zeroed — and consuming,
 		// producing, groups and topic administration each wait for the task
-		// that writes them. The tree holds the cluster and nothing else yet:
-		// topics and consumer groups are T2.62.
-		Objects: map[model.ObjectKind]bool{model.KindCluster: true},
+		// that writes them. The tree holds the cluster and its topics;
+		// partitions and consumer groups are T2.62.
+		Objects: map[model.ObjectKind]bool{
+			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
+		},
 	}
 }
 
