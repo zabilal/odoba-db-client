@@ -18,6 +18,7 @@ package kafka
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -26,6 +27,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kversion"
+	"github.com/twmb/franz-go/pkg/sasl"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
@@ -63,6 +67,12 @@ func (Driver) Describe() source.Descriptor {
 			{Key: "port", Label: "Port", Kind: source.FieldNumber, Default: strconv.Itoa(defaultPort)},
 			{Key: "servers", Label: "Further bootstrap servers", Kind: source.FieldText,
 				Help: "Optional: more brokers to try, separated by commas, in case the first is down."},
+			{Key: "mechanism", Label: "Authentication", Kind: source.FieldSelect, Default: mechNone,
+				Options: mechanisms,
+				Help:    "How the broker is told who you are. PLAIN sends the password as text, so it wants TLS unless the broker is your own."},
+			{Key: "user", Label: "User", Kind: source.FieldText,
+				Help: "The name the mechanism authenticates."},
+			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true},
 		},
 	}
 }
@@ -106,6 +116,17 @@ func clientOf(cfg source.ConnectionConfig) ([]kgo.Opt, error) {
 		kgo.RetryTimeout(timeout),
 	}
 
+	mech, err := mechanismOf(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if mech != nil {
+		// Only when there is one: franz-go authenticates whenever it has been
+		// given a mechanism, and a nil one would be used as though it were a
+		// way to prove something.
+		opts = append(opts, kgo.SASL(mech))
+	}
+
 	tlsCfg, err := tlsconf.Config(cfg.TLS, hostOf(cfg))
 	if err != nil {
 		return nil, &source.ConnectError{Kind: source.ConnectConfig,
@@ -116,6 +137,68 @@ func clientOf(cfg source.ConnectionConfig) ([]kgo.Opt, error) {
 	// nil config. A guard here would only say that a second time.
 	opts = append(opts, kgo.DialTLSConfig(tlsCfg))
 	return opts, nil
+}
+
+// mechanisms are the ways a person may prove who they are, as a broker names
+// them, with the commonest first: most brokers somebody runs for themselves
+// ask for nothing at all.
+//
+// OAUTHBEARER and GSSAPI are not here yet (T2.56), nor AWS MSK IAM (T2.57).
+// A mechanism appears in this list when the driver can actually speak it.
+var mechanisms = []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"}
+
+// mechNone is what a connection to a broker that asks nothing uses.
+const mechNone = "None"
+
+// mechanismOf is how this connection proves who it is, or nil where it does
+// not have to (FR-1.11).
+func mechanismOf(cfg source.ConnectionConfig) (sasl.Mechanism, error) {
+	name := strings.ToUpper(strings.TrimSpace(cfg.Params["mechanism"]))
+	user := strings.TrimSpace(cfg.User)
+	password, err := secret(cfg, "password")
+	if err != nil {
+		return nil, err
+	}
+
+	if name == "" || name == strings.ToUpper(mechNone) {
+		if user != "" || password != "" {
+			// Credentials that would be sent nowhere. Somebody who typed a
+			// password is entitled to think it was used, so this says that it
+			// would not be rather than connecting as nobody.
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: "A user name or password was given, but no authentication was chosen."}
+		}
+		return nil, nil
+	}
+	if user == "" {
+		return nil, &source.ConnectError{Kind: source.ConnectConfig,
+			Hint: fmt.Sprintf("%s authenticates a user, and none was given.", name)}
+	}
+	switch name {
+	case "PLAIN":
+		return plain.Auth{User: user, Pass: password}.AsMechanism(), nil
+	case "SCRAM-SHA-256":
+		return scram.Auth{User: user, Pass: password}.AsSha256Mechanism(), nil
+	case "SCRAM-SHA-512":
+		return scram.Auth{User: user, Pass: password}.AsSha512Mechanism(), nil
+	}
+	return nil, &source.ConnectError{Kind: source.ConnectConfig,
+		Hint: fmt.Sprintf("%q is not an authentication this driver speaks; choose one of %s.",
+			name, strings.Join(mechanisms, ", "))}
+}
+
+// secret reads what the keychain holds for this connection, a failure to read
+// it being a fault in the settings rather than a refusal by the broker.
+func secret(cfg source.ConnectionConfig, key string) (string, error) {
+	if cfg.Secret == nil {
+		return "", nil
+	}
+	v, err := cfg.Secret(key)
+	if err != nil {
+		return "", &source.ConnectError{Kind: source.ConnectConfig,
+			Hint: "The password could not be read from the keychain.", Err: err}
+	}
+	return v, nil
 }
 
 // bootstrapServers are the addresses this connection starts from. They are a
