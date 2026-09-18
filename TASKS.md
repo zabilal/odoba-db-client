@@ -23,12 +23,16 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.55 — SASL for Kafka: PLAIN and SCRAM-SHA-256/512 (FR-1.11),
-           which is where the form gains a mechanism, a user and a password,
-           and where handing franz-go a logger belongs. The ikigai-kafka
-           container runs on 59092 (apache/kafka, KRaft, one node) and
-           gate.sh now requires it. After it: T2.56-T2.58 (OAUTHBEARER,
-           GSSAPI, MSK IAM, mTLS), then the cluster overview from T2.59.
+NEXT TASK: T2.56 — SASL OAUTHBEARER and GSSAPI/Kerberos (FR-1.11). Both
+           join the mechanism list only when spoken: OAUTHBEARER wants a
+           token source (franz-go's sasl/oauth takes a function returning
+           one), and GSSAPI wants a keytab or a ticket cache, which is the
+           first thing here that reaches outside the application for a
+           credential. Then T2.57 (MSK IAM, sasl/aws), T2.58 (mTLS), and the
+           cluster overview from T2.59.
+           Two Kafka containers now: ikigai-kafka (59092, plaintext) and
+           ikigai-kafka-sasl (9092 plaintext, 9094 SASL), both required by
+           gate.sh. Handing franz-go a logger is still unclaimed work.
            Open beside them: gocql writes its own account of a failed
            connection to stderr, beside the ConnectError this driver makes
            of it; quieting it means handing gocql a logger, which belongs
@@ -496,7 +500,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Connect & auth
 - [x] **T2.54** `twmb/franz-go` driver + bootstrap-server connection — *the first source here that holds no rows: a topic is an append-only log cut into partitions, nothing declares what a record looks like, a record is addressed by the offset it was written at rather than by a key of its own, and reading is consuming rather than querying — the model's stream paradigm, and everything this application comes to show of Kafka follows from it. franz-go is pure Go with no cgo, speaks the protocol directly rather than wrapping librdkafka, and its `kadm` and `kversion` packages answer what the cluster overview will ask. The form asks for one broker and allows more, a seed being only a way in — it is asked who the brokers are, and every later request goes to the broker that holds what is being asked about — and a further address written without a port takes the first's, a cluster usually being configured alike throughout. Opening dials, because the library will not: `kgo.NewClient` only reads its options, so a driver that handed that back as a live connection would report success for a cluster that is not there and fail later where nobody can connect it to a cause; `Open` pings instead, a broker-only metadata request tried against each seed until one answers, and a failure is classified into what to fix. Nothing is claimed that is not written — the paradigm and nothing else, no object kind until the tree (T2.59 onward), no stream operation until the task that writes it, and a browse that says plainly it reads no records yet rather than consuming without assigning partitions or minding whose offsets it commits (FR-13.19); `Query` stays zeroed for good, Kafka having no query language, which is the case that capability was written to leave empty. The version is a guess and says so: a broker states which versions of each API it speaks, not what release it is, so franz-go's reading of it is passed on as worded, "at least v4.0" included. The driver registers itself but stays out of `cmd/ikigai` until it has a tree, as Cassandra did (ADR-0086)*
-- [ ] **T2.55** SASL: PLAIN, SCRAM-SHA-256/512 → FR-1.11
+- [x] **T2.55** SASL: PLAIN, SCRAM-SHA-256/512 → FR-1.11 — *Kafka carries no credentials in an address: a connection is made first and who you are is negotiated over it, the client naming a mechanism and the broker agreeing or not. So the form gained a mechanism to choose, defaulting to None because most brokers somebody runs for themselves ask nothing, a user, and a password kept where secrets are kept (FR-1.5). What is offered is what the driver speaks — OAUTHBEARER and GSSAPI are real and deliberately absent until T2.56, a setting nothing implements being a promise broken at the broker, the same rule that keeps ANY out of the consistency list. Everything a person can get wrong is answered before a broker has to: credentials typed with nothing chosen are refused rather than silently unsent, because somebody who typed a password is entitled to think it was used; a mechanism with no user is refused before dialling, the broker's own answer being a round trip later and less clear; a mechanism nobody speaks here is refused naming the choices rather than quietly downgraded to connecting as nobody; and a keychain that will not open is a fault in the settings rather than a refusal by the broker, the two needing different fixes. What only the broker can judge — a password it will not take — comes back as an authentication failure. PLAIN sends the password as text, which the field says and does not forbid: a broker on one's own machine is a fair thing to connect to, and refusing would only push people to worse ways round it, TLS staying available with verification on by default (NFR-S3). A second container, ikigai-kafka-sasl, asks for it: PLAIN from a JAAS file the image will not start a SASL listener without, SCRAM from credentials stored in the cluster (ADR-0087)*
 - [ ] **T2.56** SASL: OAUTHBEARER, GSSAPI/Kerberos → FR-1.11
 - [ ] **T2.57** AWS MSK IAM auth → FR-1.11
 - [ ] **T2.58** mTLS → FR-1.10

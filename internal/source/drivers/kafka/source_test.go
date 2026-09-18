@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twmb/franz-go/pkg/sasl"
+
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
@@ -39,6 +41,95 @@ func TestTheFormAsksForABrokerToStartFrom(t *testing.T) {
 		if _, ok := fields[key]; ok {
 			t.Errorf("the form asks for a %s", key)
 		}
+	}
+}
+
+func TestTheFormAsksHowToProveWhoYouAre(t *testing.T) {
+	fields := map[string]source.Field{}
+	for _, f := range (Driver{}).Describe().Fields {
+		fields[f.Key] = f
+	}
+	mech := fields["mechanism"]
+	if mech.Kind != source.FieldSelect || mech.Default != mechNone {
+		t.Errorf("authentication is chosen as %+v", mech)
+	}
+	// What is offered is what the driver can speak. OAUTHBEARER and GSSAPI
+	// are real mechanisms and are not here, because offering one that nothing
+	// implements would be a setting that fails at the broker.
+	offered := strings.Join(mech.Options, " ")
+	for _, want := range []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"} {
+		if !strings.Contains(offered, want) {
+			t.Errorf("%s is not offered: %q", want, offered)
+		}
+	}
+	for _, unwritten := range []string{"OAUTHBEARER", "GSSAPI", "AWS_MSK_IAM"} {
+		if strings.Contains(offered, unwritten) {
+			t.Errorf("%s is offered and is not written", unwritten)
+		}
+	}
+	// A password is a secret, so it is kept where secrets are kept (FR-1.5).
+	if pw := fields["password"]; !pw.Secret || pw.Kind != source.FieldPassword {
+		t.Errorf("the password is asked for as %+v", pw)
+	}
+}
+
+func TestHowAConnectionProvesWhoItIs(t *testing.T) {
+	as := func(mechanism, user, password string) (sasl.Mechanism, error) {
+		cfg := source.ConnectionConfig{Host: "b", User: user,
+			Params: map[string]string{"mechanism": mechanism}}
+		if password != "" {
+			cfg.Secret = func(string) (string, error) { return password, nil }
+		}
+		return mechanismOf(cfg)
+	}
+
+	// Nothing chosen, nothing given: a broker that asks nothing is answered
+	// with nothing, rather than with an empty attempt at authenticating.
+	for _, name := range []string{"", mechNone, "none"} {
+		got, err := as(name, "", "")
+		if got != nil || err != nil {
+			t.Errorf("%q: %v, %v", name, got, err)
+		}
+	}
+	// Each mechanism is the one asked for, however it was typed.
+	for name, want := range map[string]string{
+		"PLAIN": "PLAIN", "plain": "PLAIN",
+		"SCRAM-SHA-256": "SCRAM-SHA-256", "scram-sha-512": "SCRAM-SHA-512",
+	} {
+		got, err := as(name, "ikigai", "secret")
+		if err != nil || got == nil {
+			t.Errorf("%q: %v", name, err)
+			continue
+		}
+		if got.Name() != want {
+			t.Errorf("%q authenticates as %q", name, got.Name())
+		}
+	}
+
+	// Credentials that would be sent nowhere are refused, rather than the
+	// connection quietly being made as nobody.
+	_, err := as(mechNone, "ikigai", "secret")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "no authentication") {
+		t.Errorf("credentials with nothing chosen: %v", err)
+	}
+	// A mechanism with nobody to authenticate is refused before dialling: the
+	// broker would only say something less clear.
+	_, err = as("PLAIN", "", "secret")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "user") {
+		t.Errorf("a mechanism with no user: %v", err)
+	}
+	// One nobody speaks here is refused, saying what there is to choose.
+	_, err = as("SCRAM-SHA-1", "ikigai", "secret")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "SCRAM-SHA-256") {
+		t.Errorf("a mechanism nobody speaks: %v", err)
+	}
+	// A keychain that will not answer is a fault in the settings, not a
+	// refusal by the broker.
+	_, err = mechanismOf(source.ConnectionConfig{Host: "b", User: "ikigai",
+		Params: map[string]string{"mechanism": "PLAIN"},
+		Secret: func(string) (string, error) { return "", errors.New("locked") }})
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "keychain") {
+		t.Errorf("a keychain that will not answer: %v", err)
 	}
 }
 
