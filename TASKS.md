@@ -23,14 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.47 — the Cassandra driver over gocql and its connection,
-           which opens 2.G. 2.D, 2.E and 2.F are done. No Cassandra server
-           runs yet, so a container of its own comes first (OQ-7 assumes
-           self-hosted). T1.58 waited on the MongoDB and Redis drivers, which
-           are done: whether their dialects are drawn in colour is worth a
-           look before it is closed.
-           T2.21's new table waits on the table designer (3.A), and T1.14's
-           scroll position on Fyne.
+NEXT TASK: T2.48 — the Cassandra tree: keyspaces, their tables and columns,
+           and the replication each keyspace was made with. The driver
+           connects already (T2.47) but is not in cmd/ikigai's list of
+           drivers, and joins it when its tree is worth opening.
+           T1.58 waited on the MongoDB and Redis drivers, which are done:
+           whether their dialects are drawn in colour is worth a look before
+           it is closed. T2.21's new table waits on the table designer (3.A),
+           and T1.14's scroll position on Fyne.
 [~] tasks: T1.14 and T2.21 partly done; their lines say what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
@@ -39,8 +39,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            ikigai-mongo (57017), ikigai-redis (56379), ikigai-redis-json
            (56380, redis-stack, for the JSON module), and
            ikigai-redis-cluster (three shards on 7001-7003, published as
-           themselves so each is reachable where it announces itself).
-LAST DONE: 2026-09-14 — the conformance suite's key-value paradigm, run
+           themselves so each is reachable where it announces itself), and
+           ikigai-cassandra (59042, pulled from public.ecr.aws because
+           Docker Hub refuses an unauthenticated pull here).
+LAST DONE: 2026-09-18 — the Cassandra connection, a form of fields over
+           gocql that says what is wrong and claims nothing it has not
+           written (T2.47, ADR-0080). 2026-09-14 — the conformance suite's key-value paradigm, run
            against a single Redis server, one with the JSON module and a
            cluster, and the four faults it found fixed (T2.46, ADR-0079).
            2026-09-13 — what a server says about itself, in the structure
@@ -466,7 +470,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.G Cassandra
 
-- [ ] **T2.47** Driver (`gocql/gocql`) + connection
+- [x] **T2.47** Driver (`gocql/gocql`) + connection — *`internal/source/drivers/cassandra`: a wide-column store in the relational paradigm, because keyspaces hold tables of declared columns and CQL is a SQL-family language; what Cassandra does differently shows in the capabilities it claims rather than in a paradigm of its own. A form of fields rather than a URI — any node and its port, an optional keyspace, a role and its password, further nodes, and the data centre whose nodes are asked first, token-aware within it. The credentials are settings gocql takes on their own and never part of an address, encryption is the settings' to say with nothing downgraded silently, and `SslOptions.EnableHostVerification` is made to say what the mode says. `CreateSession` takes no context, so a connection given up is raced against one and a session that arrives late is closed rather than leaked. A failure is said in terms of what to fix, and where a keyspace was named the cluster is dialled again without it and asked whether it has that keyspace — gocql folds every node's refusal into "no connections were made", which would otherwise read as a network fault. Nothing is claimed that is not written: no query language (T2.49), no rows (T2.51), an empty tree and a browse that refuses until T2.48, which is also when the driver joins the application's own list (ADR-0080)*
 - [ ] **T2.48** Keyspace/table introspection, replication strategy display → FR-12.3
 - [ ] **T2.49** CQL dialect + quoter
 - [ ] **T2.50** CQL editor with highlighting and completion → FR-5.1, FR-5.2
