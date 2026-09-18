@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,20 @@ const (
 	// wants a test connection that fails quickly and says why.
 	timeout = 10 * time.Second
 )
+
+// consistencies are the levels a person may choose, offered from the fewest
+// replicas to the most, with each data-centre-local level beside the
+// cluster-wide one it answers to.
+//
+// ANY is not among them. It is a write's level alone — a write that reached
+// any node at all, even as a hint nobody has replayed — and a read at ANY is
+// refused by the cluster. A selector that offered it would be offering a
+// setting that stops reading working.
+var consistencies = []string{"ONE", "LOCAL_ONE", "TWO", "THREE", "QUORUM", "LOCAL_QUORUM", "EACH_QUORUM", "ALL"}
+
+// defaultConsistency is what a person who has not chosen gets, and what gocql
+// itself would have used: a majority of the replicas.
+const defaultConsistency = "QUORUM"
 
 func init() { source.Register(Driver{}) }
 
@@ -61,6 +76,9 @@ func (Driver) Describe() source.Descriptor {
 				Help: "host:port, comma separated. The host above is the first."},
 			{Key: "datacenter", Label: "Local data centre", Kind: source.FieldText,
 				Help: "Optional: the data centre whose nodes are asked first."},
+			{Key: "consistency", Label: "Consistency", Kind: source.FieldSelect, Default: defaultConsistency,
+				Options: consistencies,
+				Help:    "How many replicas must answer before a read or a write is."},
 		},
 	}
 }
@@ -163,6 +181,16 @@ func clusterOf(cfg source.ConnectionConfig) (*gocql.ClusterConfig, error) {
 		cluster.Authenticator = gocql.PasswordAuthenticator{Username: user, Password: password}
 	}
 
+	level, err := consistencyOf(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// Set on the cluster rather than on each statement: gocql gives a query
+	// the session's level, so every read, every write and the schema the tree
+	// is read from are all answered at the level a person asked for. Somebody
+	// who chooses ALL means it about all of it.
+	cluster.Consistency = level
+
 	if dc := strings.TrimSpace(cfg.Params["datacenter"]); dc != "" {
 		// Asking the local data centre first is what keeps a query off a
 		// link between regions. Token awareness above it sends a query to a
@@ -227,6 +255,27 @@ func secret(cfg source.ConnectionConfig, key string) (string, error) {
 			Hint: "The password could not be read from the keychain.", Err: err}
 	}
 	return v, nil
+}
+
+// consistencyOf is the level this connection reads and writes at.
+//
+// A name nobody offered is refused rather than quietly replaced by a default:
+// a person who typed EACH_QUORM meant something, and reading at QUORUM
+// instead would answer a question they did not ask.
+func consistencyOf(cfg source.ConnectionConfig) (gocql.Consistency, error) {
+	name := strings.ToUpper(strings.TrimSpace(cfg.Params["consistency"]))
+	if name == "" {
+		name = defaultConsistency
+	}
+	if !slices.Contains(consistencies, name) {
+		return 0, &source.ConnectError{Kind: source.ConnectConfig,
+			Hint: fmt.Sprintf("%q is not a level to read at; choose one of %s.",
+				name, strings.Join(consistencies, ", "))}
+	}
+	// Every name offered is one gocql knows, which a test says rather than a
+	// branch here that nothing could reach.
+	level, _ := gocql.ParseConsistencyWrapper(name)
+	return level, nil
 }
 
 // encrypted reports whether this connection speaks TLS at all. Cassandra

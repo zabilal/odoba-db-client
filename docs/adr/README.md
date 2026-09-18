@@ -89,3 +89,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0082](0082-the-cql-dialect.md) | The CQL dialect | Accepted |
 | [0083](0083-running-cql.md) | Running CQL | Accepted |
 | [0084](0084-paging-a-cassandra-table.md) | Paging a Cassandra table | Accepted |
+| [0085](0085-the-level-a-read-is-answered-at.md) | The level a read is answered at | Accepted |
