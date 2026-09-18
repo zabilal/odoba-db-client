@@ -11,7 +11,7 @@ import (
 
 func keyspaceRendered(t *testing.T, c source.RowChange) (string, string) {
 	t.Helper()
-	w, desc, err := keyspaceWrite(c)
+	w, desc, err := keyspaceWrite(c, false)
 	if err != nil {
 		t.Fatalf("%+v: %v", c, err)
 	}
@@ -79,13 +79,44 @@ func TestWhatAKeyItselfCannotBeToldToDo(t *testing.T) {
 			Key: []any{"user:1", "hash"}}, "one key"},
 	}
 	for _, c := range cases {
-		_, _, err := keyspaceWrite(c.change)
+		_, _, err := keyspaceWrite(c.change, false)
 		if err == nil {
 			t.Errorf("%s: accepted", c.what)
 			continue
 		}
 		if !strings.Contains(err.Error(), c.says) {
 			t.Errorf("%s: %q, want something about %q", c.what, err, c.says)
+		}
+	}
+}
+
+func TestAClusterRenamesAKeyOnlyWithinItsSlot(t *testing.T) {
+	rename := func(from, to string) source.RowChange {
+		return source.RowChange{Kind: source.ChangeUpdate, Key: []any{from}, Values: map[string]any{"key": to}}
+	}
+	// Names that share a {tag} share a slot, and are renamed as on a single
+	// server.
+	if w, _, err := keyspaceWrite(rename("{user}:1", "{user}:9"), true); err != nil || w.command != "RENAMENX {user}:1 {user}:9" {
+		t.Errorf("a rename within a slot: %v %v", w, err)
+	}
+	// Names in two slots are refused before anything is sent.
+	if _, _, err := keyspaceWrite(rename("user:1", "user:9"), true); err == nil || !strings.Contains(err.Error(), "slot") {
+		t.Errorf("a rename between slots: %v", err)
+	}
+	// A single server has no slots to keep a key in.
+	if _, _, err := keyspaceWrite(rename("user:1", "user:9"), false); err != nil {
+		t.Errorf("a rename on a single server: %v", err)
+	}
+}
+
+func TestAKeysSlotIsTheOneTheServerGives(t *testing.T) {
+	// As CLUSTER KEYSLOT answered for each, on Redis 7.4.
+	for name, want := range map[string]uint16{
+		"123456789": 12739, "user:1": 10778, "user:9": 11026, "conftrial:a": 8380, "conftrial:b": 4319,
+		"{user}:1": 5474, "{user}:2": 5474, "foo{}{bar}": 8363, "foo{{bar}}zap": 4015, "foo{bar}{zap}": 5061,
+	} {
+		if got := slot(name); got != want {
+			t.Errorf("slot(%q) = %d, the server says %d", name, got, want)
 		}
 	}
 }

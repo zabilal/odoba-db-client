@@ -177,11 +177,11 @@ func checkDocumentWriter(t *testing.T, target Target, src source.Source, w sourc
 
 // writableIdentity is how the rows of the Writable object are told apart. A
 // store with declared columns has the id column the suite asks for; a
-// document store names its own key, and only a stream of its documents can
-// say what it is (FR-12.1).
+// document store and a keyspace name their own key, and only a stream of
+// their rows can say what it is (FR-12.1, FR-12.2).
 func writableIdentity(ctx context.Context, t *testing.T, src source.Source, ref model.ObjectRef) model.RowIdentity {
 	t.Helper()
-	if src.Capabilities().Paradigm != model.ParadigmDocument {
+	if src.Capabilities().Paradigm == model.ParadigmRelational {
 		return model.RowIdentity{Kind: model.IdentityPrimaryKey, Columns: []string{"id"}, Target: ref}
 	}
 	rs, err := src.Browse(ctx, ref, source.BrowseOptions{Limit: 1})

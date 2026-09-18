@@ -16,9 +16,10 @@ import (
 // FR-4.5, ADR-0031): each change written by its key, all of a plan or none
 // of it, and the guard asked first.
 //
-// A store whose rows are documents is checked apart: it has no declared
-// columns, no server-given defaults and no numbered key, so the relational
-// checks below would be about a shape it does not have.
+// A store whose rows are documents, and one whose rows are keys, are each
+// checked apart: neither has declared columns, server-given defaults or a
+// numbered key, so the relational checks below would be about a shape it does
+// not have.
 func checkWriter(t *testing.T, target Target) {
 	if target.Writable.IsZero() {
 		t.Skip("no Writable target configured")
@@ -30,8 +31,12 @@ func checkWriter(t *testing.T, target Target) {
 	if !ok {
 		t.Skip("source does not implement Writer")
 	}
-	if src.Capabilities().Paradigm == model.ParadigmDocument {
+	switch src.Capabilities().Paradigm {
+	case model.ParadigmDocument:
 		checkDocumentWriter(t, target, src, w)
+		return
+	case model.ParadigmKeyValue:
+		checkKeyValueWriter(t, target, src, w)
 		return
 	}
 	ref := target.Writable

@@ -46,6 +46,12 @@ type Target struct {
 	// n, an integer that can be NULL. For a document store it must be an
 	// empty collection, which the checks fill themselves: a document has no
 	// shape until one is written.
+	//
+	// For a key-value store it must be a keyspace the target has filled with
+	// at least three keys, one of them holding a value a change can be
+	// written to. The checks change and delete keys but cannot make one: a
+	// key comes into being when something is written to it, which no row of
+	// a keyspace does.
 	Writable model.ObjectRef
 
 	// OpenGuarded opens a connection with a guard, for the write checks'

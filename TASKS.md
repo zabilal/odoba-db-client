@@ -23,15 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.46 — conformance green for Redis, which is what is left of 2.F.
-           The shared suite will want a key-value paradigm as T2.38 gave it a
-           document one: its write checks dispatch on the paradigm, and a
-           keyspace's rows are keys rather than rows of a table. 2.D and 2.E
-           are done.
-           T2.21's new table waits on the table designer (3.A). What is
-           open in Phase 1
-           waits on other work: T1.58 on the MongoDB and Redis drivers,
-           T1.14's scroll position on Fyne.
+NEXT TASK: T2.47 — the Cassandra driver over gocql and its connection,
+           which opens 2.G. 2.D, 2.E and 2.F are done. No Cassandra server
+           runs yet, so a container of its own comes first (OQ-7 assumes
+           self-hosted). T1.58 waited on the MongoDB and Redis drivers, which
+           are done: whether their dialects are drawn in colour is worth a
+           look before it is closed.
+           T2.21's new table waits on the table designer (3.A), and T1.14's
+           scroll position on Fyne.
 [~] tasks: T1.14 and T2.21 partly done; their lines say what is open.
 OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            the first sight of the native save sheet (T1.3). Also the G0-1
@@ -41,7 +40,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            (56380, redis-stack, for the JSON module), and
            ikigai-redis-cluster (three shards on 7001-7003, published as
            themselves so each is reachable where it announces itself).
-LAST DONE: 2026-09-13 — what a server says about itself, in the structure
+LAST DONE: 2026-09-14 — the conformance suite's key-value paradigm, run
+           against a single Redis server, one with the JSON module and a
+           cluster, and the four faults it found fixed (T2.46, ADR-0079).
+           2026-09-13 — what a server says about itself, in the structure
            tab (T2.45, ADR-0078); the Redis console, its commands being its
            language (T2.44, ADR-0077); a key's own time to live and name, edited in
            the keyspace (T2.43, ADR-0076); a stream's entries and a JSON
@@ -460,7 +462,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.43** TTL display and edit → FR-12.2 — *the keyspace's rows are edited where they are shown: a change to one is a change to the key itself rather than to what it holds, so the writer takes a database as a target as well as a key. A time to live is read however it is written — a bare number is seconds, anything else a length of time as Go writes one, and nothing at all (an empty cell, a value taken away, the -1 the server itself answers) is a key that never expires, which is `PERSIST` and no failure to do twice. An expiry of nothing does not delete the key, a key is renamed with `RENAMENX` so another is never written over, and a key is deleted from the keyspace and never added there, because a key comes into being when something is written to it. A cluster sends each command to the shard that holds the key it names (ADR-0076)*
 - [x] **T2.44** Raw command console → FR-12.2 — *Redis's own commands are its query language: a command is a line, read as redis-cli reads one (words apart, `"…"` with its escapes, `'…'` where only the quote is, a quote left open an error), and a `#` line is a comment. A console holds a connection of its own, so `SELECT` moves it and nothing else and `MULTI` and `WATCH` are its own state; a cluster's console is the cluster, each command going to the shard its key names. What a command does is read from its name — the reading ones listed, the server-changing ones listed, everything else a write — and every command of a script is put to the guard before the first runs; `SUBSCRIBE` and `MONITOR` are refused outright, being commands that stop a connection answering. A reply is drawn as what it is: a word, a number, a list, a list of lists, the pairs of a map, with what is nested shown as the structure it is and a reply of nothing an answer. Redis is a lexer dialect of its own, a condition typed in the grid is the pattern names are matched by, and the grid is shown the command a browse sends (ADR-0077)*
 - [x] **T2.45** Memory / keyspace info panel → FR-12.2 — *a keyspace and a key are model types of their own beside a table and a collection, neither having columns: a database says how many keys it holds and how many are set to expire, with the server's own figures under INFO's own headings and by INFO's own names, in a settled order, a figure the server did not report left out and a heading with nothing under it not shown; a server that will not say is not a failure. A cluster's shards are a group of their own, each with its keys and its memory. A key is described by asking after it — `TYPE`, `TTL`, `MEMORY USAGE`, `OBJECT ENCODING` and the length its kind is counted in. Open Structure now shows whatever a person is looking at: the explorer's choice, or the object the tab in front is on, which is the only way to reach a key at all (ADR-0078)*
-- [ ] **T2.46** Conformance green
+- [x] **T2.46** Conformance green — *the suite runs against the Redis driver in all three shapes a connection takes — a single server, one with the JSON module, a cluster — and is green for everything it claims. Its writes gained a third paradigm: a keyspace is rows twice over, its keys and what each key holds (`source.RowObject`), so the key-value checks open every key onto its value and write at both levels. The suite cannot make a key, which comes into being when something is written to it, so the target fills the keyspace, and a key is not added as a row. A kind takes only some changes, so each change is refused when planned or does just what it says, and a refusal is logged rather than failed; what is written is what the grid hands a writer for text typed into a cell (`value.Parse`), rows are compared as sets in no order, a time to live as what is left of it, and a count claimed exact is checked at both levels. The checks are checked themselves, against a keyspace in memory with a fault put in it (ADR-0079). It found three faults, all fixed: a string's or a document's value was written through a change for another key, a list position past 32 bits wrote over another element, and JSON as the grid reads it reached Redis as a slice of numbers. Putting the cluster through it found a fourth: a rename between hash slots, now refused before it is sent*
 
 ## 2.G Cassandra
 

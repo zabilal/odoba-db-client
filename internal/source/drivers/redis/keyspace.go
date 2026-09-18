@@ -22,8 +22,9 @@ import (
 // only place a whole key can be — and never added, because a key comes into
 // being when something is written to it and not before.
 
-// keyspaceWrite renders one change to a row of a database's keyspace.
-func keyspaceWrite(c source.RowChange) (*valueWrite, string, error) {
+// keyspaceWrite renders one change to a row of a database's keyspace, on a
+// cluster where cluster is set.
+func keyspaceWrite(c source.RowChange, cluster bool) (*valueWrite, string, error) {
 	switch c.Kind {
 	case source.ChangeInsert:
 		return nil, "", errors.New("a key comes into being when something is written to it: add it by writing a value, not a row")
@@ -53,7 +54,7 @@ func keyspaceWrite(c source.RowChange) (*valueWrite, string, error) {
 			// of its changes does.
 			return nil, "", errors.New("a key is renamed or its time to live is set, one change at a time")
 		case isRenamed:
-			return renameWrite(name, str(renamed))
+			return renameWrite(name, str(renamed), cluster)
 		case expires:
 			return expiryWrite(name, ttl)
 		}
@@ -65,12 +66,21 @@ func keyspaceWrite(c source.RowChange) (*valueWrite, string, error) {
 // renameWrite gives a key another name. RENAMENX rather than RENAME: RENAME
 // would delete whatever was there under the new name, which nobody typing a
 // name into a grid is asking for.
-func renameWrite(name, to string) (*valueWrite, string, error) {
+//
+// A cluster renames a key only within its hash slot, and refuses two names in
+// different slots with CROSSSLOT. That is refused here, before anything is
+// sent, in words that say what would work: moving a key between shards is
+// not a rename but a copy and a delete, which is not what was asked.
+func renameWrite(name, to string, cluster bool) (*valueWrite, string, error) {
 	if strings.TrimSpace(to) == "" {
 		return nil, "", errors.New("a key with no name addresses nothing")
 	}
 	if to == name {
 		return nil, "", errors.New("an update that changes nothing")
+	}
+	if cluster && slot(name) != slot(to) {
+		return nil, "", fmt.Errorf("a cluster renames a key only within its hash slot, and %s and %s are in different ones; "+
+			"names that share a {tag} share a slot", name, to)
 	}
 	w := &valueWrite{command: fmt.Sprintf("RENAMENX %s %s", quote(name), quote(to))}
 	w.send = func(ctx context.Context, node writer, _ string) (int64, error) {
@@ -149,6 +159,29 @@ func ttlValue(v any) (time.Duration, error) {
 		return 0, fmt.Errorf("%q is not a length of time, such as 30m, 12h or 3600", text)
 	}
 	return d, nil
+}
+
+// slot is the hash slot a cluster keeps a key in: the CRC16 of its name, or
+// of the part between its first { and the } after it where that part is not
+// empty, modulo 16384 (the Redis cluster specification).
+func slot(name string) uint16 {
+	if open := strings.IndexByte(name, '{'); open >= 0 {
+		if end := strings.IndexByte(name[open+1:], '}'); end > 0 {
+			name = name[open+1 : open+1+end]
+		}
+	}
+	var crc uint16
+	for i := 0; i < len(name); i++ {
+		crc ^= uint16(name[i]) << 8
+		for bit := 0; bit < 8; bit++ {
+			if crc&0x8000 != 0 {
+				crc = crc<<1 ^ 0x1021
+			} else {
+				crc <<= 1
+			}
+		}
+	}
+	return crc & (16384 - 1)
 }
 
 // isNoSuchKey reports the server refusing a command because the key it names
