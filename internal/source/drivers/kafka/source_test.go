@@ -1,0 +1,177 @@
+package kafka
+
+import (
+	"context"
+	"errors"
+	"net"
+	"strings"
+	"testing"
+
+	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/capability"
+)
+
+// The connection to a Kafka cluster (T2.54).
+
+func TestTheFormAsksForABrokerToStartFrom(t *testing.T) {
+	d := Driver{}.Describe()
+	if d.ID != driverID || d.Paradigm != model.ParadigmStream || d.DefaultPort != defaultPort {
+		t.Errorf("the driver describes itself as %+v", d)
+	}
+	fields := map[string]source.Field{}
+	for _, f := range d.Fields {
+		fields[f.Key] = f
+	}
+	// A broker is required, because there is nowhere else to start; the rest
+	// of the cluster is found from it, so nothing else is.
+	if host := fields["host"]; !host.Required || host.Kind != source.FieldText {
+		t.Errorf("the bootstrap server is asked for as %+v", host)
+	}
+	for _, key := range []string{"port", "servers"} {
+		if f, ok := fields[key]; !ok || f.Required {
+			t.Errorf("%s is asked for as %+v", key, f)
+		}
+	}
+	// No database, no user: Kafka has no database to choose, and what it asks
+	// of a person who must authenticate is SASL, which is T2.55.
+	for _, key := range []string{"database", "topic"} {
+		if _, ok := fields[key]; ok {
+			t.Errorf("the form asks for a %s", key)
+		}
+	}
+}
+
+func TestWhereTheClusterIsFoundFrom(t *testing.T) {
+	seeds := func(host string, port int, servers string) []string {
+		t.Helper()
+		got, err := bootstrapServers(source.ConnectionConfig{
+			Host: host, Port: port, Params: map[string]string{"servers": servers}})
+		if err != nil {
+			t.Fatalf("%q/%d/%q: %v", host, port, servers, err)
+		}
+		return got
+	}
+	for name, c := range map[string]struct {
+		host, servers string
+		port          int
+		want          string
+	}{
+		"a broker and nothing else":   {"localhost", "", 0, "localhost:9092"},
+		"a port of its own":           {"localhost", "", 59092, "localhost:59092"},
+		"the port written in":         {"localhost:59092", "", 0, "localhost:59092"},
+		"further brokers":             {"a", "b,c", 9095, "a:9095 b:9095 c:9095"},
+		"each with a port of its own": {"a", "b:1, c:2", 9095, "a:9095 b:1 c:2"},
+		"spaces and commas alike":     {"a", " b  c,,d ", 0, "a:9092 b:9092 c:9092 d:9092"},
+		"an address in six":           {"::1", "", 0, "[::1]:9092"},
+		"an address in six, ported":   {"[::1]:59092", "", 0, "[::1]:59092"},
+	} {
+		got := strings.Join(seeds(c.host, c.port, c.servers), " ")
+		if got != c.want {
+			t.Errorf("%s: %q, want %q", name, got, c.want)
+		}
+	}
+
+	// Every seed is dialable as it stands: a host and a port, always.
+	for _, s := range seeds("host", 0, "other") {
+		if _, _, err := net.SplitHostPort(s); err != nil {
+			t.Errorf("the seed %q is no address: %v", s, err)
+		}
+	}
+
+	// With nowhere to start, nothing is dialled and the refusal says so.
+	_, err := bootstrapServers(source.ConnectionConfig{})
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "bootstrap server") {
+		t.Errorf("no broker at all: %v", err)
+	}
+}
+
+func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
+	caps := (&kafkaSource{}).Capabilities()
+	if caps.Paradigm != model.ParadigmStream {
+		t.Errorf("the paradigm is %q", caps.Paradigm)
+	}
+	// Kafka has no query language, and this driver has not yet written a way
+	// to read a record, list a topic, or say what a cluster holds. A claim is
+	// a promise the suite holds a driver to.
+	if caps.Query.Supported || caps.Query.Language != "" {
+		t.Errorf("a query language is claimed: %+v", caps.Query)
+	}
+	if (caps.Stream != capability.Stream{}) {
+		t.Errorf("a stream operation is claimed: %+v", caps.Stream)
+	}
+	if caps.Data.ServerFilter || caps.Data.ServerSort || caps.Data.ExactCount {
+		t.Errorf("the grid is promised something: %+v", caps.Data)
+	}
+	if len(caps.Objects) != 0 {
+		t.Errorf("an object kind is claimed before the tree exists: %v", caps.Objects)
+	}
+
+	// And the tree says the same: nothing, rather than a node invented for it.
+	s := &kafkaSource{}
+	ctx := context.Background()
+	if nodes, err := s.Root(ctx); err != nil || len(nodes) != 0 {
+		t.Errorf("the root holds %v: %v", nodes, err)
+	}
+	if _, err := s.Browse(ctx, model.NewRef(model.KindTopic, "t"), source.BrowseOptions{}); err == nil {
+		t.Error("records were read from a driver that cannot read them")
+	}
+}
+
+func TestAFailureSaysWhatToFix(t *testing.T) {
+	for name, c := range map[string]struct {
+		err  error
+		want source.ConnectKind
+	}{
+		"nothing listening":           {errors.New("dial tcp 127.0.0.1:9092: connect: connection refused"), source.ConnectRefused},
+		"no such host":                {&net.DNSError{Err: "no such host", Name: "nowhere"}, source.ConnectUnreachable},
+		"no answer":                   {errors.New("context deadline exceeded"), source.ConnectUnreachable},
+		"given up on":                 {context.Canceled, source.ConnectUnreachable},
+		"a certificate":               {errors.New("x509: certificate signed by unknown authority"), source.ConnectTLS},
+		"plaintext to a TLS listener": {errors.New("first record does not look like a TLS handshake"), source.ConnectTLS},
+		"credentials":                 {errors.New("SASL authentication failed"), source.ConnectAuth},
+		"something else":              {errors.New("the broker said no"), source.ConnectUnknown},
+	} {
+		got := classifyConnectError(c.err)
+		if kind(got) != c.want {
+			t.Errorf("%s: %v, kind %d, want %d", name, got, kind(got), c.want)
+		}
+		// Every failure says something a person can act on.
+		var ce *source.ConnectError
+		if errors.As(got, &ce); ce == nil || ce.Hint == "" {
+			t.Errorf("%s says nothing to fix: %v", name, got)
+		}
+	}
+	// A failure already classified is not classified twice.
+	first := classifyConnectError(errors.New("connection refused"))
+	if got := classifyConnectError(first); got != first {
+		t.Errorf("a failure classified twice: %v", got)
+	}
+}
+
+func TestAConnectionWithNowhereToGoIsNeverDialled(t *testing.T) {
+	d := Driver{}
+	src, err := d.Open(context.Background(), source.ConnectionConfig{DriverID: driverID})
+	if err == nil {
+		src.Close()
+		t.Fatal("a connection was opened to no broker at all")
+	}
+	if kind(err) != source.ConnectConfig {
+		t.Errorf("the refusal is %v", err)
+	}
+	// And it says what is missing. franz-go would refuse a client with no
+	// seeds too, in words about its own options; this is the driver saying
+	// which field of the form is empty.
+	if !strings.Contains(err.Error(), "bootstrap server") {
+		t.Errorf("the refusal says %q", err)
+	}
+}
+
+// kind is the kind of connection failure an error says it is.
+func kind(err error) source.ConnectKind {
+	var ce *source.ConnectError
+	if errors.As(err, &ce) {
+		return ce.Kind
+	}
+	return source.ConnectUnknown
+}
