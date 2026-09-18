@@ -172,11 +172,8 @@ func objectNodes(kind model.ObjectKind, keyspace string, names []string, holds b
 	for _, name := range names {
 		out = append(out, model.Node{
 			Ref: model.NewRef(kind, keyspace, name), Label: name,
-			// A table and a view hold columns; a type holds none. Neither is
-			// browsable yet: a page of a Cassandra table is a walk of the
-			// partitions a paging state names, which is T2.51, and a node
-			// that offered rows it cannot read would be a lie.
-			HasChildren: holds,
+			// A table and a view hold columns and rows; a type holds neither.
+			HasChildren: holds, Browsable: holds,
 		})
 	}
 	return out

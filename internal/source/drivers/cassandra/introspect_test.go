@@ -73,9 +73,8 @@ func TestWhatATreeNodeOffersIsWhatItCanDo(t *testing.T) {
 		if !n.HasChildren {
 			t.Errorf("%s holds columns", n.Label)
 		}
-		// Rows come with T2.51; until then nothing offers to read them.
-		if n.Browsable {
-			t.Errorf("%s offers rows it cannot read", n.Label)
+		if !n.Browsable {
+			t.Errorf("%s holds rows, and does not offer them", n.Label)
 		}
 		if n.Ref.Kind != model.KindTable || n.Ref.Path[0] != "shop" {
 			t.Errorf("%s is addressed as %s", n.Label, n.Ref)
