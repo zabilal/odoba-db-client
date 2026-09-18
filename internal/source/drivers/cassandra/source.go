@@ -374,9 +374,8 @@ func (s *cassandraSource) Capabilities() capability.Capabilities {
 		// grid pages without a scrollbar it cannot draw honestly (FR-2.5).
 		Data: capability.Data{ServerSort: true, ServerFilter: true},
 		// CQL is the language, and a script of it runs a statement at a
-		// time. Reading a table's rows is T2.51, and is not claimed until it
-		// is written: a claim is a promise the conformance suite holds a
-		// driver to (REQ-DRV-1).
+		// time. Every claim here is a promise the conformance suite holds
+		// this driver to, against a real cluster (REQ-DRV-1).
 		Query: capability.Query{Supported: true, Language: "cql", MultiStatement: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,

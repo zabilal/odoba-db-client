@@ -149,11 +149,18 @@ func (s *pgSource) folders(ctx context.Context, ref model.ObjectRef) ([]model.No
 	if err != nil {
 		return nil, err
 	}
-	return model.ClassNodes(ref, map[model.ObjectKind]int64{
+	out := model.ClassNodes(ref, map[model.ObjectKind]int64{
 		model.KindTable: tables, model.KindView: views, model.KindMaterializedView: matviews,
 		model.KindIndex: indexes, model.KindTrigger: triggers, model.KindRoutine: routines,
 		model.KindSequence: sequences, model.KindUserType: types,
-	}), nil
+	})
+	if len(out) == 0 {
+		// A schema with nothing in it still shows its tables, empty: a schema
+		// node says it has children, and one that then lists none draws an
+		// expander that turns and never opens (FR-2.2).
+		out = []model.Node{model.ClassNode(ref, model.KindTable, 0)}
+	}
+	return out, nil
 }
 
 func (s *pgSource) folderContents(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {

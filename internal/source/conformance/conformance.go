@@ -271,21 +271,6 @@ func checkIntrospection(t *testing.T, target Target) {
 		checkNode(t, caps, n)
 	}
 
-	// Expanding a node that claims children must return something or a clear
-	// error — never an empty slice with no explanation, which renders as a
-	// permanently spinning expander.
-	for _, n := range roots {
-		if !n.HasChildren {
-			continue
-		}
-		kids, err := src.Children(ctx, n.Ref)
-		if err != nil {
-			t.Errorf("Children(%v): %v", n.Ref, err)
-		} else if len(kids) == 0 {
-			t.Errorf("node %v claims HasChildren but returned none", n.Ref)
-		}
-		break
-	}
 	for _, p := range walkTree(ctx, src, caps, roots, 1) {
 		t.Error(p)
 	}
@@ -349,6 +334,14 @@ func walkTree(ctx context.Context, src childLister, caps capability.Capabilities
 		kids, err := src.Children(ctx, n.Ref)
 		if err != nil {
 			out = append(out, fmt.Sprintf("Children(%v): %v", n.Ref, err))
+			continue
+		}
+		if len(kids) == 0 {
+			// Expanding a node that claims children must return something or
+			// a clear error — never an empty slice with no explanation, which
+			// renders as a permanently spinning expander. At any depth: a
+			// view or a table is as expandable as a database (FR-2.2).
+			out = append(out, fmt.Sprintf("node %v claims HasChildren but returned none", n.Ref))
 			continue
 		}
 		class, isClass := model.ClassOf(n.Ref)

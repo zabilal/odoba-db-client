@@ -65,6 +65,25 @@ func TestTheWalkFindsAnotherKindInAClass(t *testing.T) {
 	}
 }
 
+func TestTheWalkFindsANodeThatOpensOntoNothing(t *testing.T) {
+	db := model.NewRef(model.KindDatabase, "d")
+	tables := model.ClassNode(db, model.KindTable, 1)
+	// A table that says it has columns and lists none: an expander that turns
+	// and never opens. It is two levels down, where only the walk reaches.
+	table := model.Node{Ref: model.NewRef(model.KindTable, "d", "t"), Label: "t", HasChildren: true}
+	f := &fakeTree{kids: map[string][]model.Node{tables.Ref.String(): {table}}}
+	got := walkTree(context.Background(), f, declared, []model.Node{tables}, 1)
+	if len(got) != 1 || !strings.Contains(got[0], "claims HasChildren but returned none") {
+		t.Errorf("problems %q; want the table that opens onto nothing", got)
+	}
+	// A node that claims none is not expanded, and is no problem.
+	leaf := model.Node{Ref: model.NewRef(model.KindTable, "d", "t"), Label: "t"}
+	quiet := &fakeTree{kids: map[string][]model.Node{tables.Ref.String(): {leaf}}}
+	if got := walkTree(context.Background(), quiet, declared, []model.Node{tables}, 1); len(got) != 0 {
+		t.Errorf("a leaf is %q", got)
+	}
+}
+
 func TestTheWalkGoesFourLevelsDownAndFourNodesAcross(t *testing.T) {
 	node := func(name string, branch bool) model.Node {
 		return model.Node{Ref: model.NewRef(model.KindTable, "d", name), Label: name, HasChildren: branch}
