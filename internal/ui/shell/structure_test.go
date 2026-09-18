@@ -134,6 +134,40 @@ func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
 	}
 }
 
+func TestStructureShowsWhatAClusterIs(t *testing.T) {
+	// A cluster has no columns either: what there is to say is who its brokers
+	// are and which of them answers for the whole (FR-13.1).
+	cluster := &model.Cluster{ID: "abc123", Controller: 2,
+		Brokers: []model.Broker{
+			{ID: 1, Host: "one", Port: 9092, Rack: "rack-a"},
+			{ID: 2, Host: "two", Port: 9093},
+		},
+		Attrs: map[string]string{"version": "v4.1"}}
+	got := strings.Join(labelTexts(structureView(cluster, nil, nil)), "\n")
+	for _, want := range []string{
+		"2 brokers", "abc123", "Brokers", "one:9092", "rack-a", "two:9093",
+		"2 (controller)", "What it says about itself", "version", "v4.1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a cluster's structure does not say %q:\n%s", want, got)
+		}
+	}
+	// Only the broker that answers for the whole is marked as doing so.
+	if strings.Contains(got, "1 (controller)") {
+		t.Errorf("a broker that is not the controller is marked as one:\n%s", got)
+	}
+	// A cluster of one reads as one, not as "1 brokers".
+	one := &model.Cluster{ID: "solo", Brokers: []model.Broker{{ID: 1, Host: "h", Port: 9092}}}
+	if got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n"); !strings.Contains(got, "one broker") {
+		t.Errorf("a cluster of one says:\n%s", got)
+	}
+	// And one that named no brokers says so, rather than showing an empty table.
+	none := &model.Cluster{ID: "empty"}
+	if got := strings.Join(labelTexts(structureView(none, nil, nil)), "\n"); !strings.Contains(got, "named no brokers") {
+		t.Errorf("a cluster with no brokers says:\n%s", got)
+	}
+}
+
 func TestStructureShowsACollectionsShape(t *testing.T) {
 	coll := &model.Collection{
 		Name: "people", DocumentsEstimate: 41,

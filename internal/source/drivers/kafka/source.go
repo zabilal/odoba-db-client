@@ -350,11 +350,12 @@ type kafkaSource struct {
 func (s *kafkaSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
-		// Nothing else yet. There is no query language to claim — Kafka has
-		// none, which is why capability.Query exists to be left zeroed — and
-		// consuming, producing, groups and topic administration each wait for
-		// the task that writes them, as the tree does (T2.59 onward).
-		Objects: map[model.ObjectKind]bool{},
+		// There is no query language to claim — Kafka has none, which is why
+		// capability.Query exists to be left zeroed — and consuming,
+		// producing, groups and topic administration each wait for the task
+		// that writes them. The tree holds the cluster and nothing else yet:
+		// topics and consumer groups are T2.62.
+		Objects: map[model.ObjectKind]bool{model.KindCluster: true},
 	}
 }
 
@@ -410,23 +411,6 @@ func (s *kafkaSource) Close() (err error) {
 	// twice; a flag of this driver's own would only say the same thing again.
 	s.client.Close()
 	return nil
-}
-
-// Root is nothing yet: the brokers, the topics and what is in them are T2.59
-// onward. An empty tree is what a driver that cannot introspect shows, rather
-// than a node it has invented.
-func (s *kafkaSource) Root(context.Context) ([]model.Node, error) { return nil, nil }
-
-func (s *kafkaSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
-	return nil, nil
-}
-
-func (s *kafkaSource) Describe(context.Context, model.ObjectRef) (any, error) {
-	return nil, nil
-}
-
-func (s *kafkaSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool, error) {
-	return model.Badge{}, false, nil
 }
 
 // Browse reads no records yet (T2.63). Consuming a topic is not reading a

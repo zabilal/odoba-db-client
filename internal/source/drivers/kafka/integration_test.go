@@ -137,19 +137,18 @@ func TestLiveFindsTheClusterFromAnyOneBroker(t *testing.T) {
 	}
 }
 
-func TestLiveTheTreeAndItsRecordsWaitToBeWritten(t *testing.T) {
+func TestLiveTheTreeHoldsTheClusterAndRecordsWait(t *testing.T) {
 	src := live(t, liveConfig())
 	ctx := context.Background()
-	// The tree is empty until T2.59 onward, and says so by being empty rather
-	// than by inventing a node.
-	if nodes, err := src.Root(ctx); err != nil || len(nodes) != 0 {
+	// The tree is the cluster and nothing else yet (T2.59).
+	if nodes, err := src.Root(ctx); err != nil || len(nodes) != 1 {
 		t.Errorf("the root holds %v: %v", nodes, err)
 	}
 	if _, err := src.Browse(ctx, model.NewRef(model.KindTopic, "anything"), source.BrowseOptions{}); err == nil {
 		t.Error("records were read from a driver that does not read them yet")
 	}
 	// And nothing is claimed that is not written.
-	if caps := src.Capabilities(); caps.Paradigm != model.ParadigmStream || len(caps.Objects) != 0 {
+	if caps := src.Capabilities(); caps.Paradigm != model.ParadigmStream || len(caps.Objects) != 1 {
 		t.Errorf("the driver claims %+v", caps)
 	}
 }

@@ -23,13 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.59 — the cluster overview (FR-13.1): brokers with their id,
-           host and rack, which of them is the controller, the cluster id,
-           and the API versions it speaks. kadm's BrokerMetadata and
-           ApiVersions answer most of it and Info reads some already; the
-           question is what shape it takes in the tree, a stream source
-           having no databases — probably the root itself, with the brokers
-           under it, which is where T2.62's topics and groups will hang.
+NEXT TASK: T2.60 — the topic list (FR-13.2): topics with their partition
+           count, replication factor, message count and size on disk, and
+           internal topics filtered. kadm's ListTopics answers the shape;
+           the counts come from watermarks per partition, which the model
+           names honestly — MessageCount is an upper bound on what is
+           retained, not what was ever written, and the UI must say so. The
+           cluster node starts claiming children here, or at T2.62 when the
+           classes go into the tree.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -517,7 +518,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.58** mTLS → FR-1.10 — *no driver code at all, and that is the finding: the shared `tlsconf` has loaded a CA and a client certificate, and meant four different things by its four modes, since before this application spoke to Kafka, and the driver hands whatever it builds straight to franz-go. So mutual TLS was already written, and what had never happened was proving it against a server that actually demands a client certificate; until then, "it is written" and "it works" are different claims, and where a task turns out to be done the honest work is proving it rather than writing something so the task has a diff. A certificate is transport rather than a credential, so a connection carrying one with no SASL mechanism chosen is legal and must stay legal: the rule refusing credentials given with nothing chosen (ADR-0087) is about passwords and tokens, which a mechanism would carry, and a test now says so lest the two rules are tidied into one. The tests hold the shared helper rather than this driver's wiring, which every other driver depends on too: a certificate alone is enough to be let in, a listener requiring one refuses a connection without it, verify-full refuses a certificate issued for another name, require encrypts without verifying, and disable does not quietly speak TLS. The certificates live outside the repository in a fixed directory, a private key not belonging in a repository and the broker mounting the same files the tests read. The rig cost two lessons: the image will not start an SSL listener without keystores in its own shape, failing in its setup script before Kafka runs; and a truststore must carry a trust anchor rather than merely a certificate, an openssl-exported PKCS12 leaving PKIX with no anchors at all, which under TLS 1.3 surfaces as the broker closing the connection at the first request and the client library blaming missing TLS, pointing exactly away from the fault (ADR-0090)*
 
 ### Browse
-- [ ] **T2.59** Cluster overview: brokers, controller, cluster id, API versions → FR-13.1
+- [x] **T2.59** Cluster overview: brokers, controller, cluster id, API versions → FR-13.1 — *every source so far had something to choose between at the top of its tree; a Kafka connection has none, being a connection to one cluster. So the root is the cluster itself, one node, with everything else to hang beneath it as it is written — a root left empty would say a connected source has nothing in it. Brokers are not nodes: the model has no object kind for one, deliberately, having been designed against Kafka before any driver existed (T0.29), and `model.Cluster` already carries them as a field — so they are part of what a cluster is, arriving through Describe into the structure tab beside how a Cassandra keyspace shows its replication. The node claims no children until it has some, topics and consumer groups being T2.62: that is the rule the conformance suite was taught to hold at every depth in T2.53, and it binds the driver that added the rule as much as the one it caught. A seed is not a broker — the addresses a connection started from are not nodes of the cluster, franz-go marking a seed by numbering it very negatively and giving it no rack — so seeds are dropped rather than shown as brokers nobody can find. The version is an attribute rather than a field, a broker never stating its release, only which API versions it speaks. The structure tab gained a cluster: brokers by id with their addresses and racks, the controller marked on its own row rather than explained in a legend elsewhere, one broker reading as one broker, and a cluster that named none saying so instead of showing an empty table (ADR-0091)*
 - [ ] **T2.60** Topic list with partitions, RF, message count, size; internal-topic filter → FR-13.2
 - [ ] **T2.61** Topic detail: leader, replicas, ISR, earliest/latest offset, lag → FR-13.3
 - [ ] **T2.62** Object-explorer integration: topics, partitions, groups, schemas → FR-2.2
