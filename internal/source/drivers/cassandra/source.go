@@ -296,11 +296,18 @@ func classifyConnectError(err error) error {
 // cassandraSource is one live session, which is a connection to every node
 // the cluster named rather than to the one that was dialled.
 type cassandraSource struct {
+	// The dialect is the connection's own: the rest of the application asks
+	// a source how its language is written (T2.49).
+	dialect
+
 	session *gocql.Session
 	cfg     source.ConnectionConfig
 }
 
-var _ source.Source = (*cassandraSource)(nil)
+var (
+	_ source.Source  = (*cassandraSource)(nil)
+	_ source.Dialect = (*cassandraSource)(nil)
+)
 
 func (s *cassandraSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{

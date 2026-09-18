@@ -16,6 +16,37 @@ import (
 // words is the statement so far, lower-cased, not including w.
 type Blocks func(words []string, w string) bool
 
+// Closes reports whether the word just read ends a body Blocks opened. Every
+// SQL dialect here ends one at END, which is what a nil Closes means; CQL
+// ends a batch at APPLY BATCH instead.
+type Closes func(words []string, w string) bool
+
+// endCloses ends a body at END, as SQL does.
+func endCloses(_ []string, w string) bool { return w == "end" }
+
+// BatchBlocks opens at the BATCH of BEGIN BATCH, BEGIN UNLOGGED BATCH and
+// BEGIN COUNTER BATCH: a CQL batch's statements are one statement to send,
+// and the semicolons between them do not end it.
+//
+// What may sit between BEGIN and BATCH is a word or nothing, so that is what
+// is looked for, rather than a list of the words it may be: the lexer reads
+// COUNTER as a type and UNLOGGED as a name, and a rule written around which
+// is which would be a rule about the lexer.
+func BatchBlocks(words []string, w string) bool {
+	if w != "batch" || len(words) == 0 {
+		return false
+	}
+	if words[len(words)-1] == "begin" {
+		return true
+	}
+	return len(words) > 1 && words[len(words)-2] == "begin"
+}
+
+// BatchCloses ends a batch at the BATCH of APPLY BATCH.
+func BatchCloses(words []string, w string) bool {
+	return w == "batch" && len(words) > 0 && words[len(words)-1] == "apply"
+}
+
 // PostgresBlocks opens at BEGIN ATOMIC, PostgreSQL 14's SQL-standard function
 // bodies.
 func PostgresBlocks(words []string, w string) bool {
@@ -46,6 +77,17 @@ func TriggerBlocks(words []string, w string) bool {
 // Statements that are empty or only comments are dropped: sending one would
 // produce an empty result, which reads as a statement silently doing nothing.
 func Split(d *sqllex.Dialect, script string, blocks Blocks) []source.ScriptStatement {
+	return SplitWith(d, script, blocks, nil)
+}
+
+// SplitWith divides a script whose bodies end at a word of their own. A nil
+// closes ends them at END, and counts CASE … END with them; a dialect that
+// ends a body otherwise has no CASE to count.
+func SplitWith(d *sqllex.Dialect, script string, blocks Blocks, closes Closes) []source.ScriptStatement {
+	countsCase := closes == nil
+	if closes == nil {
+		closes = endCloses
+	}
 	type span struct{ start, end int }
 	var spans []span
 	lx := sqllex.NewLexer(d)
@@ -83,9 +125,9 @@ func Split(d *sqllex.Dialect, script string, blocks Blocks) []source.ScriptState
 				switch {
 				case blocks != nil && blocks(words, w):
 					depth++
-				case w == "case":
+				case countsCase && w == "case":
 					caseDepth++
-				case w == "end":
+				case closes(words, w):
 					if caseDepth > 0 {
 						caseDepth--
 					} else if depth > 0 {
