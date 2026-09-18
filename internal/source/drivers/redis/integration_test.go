@@ -78,6 +78,13 @@ func seed(t *testing.T, src source.Source, db int) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn(t, src, db).FlushDB(context.Background()) })
+	fill(t, c)
+}
+
+// fill writes a key of each kind, one of them expiring.
+func fill(t *testing.T, c goredis.Cmdable) {
+	t.Helper()
+	ctx := context.Background()
 	if err := c.Set(ctx, "user:1", "Ada", 0).Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +463,9 @@ func TestLiveWalksAClustersKeyspace(t *testing.T) {
 		}
 		t.Skipf("no redis cluster on port %d (docker start ikigai-redis-cluster): %v", clusterPort(), err)
 	}
-	defer src.Close()
+	// Closed after the cleanups below, which delete what the test wrote: a
+	// deferred Close runs first, and they would delete nothing.
+	t.Cleanup(func() { src.Close() })
 
 	// A cluster shares one keyspace out between its shards, and has no
 	// numbered databases to choose between.
@@ -997,6 +1006,18 @@ func TestLiveSaysWhenWhatAChangeWasAboutHasGone(t *testing.T) {
 	if !errors.Is(short.Err, sqlscript.ErrNoRow) || short.FailedAt != 0 {
 		t.Errorf("an element past the end of a list: %+v", short)
 	}
+	// Nor is a position past what the server counts in, which it would take
+	// for one it has and write over, nor one before the start.
+	for _, at := range []int64{1 << 32, 1<<32 + 1, -1} {
+		far := change(t, src, valueRef("queue"), []string{"index"}, source.RowChange{
+			Kind: source.ChangeUpdate, Key: []any{at}, Values: map[string]any{"value": "z"}})
+		if !errors.Is(far.Err, sqlscript.ErrNoRow) {
+			t.Errorf("the element at %d: %+v", at, far)
+		}
+	}
+	if held, err := c.LRange(ctx, "queue", 0, -1).Result(); err != nil || strings.Join(held, "") != "abc" {
+		t.Errorf("the list holds %v, written over: %v", held, err)
+	}
 	goneMember := change(t, src, valueRef("tags"), []string{"member"}, source.RowChange{
 		Kind: source.ChangeUpdate, Key: []any{"nobody"}, Values: map[string]any{"member": "somebody"}})
 	if !errors.Is(goneMember.Err, sqlscript.ErrNoRow) || goneMember.FailedAt != 0 {
@@ -1226,7 +1247,7 @@ func TestLiveReadsAndWritesAJSONDocument(t *testing.T) {
 		}
 		t.Skipf("no redis with JSON on port %d (docker start ikigai-redis-json): %v", jsonPort(), err)
 	}
-	defer src.Close()
+	t.Cleanup(func() { src.Close() })
 	c := src.(*redisSource).client.(*goredis.Client)
 	if err := c.JSONSet(ctx, "profile", "$", `{"name":"Ada","tags":["maths","engines"]}`).Err(); err != nil {
 		t.Fatal(err)
@@ -1712,4 +1733,45 @@ func desc(t *testing.T, src source.Source, name string) *model.StoredKey {
 		t.Fatalf("%s: %v", name, err)
 	}
 	return d.(*model.StoredKey)
+}
+
+func TestLiveRenamesAKeyOnACluster(t *testing.T) {
+	cfg := source.ConnectionConfig{DriverID: driverID, Host: "127.0.0.1", Port: clusterPort(),
+		TLS: source.TLSConfig{Mode: "disable"}, Params: map[string]string{"mode": modeCluster}}
+	src := required(t, cfg, "IKIGAI_REQUIRE_REDIS_CLUSTER", "ikigai-redis-cluster")
+	ctx := context.Background()
+	c := src.(*redisSource).client.(*goredis.ClusterClient)
+	for _, name := range []string{"{user}:1", "user:1"} {
+		if err := c.Set(ctx, name, "Ada", 0).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, name := range []string{"{user}:1", "{user}:9", "user:1", "user:9"} {
+			c.Del(context.Background(), name)
+		}
+	})
+	db := model.NewRef(model.KindDatabase, "db0")
+
+	// Two names that share a slot are renamed as on a single server.
+	if out := change(t, src, db, []string{"key"}, source.RowChange{Kind: source.ChangeUpdate,
+		Key: []any{"{user}:1"}, Values: map[string]any{"key": "{user}:9"}}); out.Err != nil {
+		t.Fatalf("a rename within a slot: %+v", out)
+	}
+	if v, err := c.Get(ctx, "{user}:9").Result(); err != nil || v != "Ada" {
+		t.Errorf("the key renamed holds %q: %v", v, err)
+	}
+
+	// Two that do not are refused before anything is sent, where the server
+	// would refuse them with CROSSSLOT once it was.
+	_, err := src.(source.Writer).Plan(ctx, source.Changeset{Target: db,
+		Identity: model.RowIdentity{Kind: model.IdentityKeyName, Columns: []string{"key"}, Target: db},
+		Changes: []source.RowChange{{Kind: source.ChangeUpdate, Key: []any{"user:1"},
+			Values: map[string]any{"key": "user:9"}}}})
+	if err == nil || !strings.Contains(err.Error(), "slot") {
+		t.Errorf("a rename between slots: %v", err)
+	}
+	if v, err := c.Get(ctx, "user:1").Result(); err != nil || v != "Ada" {
+		t.Errorf("user:1 holds %q: %v", v, err)
+	}
 }

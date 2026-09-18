@@ -86,6 +86,12 @@ func TestAChangeIsTheCommandItWouldSend(t *testing.T) {
 			"XDEL user:1 1700000000000-0", "Delete the entry 1700000000000-0"},
 		{"ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate, Key: []any{"user:1"},
 			Values: map[string]any{"value": `{"a": 1}`}}, `JSON.SET user:1 $ {"a": 1}`, "Set the document user:1"},
+		// JSON as the grid reads a cell of it (value.Parse) is written as the
+		// text it is.
+		{"stream", source.RowChange{Kind: source.ChangeInsert,
+			Values: map[string]any{"fields": model.JSON(`{"what":"started"}`)}}, "XADD user:1 * what started", "Add an entry"},
+		{"ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate, Key: []any{"user:1"},
+			Values: map[string]any{"value": model.JSON(`{"a":1}`)}}, `JSON.SET user:1 $ {"a":1}`, "Set the document user:1"},
 	}
 	for _, c := range cases {
 		command, said := rendered(t, c.kind, "user:1", c.change)
@@ -143,6 +149,14 @@ func TestAChangeAKindCannotTakeIsRefused(t *testing.T) {
 			Key: []any{"user:1"}, Values: map[string]any{"key": "user:2"}}, "renamed"},
 		{"a JSON key holds JSON", "ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate,
 			Key: []any{"user:1"}, Values: map[string]any{"value": "{not json"}}, "is not"},
+		// A value that is one row is addressed by its key's own name, and a
+		// change for another key is not written to this one.
+		{"a string's row is its own key's", "string", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"user:2"}, Values: map[string]any{"value": "x"}}, "addressed to [user:2]"},
+		{"and by that name alone", "string", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"user:1", "user:1"}, Values: map[string]any{"value": "x"}}, "addressed to [user:1 user:1]"},
+		{"and so is a document's", "ReJSON-RL", source.RowChange{Kind: source.ChangeUpdate,
+			Key: []any{"user:2"}, Values: map[string]any{"value": "{}"}}, "addressed to [user:2]"},
 	}
 	for _, c := range cases {
 		if says := refused(t, c.kind, "user:1", c.change); !strings.Contains(says, c.says) {

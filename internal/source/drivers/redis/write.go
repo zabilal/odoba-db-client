@@ -238,6 +238,9 @@ func stringWrite(name string, c source.RowChange) (*valueWrite, string, error) {
 		if _, renamed := c.Values["key"]; renamed {
 			return nil, "", errors.New("a key is renamed on its own, not by editing the value it holds")
 		}
+		if err := ownRow(c.Key, name); err != nil {
+			return nil, "", err
+		}
 		v, ok := c.Values["value"]
 		if !ok {
 			return nil, "", errors.New("an update that changes nothing")
@@ -371,7 +374,18 @@ func listWrite(name string, c source.RowChange) (*valueWrite, string, error) {
 		text := str(value)
 		w := &valueWrite{command: fmt.Sprintf("LSET %s %d %s", quote(name), at, quote(text))}
 		w.send = func(ctx context.Context, node writer, name string) (int64, error) {
-			err := node.LSet(ctx, name, at, text).Err()
+			// A position the list has not got addresses no element, and the
+			// server is not left to say so: it reads a position as a 32-bit
+			// number, so one past that is taken for a position it has, and
+			// that element is written over.
+			n, err := node.LLen(ctx, name).Result()
+			if err != nil {
+				return 0, err
+			}
+			if at < 0 || at >= n {
+				return 0, nil
+			}
+			err = node.LSet(ctx, name, at, text).Err()
 			if err != nil && strings.Contains(strings.ToLower(err.Error()), "index out of range") {
 				// The list is shorter than it was when it was read.
 				return 0, nil
@@ -611,6 +625,9 @@ func documentWrite(name string, c source.RowChange) (*valueWrite, string, error)
 		if _, renamed := c.Values["key"]; renamed {
 			return nil, "", errors.New("a key is renamed on its own, not by editing the value it holds")
 		}
+		if err := ownRow(c.Key, name); err != nil {
+			return nil, "", err
+		}
 		v, ok := c.Values["value"]
 		if !ok {
 			return nil, "", errors.New("an update that changes nothing")
@@ -664,6 +681,17 @@ type writer interface {
 	TxPipeline() goredis.Pipeliner
 }
 
+// ownRow checks that a change to a value that is one row — a string, a JSON
+// document — is about that row, which the key's own name addresses. A change
+// keyed by another name is about another key, and sent here it would write
+// this one.
+func ownRow(key []any, name string) error {
+	if len(key) != 1 || str(key[0]) != name {
+		return fmt.Errorf("this is what %s holds, and the change is addressed to %v", name, key)
+	}
+	return nil
+}
+
 // one is the single value a row is addressed by.
 func one(key []any, what string) (string, error) {
 	if len(key) != 1 {
@@ -697,6 +725,10 @@ func str(v any) string {
 	case string:
 		return x
 	case []byte:
+		return string(x)
+	case model.JSON:
+		// What the grid reads a JSON cell as (value.Parse): text already, and
+		// not a slice of numbers to be printed.
 		return string(x)
 	case model.Default, model.Removed:
 		return ""
@@ -791,7 +823,7 @@ func (s *redisSource) planKeyspace(cs source.Changeset) (*source.WritePlan, erro
 		Guarded: s.cfg.Guard.RequiresConfirmation(source.AccessWrite),
 	}
 	for i, c := range cs.Changes {
-		w, desc, err := keyspaceWrite(c)
+		w, desc, err := keyspaceWrite(c, s.mode == modeCluster)
 		if err != nil {
 			return nil, fmt.Errorf("change %d: %w", i+1, err)
 		}
