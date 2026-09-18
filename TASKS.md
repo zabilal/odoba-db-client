@@ -23,14 +23,13 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.64 — seek modes (FR-13.5): from the beginning, from the end
-           (the last N), from a given offset, and from a timestamp, per
-           partition or across all of them. source.Seek already names all
-           four and franz-go answers each — NewOffset().AtStart(), AtEnd(),
-           At(n), AfterMilli(ms) — so the work is honouring Seek in Browse
-           and refusing what a log cannot do: a count back from the end is
-           per partition, and asking for the last N of a topic means the
-           last N of each of its logs.
+NEXT TASK: T2.65 — the live tail (FR-13.6, NFR-P10): follow a topic with
+           pause and resume, into a bounded ring buffer that never grows.
+           BrowseOptions.Follow and SeekEnd both land here — the model says
+           a following stream blocks in Next until a record arrives or the
+           context is cancelled and never returns io.EOF — so the driver
+           side is a read that does not stop, and the grid side is what
+           keeps a fast topic from filling memory (T2.82's bound).
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -526,7 +525,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Messages
 - [x] **T2.63** Message browser rendering into the **standard data grid** (partition, offset, timestamp, key, value, headers) → FR-13.4 — *the grid reads rows and a log has records, and the difference runs through every decision: no order to ask for, a partition being ordered by itself and nothing ordering across partitions; nothing to filter on, a broker handing over bytes and asking no questions about them; and no language to write a condition in. What a log has instead is a position and a bound. A browse reads the log as it stands — where each partition ends is asked before any record is read, so a read that has caught up ends because it is known to have caught up rather than because nothing arrived within some timeout, and records written after it began are not in it, which is the only reading that can end at all. Partitions are assigned explicitly and no group is ever joined and nothing is committed, so looking at a topic cannot move anybody else's place in it (FR-13.19): not an option a caller sets, there being no way to ask this driver for the other thing. Every read is bounded, an unbounded read of a log being an unbounded read of a disk. What a log cannot be asked it refuses in its own words — a condition, a filter, an order, a row offset, a position, a log to follow — rather than ignoring it, with seeking and following saying they are written next. A key and a value are bytes, what they mean being a decoder's business (T2.68). Headers are a list rather than a map, Kafka letting a name repeat and a map quietly keeping one. A partition that fails is reported rather than read as a log that ended. This is also the first stream source the shared suite has met, and it passes what every driver passes while the checks for what it does not claim skip — the WHERE check of its own accord, this driver implementing no dialect (ADR-0095)*
-- [ ] **T2.64** Seek modes: beginning, end/last-N, specific offset, **timestamp** → FR-13.5
+- [x] **T2.64** Seek modes: beginning, end/last-N, specific offset, **timestamp** → FR-13.5 — *four of the five modes are a question about where to start, and one is not: reading from the end of a log means reading what has not been written yet, which is following it (T2.65), so it is refused in those words rather than silently returning nothing — nothing looks like an empty topic. The last N is N in each log: every partition has its own end, so asking a topic of eight partitions for the last hundred asks for the last hundred of each and may return eight hundred, which is what the mode can mean without ordering records across partitions, and what the UI must say rather than "the last N messages". A position before a log begins is its beginning, logs being aged out from the front and an offset valid yesterday being gone today — that is the log moving on, not an error; a position past the end leaves that log out rather than waiting for records nobody has written; and a time with nothing after it leaves its log out too, reading from the beginning instead being an answer to a question nobody asked. The arithmetic is a function over what the brokers said — where the logs begin, where they end, where a time falls in them — so every one of those cases is proved without a cluster, which is the lesson of every rule in this driver that a mutation walked past: a healthy broker will not hold still in these states long enough to test them. `Stream.SeekTimestamp` is claimed, a time costing one more request and only when somebody asks by time (ADR-0096)*
 - [ ] **T2.65** **Live tail with pause/resume and a bounded ring buffer** → FR-13.6, NFR-P10
 - [ ] **T2.66** Message detail view: decoded value, headers table, raw hex, copy → FR-13.8
 - [ ] **T2.67** Client-side filtering by key, header, or decoded-JSON predicate → FR-13.9
