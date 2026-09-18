@@ -23,10 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.48 — the Cassandra tree: keyspaces, their tables and columns,
-           and the replication each keyspace was made with. The driver
-           connects already (T2.47) but is not in cmd/ikigai's list of
-           drivers, and joins it when its tree is worth opening.
+NEXT TASK: T2.49 — the CQL dialect and quoter. sqllex knows "cql" already;
+           what the driver owes is source.Dialect — how a name is written,
+           how an object is addressed, what a statement does, and what a
+           browse would send — so the editor, the guard and the grid can
+           speak it. Then T2.50 (the CQL editor), T2.51 (partition-key-aware
+           paging, which is what a table needs before it is browsable),
+           T2.52 (the consistency selector) and T2.53 (conformance green).
+           Open beside them: gocql writes its own account of a failed
+           connection to stderr, beside the ConnectError this driver makes of
+           it; quieting it means handing gocql a logger, which belongs with
+           the session options rather than with the tree.
            T1.58 waited on the MongoDB and Redis drivers, which are done:
            whether their dialects are drawn in colour is worth a look before
            it is closed. T2.21's new table waits on the table designer (3.A),
@@ -42,7 +49,9 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            themselves so each is reachable where it announces itself), and
            ikigai-cassandra (59042, pulled from public.ecr.aws because
            Docker Hub refuses an unauthenticated pull here).
-LAST DONE: 2026-09-18 — the Cassandra connection, a form of fields over
+LAST DONE: 2026-09-18 — the Cassandra tree: a cluster's keyspaces, what
+           each holds, and how it is replicated (T2.48, ADR-0081); before it
+           the Cassandra connection, a form of fields over
            gocql that says what is wrong and claims nothing it has not
            written (T2.47, ADR-0080). 2026-09-14 — the conformance suite's key-value paradigm, run
            against a single Redis server, one with the JSON module and a
@@ -471,7 +480,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.G Cassandra
 
 - [x] **T2.47** Driver (`gocql/gocql`) + connection — *`internal/source/drivers/cassandra`: a wide-column store in the relational paradigm, because keyspaces hold tables of declared columns and CQL is a SQL-family language; what Cassandra does differently shows in the capabilities it claims rather than in a paradigm of its own. A form of fields rather than a URI — any node and its port, an optional keyspace, a role and its password, further nodes, and the data centre whose nodes are asked first, token-aware within it. The credentials are settings gocql takes on their own and never part of an address, encryption is the settings' to say with nothing downgraded silently, and `SslOptions.EnableHostVerification` is made to say what the mode says. `CreateSession` takes no context, so a connection given up is raced against one and a session that arrives late is closed rather than leaked. A failure is said in terms of what to fix, and where a keyspace was named the cluster is dialled again without it and asked whether it has that keyspace — gocql folds every node's refusal into "no connections were made", which would otherwise read as a network fault. Nothing is claimed that is not written: no query language (T2.49), no rows (T2.51), an empty tree and a browse that refuses until T2.48, which is also when the driver joins the application's own list (ADR-0080)*
-- [ ] **T2.48** Keyspace/table introspection, replication strategy display → FR-12.3
+- [x] **T2.48** Keyspace/table introspection, replication strategy display → FR-12.3 — *the tree is the shape every other relational driver presents: a keyspace is this paradigm's database, its children are the classes the model already knows (Tables, Materialized Views, Indexes, Types), and a table's children are its columns, so the explorer and the tabs need know nothing about Cassandra. The cluster's own keyspaces are hidden as PostgreSQL hides its system schemas, and one may still be opened on by name. What a keyspace holds arrives in name order already — `system_schema` clusters by the object's own name — so only the keyspaces are sorted, they being partitioned by name and arriving in token order; that sort and the hiding are one pure function, proven without a live cluster's order having to disagree with the alphabet. A keyspace's structure is how it is replicated — strategy, factors, durable writes — as `*model.Schema.Attrs`, which the model already names as where a Cassandra strategy goes, with the strategy read as the end of its Java class name and a new case in the structure tab. A table's is what addresses its rows: the partition key, then what orders rows within a partition, then the static columns a partition shares, then the rest, with a primary key Cassandra does not name and key columns that can never be empty. CQL's types are read as the model's own with the cluster's words kept as `Native`, frozen unwrapped before classifying, and a type nobody knows a keyspace's own structure. Nothing is badged, counting a table's rows being a read of every partition (FR-2.5), and no node is browsable until paging is written (T2.51). With a tree worth opening, the driver joins `cmd/ikigai`'s list (ADR-0081)*
 - [ ] **T2.49** CQL dialect + quoter
 - [ ] **T2.50** CQL editor with highlighting and completion → FR-5.1, FR-5.2
 - [ ] **T2.51** **Partition-key-aware paging** → FR-12.3

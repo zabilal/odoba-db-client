@@ -85,3 +85,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0078](0078-what-a-server-says-about-itself.md) | What a server says about itself | Accepted |
 | [0079](0079-a-keyspace-in-the-suite.md) | A keyspace in the conformance suite | Accepted |
 | [0080](0080-the-cassandra-connection.md) | The Cassandra connection | Accepted |
+| [0081](0081-the-cassandra-tree.md) | The Cassandra tree | Accepted |
