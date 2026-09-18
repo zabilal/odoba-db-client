@@ -95,6 +95,11 @@ func TestLiveTheClusterHoldsItsTopics(t *testing.T) {
 	if !found.HasChildren {
 		t.Error("a topic claims no children though its partitions are listed")
 	}
+	// And its records can be opened, which is what the grid asks a node
+	// before offering to read it (T2.63).
+	if !found.Browsable {
+		t.Error("a topic does not offer its records though they can be read")
+	}
 }
 
 func TestLiveWhatTheTreeSaysMatchesWhatTheClusterHolds(t *testing.T) {

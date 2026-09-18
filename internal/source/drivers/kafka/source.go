@@ -105,7 +105,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (_ source.S
 		client.Close()
 		return nil, classifyConnectError(err)
 	}
-	return &kafkaSource{client: client, admin: kadm.NewClient(client)}, nil
+	return &kafkaSource{client: client, admin: kadm.NewClient(client), cfg: cfg}, nil
 }
 
 // clientOf is the settings as franz-go takes them.
@@ -345,16 +345,21 @@ func classifyConnectError(err error) error {
 type kafkaSource struct {
 	client *kgo.Client
 	admin  *kadm.Client
+
+	// cfg is kept because reading records needs a client of its own: a
+	// consumer is assigned partitions, and this one is the connection's.
+	// Building that consumer means dialling the same brokers the same way.
+	cfg source.ConnectionConfig
 }
 
 func (s *kafkaSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
 		// There is no query language to claim — Kafka has none, which is why
-		// capability.Query exists to be left zeroed — and consuming,
-		// producing, groups and topic administration each wait for the task
-		// that writes them. The tree holds the cluster and its topics;
-		// partitions and consumer groups are T2.62.
+		// capability.Query exists to be left zeroed. Records can be read now
+		// (T2.63); producing, groups, seeking by time and following a log
+		// each wait for the task that writes them.
+		Stream: capability.Stream{Consume: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,
@@ -414,13 +419,4 @@ func (s *kafkaSource) Close() (err error) {
 	// twice; a flag of this driver's own would only say the same thing again.
 	s.client.Close()
 	return nil
-}
-
-// Browse reads no records yet (T2.63). Consuming a topic is not reading a
-// table: it means assigning partitions, choosing where in each log to start,
-// and stopping somewhere — and doing it without joining a consumer group or
-// committing anybody's offsets (FR-13.19). None of that is written, so this
-// says so rather than half-doing it.
-func (s *kafkaSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
-	return nil, errors.New("kafka: this connection does not read records yet")
 }
