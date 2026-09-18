@@ -64,6 +64,21 @@ func TestKafkasOwnTopicsAreNotListed(t *testing.T) {
 	}
 }
 
+func TestAPartitionWithNoLeaderSaysSo(t *testing.T) {
+	// A live cluster elects a leader for every partition, so this is the
+	// case no broker here will produce: -1 is what Kafka means by "none",
+	// and it is a fact about the protocol rather than about the log.
+	if got := leaderAttr(-1); got != "none" {
+		t.Errorf("a partition with no leader is led by %q", got)
+	}
+	if got := leaderAttr(0); got != "0" {
+		t.Errorf("broker zero reads as %q", got)
+	}
+	if got := leaderAttr(7); got != "7" {
+		t.Errorf("broker seven reads as %q", got)
+	}
+}
+
 func TestWhereALogBeginsAndEnds(t *testing.T) {
 	ps := kadm.PartitionDetails{
 		0: {Partition: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}},

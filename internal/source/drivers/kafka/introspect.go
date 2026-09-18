@@ -50,21 +50,44 @@ func (s *kafkaSource) Children(ctx context.Context, ref model.ObjectRef) (_ []mo
 	case model.KindCluster:
 		return s.classes(ctx, ref)
 	case model.KindFolder:
-		if kind, ok := model.ClassOf(ref); !ok || kind != model.KindTopic {
+		kind, ok := model.ClassOf(ref)
+		if !ok {
 			return nil, nil
 		}
-		return s.topicNodes(ctx, ref)
+		switch kind {
+		case model.KindTopic:
+			return s.topicNodes(ctx, ref)
+		case model.KindConsumerGroup:
+			return s.groupNodes(ctx, ref)
+		}
+		return nil, nil
+	case model.KindTopic:
+		return s.partitionNodes(ctx, ref)
 	}
+	// A partition holds records rather than objects, and reading those is
+	// T2.63.
 	return nil, nil
 }
 
 // classes are what a cluster holds, by class.
+//
+// Opening a cluster costs two requests: the metadata that names its topics,
+// and a listing of its groups. Both are bounded by the size of the cluster
+// rather than by what it holds, which is the line ADR-0092 drew — what it
+// refused was a cost that grows with the topics.
 func (s *kafkaSource) classes(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	topics, err := s.topics(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := model.ClassNodes(ref, map[model.ObjectKind]int64{model.KindTopic: int64(len(topics))})
+	groups, err := s.admin.ListGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := model.ClassNodes(ref, map[model.ObjectKind]int64{
+		model.KindTopic:         int64(len(topics)),
+		model.KindConsumerGroup: int64(len(groups)),
+	})
 	if len(out) == 0 {
 		// A cluster whose topics are all Kafka's own still shows the class,
 		// empty: a node opening onto nothing reads as a tree that failed
@@ -115,7 +138,9 @@ func (s *kafkaSource) topicNodes(ctx context.Context, class model.ObjectRef) ([]
 		out = append(out, model.Node{
 			Ref:   model.NewRef(model.KindTopic, cluster, d.Topic),
 			Label: d.Topic,
-			Badge: &model.Badge{Text: strconv.Itoa(len(d.Partitions)), Exact: true},
+			// Its partitions are under it, and there is always at least one.
+			HasChildren: len(d.Partitions) > 0,
+			Badge:       &model.Badge{Text: strconv.Itoa(len(d.Partitions)), Exact: true},
 		})
 	}
 	return out, nil
@@ -135,28 +160,91 @@ func (s *kafkaSource) Describe(ctx context.Context, ref model.ObjectRef) (_ any,
 	return nil, nil
 }
 
-// topic is what one topic is: how it is cut up, where the pieces are, and how
-// much of it there is to read. Reading that costs three requests beyond the
-// metadata, which is why it happens for a topic somebody asked about rather
-// than for every topic in a list (ADR-0092).
-func (s *kafkaSource) topic(ctx context.Context, name string) (*model.Topic, error) {
-	md, err := s.admin.Metadata(ctx, name)
+// partitionNodes are a topic's logs, one node each. A partition is a leaf:
+// what is under it is records, which is a grid's business rather than a
+// tree's (T2.63).
+//
+// Listing them costs the metadata and the offsets, and not the log
+// directories: what a topic occupies is asked for when a topic is described,
+// not when somebody opens it in the tree.
+func (s *kafkaSource) partitionNodes(ctx context.Context, ref model.ObjectRef) ([]model.Node, error) {
+	if len(ref.Path) < 2 {
+		return nil, nil
+	}
+	name := ref.Name()
+	parts, _, err := s.logs(ctx, name)
 	if err != nil {
 		return nil, err
 	}
+	out := make([]model.Node, 0, len(parts))
+	for _, p := range parts {
+		attrs := map[string]string{"leader": leaderAttr(p.Leader)}
+		if p.LowWatermark >= 0 && p.HighWatermark >= 0 {
+			attrs["offsets"] = fmt.Sprintf("%d to %d", p.LowWatermark, p.HighWatermark)
+		}
+		if len(p.ISR) < len(p.Replicas) {
+			// Said only when it is true: a partition keeping up needs no
+			// remark, and one that is not is what somebody is looking for.
+			attrs["in sync"] = fmt.Sprintf("%d of %d", len(p.ISR), len(p.Replicas))
+		}
+		out = append(out, model.Node{
+			Ref:   model.NewRef(model.KindPartition, ref.Path[0], name, strconv.FormatInt(int64(p.ID), 10)),
+			Label: fmt.Sprintf("partition %d", p.ID),
+			Attrs: attrs,
+		})
+	}
+	return out, nil
+}
+
+// leaderAttr names the broker a partition is led from, or says there is none:
+// a partition without a leader cannot be used until one is elected, and -1 is
+// a fact about the protocol rather than about the log.
+func leaderAttr(id int32) string {
+	if id < 0 {
+		return "none"
+	}
+	return strconv.FormatInt(int64(id), 10)
+}
+
+// groupNodes are the cluster's consumer groups, in name order. What a group
+// is doing comes with the listing, so a node needs nothing described.
+func (s *kafkaSource) groupNodes(ctx context.Context, class model.ObjectRef) ([]model.Node, error) {
+	groups, err := s.admin.ListGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cluster := class.Path[0]
+	out := make([]model.Node, 0, len(groups))
+	for _, g := range groups.Sorted() {
+		attrs := map[string]string{}
+		if g.State != "" {
+			attrs["state"] = g.State
+		}
+		if g.ProtocolType != "" {
+			attrs["protocol"] = g.ProtocolType
+		}
+		out = append(out, model.Node{
+			Ref:   model.NewRef(model.KindConsumerGroup, cluster, g.Group),
+			Label: g.Group,
+			Attrs: attrs,
+		})
+	}
+	return out, nil
+}
+
+// logs are a topic's partitions and the metadata they came from, without
+// asking the brokers what any of it occupies.
+func (s *kafkaSource) logs(ctx context.Context, name string) ([]model.Partition, kadm.TopicDetail, error) {
+	md, err := s.admin.Metadata(ctx, name)
+	if err != nil {
+		return nil, kadm.TopicDetail{}, err
+	}
 	d, ok := md.Topics[name]
 	if !ok {
-		return nil, fmt.Errorf("kafka: this cluster has no topic %q", name)
+		return nil, kadm.TopicDetail{}, fmt.Errorf("kafka: this cluster has no topic %q", name)
 	}
 	if d.Err != nil {
-		return nil, d.Err
-	}
-
-	t := &model.Topic{
-		Name:              name,
-		Internal:          d.IsInternal,
-		ReplicationFactor: replicationOf(d.Partitions),
-		Attrs:             map[string]string{},
+		return nil, kadm.TopicDetail{}, d.Err
 	}
 	start, startErr := s.admin.ListStartOffsets(ctx, name)
 	end, endErr := s.admin.ListEndOffsets(ctx, name)
@@ -166,7 +254,25 @@ func (s *kafkaSource) topic(ctx context.Context, name string) (*model.Topic, err
 	if endErr != nil {
 		end = nil
 	}
-	t.Partitions = partitionsOf(name, d.Partitions, start, end)
+	return partitionsOf(name, d.Partitions, start, end), d, nil
+}
+
+// topic is what one topic is: how it is cut up, where the pieces are, and how
+// much of it there is to read. Reading that costs three requests beyond the
+// metadata, which is why it happens for a topic somebody asked about rather
+// than for every topic in a list (ADR-0092).
+func (s *kafkaSource) topic(ctx context.Context, name string) (*model.Topic, error) {
+	parts, d, err := s.logs(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	t := &model.Topic{
+		Name:              name,
+		Internal:          d.IsInternal,
+		Partitions:        parts,
+		ReplicationFactor: replicationOf(d.Partitions),
+		Attrs:             map[string]string{},
+	}
 	if size, ok := s.topicSize(ctx, name, d.Partitions.Numbers()); ok {
 		t.Attrs["size on disk"] = sizeText(size)
 	}

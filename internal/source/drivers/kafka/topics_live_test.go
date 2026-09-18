@@ -90,9 +90,10 @@ func TestLiveTheClusterHoldsItsTopics(t *testing.T) {
 	if found.Badge == nil || found.Badge.Text != "3" {
 		t.Errorf("the topic is badged %+v", found.Badge)
 	}
-	// A topic opens onto nothing yet: its partitions are T2.62.
-	if found.HasChildren {
-		t.Error("a topic claims children before its partitions are listed")
+	// Its partitions are under it, and it says so before anybody asks, so the
+	// expander is drawn without a fetch (T2.62).
+	if !found.HasChildren {
+		t.Error("a topic claims no children though its partitions are listed")
 	}
 }
 
