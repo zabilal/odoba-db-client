@@ -57,19 +57,22 @@ func TestTheFormAsksHowToProveWhoYouAre(t *testing.T) {
 	// are real mechanisms and are not here, because offering one that nothing
 	// implements would be a setting that fails at the broker.
 	offered := strings.Join(mech.Options, " ")
-	for _, want := range []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"} {
+	for _, want := range []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"} {
 		if !strings.Contains(offered, want) {
 			t.Errorf("%s is not offered: %q", want, offered)
 		}
 	}
-	for _, unwritten := range []string{"OAUTHBEARER", "GSSAPI", "AWS_MSK_IAM"} {
+	for _, unwritten := range []string{"GSSAPI", "AWS_MSK_IAM"} {
 		if strings.Contains(offered, unwritten) {
 			t.Errorf("%s is offered and is not written", unwritten)
 		}
 	}
-	// A password is a secret, so it is kept where secrets are kept (FR-1.5).
-	if pw := fields["password"]; !pw.Secret || pw.Kind != source.FieldPassword {
-		t.Errorf("the password is asked for as %+v", pw)
+	// A password is a secret, so it is kept where secrets are kept (FR-1.5),
+	// and so is a token: it is the whole of what proves who the bearer is.
+	for _, key := range []string{"password", "token"} {
+		if f := fields[key]; !f.Secret || f.Kind != source.FieldPassword {
+			t.Errorf("the %s is asked for as %+v", key, f)
+		}
 	}
 }
 
@@ -77,10 +80,24 @@ func TestHowAConnectionProvesWhoItIs(t *testing.T) {
 	as := func(mechanism, user, password string) (sasl.Mechanism, error) {
 		cfg := source.ConnectionConfig{Host: "b", User: user,
 			Params: map[string]string{"mechanism": mechanism}}
-		if password != "" {
-			cfg.Secret = func(string) (string, error) { return password, nil }
+		cfg.Secret = func(key string) (string, error) {
+			if key == "password" {
+				return password, nil
+			}
+			return "", nil
 		}
 		return mechanismOf(cfg)
+	}
+	// bearer is a connection carrying a token instead of a password.
+	bearer := func(mechanism, user, token string) (sasl.Mechanism, error) {
+		return mechanismOf(source.ConnectionConfig{Host: "b", User: user,
+			Params: map[string]string{"mechanism": mechanism},
+			Secret: func(key string) (string, error) {
+				if key == "token" {
+					return token, nil
+				}
+				return "", nil
+			}})
 	}
 
 	// Nothing chosen, nothing given: a broker that asks nothing is answered
@@ -123,6 +140,50 @@ func TestHowAConnectionProvesWhoItIs(t *testing.T) {
 	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "SCRAM-SHA-256") {
 		t.Errorf("a mechanism nobody speaks: %v", err)
 	}
+	// A token authenticates itself, so it needs no user: whoever issued it
+	// said who this is and for how long.
+	got, err := bearer("OAUTHBEARER", "", "a.token.here")
+	if err != nil || got == nil || got.Name() != "OAUTHBEARER" {
+		t.Errorf("a token alone: %v, %v", got, err)
+	}
+	// Without one there is nothing to authenticate with.
+	_, err = bearer("OAUTHBEARER", "ikigai", "")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "token") {
+		t.Errorf("OAUTHBEARER with no token: %v", err)
+	}
+	// A password where a token belongs: what is missing is the token, and the
+	// refusal has to name that rather than anything else.
+	_, err = as("OAUTHBEARER", "ikigai", "secret")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "none was given") {
+		t.Errorf("OAUTHBEARER with a password and no token: %v", err)
+	}
+	// Both at once is the case worth saying: one of them would be ignored, and
+	// nothing on the screen would say which.
+	_, err = mechanismOf(source.ConnectionConfig{Host: "b", User: "ikigai",
+		Params: map[string]string{"mechanism": "OAUTHBEARER"},
+		Secret: func(key string) (string, error) {
+			switch key {
+			case "token":
+				return "a.token.here", nil
+			case "password":
+				return "secret", nil
+			}
+			return "", nil
+		}})
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "rather than a password") {
+		t.Errorf("OAUTHBEARER with a token and a password: %v", err)
+	}
+	_, err = bearer("PLAIN", "ikigai", "a.token.here")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "token") {
+		t.Errorf("PLAIN with a token: %v", err)
+	}
+	// And a token with nothing chosen would be sent nowhere, like any other
+	// credential.
+	_, err = bearer(mechNone, "", "a.token.here")
+	if kind(err) != source.ConnectConfig || !strings.Contains(err.Error(), "no authentication") {
+		t.Errorf("a token with nothing chosen: %v", err)
+	}
+
 	// A keychain that will not answer is a fault in the settings, not a
 	// refusal by the broker.
 	_, err = mechanismOf(source.ConnectionConfig{Host: "b", User: "ikigai",
@@ -221,6 +282,7 @@ func TestAFailureSaysWhatToFix(t *testing.T) {
 		"a certificate":               {errors.New("x509: certificate signed by unknown authority"), source.ConnectTLS},
 		"plaintext to a TLS listener": {errors.New("first record does not look like a TLS handshake"), source.ConnectTLS},
 		"credentials":                 {errors.New("SASL authentication failed"), source.ConnectAuth},
+		"a token refused":             {errors.New("unexpected data in oauth response"), source.ConnectAuth},
 		"something else":              {errors.New("the broker said no"), source.ConnectUnknown},
 	} {
 		got := classifyConnectError(c.err)
