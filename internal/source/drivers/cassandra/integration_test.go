@@ -138,13 +138,20 @@ func TestLiveConnectingStopsWhenItIsGivenUp(t *testing.T) {
 }
 
 // TestLiveClaimsNothingItHasNotWritten holds the driver to what it says it
-// is: the tree and the rows come with T2.48 and T2.51, and until then it
-// claims neither rather than showing an empty one.
+// is: it runs CQL, and it does not yet read a table's rows or write any.
 func TestLiveClaimsNothingItHasNotWritten(t *testing.T) {
 	src := live(t, liveConfig(""))
 	caps := src.Capabilities()
-	if caps.Query.Supported || caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
-		t.Errorf("the driver claims what it has not written: %+v", caps)
+	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
+		t.Errorf("the driver claims writes it has not written: %+v", caps)
+	}
+	// A claimed language is a promise the editor holds it to: the lexer must
+	// know it, and a Queryer must be behind it (REQ-DRV-1).
+	if !caps.Query.Supported || caps.Query.Language != "cql" {
+		t.Errorf("the language is %+v", caps.Query)
+	}
+	if _, ok := src.(source.Queryer); !ok {
+		t.Error("a language is claimed with nothing to run it")
 	}
 	if !caps.Paradigm.Valid() || len(caps.Objects) == 0 {
 		t.Errorf("the driver claims no paradigm or no objects: %+v", caps)
