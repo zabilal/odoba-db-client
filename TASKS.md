@@ -23,11 +23,12 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.54 — the Kafka driver (`twmb/franz-go`) and a connection to a
-           bootstrap server, which opens 2.H and the stream paradigm: topics
-           and partitions rather than tables, offsets rather than rows, and a
-           conformance suite that has not met a stream before. No Kafka is
-           running yet; a container is the first thing it needs.
+NEXT TASK: T2.55 — SASL for Kafka: PLAIN and SCRAM-SHA-256/512 (FR-1.11),
+           which is where the form gains a mechanism, a user and a password,
+           and where handing franz-go a logger belongs. The ikigai-kafka
+           container runs on 59092 (apache/kafka, KRaft, one node) and
+           gate.sh now requires it. After it: T2.56-T2.58 (OAUTHBEARER,
+           GSSAPI, MSK IAM, mTLS), then the cluster overview from T2.59.
            Open beside them: gocql writes its own account of a failed
            connection to stderr, beside the ConnectError this driver makes
            of it; quieting it means handing gocql a logger, which belongs
@@ -494,7 +495,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.H Kafka → J8 *(largest Phase 2 block)*
 
 ### Connect & auth
-- [ ] **T2.54** `twmb/franz-go` driver + bootstrap-server connection
+- [x] **T2.54** `twmb/franz-go` driver + bootstrap-server connection — *the first source here that holds no rows: a topic is an append-only log cut into partitions, nothing declares what a record looks like, a record is addressed by the offset it was written at rather than by a key of its own, and reading is consuming rather than querying — the model's stream paradigm, and everything this application comes to show of Kafka follows from it. franz-go is pure Go with no cgo, speaks the protocol directly rather than wrapping librdkafka, and its `kadm` and `kversion` packages answer what the cluster overview will ask. The form asks for one broker and allows more, a seed being only a way in — it is asked who the brokers are, and every later request goes to the broker that holds what is being asked about — and a further address written without a port takes the first's, a cluster usually being configured alike throughout. Opening dials, because the library will not: `kgo.NewClient` only reads its options, so a driver that handed that back as a live connection would report success for a cluster that is not there and fail later where nobody can connect it to a cause; `Open` pings instead, a broker-only metadata request tried against each seed until one answers, and a failure is classified into what to fix. Nothing is claimed that is not written — the paradigm and nothing else, no object kind until the tree (T2.59 onward), no stream operation until the task that writes it, and a browse that says plainly it reads no records yet rather than consuming without assigning partitions or minding whose offsets it commits (FR-13.19); `Query` stays zeroed for good, Kafka having no query language, which is the case that capability was written to leave empty. The version is a guess and says so: a broker states which versions of each API it speaks, not what release it is, so franz-go's reading of it is passed on as worded, "at least v4.0" included. The driver registers itself but stays out of `cmd/ikigai` until it has a tree, as Cassandra did (ADR-0086)*
 - [ ] **T2.55** SASL: PLAIN, SCRAM-SHA-256/512 → FR-1.11
 - [ ] **T2.56** SASL: OAUTHBEARER, GSSAPI/Kerberos → FR-1.11
 - [ ] **T2.57** AWS MSK IAM auth → FR-1.11
