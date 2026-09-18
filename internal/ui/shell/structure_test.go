@@ -134,6 +134,61 @@ func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
 	}
 }
 
+func TestStructureShowsATopicsPartitions(t *testing.T) {
+	topic := &model.Topic{Name: "orders", ReplicationFactor: 2,
+		Partitions: []model.Partition{
+			// Read and written through broker 1, both copies keeping up.
+			{ID: 0, Leader: 1, Replicas: []int32{1, 2}, ISR: []int32{1, 2},
+				LowWatermark: 0, HighWatermark: 100},
+			// A copy behind, and a log nobody could read the ends of.
+			{ID: 1, Leader: 2, Replicas: []int32{2, 3}, ISR: []int32{2},
+				LowWatermark: -1, HighWatermark: -1},
+			// Leaderless: it cannot be used at all until one is elected.
+			{ID: 2, Leader: -1, Replicas: []int32{3}, ISR: []int32{},
+				LowWatermark: 7, HighWatermark: 7},
+		}}
+	got := strings.Join(labelTexts(structureView(topic, nil, nil)), "\n")
+	for _, want := range []string{
+		"Partitions", "Leader", "In sync", "Offsets",
+		"1, 2", "0 to 100", // a healthy partition, and where its log runs
+		"unknown",   // offsets nobody could read
+		"7 (empty)", // a log whose ends meet
+		"none",      // no leader, and no copy in sync
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a topic's partitions do not say %q:\n%s", want, got)
+		}
+	}
+	// Copies that are behind are counted in words, which is what somebody
+	// opens this view to find.
+	if !strings.Contains(got, "2 partitions are short of an in-sync copy") {
+		t.Errorf("the partitions short of a copy are not named:\n%s", got)
+	}
+	// Nothing reads as -1: that is a fact about the protocol, not about the
+	// data, and a person should never have to know how to read one.
+	if strings.Contains(got, "-1") {
+		t.Errorf("something reads as -1:\n%s", got)
+	}
+	// Two things are absent here — a leader, and a copy in sync — and each
+	// says so rather than leaving a cell blank.
+	if n := strings.Count(got, "none"); n < 2 {
+		t.Errorf("what is absent is named %d times, not twice:\n%s", n, got)
+	}
+
+	// A topic whose copies all keep up says nothing about copies at all.
+	sound := &model.Topic{Name: "audit", ReplicationFactor: 1,
+		Partitions: []model.Partition{{ID: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}}}}
+	if got := strings.Join(labelTexts(structureView(sound, nil, nil)), "\n"); strings.Contains(got, "short of") {
+		t.Errorf("a sound topic is reported as short of a copy:\n%s", got)
+	}
+	// And one partition short reads as one, not as a plural.
+	short := &model.Topic{Name: "audit", ReplicationFactor: 2,
+		Partitions: []model.Partition{{ID: 0, Leader: 1, Replicas: []int32{1, 2}, ISR: []int32{1}}}}
+	if got := strings.Join(labelTexts(structureView(short, nil, nil)), "\n"); !strings.Contains(got, "1 partition is short") {
+		t.Errorf("one partition short reads as:\n%s", got)
+	}
+}
+
 func TestStructureShowsHowATopicIsSpread(t *testing.T) {
 	topic := &model.Topic{Name: "orders", ReplicationFactor: 3,
 		Partitions: []model.Partition{

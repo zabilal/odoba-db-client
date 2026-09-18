@@ -304,6 +304,26 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 		// holds is bounded rather than counted, and the label has to say so
 		// (FR-13.2); its partitions one by one are the topic's own view.
 		add(quietLabel(topicHolds(v)))
+		if n := underReplicated(v); n > 0 {
+			// The copies exist; some are behind, and would not be there if
+			// the leader failed now. It is what somebody opening this view is
+			// usually looking for (FR-13.3).
+			were := "partitions are"
+			if n == 1 {
+				were = "partition is"
+			}
+			add(plain(fmt.Sprintf("%d %s short of an in-sync copy.", n, were)))
+		}
+		if len(v.Partitions) > 0 {
+			rows := [][]string{{"Partition", "Leader", "Replicas", "In sync", "Offsets"}}
+			for _, p := range v.Partitions {
+				rows = append(rows, []string{
+					fmt.Sprintf("%d", p.ID), leaderText(p),
+					brokerList(p.Replicas), brokerList(p.ISR), offsetRange(p),
+				})
+			}
+			add(section("Partitions", rows))
+		}
 		if len(v.Attrs) > 0 {
 			add(section("What it says about itself", attrRows(v.Attrs)))
 		}
@@ -510,6 +530,55 @@ func quietLabel(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.Importance = widget.LowImportance
 	return l
+}
+
+// underReplicated counts the partitions with fewer copies in sync than they
+// have copies: the replicas exist, but some are behind.
+func underReplicated(t *model.Topic) int {
+	n := 0
+	for _, p := range t.Partitions {
+		if len(p.ISR) < len(p.Replicas) {
+			n++
+		}
+	}
+	return n
+}
+
+// leaderText names the broker a partition is read and written through, or
+// says there is none: a partition without a leader cannot be used at all,
+// which is worth more to read than a bare -1.
+func leaderText(p model.Partition) string {
+	if p.Leader < 0 {
+		return "none"
+	}
+	return fmt.Sprintf("%d", p.Leader)
+}
+
+// brokerList is a list of broker ids, or a word where there are none.
+func brokerList(ids []int32) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, fmt.Sprintf("%d", id))
+	}
+	return strings.Join(out, ", ")
+}
+
+// offsetRange is where a partition's log begins and ends.
+//
+// Offsets nobody could read say so, and a log whose ends meet says it is
+// empty: not knowing and holding nothing are different things, and only one
+// of them is a fact about the data (ADR-0092).
+func offsetRange(p model.Partition) string {
+	if p.LowWatermark < 0 || p.HighWatermark < 0 {
+		return "unknown"
+	}
+	if p.LowWatermark == p.HighWatermark {
+		return fmt.Sprintf("%d (empty)", p.LowWatermark)
+	}
+	return fmt.Sprintf("%d to %d", p.LowWatermark, p.HighWatermark)
 }
 
 // topicHolds is a topic in one line: how it is spread, and how much of it

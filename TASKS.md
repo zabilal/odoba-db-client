@@ -23,12 +23,14 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.61 — topic detail (FR-13.3): per-partition leader, replicas,
-           in-sync replicas, earliest and latest offset, and lag. The driver
-           already reads all but lag when it describes a topic, so the work
-           is the partition table in the structure tab and whatever lag
-           means without a consumer group to measure it against — which may
-           belong with T2.76, where a group's lag is the subject.
+NEXT TASK: T2.62 — object-explorer integration (FR-2.2): topics, partitions,
+           groups and schemas as nodes. Topics are already there; partitions
+           become children of a topic (the model has KindPartition and the
+           driver reads them when describing), consumer groups need a class
+           of their own beside Topics, and schema-registry subjects wait on
+           T2.69's registry client. A topic will start claiming children the
+           day its partitions are listed, which is the rule the conformance
+           suite holds at every depth.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -40,9 +42,10 @@ NEXT TASK: T2.61 — topic detail (FR-13.3): per-partition leader, replicas,
            file live in ~/.claude/projects/-Users-one-Work-ikigai-db/
            kafka-certs, which the container mounts and the tests read.
            Handing franz-go a logger is still unclaimed work.
-           Two Kafka containers now: ikigai-kafka (59092, plaintext) and
-           ikigai-kafka-sasl (9092 plaintext, 9094 SASL), both required by
-           gate.sh. Handing franz-go a logger is still unclaimed work.
+           Flaky under load: TestCopyAsWritesWholeRowsWithTheirHeader failed
+           one gate run at the 5s budget of the pump it waits on for an async
+           status line, then passed three times straight after. The wait is
+           what is fragile, not the copying.
            Open beside them: gocql writes its own account of a failed
            connection to stderr, beside the ConnectError this driver makes
            of it; quieting it means handing gocql a logger, which belongs
@@ -518,7 +521,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ### Browse
 - [x] **T2.59** Cluster overview: brokers, controller, cluster id, API versions → FR-13.1 — *every source so far had something to choose between at the top of its tree; a Kafka connection has none, being a connection to one cluster. So the root is the cluster itself, one node, with everything else to hang beneath it as it is written — a root left empty would say a connected source has nothing in it. Brokers are not nodes: the model has no object kind for one, deliberately, having been designed against Kafka before any driver existed (T0.29), and `model.Cluster` already carries them as a field — so they are part of what a cluster is, arriving through Describe into the structure tab beside how a Cassandra keyspace shows its replication. The node claims no children until it has some, topics and consumer groups being T2.62: that is the rule the conformance suite was taught to hold at every depth in T2.53, and it binds the driver that added the rule as much as the one it caught. A seed is not a broker — the addresses a connection started from are not nodes of the cluster, franz-go marking a seed by numbering it very negatively and giving it no rack — so seeds are dropped rather than shown as brokers nobody can find. The version is an attribute rather than a field, a broker never stating its release, only which API versions it speaks. The structure tab gained a cluster: brokers by id with their addresses and racks, the controller marked on its own row rather than explained in a legend elsewhere, one broker reading as one broker, and a cluster that named none saying so instead of showing an empty table (ADR-0091)*
 - [x] **T2.60** Topic list with partitions, RF, message count, size; internal-topic filter → FR-13.2 — *the four numbers the requirement asks for do not cost the same: partition count and replication factor come free with the metadata that names the topics at all, a message count needs the earliest and latest offset of every partition, and a size needs a log-directory description from every broker holding a replica, sharded across the cluster. On a cluster of thousands of topics, drawing a list would mean thousands of partitions' offsets and a fan-out to every broker each time somebody opens a node. So the list carries what listing costs — topics in the tree, badged with how many logs each is cut into — and the expensive numbers belong to a topic somebody asked about, which is the rule that keeps a Cassandra table unbadged (NFR-P11). A count of records says "up to": it is the sum of high minus low watermark, an upper bound on what is retained rather than what was ever written, because a log is aged out and compacted behind its readers, and a number labelled "messages" would be believed. A size is replicated bytes and says so, a topic kept three times being reported three times over. Kafka's own topics are hidden as PostgreSQL's system schemas and Cassandra's system keyspaces are, and the filter is a pure function over the metadata so a test can prove it with an internal topic this rig has never had — the live cluster has none, and a mutation nothing could catch would have called it covered. Where the offsets cannot be read the watermarks stay unknown rather than reading as a log with nothing in it (ADR-0092)*
-- [ ] **T2.61** Topic detail: leader, replicas, ISR, earliest/latest offset, lag → FR-13.3
+- [x] **T2.61** Topic detail: leader, replicas, ISR, earliest/latest offset, lag → FR-13.3 — *no driver code at all: everything shown was already read when a topic is described (T2.60), so a view saying considerably more costs exactly what it did before. The table is what a partition is — its number, the broker it is led from, the brokers holding copies, the copies in sync, and where its log begins and ends. A partition with no leader says "none" rather than -1: it cannot be read or written until one is elected, and -1 is a fact about the protocol that somebody would have to know how to read. Offsets nobody could read say "unknown", and a log whose ends meet says it is empty — the rule the driver already holds, said again where it is read, because not knowing and holding nothing are different things. Partitions whose in-sync set is smaller than their replica set are counted in words above the table: the copies exist, but some would not be there if the leader failed now, and that is what somebody opens this view to find. Lag is not here and is not missing either. A partition has no lag of its own, only a lag whoever reads it is behind by; franz-go's lag is keyed by group and begins by describing groups, and the model puts `Lag` on `GroupOffset` saying in as many words that group offsets are read on demand because a cluster may have thousands of groups. Showing it here would mean enumerating every group on a view that opens with a click — the cost ADR-0092 refused for the topic list, arriving by another door — so it lands with T2.76, where a group's lag is the subject rather than a figure borrowed from one (ADR-0093)*
 - [ ] **T2.62** Object-explorer integration: topics, partitions, groups, schemas → FR-2.2
 
 ### Messages
