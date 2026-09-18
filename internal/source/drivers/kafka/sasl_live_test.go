@@ -4,6 +4,8 @@ package kafka
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -43,7 +45,14 @@ func saslConfig(mechanism, user, password string) source.ConnectionConfig {
 	return source.ConnectionConfig{DriverID: driverID, Host: "127.0.0.1", Port: saslPort(),
 		User: user, TLS: source.TLSConfig{Mode: "disable"},
 		Params: map[string]string{"mechanism": mechanism},
-		Secret: func(string) (string, error) { return password, nil }}
+		Secret: func(key string) (string, error) {
+			// One secret per field: a password is not a token, and a driver
+			// that asks for one must not be handed the other.
+			if key == "password" {
+				return password, nil
+			}
+			return "", nil
+		}}
 }
 
 // liveSASL connects to the broker that asks for authentication, or skips.
@@ -123,5 +132,72 @@ func TestLiveABrokerThatAsksIsNotAnsweredWithNothing(t *testing.T) {
 	// listening, and it wanted to be told who this is.
 	if strings.Contains(strings.ToLower(err.Error()), "nothing is listening") {
 		t.Errorf("a broker that asked for authentication reads as absent: %v", err)
+	}
+}
+
+// unsecuredJWT is a token in the one form a broker can check with no issuer to
+// ask: a JWS that says it is unsigned, carrying who this is and when it stops
+// being true. It is made here rather than written down, so that it is never a
+// token which expired last year.
+func unsecuredJWT(subject string, life time.Duration) string {
+	part := func(v any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	now := time.Now()
+	return part(map[string]string{"alg": "none"}) + "." +
+		part(map[string]any{"sub": subject, "iat": now.Unix(), "exp": now.Add(life).Unix()}) + "."
+}
+
+// tokenConfig is a connection that proves who it is by bearing a token.
+func tokenConfig(token string) source.ConnectionConfig {
+	return source.ConnectionConfig{DriverID: driverID, Host: "127.0.0.1", Port: saslPort(),
+		TLS: source.TLSConfig{Mode: "disable"}, Params: map[string]string{"mechanism": "OAUTHBEARER"},
+		Secret: func(key string) (string, error) {
+			if key == "token" {
+				return token, nil
+			}
+			return "", nil
+		}}
+}
+
+func TestLiveProvesWhoItIsWithATokenAlone(t *testing.T) {
+	// No user name and no password: the token says who this is, and the
+	// broker believes it or does not.
+	src := liveSASL(t, tokenConfig(unsecuredJWT(saslUser, time.Hour)))
+	if err := src.Ping(context.Background()); err != nil {
+		t.Errorf("ping: %v", err)
+	}
+	info, err := src.Info(context.Background())
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if info.Attrs["cluster id"] == "" {
+		t.Errorf("the cluster says %+v", info.Attrs)
+	}
+}
+
+func TestLiveATokenTheBrokerWillNotTakeSaysSo(t *testing.T) {
+	// A broker has to be there for this to mean anything.
+	liveSASL(t, tokenConfig(unsecuredJWT(saslUser, time.Hour)))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for name, token := range map[string]string{
+		"a token that ran out": unsecuredJWT(saslUser, -time.Hour),
+		"no token at all":      "not-a-token",
+	} {
+		src, err := Driver{}.Open(ctx, tokenConfig(token))
+		if err == nil {
+			src.Close()
+			t.Errorf("%s was accepted", name)
+			continue
+		}
+		if kind(err) != source.ConnectAuth {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

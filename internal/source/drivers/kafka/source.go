@@ -28,6 +28,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl"
+	"github.com/twmb/franz-go/pkg/sasl/oauth"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 
@@ -73,6 +74,8 @@ func (Driver) Describe() source.Descriptor {
 			{Key: "user", Label: "User", Kind: source.FieldText,
 				Help: "The name the mechanism authenticates."},
 			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true},
+			{Key: "token", Label: "Token", Kind: source.FieldPassword, Secret: true,
+				Help: "For OAUTHBEARER: the bearer token itself. Whoever issued it decides how long it lasts."},
 		},
 	}
 }
@@ -143,9 +146,11 @@ func clientOf(cfg source.ConnectionConfig) ([]kgo.Opt, error) {
 // them, with the commonest first: most brokers somebody runs for themselves
 // ask for nothing at all.
 //
-// OAUTHBEARER and GSSAPI are not here yet (T2.56), nor AWS MSK IAM (T2.57).
-// A mechanism appears in this list when the driver can actually speak it.
-var mechanisms = []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"}
+// GSSAPI is not here, and not for want of trying: franz-go ships no Kerberos
+// mechanism at all, so speaking it means a Kerberos library of this project's
+// own and a KDC to prove it against. AWS MSK IAM is T2.57. A mechanism
+// appears in this list when the driver can actually speak it.
+var mechanisms = []string{mechNone, "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"}
 
 // mechNone is what a connection to a broker that asks nothing uses.
 const mechNone = "None"
@@ -160,28 +165,54 @@ func mechanismOf(cfg source.ConnectionConfig) (sasl.Mechanism, error) {
 		return nil, err
 	}
 
-	if name == "" || name == strings.ToUpper(mechNone) {
-		if user != "" || password != "" {
+	token, err := secret(cfg, "token")
+	if err != nil {
+		return nil, err
+	}
+
+	switch name {
+	case "", strings.ToUpper(mechNone):
+		if user != "" || password != "" || token != "" {
 			// Credentials that would be sent nowhere. Somebody who typed a
 			// password is entitled to think it was used, so this says that it
 			// would not be rather than connecting as nobody.
 			return nil, &source.ConnectError{Kind: source.ConnectConfig,
-				Hint: "A user name or password was given, but no authentication was chosen."}
+				Hint: "A user name, password or token was given, but no authentication was chosen."}
 		}
 		return nil, nil
-	}
-	if user == "" {
-		return nil, &source.ConnectError{Kind: source.ConnectConfig,
-			Hint: fmt.Sprintf("%s authenticates a user, and none was given.", name)}
-	}
-	switch name {
-	case "PLAIN":
-		return plain.Auth{User: user, Pass: password}.AsMechanism(), nil
-	case "SCRAM-SHA-256":
-		return scram.Auth{User: user, Pass: password}.AsSha256Mechanism(), nil
-	case "SCRAM-SHA-512":
+
+	case "OAUTHBEARER":
+		// A token authenticates itself: whoever issued it said who this is
+		// and for how long, and there is no password to go with it. A user
+		// name, where one is given, is the identity to act as.
+		if token == "" {
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: "OAUTHBEARER carries a token, and none was given."}
+		}
+		if password != "" {
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: "OAUTHBEARER carries a token rather than a password."}
+		}
+		return oauth.Auth{Token: token, Zid: user}.AsMechanism(), nil
+
+	case "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512":
+		if user == "" {
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: fmt.Sprintf("%s authenticates a user, and none was given.", name)}
+		}
+		if token != "" {
+			return nil, &source.ConnectError{Kind: source.ConnectConfig,
+				Hint: fmt.Sprintf("%s carries a password rather than a token.", name)}
+		}
+		switch name {
+		case "PLAIN":
+			return plain.Auth{User: user, Pass: password}.AsMechanism(), nil
+		case "SCRAM-SHA-256":
+			return scram.Auth{User: user, Pass: password}.AsSha256Mechanism(), nil
+		}
 		return scram.Auth{User: user, Pass: password}.AsSha512Mechanism(), nil
 	}
+
 	return nil, &source.ConnectError{Kind: source.ConnectConfig,
 		Hint: fmt.Sprintf("%q is not an authentication this driver speaks; choose one of %s.",
 			name, strings.Join(mechanisms, ", "))}
@@ -196,7 +227,7 @@ func secret(cfg source.ConnectionConfig, key string) (string, error) {
 	v, err := cfg.Secret(key)
 	if err != nil {
 		return "", &source.ConnectError{Kind: source.ConnectConfig,
-			Hint: "The password could not be read from the keychain.", Err: err}
+			Hint: fmt.Sprintf("The %s could not be read from the keychain.", key), Err: err}
 	}
 	return v, nil
 }
@@ -253,8 +284,14 @@ func classifyConnectError(err error) error {
 	var ne net.Error
 	text := strings.ToLower(err.Error())
 	switch {
+	// A broker that will not take a token says so inside the OAUTHBEARER
+	// exchange itself, which franz-go reports as unexpected data in an oauth
+	// response. That is a refusal, not a cluster nobody could reach, and the
+	// difference is whether a person goes looking at their network or at
+	// their token.
 	case strings.Contains(text, "sasl") || strings.Contains(text, "authentication") ||
-		strings.Contains(text, "authorize") || strings.Contains(text, "credential"):
+		strings.Contains(text, "authorize") || strings.Contains(text, "credential") ||
+		strings.Contains(text, "oauth"):
 		return &source.ConnectError{Kind: source.ConnectAuth,
 			Hint: "The cluster did not accept these credentials.", Err: err}
 	case strings.Contains(text, "x509") || strings.Contains(text, "certificate") ||
