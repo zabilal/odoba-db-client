@@ -299,6 +299,14 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 		for _, g := range v.Figures {
 			add(section(g.Title, figureRows(g.Values)))
 		}
+	case *model.Topic:
+		// A topic's shape is how it is spread and how much it holds. What it
+		// holds is bounded rather than counted, and the label has to say so
+		// (FR-13.2); its partitions one by one are the topic's own view.
+		add(quietLabel(topicHolds(v)))
+		if len(v.Attrs) > 0 {
+			add(section("What it says about itself", attrRows(v.Attrs)))
+		}
 	case *model.Cluster:
 		// A cluster has no columns either. What there is to say is who its
 		// brokers are, which of them answers for the whole, and what it calls
@@ -502,6 +510,34 @@ func quietLabel(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.Importance = widget.LowImportance
 	return l
+}
+
+// topicHolds is a topic in one line: how it is spread, and how much of it
+// there is to read.
+//
+// The count is an upper bound on what is retained rather than a count of what
+// was ever written: a log is aged out and compacted behind the reader, so the
+// words say "up to" and mean it (FR-13.2).
+func topicHolds(t *model.Topic) string {
+	held := fmt.Sprintf("%d partitions", len(t.Partitions))
+	if len(t.Partitions) == 1 {
+		held = "one partition"
+	}
+	switch {
+	case t.ReplicationFactor == 1:
+		held += " on one broker"
+	case t.ReplicationFactor > 1:
+		held += fmt.Sprintf(" on %d brokers", t.ReplicationFactor)
+	default:
+		held += ", replicated differently by partition"
+	}
+	if n := t.MessageCount(); n > 0 {
+		held += fmt.Sprintf(", holding up to %d records", n)
+	}
+	if t.Internal {
+		return held + ". Kafka's own."
+	}
+	return held + "."
 }
 
 // clusterHolds is a cluster in one line: how many brokers it has, and what it

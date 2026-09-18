@@ -26,14 +26,19 @@ func TestLiveTheTreeIsTheCluster(t *testing.T) {
 	if cluster.Ref.Kind != model.KindCluster || cluster.Label == "" {
 		t.Errorf("the cluster node is %+v", cluster)
 	}
-	// It claims no children, because topics and consumer groups are not
-	// listed yet: a node that claims them and opens onto nothing is an
-	// expander that turns for ever.
-	if cluster.HasChildren {
-		t.Error("the cluster claims children before any are listed")
+	// It holds its topics and says so, and opening it yields the class —
+	// never nothing, which would be an expander that turns for ever.
+	if !cluster.HasChildren {
+		t.Error("the cluster claims no children though it holds its topics")
 	}
-	if kids, err := src.Children(ctx, cluster.Ref); err != nil || len(kids) != 0 {
-		t.Errorf("the cluster holds %v: %v", kids, err)
+	kids, err := src.Children(ctx, cluster.Ref)
+	if err != nil || len(kids) == 0 {
+		t.Fatalf("the cluster holds %v: %v", kids, err)
+	}
+	for _, k := range kids {
+		if kind, ok := model.ClassOf(k.Ref); !ok || kind != model.KindTopic {
+			t.Errorf("the cluster holds %+v, which is no class of topics", k)
+		}
 	}
 }
 

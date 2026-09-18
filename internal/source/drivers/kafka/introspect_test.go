@@ -1,6 +1,8 @@
 package kafka
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -38,6 +40,106 @@ func TestTheBrokersAreTheClustersOwnNodes(t *testing.T) {
 	}
 	if brokersOf(nil) == nil {
 		t.Error("a cluster of no brokers reads as no list at all")
+	}
+}
+
+func TestKafkasOwnTopicsAreNotListed(t *testing.T) {
+	got := ordinary(kadm.TopicDetails{
+		"orders":             {Topic: "orders"},
+		"__consumer_offsets": {Topic: "__consumer_offsets", IsInternal: true},
+		"audit":              {Topic: "audit"},
+	})
+	// What somebody put there, in name order; the cluster's own workings are
+	// not anybody's data.
+	if len(got) != 2 || got[0].Topic != "audit" || got[1].Topic != "orders" {
+		t.Fatalf("the topics read as %+v", got)
+	}
+	for _, d := range got {
+		if d.IsInternal {
+			t.Errorf("%s is Kafka's own and is listed", d.Topic)
+		}
+	}
+	if ordinary(kadm.TopicDetails{}) == nil {
+		t.Error("a cluster with no topics of its own reads as no list at all")
+	}
+}
+
+func TestWhereALogBeginsAndEnds(t *testing.T) {
+	ps := kadm.PartitionDetails{
+		0: {Partition: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}},
+		1: {Partition: 1, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}},
+	}
+	start := kadm.ListedOffsets{"orders": {0: {Offset: 10}, 1: {Offset: 0}}}
+	end := kadm.ListedOffsets{"orders": {0: {Offset: 42}, 1: {Offset: 0}}}
+
+	got := partitionsOf("orders", ps, start, end)
+	if len(got) != 2 || got[0].ID != 0 || got[1].ID != 1 {
+		t.Fatalf("the partitions read as %+v", got)
+	}
+	if got[0].LowWatermark != 10 || got[0].HighWatermark != 42 {
+		t.Errorf("a log running from 10 to 42 reads as %+v", got[0])
+	}
+	// An empty log begins and ends in the same place, and that is a fact
+	// about it rather than an absence of one.
+	if got[1].LowWatermark != 0 || got[1].HighWatermark != 0 {
+		t.Errorf("an empty log reads as %+v", got[1])
+	}
+
+	// Offsets nobody could read leave the watermarks unknown: not knowing and
+	// being empty are different things, and only one is about the data.
+	for _, p := range partitionsOf("orders", ps, nil, nil) {
+		if p.LowWatermark != -1 || p.HighWatermark != -1 {
+			t.Errorf("a log whose offsets could not be read reads as %+v", p)
+		}
+	}
+	// An offset that came back carrying a failure of its own is no offset.
+	failed := kadm.ListedOffsets{"orders": {0: {Offset: 7, Err: errors.New("no")}}}
+	if got := partitionsOf("orders", ps, failed, failed); got[0].LowWatermark != -1 {
+		t.Errorf("an offset that failed reads as %+v", got[0])
+	}
+}
+
+func TestHowManyCopiesOfEachPartition(t *testing.T) {
+	of := func(replicas ...int) kadm.PartitionDetails {
+		ps := kadm.PartitionDetails{}
+		for i, n := range replicas {
+			d := kadm.PartitionDetail{Partition: int32(i)}
+			for r := 0; r < n; r++ {
+				d.Replicas = append(d.Replicas, int32(r))
+			}
+			ps[int32(i)] = d
+		}
+		return ps
+	}
+	if got := replicationOf(of(3, 3, 3)); got != 3 {
+		t.Errorf("three partitions kept three times each read as %d", got)
+	}
+	if got := replicationOf(of(1)); got != 1 {
+		t.Errorf("one partition kept once reads as %d", got)
+	}
+	// Partitions that disagree are said to disagree, rather than averaged
+	// into a number true of none of them.
+	if got := replicationOf(of(3, 2)); got != -1 {
+		t.Errorf("partitions replicated unevenly read as %d", got)
+	}
+	if got := replicationOf(kadm.PartitionDetails{}); got != -1 {
+		t.Errorf("a topic with no partitions reads as %d", got)
+	}
+}
+
+func TestASizeSaysWhatItIsASizeOf(t *testing.T) {
+	// A topic kept three times occupies three times its own size, and the
+	// words have to carry that or the number is read as the data's.
+	got := sizeText(12 * 1024 * 1024)
+	if !strings.Contains(got, "12.0 MB") || !strings.Contains(got, "across all replicas") {
+		t.Errorf("twelve megabytes of replicas read as %q", got)
+	}
+	for n, want := range map[int64]string{
+		0: "0 B", 512: "512 B", 2048: "2.0 KB", 5 * 1024 * 1024 * 1024: "5.0 GB",
+	} {
+		if got := humanBytes(n); got != want {
+			t.Errorf("%d bytes read as %q, want %q", n, got, want)
+		}
 	}
 }
 
