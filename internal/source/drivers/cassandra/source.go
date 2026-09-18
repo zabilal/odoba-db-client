@@ -302,6 +302,10 @@ type cassandraSource struct {
 
 	session *gocql.Session
 	cfg     source.ConnectionConfig
+
+	// states remembers where a browse's pages ended, since a Cassandra page
+	// is where the last one stopped rather than an offset (T2.51).
+	states pageStates
 }
 
 var (
@@ -315,6 +319,11 @@ func (s *cassandraSource) Capabilities() capability.Capabilities {
 		// A keyspace is this paradigm's database: a cluster holds several,
 		// and a connection can be opened on any of them.
 		Structure: capability.Structure{MultipleDatabases: true},
+		// The cluster filters and orders what it can, and refuses the rest in
+		// its own words. Nothing is counted: counting a table is a read of
+		// every partition on every node, so neither count is claimed and the
+		// grid pages without a scrollbar it cannot draw honestly (FR-2.5).
+		Data: capability.Data{ServerSort: true, ServerFilter: true},
 		// CQL is the language, and a script of it runs a statement at a
 		// time. Reading a table's rows is T2.51, and is not claimed until it
 		// is written: a claim is a promise the conformance suite holds a
@@ -355,11 +364,4 @@ func (s *cassandraSource) Close() (err error) {
 	// driver's own would say the same thing twice.
 	s.session.Close()
 	return nil
-}
-
-// Browse reads no rows yet (T2.51): a page of a Cassandra table is a walk of
-// the partitions the paging state names, and reading one without that would
-// be a promise this driver cannot keep.
-func (s *cassandraSource) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
-	return nil, errors.New("cassandra: this connection does not read rows yet")
 }

@@ -4,7 +4,9 @@ package cassandra
 
 import (
 	"context"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -127,13 +129,27 @@ func TestLiveListsWhatAKeyspaceHolds(t *testing.T) {
 	// Tables, and then a table's columns: the key first, then what orders
 	// rows within a partition, then the rest.
 	tables, err := src.Children(ctx, held["Tables"].Ref)
-	if err != nil || strings.Join(labels(tables), " ") != "orders people" {
-		t.Fatalf("the tables are %v: %v", labels(tables), err)
+	if err != nil {
+		t.Fatalf("the tables: %v", err)
 	}
-	if held["Tables"].Badge.Text != "2" {
-		t.Errorf("the tables are counted %+v", held["Tables"].Badge)
+	// In name order, and counted as they are listed. Other tests put tables
+	// of their own here, so what is asserted is what this one made.
+	if names := labels(tables); !sort.StringsAreSorted(names) {
+		t.Errorf("the tables read %v", names)
 	}
-	cols, err := src.Children(ctx, tables[1].Ref)
+	if held["Tables"].Badge.Text != strconv.Itoa(len(tables)) {
+		t.Errorf("%d tables are counted %+v", len(tables), held["Tables"].Badge)
+	}
+	var people model.Node
+	for _, n := range tables {
+		if n.Label == "people" {
+			people = n
+		}
+	}
+	if people.Label == "" {
+		t.Fatalf("the tables are %v, without people", labels(tables))
+	}
+	cols, err := src.Children(ctx, people.Ref)
 	if err != nil {
 		t.Fatalf("columns: %v", err)
 	}
@@ -207,7 +223,11 @@ func TestLiveSaysHowAKeyspaceIsReplicated(t *testing.T) {
 	if schema.Attrs["replication_factor"] != "1" || schema.Attrs["durable writes"] != "true" {
 		t.Errorf("how it is replicated: %+v", schema.Attrs)
 	}
-	if len(schema.Tables) != 2 || schema.Tables[0].Name != "orders" || len(schema.UserTypes) != 1 {
+	held := make([]string, 0, len(schema.Tables))
+	for _, tbl := range schema.Tables {
+		held = append(held, tbl.Name)
+	}
+	if !sort.StringsAreSorted(held) || !slices.Contains(held, "people") || len(schema.UserTypes) != 1 {
 		t.Errorf("what it holds: %+v %+v", schema.Tables, schema.UserTypes)
 	}
 }

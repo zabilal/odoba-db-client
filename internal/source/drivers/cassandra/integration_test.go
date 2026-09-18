@@ -153,11 +153,20 @@ func TestLiveClaimsNothingItHasNotWritten(t *testing.T) {
 	if _, ok := src.(source.Queryer); !ok {
 		t.Error("a language is claimed with nothing to run it")
 	}
+	// The cluster filters and orders what it can; nothing is counted, because
+	// counting a table reads every partition on every node (FR-2.5).
+	if !caps.Data.ServerFilter || !caps.Data.ServerSort {
+		t.Errorf("filtering and ordering are the cluster's: %+v", caps.Data)
+	}
+	if caps.Data.ExactCount || caps.Data.ApproximateCount {
+		t.Errorf("a count is claimed that would read every partition: %+v", caps.Data)
+	}
 	if !caps.Paradigm.Valid() || len(caps.Objects) == 0 {
 		t.Errorf("the driver claims no paradigm or no objects: %+v", caps)
 	}
-	table := model.NewRef(model.KindTable, "system", "local")
-	if _, err := src.Browse(context.Background(), table, source.BrowseOptions{}); err == nil {
-		t.Error("a browse answered where none is written")
+	// A keyspace holds tables rather than rows of its own, and says so.
+	keyspace := model.NewRef(model.KindDatabase, "system")
+	if _, err := src.Browse(context.Background(), keyspace, source.BrowseOptions{}); err == nil {
+		t.Error("a keyspace was browsed as though it held rows")
 	}
 }

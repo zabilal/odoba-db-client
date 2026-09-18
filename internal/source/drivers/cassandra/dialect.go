@@ -60,8 +60,17 @@ func (dialect) SplitScript(script string) []source.ScriptStatement {
 
 func (dialect) Classify(statement string) source.Access { return classify(statement) }
 
-// BuildBrowse renders the statement a browse would send (FR-3.6).
+// BuildBrowse renders the statement a browse would send (FR-3.6), with the
+// limit that bounds it.
 func (d dialect) BuildBrowse(ref model.ObjectRef, opt source.BrowseOptions) (source.Statement, error) {
+	return d.browse(ref, opt, true)
+}
+
+// browse renders a read. limited writes the LIMIT that bounds one page; a
+// paged read leaves it off, because CQL's LIMIT bounds the whole query rather
+// than a page of it, and what bounds a page there is the size the cluster is
+// asked for (T2.51).
+func (d dialect) browse(ref model.ObjectRef, opt source.BrowseOptions, limited bool) (source.Statement, error) {
 	if !browsableKinds[ref.Kind] {
 		return source.Statement{}, fmt.Errorf("cassandra: %s is not browsable", ref)
 	}
@@ -107,11 +116,13 @@ func (d dialect) BuildBrowse(ref model.ObjectRef, opt source.BrowseOptions) (sou
 			sb.WriteString(" DESC")
 		}
 	}
-	limit := opt.Limit
-	if limit <= 0 {
-		limit = DefaultPageSize
+	if limited {
+		limit := opt.Limit
+		if limit <= 0 {
+			limit = DefaultPageSize
+		}
+		sb.WriteString(" LIMIT " + b.bind(limit))
 	}
-	sb.WriteString(" LIMIT " + b.bind(limit))
 	// A typed condition is held to being one condition by Predicate — no
 	// second statement, nothing left open — and the statement it lands in
 	// begins with SELECT, so there is nothing further to classify.
