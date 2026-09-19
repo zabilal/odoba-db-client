@@ -134,3 +134,69 @@ func TestARecordNamedWithoutItsPlaceIsStillNamed(t *testing.T) {
 		t.Errorf("a record with no place is named %q", got)
 	}
 }
+
+// Filtering records where the broker will not (T2.67, FR-13.9, ADR-0099).
+
+// filterTo types text into a column's filter cell and applies it.
+func filterTo(t *testing.T, fx *fixture, tb *tab, col int, text string) {
+	t.Helper()
+	tb.grid.SetFilterText(col, text)
+	tb.grid.ApplyFilters()
+	pump(t, fx.q, func() bool { return !strings.HasSuffix(tb.footer.Text, "Filtering…") })
+}
+
+func TestATopicsRecordsAreFilteredHere(t *testing.T) {
+	fx, tb := openRecords(t)
+
+	// A broker filters nothing, so before this there was no filter row at all.
+	if !tb.grid.Filterable() {
+		t.Fatal("a topic's records have no filter row")
+	}
+
+	// The key column is column 3. One record carries order-1.
+	filterTo(t, fx, tb, 3, "order-1")
+	pump(t, fx.q, func() bool { n, _ := tb.model.Extent(); return n == 1 })
+	row, ok := tb.model.Row(tb.ctx, 0)
+	if !ok {
+		t.Fatal("the matching record never loaded")
+	}
+	if got, _ := row[3].([]byte); string(got) != "order-1" {
+		t.Errorf("the record shown has key %q", got)
+	}
+
+	// Nothing was asked of the source: the rows it had are the rows filtered.
+	if got := len(tb.browse.Options().Filters); got != 0 {
+		t.Errorf("%d filters were sent to a broker that refuses them", got)
+	}
+
+	// And the footer says what it filtered, which is not the whole topic.
+	if got := tb.footer.Text; !strings.Contains(got, "filtering what has been read") {
+		t.Errorf("the footer says %q", got)
+	}
+
+	// Clearing it gives every record back.
+	filterTo(t, fx, tb, 3, "")
+	pump(t, fx.q, func() bool { n, _ := tb.model.Extent(); return n == int64(len(fakeRecords)) })
+	if tb.local != nil {
+		t.Error("clearing the filter left one behind")
+	}
+}
+
+func TestARecordIsFoundByAHeaderItCarries(t *testing.T) {
+	fx, tb := openRecords(t)
+
+	// Headers are column 5, and one record carries trace-id twice.
+	filterTo(t, fx, tb, 5, "trace-id")
+	pump(t, fx.q, func() bool { n, _ := tb.model.Extent(); return n == 1 })
+	row, ok := tb.model.Row(tb.ctx, 0)
+	if !ok {
+		t.Fatal("the record with that header never loaded")
+	}
+	if got, _ := row[1].(int64); got != 10 {
+		t.Errorf("the record found is at offset %v", got)
+	}
+
+	// A header that was never sent finds nothing, rather than everything.
+	filterTo(t, fx, tb, 5, "no-such-header")
+	pump(t, fx.q, func() bool { n, _ := tb.model.Extent(); return n == 0 })
+}

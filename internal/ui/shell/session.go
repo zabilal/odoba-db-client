@@ -181,7 +181,7 @@ func (s *Shell) restoreView(t *tab, st localdb.SessionTab) {
 			lost = append(lost, "the filter on "+name+", a column it no longer has")
 			continue
 		}
-		if !t.browse.CanFilter() {
+		if !t.browse.CanFilter() && !t.browse.FiltersHere() {
 			lost = append(lost, "the filter on "+name)
 			continue
 		}
