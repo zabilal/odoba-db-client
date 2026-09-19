@@ -12,6 +12,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/twmb/franz-go v1.22.0
 	github.com/twmb/franz-go/pkg/kadm v1.19.0
+	github.com/twmb/franz-go/pkg/sr v1.8.0
 	github.com/zalando/go-keyring v0.2.8
 	go.mongodb.org/mongo-driver/v2 v2.9.1
 	gopkg.in/inf.v0 v0.9.1

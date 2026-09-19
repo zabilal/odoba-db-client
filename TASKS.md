@@ -23,11 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.69 — a Confluent Schema Registry client, through
-           franz-go/pkg/sr (FR-13.7). The first Kafka task needing a server
-           this project has not run before: a registry container beside the
-           broker, and a requirement for it in gate.sh. Its decoders join
-           the list T2.68 built rather than standing beside it.
+NEXT TASK: T2.70 — Avro decoding (FR-13.7). The registry client resolves a
+           subject's schema and reads the five bytes that name it (T2.69);
+           this reads the payload itself, and joins the list of decoders a
+           value is offered in rather than standing beside it.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -61,8 +60,16 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            ikigai-redis-cluster (three shards on 7001-7003, published as
            themselves so each is reachable where it announces itself), and
            ikigai-cassandra (59042, pulled from public.ecr.aws because
-           Docker Hub refuses an unauthenticated pull here).
-LAST DONE: 2026-09-19 — what a record's bytes can be read as, decided by
+           Docker Hub refuses an unauthenticated pull here). For the schemas
+           (T2.69): ikigai-schema-registry (58081) with ikigai-kafka-sr
+           (59093) beside it on the user-defined network ikigai-sr, which is
+           a pair of their own because both other brokers advertise localhost
+           on the default bridge, where a registry container would be told to
+           reach the broker at itself.
+LAST DONE: 2026-09-19 — the registry that says what records mean, named per
+           connection, claimed only where named, and reading the five bytes
+           that say which schema wrote a record (T2.69, ADR-0101); before it
+           what a record's bytes can be read as, decided by
            decoders rather than inline, and how a topic is read remembered
            for whoever opens it next (T2.68, ADR-0100); before it a topic's
            records filtered where a broker will not
@@ -545,7 +552,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Deserialisation
 - [x] **T2.68** Decoders: raw bytes/hex, UTF-8, JSON → FR-13.7 — *the record view already offered a value in the forms its bytes admit, but it decided that inline, by asking whether they parsed and whether they were valid UTF-8; Avro, Protobuf and JSON Schema cannot be decided that way, needing a registry to ask, a subject to ask about and a schema that may change between one record and the next. So the question was not how to add three more forms but what a form is, and the answer is that a form is a decoder seen from the side the person is on: the forms a value admits are the decoders that can read it, and the names somebody chooses between are the decoders' own names. One list and one answer to what these bytes can be read as, rather than a local mechanism and a registry mechanism kept agreeing with each other. A decoder says what the bytes are and the view says how that reads — JSON returns the document's own text so no number loses a digit, text returns a string, and raw returns the bytes unchanged, which is how hex stays a hex dump without the decoder knowing anything about dumps — so what T2.69 adds is entries in a list rather than a second renderer. A decoder that cannot read the bytes says so rather than guessing, and only the decoders that can read a value are offered for it; a fault is shown beside the bytes and never in place of them, an undecodable record still being worth seeing. Empty bytes are not a JSON document: they are the empty string, which somebody may well have written, and they are bytes — nothing written at all is a third thing again, which the record view says before any decoder is asked. How a topic is read is remembered by connection, topic and field, a key and a value being different bytes that get different answers and the same topic name on another connection being another topic; the choice is kept as the name it goes by rather than an index or a type, a name being what survives a build that offers a different set. Only a choice somebody made is remembered: opening a topic is not choosing how to read it and putting back a remembered form is not choosing it again — a probe showed that merely opening a record wrote the default back as though chosen, which would have recorded a preference nobody expressed and outlasted the default that produced it, so that a topic becoming decodable later would still open the old way. And a remembered way of reading that no longer fits falls back rather than showing nothing, records in one topic not having to agree. Nothing decodes in the grid yet: a topic's key and value cells still show a hex preview whatever form is chosen, which is a separate decision about what a cell of a log's row should say (ADR-0100)*
-- [ ] **T2.69** Confluent Schema Registry client (`franz-go/pkg/sr`) → FR-13.7
+- [x] **T2.69** Confluent Schema Registry client (`franz-go/pkg/sr`) → FR-13.7 — *a broker hands over bytes and knows nothing about what they mean; a registry knows what they mean and nothing about the broker; and the only thing tying them together is five bytes at the front of a record — a zero, then the four-byte id of the schema that wrote it. That shape decides the rest. A registry is a second server, reached over HTTP, named per connection, authenticated separately and failing separately, and it is optional: most clusters are read without one, so naming none is not a fault and must not read as one — every registry call then refuses in those words, keeping "no subjects" and "no registry" different answers. The capability is claimed only where one is named, claiming it otherwise promising subjects a connection can never list, which makes this a claim about the connection rather than about the driver. A registry that was named and cannot be reached fails at connect, somebody who typed an address wanting to hear about it then rather than an hour later; one that was not named fails nothing. It refuses in the registry's own terms — unauthorised, a certificate that would not verify, a host that does not resolve, a refused connection — four problems with four fixes, and a registry fails in ways a broker never does. Listing subjects does not read their versions, a registry holding thousands and reading every version of each to draw a list being the shape ADR-0092 refused for topics; versions are read when a subject is opened. Credentials live in the keychain as every password here does, and an address carrying userinfo is redacted wherever it is written; over HTTPS it verifies by the same rules the broker's own connection follows. A decoder says which schema wrote a record and says what it cannot do: it names the schema, refuses a record written by a different one rather than reading it with the wrong schema, and refuses bytes with no header at all — Avro, Protobuf and JSON Schema are their own languages, written next, and a guess in the meantime would be worse than an honest refusal, which the decoder contract already expects to show beside the bytes rather than instead of them. The test registry needed a broker of its own: both existing brokers advertise localhost and sit on the default bridge network, which has no DNS, so a registry container bootstrapping from either would be handed the address localhost and try to reach the broker at itself — rather than recreate a working broker the gate depends on, the registry has its own pair on a user-defined network, one listener advertised for the containers beside it and another for tests on this machine (ADR-0101)*
 - [ ] **T2.70** Avro decoding → FR-13.7
 - [ ] **T2.71** Protobuf decoding → FR-13.7
 - [ ] **T2.72** JSON Schema decoding → FR-13.7

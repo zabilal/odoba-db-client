@@ -32,6 +32,7 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/oauth"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
+	"github.com/twmb/franz-go/pkg/sr"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
@@ -76,6 +77,12 @@ func (Driver) Describe() source.Descriptor {
 				Help: "The name the mechanism authenticates. For AWS_MSK_IAM it is the access key id."},
 			{Key: "password", Label: "Password", Kind: source.FieldPassword, Secret: true,
 				Help: "For AWS_MSK_IAM: the secret access key, which signs rather than being sent."},
+			{Key: "registry", Label: "Schema registry", Kind: source.FieldText,
+				Help: "Optional: the URL of a Confluent schema registry, such as http://localhost:8081, which says what the records mean."},
+			{Key: "registryuser", Label: "Registry user", Kind: source.FieldText,
+				Help: "Optional: for a registry behind basic authentication."},
+			{Key: "registrypassword", Label: "Registry password", Kind: source.FieldPassword, Secret: true,
+				Help: "Kept in the keychain, as every password here is."},
 			{Key: "token", Label: "Token", Kind: source.FieldPassword, Secret: true,
 				Help: "For OAUTHBEARER: the bearer token itself, whose issuer decides how long it lasts. For AWS_MSK_IAM: the session token, where the credentials are temporary ones."},
 		},
@@ -105,7 +112,14 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (_ source.S
 		client.Close()
 		return nil, classifyConnectError(err)
 	}
-	return &kafkaSource{client: client, admin: kadm.NewClient(client), cfg: cfg}, nil
+	// A registry that was named and cannot be reached is a fault now rather
+	// than a surprise later; one that was not named is no fault at all.
+	registry, err := registryOf(cfg)
+	if err != nil {
+		client.Close()
+		return nil, err
+	}
+	return &kafkaSource{client: client, admin: kadm.NewClient(client), registry: registry, cfg: cfg}, nil
 }
 
 // clientOf is the settings as franz-go takes them.
@@ -346,6 +360,11 @@ type kafkaSource struct {
 	client *kgo.Client
 	admin  *kadm.Client
 
+	// registry describes what the records mean, where a connection names one
+	// (registry.go). Nil is the ordinary case: a cluster is read without a
+	// registry far more often than with one.
+	registry *sr.Client
+
 	// cfg is kept because reading records needs a client of its own: a
 	// consumer is assigned partitions, and this one is the connection's.
 	// Building that consumer means dialling the same brokers the same way.
@@ -359,7 +378,11 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// capability.Query exists to be left zeroed. Records can be read now
 		// (T2.63); producing, groups, seeking by time and following a log
 		// each wait for the task that writes them.
-		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true},
+		// SchemaRegistry is claimed only where one was named: claiming it
+		// otherwise would promise subjects this connection can never list
+		// (REQ-DRV-1).
+		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
+			SchemaRegistry: s.registry != nil},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,
