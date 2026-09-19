@@ -176,8 +176,60 @@ func (s *kafkaSource) Describe(ctx context.Context, ref model.ObjectRef) (_ any,
 		return s.topic(ctx, ref.Name())
 	case model.KindSubject:
 		return s.subject(ctx, ref.Name())
+	case model.KindConsumerGroup:
+		return s.group(ctx, ref.Name())
 	}
 	return nil, nil
+}
+
+// group is one consumer group as the structure view shows it: what it is
+// doing, who is in it, and what each of them was given to read (FR-13.10).
+//
+// What any of them has fallen behind by is not read here. That is a request
+// for the group's committed offsets and another for the ends of the logs, and
+// the model says as much where it holds them: offsets are populated on
+// demand, never while a group is being listed (T2.76).
+func (s *kafkaSource) group(ctx context.Context, name string) (*model.ConsumerGroup, error) {
+	described, err := s.admin.DescribeGroups(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := described[name]
+	if !ok {
+		return nil, fmt.Errorf("kafka: this cluster has no consumer group %q", name)
+	}
+	if d.Err != nil {
+		return nil, d.Err
+	}
+	g := &model.ConsumerGroup{ID: d.Group, State: d.State}
+	for _, m := range d.Members {
+		g.Members = append(g.Members, model.GroupMember{
+			ID: m.MemberID, ClientID: m.ClientID, Host: m.ClientHost,
+			Assignment: assignmentOf(m),
+		})
+	}
+	return g, nil
+}
+
+// assignmentOf is what one member was given to read.
+//
+// A group need not be consuming a topic at all: Kafka Connect uses the same
+// machinery for its own purposes, and an assignment written for something
+// else is not partitions of a log. Reading one as though it were would invent
+// an assignment nobody made, so anything that is not a consumer's assignment
+// reads as none at all.
+func assignmentOf(m kadm.DescribedGroupMember) []model.TopicPartition {
+	c, ok := m.Assigned.AsConsumer()
+	if !ok {
+		return nil
+	}
+	var out []model.TopicPartition
+	for _, t := range c.Topics {
+		for _, p := range t.Partitions {
+			out = append(out, model.TopicPartition{Topic: t.Topic, Partition: p})
+		}
+	}
+	return out
 }
 
 // partitionNodes are a topic's logs, one node each. A partition is a leaf:

@@ -197,3 +197,67 @@ func TestLiveKafkasOwnTopicsStayOutOfTheTree(t *testing.T) {
 		t.Errorf("%s is described as %+v", own[0], desc)
 	}
 }
+
+// Describing a group (T2.75, FR-13.10).
+
+func TestLiveAGroupIsDescribedByWhoIsInIt(t *testing.T) {
+	src := live(t, liveConfig())
+	seededTopic(t, src, "ikigai_it_orders", 3)
+	written(t, src, "ikigai_it_orders", 1)
+
+	cl := reading(t, "ikigai_it_described", "ikigai_it_orders")
+	defer cl.Close()
+
+	node := nodeNamed(t, src, classNamed(t, src, model.KindConsumerGroup).Ref, "ikigai_it_described")
+	desc, err := src.Describe(context.Background(), node.Ref)
+	if err != nil {
+		t.Fatalf("describing the group: %v", err)
+	}
+	g, ok := desc.(*model.ConsumerGroup)
+	if !ok {
+		t.Fatalf("a group is described as a %T", desc)
+	}
+	if g.ID != "ikigai_it_described" {
+		t.Errorf("the group describes itself as %q", g.ID)
+	}
+	if g.State == "" {
+		t.Error("the group says nothing about what it is doing")
+	}
+	if len(g.Members) == 0 {
+		t.Fatal("a group with something reading in it has no members")
+	}
+
+	m := g.Members[0]
+	if m.ID == "" {
+		t.Error("a member has no id")
+	}
+	if m.ClientID == "" {
+		t.Error("a member does not say what client it is")
+	}
+	if m.Host == "" {
+		t.Error("a member does not say where it is running")
+	}
+	// What it was given to read. How many partitions it holds is not asserted
+	// exactly: an assignment settles across a rebalance rather than at the
+	// moment of joining, and a count fixed here would be a test of timing.
+	// What must hold is that a member is only ever assigned what it asked
+	// for.
+	if len(m.Assignment) == 0 {
+		t.Error("the only member of the group was given nothing to read")
+	}
+	for _, a := range m.Assignment {
+		if a.Topic != "ikigai_it_orders" {
+			t.Errorf("a member is assigned %q, which it never asked for", a.Topic)
+		}
+		if a.Partition < 0 {
+			t.Errorf("a member is assigned partition %d of %s", a.Partition, a.Topic)
+		}
+	}
+
+	// What it has fallen behind by is not read here: that is T2.76, and it
+	// costs a request for the group's offsets and another for the ends of the
+	// logs. Describing a group must not quietly spend them.
+	if len(g.Offsets) != 0 {
+		t.Errorf("describing a group read its offsets: %+v", g.Offsets)
+	}
+}

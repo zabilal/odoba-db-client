@@ -445,3 +445,59 @@ func TestStructureComparesTheTwoMostRecentVersions(t *testing.T) {
 		t.Errorf("what the newest version added is not shown:\n%s", got)
 	}
 }
+
+// A consumer group in the structure view (T2.75, FR-13.10).
+
+func TestStructureShowsWhoIsInAGroupAndWhatTheyRead(t *testing.T) {
+	group := &model.ConsumerGroup{ID: "readers", State: "Stable",
+		Members: []model.GroupMember{
+			{ID: "m-1", ClientID: "ikigai", Host: "/10.0.0.4",
+				Assignment: []model.TopicPartition{
+					{Topic: "orders", Partition: 0},
+					{Topic: "orders", Partition: 2},
+					{Topic: "audit", Partition: 1},
+				}},
+			// In the group and given nothing to read, which is what somebody
+			// looks for when a group is not getting through its logs.
+			{ID: "m-2", ClientID: "ikigai", Host: "/10.0.0.5"},
+		}}
+	got := strings.Join(labelTexts(structureView(group, nil, nil)), "\n")
+	for _, want := range []string{
+		"Stable, with 2 members.",
+		"Members", "Member", "Client", "Host", "Assigned",
+		"m-1", "/10.0.0.4", "m-2",
+		// Gathered by topic, rather than a line for every partition.
+		"orders 0, 2", "audit 1",
+		"nothing",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a group does not say %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestStructureSaysWhenAGroupHasNobodyInIt(t *testing.T) {
+	empty := &model.ConsumerGroup{ID: "readers", State: "Empty"}
+	got := strings.Join(labelTexts(structureView(empty, nil, nil)), "\n")
+	if !strings.Contains(got, "Empty, with nobody in it.") {
+		t.Errorf("a group with no members says:\n%s", got)
+	}
+	// And no table of members with nothing in it.
+	if strings.Contains(got, "Assigned") {
+		t.Errorf("a group with no members draws a table of them:\n%s", got)
+	}
+
+	// One member reads as one, not as "1 members".
+	one := &model.ConsumerGroup{ID: "readers", State: "Stable",
+		Members: []model.GroupMember{{ID: "m-1"}}}
+	if got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n"); !strings.Contains(got, "with one member.") {
+		t.Errorf("a group of one says:\n%s", got)
+	}
+
+	// A state the cluster never gave is said as an absence rather than left
+	// as a blank somebody has to interpret.
+	none := &model.ConsumerGroup{ID: "readers"}
+	if got := strings.Join(labelTexts(structureView(none, nil, nil)), "\n"); !strings.Contains(got, "did not name") {
+		t.Errorf("a group with no state says:\n%s", got)
+	}
+}

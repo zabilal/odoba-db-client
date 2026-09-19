@@ -358,6 +358,20 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 		if len(v.Versions) > 1 {
 			add(versionComparison(v.Versions))
 		}
+	case *model.ConsumerGroup:
+		// A group is several consumers doing one job between them, so what
+		// there is to say is what it is doing and who is in it (FR-13.10).
+		// What each has fallen behind by is T2.76, and the model says why:
+		// offsets are read on demand, never while a group is being listed.
+		add(quietLabel(groupHolds(v)))
+		// Nothing guards the empty group here: a table of nothing but its own
+		// headings is what section already declines to draw, and a second
+		// check in front of it would decide nothing.
+		rows := [][]string{{"Member", "Client", "Host", "Assigned"}}
+		for _, m := range v.Members {
+			rows = append(rows, []string{m.ID, m.ClientID, m.Host, assignedText(m.Assignment)})
+		}
+		add(section("Members", rows))
 	case *model.Cluster:
 		// A cluster has no columns either. What there is to say is who its
 		// brokers are, which of them answers for the whole, and what it calls
@@ -512,6 +526,49 @@ func foreignKeyRows(fks []model.ForeignKey) [][]string {
 
 // section is a heading over a grid whose first row names its columns. A
 // section with no rows below that is nothing, and left out.
+// groupHolds is what a group amounts to in one line: what it is doing, and
+// how many are doing it.
+func groupHolds(g *model.ConsumerGroup) string {
+	state := g.State
+	if state == "" {
+		// A group whose state the cluster did not give: said as an absence
+		// rather than left as a blank somebody has to interpret.
+		state = "In a state the cluster did not name"
+	}
+	switch len(g.Members) {
+	case 0:
+		return state + ", with nobody in it."
+	case 1:
+		return state + ", with one member."
+	}
+	return fmt.Sprintf("%s, with %d members.", state, len(g.Members))
+}
+
+// assignedText is what one member was given to read, gathered by topic so
+// that a member holding twenty partitions of one topic reads as that rather
+// than as twenty entries.
+//
+// A member with nothing assigned says so: that is what somebody is looking
+// for when a group has members and is not getting through its logs.
+func assignedText(parts []model.TopicPartition) string {
+	if len(parts) == 0 {
+		return "nothing"
+	}
+	var order []string
+	byTopic := map[string][]string{}
+	for _, p := range parts {
+		if _, seen := byTopic[p.Topic]; !seen {
+			order = append(order, p.Topic)
+		}
+		byTopic[p.Topic] = append(byTopic[p.Topic], strconv.Itoa(int(p.Partition)))
+	}
+	out := make([]string, 0, len(order))
+	for _, t := range order {
+		out = append(out, t+" "+strings.Join(byTopic[t], ", "))
+	}
+	return strings.Join(out, "; ")
+}
+
 // subjectHolds is what a subject amounts to in one line.
 func subjectHolds(s *model.SchemaSubject) string {
 	switch len(s.Versions) {
