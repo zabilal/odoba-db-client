@@ -107,3 +107,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0100](0100-what-bytes-can-be-read-as.md) | What bytes can be read as | Accepted |
 | [0101](0101-a-second-server-that-says-what-records-mean.md) | A second server that says what records mean | Accepted |
 | [0102](0102-reading-a-record-by-its-schema.md) | Reading a record by its schema | Accepted |
+| [0103](0103-compiling-a-schema-to-read-a-record.md) | Compiling a schema to read a record | Accepted |

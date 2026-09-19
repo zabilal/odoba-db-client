@@ -238,9 +238,10 @@ func TestLiveClaimingARegistryMeansImplementingOne(t *testing.T) {
 
 func TestLiveALanguageNotWrittenYetIsRefusedByItsOwnDecoder(t *testing.T) {
 	src := described(t)
-	// JSON Schema is a language this build does not read yet (T2.72). The
-	// decoder for such a subject must say so rather than read it as Avro,
-	// which would be nonsense rather than an error.
+	// JSON Schema is the one language this build still does not read (T2.72),
+	// Avro and Protobuf having been written. The decoder for such a subject
+	// must say so rather than read it by a schema of another language, which
+	// would be nonsense rather than an error.
 	registeredAs(t, "ikigai_it_shape-value", "JSON", `{"type":"object","properties":{"id":{"type":"string"}}}`)
 
 	reg := src.(source.SchemaRegistry)
@@ -262,3 +263,61 @@ func TestLiveALanguageNotWrittenYetIsRefusedByItsOwnDecoder(t *testing.T) {
 		t.Errorf("a JSON Schema record says %v", err)
 	}
 }
+
+func TestLiveARecordWrittenInProtobufIsReadByItsSchema(t *testing.T) {
+	src := described(t)
+	registeredAs(t, "ikigai_it_proto-value", "PROTOBUF", liveOrderProto)
+
+	reg := src.(source.SchemaRegistry)
+	dec, err := reg.Decoder(context.Background(), "ikigai_it_proto-value")
+	if err != nil {
+		t.Fatalf("a decoder for a Protobuf subject: %v", err)
+	}
+	if got := dec.Name(); !strings.HasPrefix(got, "Protobuf (ikigai_it_proto-value v") {
+		t.Errorf("the decoder is called %q", got)
+	}
+
+	versions, err := reg.SubjectVersions(context.Background(), "ikigai_it_proto-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := versions[len(versions)-1].ID
+
+	// Protobuf's framing carries an index after the header saying which of a
+	// file's messages the record is. A single zero is the shortcut for the
+	// first one, which is what a producer writes for a file like this.
+	body := []byte{0x0a, 0x07}
+	body = append(body, []byte("order-1")...)
+	body = append(body, 0x11)                                           // field 2, 64-bit
+	body = append(body, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x40) // 12.5
+	record := []byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id), 0x00}
+	record = append(record, body...)
+
+	v, err := dec.Decode(record)
+	if err != nil {
+		t.Fatalf("decoding a Protobuf record: %v", err)
+	}
+	fields, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("a record decoded to %T", v)
+	}
+	if fields["id"] != "order-1" || fields["total"] != 12.5 {
+		t.Errorf("a record decoded to %v", fields)
+	}
+
+	// A record whose index names no message is refused rather than read as
+	// one it is not: on the wire the fields are numbered, so the wrong
+	// message decodes into nonsense instead of an error.
+	lost := []byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id), 0x02, 0x12, 0x00}
+	if _, err := dec.Decode(lost); err == nil || !strings.Contains(err.Error(), "no such message") {
+		t.Errorf("a record naming a message that is not there says %v", err)
+	}
+}
+
+const liveOrderProto = `syntax = "proto3";
+package ikigai;
+message Order {
+  string id = 1;
+  double total = 2;
+}
+`
