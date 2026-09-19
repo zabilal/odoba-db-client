@@ -69,6 +69,92 @@ type View struct {
 	Cut   bool     // longer than is shown
 }
 
+// Form is one way of reading a value: its name, and the value in it. Bytes
+// are the case that needs this — what a record carries is bytes, and the same
+// bytes are text to one person, JSON to another, and a hex dump to whoever
+// has to know exactly what was written (FR-13.8).
+type Form struct {
+	Name string
+	View View
+}
+
+// Names a form goes by, which are what the chooser shows.
+const (
+	FormJSON = "JSON"
+	FormText = "Text"
+	FormHex  = "Hex"
+)
+
+// Forms are the ways a value can be read, the most decoded first: a person
+// opening a record wants to see what it says, and falls back to the bytes.
+//
+// Only the forms a value admits are offered. Bytes that are not valid UTF-8
+// are not offered as text, because text made of replacement characters is a
+// lie about what was written; bytes that do not parse are not offered as
+// JSON. Hex is always there, because bytes are always bytes. Anything that is
+// not bytes has the one form Prepare gives it: its type already says what it
+// is, and there is nothing to choose between.
+func Forms(v any, col model.ColumnDef, loc *time.Location) []Form {
+	b, ok := v.([]byte)
+	if !ok {
+		return []Form{{Name: FormText, View: Prepare(v, col, loc)}}
+	}
+	var out []Form
+	if json.Valid(b) {
+		out = append(out, Form{Name: FormJSON, View: jsonView(b, len(b))})
+	}
+	if utf8.Valid(b) {
+		out = append(out, Form{Name: FormText, View: textView(string(b))})
+	}
+	return append(out, Form{Name: FormHex, View: hexView(b)})
+}
+
+// HeaderRows are a record's headers as a table: a name and a value, in the
+// order they were written (FR-13.8).
+//
+// A list rather than a map, all the way through. Kafka lets a header name
+// repeat, the driver keeps every one of them, and a table that folded them
+// together would throw away the difference between a header sent once and a
+// header sent twice. Values are bytes, and are shown as what they are: text
+// where they are text, which is nearly always, and hex where they are not —
+// rendering them as JSON would show base64, which no one can read.
+func HeaderRows(v any) [][]string {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	rows := [][]string{{"Name", "Value"}}
+	for _, h := range list {
+		m, ok := h.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := m["key"].(string)
+		rows = append(rows, []string{name, headerValue(m["value"])})
+	}
+	if len(rows) == 1 {
+		return nil
+	}
+	return rows
+}
+
+// headerValue writes one header's value on the one line a table cell has. A
+// header carrying no value at all is not the same as one carrying nothing:
+// Kafka distinguishes them, so this does too.
+func headerValue(v any) string {
+	b, ok := v.([]byte)
+	if !ok {
+		if v == nil {
+			return "(none)"
+		}
+		return fmt.Sprint(v)
+	}
+	if !utf8.Valid(b) {
+		return hex.EncodeToString(b)
+	}
+	return string(b)
+}
+
 // Prepare makes a value ready to show. loc is the local time zone.
 func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 	switch x := v.(type) {

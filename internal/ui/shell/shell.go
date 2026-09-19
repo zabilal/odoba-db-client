@@ -167,6 +167,7 @@ type tab struct {
 	viewers map[*grid.TableGrid]*cellViewer
 	forms   map[*grid.TableGrid]*formView
 	jsons   map[*grid.TableGrid]*jsonView
+	records map[*grid.TableGrid]*recordView
 	// said is what the last action said, such as where an export went. A
 	// table\'s footer keeps it beside the row count, as it keeps problem.
 	said string
@@ -372,6 +373,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdJSONView, Category: "View", Title: "JSON View", Keywords: []string{"document", "mongo", "nested", "raw", "json"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleJSON},
+		{ID: cmdRecordView, Category: "View", Title: "Record View",
+			Keywords: []string{"kafka", "message", "record", "headers", "hex", "payload"},
+			Enabled:  s.canShowRecord, Run: s.toggleRecord},
 		{ID: cmdGoToReferenced, Category: "View", Title: "Go to Referenced Row", Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
 			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
 		{ID: cmdOpenRowObject, Category: "View", Title: "Open What the Row Holds",

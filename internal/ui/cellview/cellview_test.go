@@ -86,3 +86,78 @@ func TestOtherValuesAreShownWhole(t *testing.T) {
 		t.Errorf("long text: cut %v, %d runes, size %q", v.Cut, len([]rune(v.Text)), v.Size)
 	}
 }
+
+// The forms a value can be read in, and a record's headers as a table (T2.66).
+
+func TestBytesAreOfferedInEveryFormTheyAdmit(t *testing.T) {
+	names := func(fs []Form) []string {
+		out := make([]string, len(fs))
+		for i, f := range fs {
+			out[i] = f.Name
+		}
+		return out
+	}
+
+	// JSON first: somebody opening a record wants to see what it says, and
+	// falls back towards the bytes.
+	got := Forms([]byte(`{"a":1}`), model.ColumnDef{}, time.UTC)
+	if want := []string{FormJSON, FormText, FormHex}; !reflect.DeepEqual(names(got), want) {
+		t.Errorf("JSON bytes are offered as %v", names(got))
+	}
+	if got[0].View.Kind != KindCode || !reflect.DeepEqual(got[0].View.Lines, []string{`{`, `  "a": 1`, `}`}) {
+		t.Errorf("the JSON form reads %q", got[0].View.Lines)
+	}
+
+	// Text that is not JSON is not offered as JSON: a form that cannot be
+	// read is worse than one that is not there.
+	got = Forms([]byte("hello"), model.ColumnDef{}, time.UTC)
+	if want := []string{FormText, FormHex}; !reflect.DeepEqual(names(got), want) {
+		t.Errorf("plain text is offered as %v", names(got))
+	}
+	if got[0].View.Text != "hello" {
+		t.Errorf("the text form reads %q", got[0].View.Text)
+	}
+
+	// Bytes that are not text at all are only ever bytes. Showing them as
+	// text would show replacement characters, which is a lie about what was
+	// written.
+	got = Forms([]byte{0xff, 0xfe, 0x00}, model.ColumnDef{}, time.UTC)
+	if want := []string{FormHex}; !reflect.DeepEqual(names(got), want) {
+		t.Errorf("bytes that are not text are offered as %v", names(got))
+	}
+
+	// Anything that is not bytes has the one form its type already gives it.
+	got = Forms(int64(42), model.ColumnDef{}, time.UTC)
+	if len(got) != 1 || got[0].View.Text != "42" {
+		t.Errorf("a number is offered as %v", names(got))
+	}
+}
+
+func TestHeadersAreATableThatKeepsWhatWasSent(t *testing.T) {
+	headers := []any{
+		map[string]any{"key": "trace-id", "value": []byte("abc123")},
+		map[string]any{"key": "trace-id", "value": []byte("second")},
+		map[string]any{"key": "binary", "value": []byte{0xff, 0x00}},
+		map[string]any{"key": "empty", "value": nil},
+	}
+	got := HeaderRows(headers)
+	want := [][]string{
+		{"Name", "Value"},
+		{"trace-id", "abc123"},
+		{"trace-id", "second"},
+		{"binary", "ff00"},
+		{"empty", "(none)"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("the headers table is %v", got)
+	}
+
+	// A record with no headers has no table, rather than a heading with
+	// nothing under it.
+	if rows := HeaderRows([]any{}); rows != nil {
+		t.Errorf("no headers made a table of %v", rows)
+	}
+	if rows := HeaderRows(nil); rows != nil {
+		t.Errorf("a value that is not headers made a table of %v", rows)
+	}
+}
