@@ -102,3 +102,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0095](0095-reading-a-log-as-it-stands.md) | Reading a log as it stands | Accepted |
 | [0096](0096-where-a-read-begins.md) | Where a read begins | Accepted |
 | [0097](0097-a-read-with-no-end.md) | A read with no end | Accepted |
+| [0098](0098-what-a-record-says-of-itself.md) | What a record says of itself | Accepted |

@@ -107,6 +107,9 @@ func (t *tab) viewerFollow(g *grid.TableGrid) {
 	if f := t.forms[g]; f != nil && f.shown() {
 		f.follow()
 	}
+	if r := t.records[g]; r != nil && r.shown() {
+		r.follow() // recordview.go
+	}
 	if d := t.detail; d != nil && g == t.grid {
 		d.follow() // detail.go
 	}
