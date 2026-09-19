@@ -446,6 +446,7 @@ func newFixture(t *testing.T) *fixture {
 	q := &uithread.Queue{}
 	files := &fakeFiles{}
 	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Params: hist,
+		Decoders: hist,
 		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin", Files: files}
 	s := New(a, d)
 	t.Cleanup(s.shutdown)

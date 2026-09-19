@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +12,9 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
@@ -53,11 +56,21 @@ type recordView struct {
 type formPicker struct {
 	s     *Shell
 	title string
-	pick  *widget.Select
-	meta  *widget.Label
-	text  *widget.Label
-	code  *widget.TextGrid
-	box   *fyne.Container
+	// field is which of a record's two byte fields this is, and topic and
+	// connID are where it was read from: together they say whose choice of
+	// decoder is being remembered (FR-13.7).
+	field  string
+	topic  string
+	connID string
+	// restoring is true while set is putting back the form this topic was
+	// last read in. What is remembered is what somebody chose, and putting a
+	// choice back is not choosing it again.
+	restoring bool
+	pick      *widget.Select
+	meta      *widget.Label
+	text      *widget.Label
+	code      *widget.TextGrid
+	box       *fyne.Container
 
 	forms []cellview.Form
 	at    int
@@ -98,8 +111,10 @@ func (s *Shell) newRecord(t *tab, g *grid.TableGrid, holder *fyne.Container) *re
 	r.when = widget.NewLabel("")
 	r.when.Importance = widget.LowImportance
 	r.headers = container.NewVBox()
-	r.key = newFormPicker(s, "Key")
-	r.value = newFormPicker(s, "Value")
+	r.key = newFormPicker(s, "Key", app.DecodeKey)
+	r.value = newFormPicker(s, "Value", app.DecodeValue)
+	r.key.connID, r.value.connID = t.connID, t.connID
+	r.key.topic, r.value.topic = t.ref.Name(), t.ref.Name()
 
 	prev := widget.NewButtonWithIcon("Previous Record", fynetheme.MoveUpIcon(), func() { r.move(-1) })
 	next := widget.NewButtonWithIcon("Next Record", fynetheme.MoveDownIcon(), func() { r.move(1) })
@@ -113,8 +128,8 @@ func (s *Shell) newRecord(t *tab, g *grid.TableGrid, holder *fyne.Container) *re
 	return r
 }
 
-func newFormPicker(s *Shell, title string) *formPicker {
-	p := &formPicker{s: s, title: title}
+func newFormPicker(s *Shell, title, field string) *formPicker {
+	p := &formPicker{s: s, title: title, field: field}
 	p.meta = widget.NewLabel("")
 	p.meta.Importance = widget.LowImportance
 	p.text = widget.NewLabel("")
@@ -134,6 +149,9 @@ func (p *formPicker) choose(name string) {
 		if f.Name == name {
 			p.at = i
 			p.render(f.View)
+			if !p.restoring {
+				p.s.rememberDecoder(p.connID, p.field, p.topic, name)
+			}
 			return
 		}
 	}
@@ -146,6 +164,11 @@ func (p *formPicker) set(v any, col model.ColumnDef) {
 	was := ""
 	if p.at < len(p.forms) {
 		was = p.forms[p.at].Name
+	}
+	if was == "" {
+		// Nothing chosen yet in this view: the topic reads as it did the last
+		// time somebody read it (FR-13.7).
+		was = p.s.rememberedDecoder(p.connID, p.field, p.topic)
 	}
 	p.forms = cellview.Forms(v, col, time.Local)
 	names := make([]string, len(p.forms))
@@ -168,7 +191,9 @@ func (p *formPicker) set(v any, col model.ColumnDef) {
 		p.pick.Refresh()
 		return
 	}
+	p.restoring = true
 	p.pick.SetSelectedIndex(p.at)
+	p.restoring = false
 	p.pick.Refresh()
 	view := p.forms[p.at].View
 	meta := []string{}
@@ -330,4 +355,41 @@ func recordWhere(partition, offset any) string {
 		return "Record"
 	}
 	return "Partition " + strconv.FormatInt(p, 10) + ", offset " + strconv.FormatInt(o, 10)
+}
+
+// decoderTimeout bounds reading or keeping a decoder choice. It is a local
+// file, and a record is being drawn: waiting longer would be worse than
+// reading the topic the way it reads by default.
+const decoderTimeout = 2 * time.Second
+
+// rememberedDecoder is the decoder this topic's field was last read with, or
+// empty where none was kept. A choice that cannot be read is simply not one.
+func (s *Shell) rememberedDecoder(connID, field, topic string) string {
+	if s.d.Decoders == nil || connID == "" || topic == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), decoderTimeout)
+	defer cancel()
+	c, ok, err := s.d.Decoders.Decoder(ctx, connID, field, topic)
+	if err != nil {
+		s.d.Log.Warn("reading how a topic was last read", "err", err)
+		return ""
+	}
+	if !ok {
+		return ""
+	}
+	return c.Name
+}
+
+// rememberDecoder keeps how somebody chose to read a topic's field. A choice
+// that cannot be kept only means the next reading starts where the first did.
+func (s *Shell) rememberDecoder(connID, field, topic, name string) {
+	if s.d.Decoders == nil || connID == "" || topic == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), decoderTimeout)
+	defer cancel()
+	if err := s.d.Decoders.PutDecoder(ctx, connID, field, topic, localdb.DecoderChoice{Name: name}); err != nil {
+		s.d.Log.Warn("keeping how a topic is read", "err", err)
+	}
 }
