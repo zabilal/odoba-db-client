@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -257,5 +259,34 @@ func TestARememberedWayOfReadingThatNoLongerFitsFallsBack(t *testing.T) {
 	r := theRecord(t, fx, tb, 2)
 	if got := r.value.pick.Selected; got != cellview.FormHex {
 		t.Errorf("bytes that are not text opened as %q", got)
+	}
+}
+
+func TestWithNoStoreTheFormInHandStillCarries(t *testing.T) {
+	// A shell built without a decoder store remembers nothing between views,
+	// so the only thing that can carry a chosen form from one record to the
+	// next is the form in hand. That is a promise of its own, and the
+	// fixture's store hides it: with one, the remembered name does the work.
+	fx := newFixture(t)
+	fx.s.d.Decoders = nil
+
+	c, err := fx.conns.Create(store.SavedConnection{Name: "nostore", Driver: "recordfake", Host: "nostore"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.s.OpenObject(c.ID, model.Node{Ref: topicRef, Label: "events", Browsable: true})
+	tb := fx.onlyTab(t)
+	pump(t, fx.q, func() bool { return tb.browse != nil })
+
+	r := theRecord(t, fx, tb, 0)
+	r.value.pick.SetSelected(cellview.FormHex)
+	r.move(1)
+	pump(t, fx.q, func() bool { return strings.HasSuffix(r.where.Text, "offset 11") })
+	if got := r.value.pick.Selected; got != cellview.FormHex {
+		t.Errorf("with nothing remembered, the form in hand became %q", got)
+	}
+	// And nothing was written, there being nowhere to write it.
+	if _, ok, _ := fx.hist.Decoder(context.Background(), tb.connID, "value", tb.ref.Name()); ok {
+		t.Error("a shell with no store remembered something anyway")
 	}
 }
