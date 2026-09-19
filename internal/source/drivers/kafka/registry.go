@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -243,6 +244,17 @@ func (d *schemaDecoder) Decode(data []byte) (any, error) {
 	}
 	if d.parsed != nil {
 		return decodeAvro(d.parsed, rest)
+	}
+	if d.schema.Format == "JSON" {
+		// A JSON Schema record is a JSON document with five bytes in front of
+		// it. Those bytes are what keeps it from reading as JSON on its own:
+		// they are valid text, so without them stripped the document shows
+		// with junk glued to its front and never as JSON at all.
+		if !json.Valid(rest) {
+			return nil, fmt.Errorf("kafka: this record is %s, and what follows its schema id is not a JSON document",
+				title(d.schema.Format))
+		}
+		return model.JSON(rest), nil
 	}
 	if d.proto != nil {
 		// Protobuf says which of a file's messages this record is, in an

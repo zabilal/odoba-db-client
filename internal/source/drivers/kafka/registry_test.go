@@ -117,25 +117,29 @@ func TestADecoderNamesTheSchemaItReadsBy(t *testing.T) {
 	if _, err := d.Decode([]byte("nope")); err == nil || !strings.Contains(err.Error(), "carries no schema id") {
 		t.Errorf("bytes with no header say %v", err)
 	}
-	// And one written by this very schema says what is not written yet,
-	// rather than returning a value nobody decoded.
+	// And one written by this very schema falls through, because this decoder
+	// was built by hand and so has no parsed schema: Decoder() is what reads
+	// a schema, and nothing here called it. The message is the fall-through's,
+	// not a statement that Avro is unwritten — it is not, since T2.70.
 	mine := []byte{0, 0, 0, 0, 7, 'x'}
 	if _, err := d.Decode(mine); err == nil || !strings.Contains(err.Error(), "not written yet") {
 		t.Errorf("a record of this schema says %v", err)
 	}
 }
 
-func TestALanguageNobodyHasWrittenAReaderForIsRefused(t *testing.T) {
-	// Protobuf and JSON Schema are their own languages and are written next.
-	// Until then a decoder for one says so, rather than returning a guess:
-	// the claim must not run ahead of the code (REQ-DRV-1).
-	for _, format := range []string{"PROTOBUF", "JSON"} {
+func TestALanguageNobodyHasWrittenAReaderForSaysSo(t *testing.T) {
+	// Avro, Protobuf and JSON Schema all read now (T2.70 to T2.72), so the
+	// boundary this once guarded has moved: what is left is a registry
+	// holding a language this build has never heard of. It says so rather
+	// than reading the record by a schema of some other language, which
+	// would be nonsense rather than an error (REQ-DRV-1).
+	for _, format := range []string{"THRIFT", "CAPNPROTO", ""} {
 		d := &schemaDecoder{subject: "orders-value",
 			schema: model.SchemaVersion{Version: 1, ID: 7, Format: format}}
 		record := []byte{0, 0, 0, 0, 7, 'x'}
 		_, err := d.Decode(record)
 		if err == nil || !strings.Contains(err.Error(), "not written yet") {
-			t.Errorf("a %s record says %v", format, err)
+			t.Errorf("a %q record says %v", format, err)
 		}
 	}
 }
@@ -154,3 +158,39 @@ func TestASchemaThisBuildCannotReadIsSaidWhenItIsAskedFor(t *testing.T) {
 }
 
 const orderSchemaText = `{"type":"record","name":"Order","fields":[{"name":"id","type":"string"}]}`
+
+func TestAJSONSchemaRecordIsItsDocumentWithoutItsHeader(t *testing.T) {
+	d := &schemaDecoder{subject: "shape-value",
+		schema: model.SchemaVersion{Version: 1, ID: 7, Format: "JSON"}}
+
+	// Five bytes, then the document. Those five are what keep it from
+	// reading as JSON on its own: they are valid text, so a record shown
+	// without them stripped reads with junk glued to its front.
+	framed := append([]byte{0, 0, 0, 0, 7}, []byte(`{"id":"x","n":1.50}`)...)
+	v, err := d.Decode(framed)
+	if err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	doc, ok := v.(model.JSON)
+	if !ok {
+		t.Fatalf("it decoded to %T", v)
+	}
+	// Its own text, not a re-encoding: 1.50 keeps its digits.
+	if string(doc) != `{"id":"x","n":1.50}` {
+		t.Errorf("it decoded to %s", doc)
+	}
+
+	// What follows the header has to be a document.
+	notADoc := append([]byte{0, 0, 0, 0, 7}, []byte("not json")...)
+	if _, err := d.Decode(notADoc); err == nil || !strings.Contains(err.Error(), "not a JSON document") {
+		t.Errorf("bytes that are not a document say %v", err)
+	}
+	// Nothing at all after the header is not a document either.
+	if _, err := d.Decode([]byte{0, 0, 0, 0, 7}); err == nil {
+		t.Error("a record with nothing after its header decoded anyway")
+	}
+	// And it says which schema it reads by, as every decoder here does.
+	if got := d.Name(); got != "JSON Schema (shape-value v1)" {
+		t.Errorf("the decoder is called %q", got)
+	}
+}
