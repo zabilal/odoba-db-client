@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -84,5 +85,51 @@ func TestADecoderIsFoundByTheNameItGoesBy(t *testing.T) {
 	// it, is not found here — and that is not an error.
 	if _, ok := ByName("Avro"); ok {
 		t.Error("a decoder that needs a registry was found among the local ones")
+	}
+}
+
+// stub is a decoder somebody else built — a registry's, in practice — which
+// Applicable is asked to offer beside the local ones.
+type stub struct {
+	name string
+	err  error
+}
+
+func (s stub) Name() string { return s.name }
+
+func (s stub) Decode([]byte) (any, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return map[string]any{"read": "by a schema"}, nil
+}
+
+func TestWhatSomebodyElseKnowsIsOfferedFirst(t *testing.T) {
+	// A decoder built from a schema knows more about these bytes than
+	// anything worked out from the bytes alone, so it is the reading
+	// somebody most likely wants (ADR-0102).
+	got := Applicable([]byte(`{"a":1}`), stub{name: "Avro (orders-value v1)"})
+	if len(got) != 4 || got[0].Name() != "Avro (orders-value v1)" {
+		t.Fatalf("offered %v", names(t, []byte(`{"a":1}`)))
+	}
+	if got[1].Name() != NameJSON || got[3].Name() != NameHex {
+		t.Errorf("what the bytes say for themselves is offered as %s, %s", got[1].Name(), got[3].Name())
+	}
+	// One that cannot read these bytes is not offered, exactly as a local
+	// decoder that cannot is not.
+	got = Applicable([]byte("plain"), stub{name: "Avro", err: errors.New("not Avro")})
+	for _, d := range got {
+		if d.Name() == "Avro" {
+			t.Error("a decoder that refused the bytes was offered anyway")
+		}
+	}
+}
+
+func TestADecoderThatIsNotThereIsNotAsked(t *testing.T) {
+	// A field with no subject has no decoder, and the picker passes what it
+	// has. Nil must be stepped over rather than called.
+	got := Applicable([]byte("plain"), nil)
+	if len(got) != 2 || got[0].Name() != NameText {
+		t.Errorf("with no decoder of its own, bytes are read by %v", got)
 	}
 }

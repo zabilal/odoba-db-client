@@ -14,6 +14,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -74,6 +75,11 @@ type formPicker struct {
 
 	forms []cellview.Form
 	at    int
+
+	// decoder is what the connection's schema registry says these bytes are,
+	// where it says anything (T2.70). Resolving it is a round trip, so it is
+	// done once when the view opens rather than for every record drawn.
+	decoder source.Decoder
 }
 
 func (s *Shell) canShowRecord() bool {
@@ -122,6 +128,7 @@ func (s *Shell) newRecord(t *tab, g *grid.TableGrid, holder *fyne.Container) *re
 	for _, b := range []*widget.Button{prev, next, back} {
 		b.Importance = widget.LowImportance
 	}
+	s.resolveDecoders(t, r)
 	head := container.NewBorder(nil, r.when, container.NewHBox(prev, next), back, r.where)
 	body := container.NewVBox(r.key.box, r.value.box, r.headers)
 	r.box = container.NewBorder(head, nil, nil, nil, container.NewVScroll(body))
@@ -170,7 +177,7 @@ func (p *formPicker) set(v any, col model.ColumnDef) {
 		// time somebody read it (FR-13.7).
 		was = p.s.rememberedDecoder(p.connID, p.field, p.topic)
 	}
-	p.forms = cellview.Forms(v, col, time.Local)
+	p.forms = cellview.Forms(v, col, time.Local, p.decoder)
 	names := make([]string, len(p.forms))
 	for i, f := range p.forms {
 		names[i] = f.Name
@@ -392,4 +399,44 @@ func (s *Shell) rememberDecoder(connID, field, topic, name string) {
 	if err := s.d.Decoders.PutDecoder(ctx, connID, field, topic, localdb.DecoderChoice{Name: name}); err != nil {
 		s.d.Log.Warn("keeping how a topic is read", "err", err)
 	}
+}
+
+// resolveDecoders asks the connection's schema registry what this topic's
+// records are, where it has one (FR-13.7, T2.70).
+//
+// A topic with no schema is the ordinary case, and so is a connection with no
+// registry: both leave the record readable in the forms its bytes admit, which
+// is what the view does without any of this. Only a decoder that was found is
+// added, and it is found once — asking per record would be a round trip per
+// row drawn.
+func (s *Shell) resolveDecoders(t *tab, r *recordView) {
+	if t.connID == "" || t.ref.Name() == "" {
+		return
+	}
+	topic := t.ref.Name()
+	go func() {
+		live, err := s.d.WS.Connect(t.ctx, t.connID)
+		if err != nil {
+			return
+		}
+		reg, ok := live.Source.(source.SchemaRegistry)
+		if !ok || !live.Source.Capabilities().Stream.SchemaRegistry {
+			return
+		}
+		ctx, cancel := context.WithTimeout(t.ctx, decoderTimeout)
+		defer cancel()
+		key, _ := reg.Decoder(ctx, topic+"-key")
+		value, _ := reg.Decoder(ctx, topic+"-value")
+		s.d.Run(func() {
+			if t.ctx.Err() != nil {
+				return
+			}
+			// Nil is the ordinary answer: most topics have no schema, and a
+			// picker with no decoder offers what the bytes say for themselves.
+			r.key.decoder, r.value.decoder = key, value
+			if r.shown() {
+				r.follow() // draw it again, now that there is more to offer
+			}
+		})
+	}()
 }
