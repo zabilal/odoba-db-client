@@ -49,12 +49,20 @@ func ByName(name string) (source.Decoder, bool) {
 	return nil, false
 }
 
-// Applicable are the local decoders that can read these bytes, most decoded
-// first. Only what a value admits is offered: a form that cannot be read is
-// worse than one that is not there (ADR-0098).
-func Applicable(b []byte) []source.Decoder {
+// Applicable are the decoders that can read these bytes, most decoded first.
+// Only what a value admits is offered: a form that cannot be read is worse
+// than one that is not there (ADR-0098).
+//
+// Extra decoders come first, before the local ones. A decoder that needed a
+// registry to build knows more about these bytes than anything here can work
+// out from the bytes alone, so it is the reading somebody most likely wants
+// (T2.70).
+func Applicable(b []byte, extra ...source.Decoder) []source.Decoder {
 	var out []source.Decoder
-	for _, d := range Local() {
+	for _, d := range append(append([]source.Decoder{}, extra...), Local()...) {
+		if d == nil {
+			continue
+		}
 		if _, err := d.Decode(b); err == nil {
 			out = append(out, d)
 		}

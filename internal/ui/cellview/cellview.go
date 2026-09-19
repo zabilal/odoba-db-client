@@ -16,11 +16,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/decode"
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
 // Limits on what is shown. The value itself is never changed: Copy Value
@@ -97,13 +99,13 @@ const (
 // JSON. Hex is always there, because bytes are always bytes. Anything that is
 // not bytes has the one form Prepare gives it: its type already says what it
 // is, and there is nothing to choose between.
-func Forms(v any, col model.ColumnDef, loc *time.Location) []Form {
+func Forms(v any, col model.ColumnDef, loc *time.Location, extra ...source.Decoder) []Form {
 	b, ok := v.([]byte)
 	if !ok {
 		return []Form{{Name: FormText, View: Prepare(v, col, loc)}}
 	}
 	var out []Form
-	for _, d := range decode.Applicable(b) {
+	for _, d := range decode.Applicable(b, extra...) {
 		// The decoder says what the bytes are; this says how that reads. A
 		// decoder returning bytes unchanged is how hex stays a hex dump.
 		// Applicable has already refused what these cannot read, so the rule
@@ -154,7 +156,7 @@ func headerValue(v any) string {
 		}
 		return fmt.Sprint(v)
 	}
-	if !utf8.Valid(b) {
+	if !printable(b) {
 		return hex.EncodeToString(b)
 	}
 	return string(b)
@@ -168,7 +170,7 @@ func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 	case model.JSON:
 		return jsonView(x, len(x))
 	case []any, map[string]any:
-		b, err := json.Marshal(x)
+		b, err := json.Marshal(readable(x))
 		if err != nil {
 			return textView(fmt.Sprint(x))
 		}
@@ -193,6 +195,52 @@ func Prepare(v any, col model.ColumnDef, loc *time.Location) View {
 		return textView(x)
 	}
 	return textView(export.Text(v, col))
+}
+
+// readable turns what is nested inside a decoded value into what a person
+// can read (T2.70). A record decoded from Avro may carry bytes in a field,
+// and JSON has no way to write bytes: they would come out base64, which is
+// the same unreadable answer a header gave before HeaderRows (ADR-0100).
+// Text is shown as text, and anything else as hex.
+func readable(v any) any {
+	switch x := v.(type) {
+	case []byte:
+		if printable(x) {
+			return string(x)
+		}
+		return hex.EncodeToString(x)
+	case []any:
+		out := make([]any, len(x))
+		for i := range x {
+			out[i] = readable(x[i])
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = readable(e)
+		}
+		return out
+	}
+	return v
+}
+
+// printable reports whether bytes read as text somebody can see. Valid UTF-8
+// is not enough: a byte like 0x01 is a perfectly valid rune and shows as
+// \u0001, which says less than the two hex digits it came from.
+func printable(b []byte) bool {
+	if !utf8.Valid(b) {
+		return false
+	}
+	for _, r := range string(b) {
+		if r == '\n' || r == '\t' || r == '\r' {
+			continue
+		}
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // timeText writes a time whole. An instant, from a column that carries a

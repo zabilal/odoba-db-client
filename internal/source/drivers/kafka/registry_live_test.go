@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hamba/avro/v2"
+
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -62,7 +64,13 @@ func described(t *testing.T) source.Source {
 // registered puts a schema in the registry, so that a test has one to read.
 func registered(t *testing.T, subject, schema string) {
 	t.Helper()
-	body := strings.NewReader(`{"schemaType":"AVRO","schema":` + strconv.Quote(schema) + `}`)
+	registeredAs(t, subject, "AVRO", schema)
+}
+
+// registeredAs puts a schema of a named language in the registry.
+func registeredAs(t *testing.T, subject, language, schema string) {
+	t.Helper()
+	body := strings.NewReader(`{"schemaType":"` + language + `","schema":` + strconv.Quote(schema) + `}`)
 	req, err := http.NewRequest(http.MethodPost, registryURL()+"/subjects/"+subject+"/versions", body)
 	if err != nil {
 		t.Fatal(err)
@@ -150,12 +158,34 @@ func TestLiveADecoderSaysWhichSchemaWroteARecord(t *testing.T) {
 	}
 	id := versions[len(versions)-1].ID
 
-	// A record written by that schema: the five bytes say so, and what
-	// follows is not read yet.
-	record := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, []byte("payload")...)
-	_, err = dec.Decode(record)
-	if err == nil || !strings.Contains(err.Error(), "not written yet") {
-		t.Errorf("decoding a record of that schema says %v", err)
+	// A record genuinely written by that schema, read back as the values it
+	// was written from.
+	schema, err := avro.Parse(orderSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := avro.Marshal(schema, map[string]any{"id": "order-1", "total": 12.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, body...)
+	v, err := dec.Decode(record)
+	if err != nil {
+		t.Fatalf("decoding a record of that schema: %v", err)
+	}
+	fields, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("a record decoded to %T", v)
+	}
+	if fields["id"] != "order-1" || fields["total"] != 12.5 {
+		t.Errorf("a record decoded to %v", fields)
+	}
+
+	// Bytes that are not what the schema describes are said to disagree with
+	// it, rather than read as something they are not.
+	nonsense := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, []byte("payload")...)
+	if _, err := dec.Decode(nonsense); err == nil || !strings.Contains(err.Error(), "does not match its schema") {
+		t.Errorf("bytes that are not the schema's say %v", err)
 	}
 
 	// A record written by another schema is refused by number rather than
@@ -203,5 +233,32 @@ func TestLiveClaimingARegistryMeansImplementingOne(t *testing.T) {
 	}
 	if _, ok := src.(source.SchemaRegistry); !ok {
 		t.Error("claims Stream.SchemaRegistry but does not implement SchemaRegistry")
+	}
+}
+
+func TestLiveALanguageNotWrittenYetIsRefusedByItsOwnDecoder(t *testing.T) {
+	src := described(t)
+	// JSON Schema is a language this build does not read yet (T2.72). The
+	// decoder for such a subject must say so rather than read it as Avro,
+	// which would be nonsense rather than an error.
+	registeredAs(t, "ikigai_it_shape-value", "JSON", `{"type":"object","properties":{"id":{"type":"string"}}}`)
+
+	reg := src.(source.SchemaRegistry)
+	dec, err := reg.Decoder(context.Background(), "ikigai_it_shape-value")
+	if err != nil {
+		t.Fatalf("a decoder for a JSON Schema subject: %v", err)
+	}
+	if got := dec.Name(); !strings.HasPrefix(got, "JSON Schema (") {
+		t.Errorf("the decoder is called %q", got)
+	}
+
+	versions, err := reg.SubjectVersions(context.Background(), "ikigai_it_shape-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := versions[len(versions)-1].ID
+	record := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, []byte(`{"id":"x"}`)...)
+	if _, err := dec.Decode(record); err == nil || !strings.Contains(err.Error(), "not written yet") {
+		t.Errorf("a JSON Schema record says %v", err)
 	}
 }

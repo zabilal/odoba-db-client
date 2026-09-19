@@ -124,3 +124,33 @@ func TestADecoderNamesTheSchemaItReadsBy(t *testing.T) {
 		t.Errorf("a record of this schema says %v", err)
 	}
 }
+
+func TestALanguageNobodyHasWrittenAReaderForIsRefused(t *testing.T) {
+	// Protobuf and JSON Schema are their own languages and are written next.
+	// Until then a decoder for one says so, rather than returning a guess:
+	// the claim must not run ahead of the code (REQ-DRV-1).
+	for _, format := range []string{"PROTOBUF", "JSON"} {
+		d := &schemaDecoder{subject: "orders-value",
+			schema: model.SchemaVersion{Version: 1, ID: 7, Format: format}}
+		record := []byte{0, 0, 0, 0, 7, 'x'}
+		_, err := d.Decode(record)
+		if err == nil || !strings.Contains(err.Error(), "not written yet") {
+			t.Errorf("a %s record says %v", format, err)
+		}
+	}
+}
+
+func TestASchemaThisBuildCannotReadIsSaidWhenItIsAskedFor(t *testing.T) {
+	// A registry may hold a schema this build cannot parse. Saying so when
+	// the decoder is asked for beats a decoder that fails on every record.
+	if _, err := avroSchema(`{"type":"record"`); err == nil {
+		t.Error("a schema that is not one parsed")
+	} else if !strings.Contains(err.Error(), "could not be read") {
+		t.Errorf("an unreadable schema says %v", err)
+	}
+	if _, err := avroSchema(orderSchemaText); err != nil {
+		t.Errorf("a schema that is one did not parse: %v", err)
+	}
+}
+
+const orderSchemaText = `{"type":"record","name":"Order","fields":[{"name":"id","type":"string"}]}`

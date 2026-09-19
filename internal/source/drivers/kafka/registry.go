@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/hamba/avro/v2"
 	"github.com/twmb/franz-go/pkg/sr"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -156,7 +157,17 @@ func (s *kafkaSource) Decoder(ctx context.Context, subject string) (_ source.Dec
 	if err != nil {
 		return nil, registryError(err)
 	}
-	return &schemaDecoder{subject: subject, schema: versionOf(ss)}, nil
+	d := &schemaDecoder{subject: subject, schema: versionOf(ss)}
+	if d.schema.Format == "AVRO" {
+		// Parsed once, when the decoder is asked for. A schema this build
+		// cannot read is worth saying now rather than on every record.
+		parsed, err := avroSchema(d.schema.Definition)
+		if err != nil {
+			return nil, err
+		}
+		d.parsed = parsed
+	}
+	return d, nil
 }
 
 // errNoRegistry is what every registry call says when no registry was named.
@@ -191,6 +202,11 @@ func registryError(err error) error {
 type schemaDecoder struct {
 	subject string
 	schema  model.SchemaVersion
+
+	// parsed is the schema itself, where this build can read the language it
+	// is written in. Nil means the language is one nobody has written a
+	// reader for yet, and Decode says so rather than guessing.
+	parsed avro.Schema
 }
 
 // Name identifies the decoder in the UI: the language, the subject and the
@@ -211,6 +227,9 @@ func (d *schemaDecoder) Decode(data []byte) (any, error) {
 	if int32(id) != d.schema.ID {
 		return nil, fmt.Errorf("kafka: this record was written by schema %d, and %s is version %d of %s, which is schema %d",
 			id, title(d.schema.Format), d.schema.Version, d.subject, d.schema.ID)
+	}
+	if d.parsed != nil {
+		return decodeAvro(d.parsed, rest)
 	}
 	return nil, fmt.Errorf("kafka: this record is %s, written by schema %d; reading %s is not written yet (%d bytes after the header)",
 		title(d.schema.Format), id, title(d.schema.Format), len(rest))

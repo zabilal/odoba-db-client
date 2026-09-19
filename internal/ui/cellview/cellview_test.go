@@ -138,6 +138,9 @@ func TestHeadersAreATableThatKeepsWhatWasSent(t *testing.T) {
 		map[string]any{"key": "trace-id", "value": []byte("abc123")},
 		map[string]any{"key": "trace-id", "value": []byte("second")},
 		map[string]any{"key": "binary", "value": []byte{0xff, 0x00}},
+		// Valid UTF-8 is not enough to be worth showing as text: 0x01 is a
+		// perfectly good rune that reads as nothing on screen.
+		map[string]any{"key": "control", "value": []byte{0x01}},
 		map[string]any{"key": "empty", "value": nil},
 	}
 	got := HeaderRows(headers)
@@ -146,6 +149,7 @@ func TestHeadersAreATableThatKeepsWhatWasSent(t *testing.T) {
 		{"trace-id", "abc123"},
 		{"trace-id", "second"},
 		{"binary", "ff00"},
+		{"control", "01"},
 		{"empty", "(none)"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -159,5 +163,28 @@ func TestHeadersAreATableThatKeepsWhatWasSent(t *testing.T) {
 	}
 	if rows := HeaderRows(nil); rows != nil {
 		t.Errorf("a value that is not headers made a table of %v", rows)
+	}
+}
+
+func TestBytesNestedInADecodedValueAreReadable(t *testing.T) {
+	// A record decoded from Avro may carry bytes in a field, and JSON has no
+	// way to write bytes: through json.Marshal alone they come out base64,
+	// which is the answer a header gave before it was fixed (ADR-0100).
+	v := Prepare(map[string]any{"note": []byte("hello"), "raw": []byte{0xff, 0x00}},
+		model.ColumnDef{}, time.UTC)
+	joined := strings.Join(v.Lines, "\n")
+	if strings.Contains(joined, "aGVsbG8=") || strings.Contains(joined, "/wA=") {
+		t.Errorf("nested bytes came out base64:\n%s", joined)
+	}
+	if !strings.Contains(joined, `"hello"`) {
+		t.Errorf("nested text did not read as text:\n%s", joined)
+	}
+	if !strings.Contains(joined, `"ff00"`) {
+		t.Errorf("nested bytes that are not text did not read as hex:\n%s", joined)
+	}
+	// A list nested inside one is read the same way.
+	v = Prepare([]any{[]byte("a"), map[string]any{"b": []byte{0x01}}}, model.ColumnDef{}, time.UTC)
+	if joined := strings.Join(v.Lines, "\n"); !strings.Contains(joined, `"a"`) || !strings.Contains(joined, `"01"`) {
+		t.Errorf("a nested list read as:\n%s", joined)
 	}
 }
