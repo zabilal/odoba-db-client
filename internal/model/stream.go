@@ -178,8 +178,9 @@ type SchemaSubject struct {
 	Name     string
 	Versions []SchemaVersion
 
-	// Compatibility is the subject's compatibility mode, empty when it
-	// inherits the registry default.
+	// Compatibility is the rule the subject's next version is checked
+	// against, resolved through whatever the subject inherits it from.
+	// Empty when the registry does not say.
 	Compatibility string
 }
 

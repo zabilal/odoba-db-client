@@ -338,3 +338,161 @@ message Order {
   double total = 2;
 }
 `
+
+// The registry in the tree (T2.74, FR-13.14).
+
+// subjectsClass is the class the registry's subjects hang under.
+func subjectsClass(t *testing.T, src source.Source) model.Node {
+	t.Helper()
+	for _, c := range clusterClasses(t, src) {
+		if kind, ok := model.ClassOf(c.Ref); ok && kind == model.KindSubject {
+			return c
+		}
+	}
+	t.Fatalf("the cluster holds no subjects class")
+	return model.Node{}
+}
+
+// clusterClasses is what the one cluster at the root holds, by class.
+func clusterClasses(t *testing.T, src source.Source) []model.Node {
+	t.Helper()
+	ctx := context.Background()
+	roots, err := src.Root(ctx)
+	if err != nil || len(roots) != 1 {
+		t.Fatalf("root: %v, %v", roots, err)
+	}
+	classes, err := src.Children(ctx, roots[0].Ref)
+	if err != nil {
+		t.Fatalf("the cluster's classes: %v", err)
+	}
+	return classes
+}
+
+func TestLiveTheClusterHoldsItsSubjects(t *testing.T) {
+	src := described(t)
+	registered(t, "ikigai_it_orders-value", orderSchema)
+	ctx := context.Background()
+
+	class := subjectsClass(t, src)
+	if !class.HasChildren {
+		t.Error("the subjects class claims nothing under it")
+	}
+	// Unbadged, and on purpose: a count of subjects is a request to a second
+	// server in front of every cluster somebody opens, and a count of each
+	// subject's versions is a request apiece. Both are the cost ADR-0092
+	// refused when it left a topic unbadged by size.
+	if class.Badge != nil {
+		t.Errorf("the subjects class is badged %+v, which costs a request nobody asked for", class.Badge)
+	}
+
+	nodes, err := src.Children(ctx, class.Ref)
+	if err != nil {
+		t.Fatalf("the subjects: %v", err)
+	}
+	var found *model.Node
+	for i, n := range nodes {
+		if n.Label == "ikigai_it_orders-value" {
+			found = &nodes[i]
+		}
+		if n.Ref.Kind != model.KindSubject {
+			t.Errorf("%s is in the subjects class as a %s", n.Label, n.Ref.Kind)
+		}
+		if n.Badge != nil {
+			t.Errorf("%s is badged %+v", n.Label, n.Badge)
+		}
+	}
+	if found == nil {
+		t.Fatalf("the registered subject is not in the tree: %+v", nodes)
+	}
+	// A subject is a leaf. Its versions are revisions of one thing rather
+	// than things of their own, so they are shown when it is described and
+	// not hung under it; and it holds no rows to open.
+	if found.HasChildren {
+		t.Error("a subject claims children, though its versions are not nodes")
+	}
+	if found.Browsable {
+		t.Error("a subject offers rows, though it has none to read")
+	}
+}
+
+func TestLiveAClusterWithNoRegistryHoldsNoSubjects(t *testing.T) {
+	// A class opening onto nothing reads as a tree that failed, and the
+	// claim and the tree have to agree (REQ-DRV-1).
+	src := live(t, liveConfig())
+	if src.Capabilities().Objects[model.KindSubject] {
+		t.Error("a cluster with no registry declares subjects")
+	}
+	for _, c := range clusterClasses(t, src) {
+		if kind, ok := model.ClassOf(c.Ref); ok && kind == model.KindSubject {
+			t.Errorf("a cluster with no registry shows a subjects class: %+v", c)
+		}
+	}
+}
+
+func TestLiveASubjectIsDescribedByItsVersions(t *testing.T) {
+	const subject = "ikigai_it_versioned-value"
+	src := described(t)
+	registered(t, subject, `{"type":"record","name":"Thing","fields":[{"name":"id","type":"string"}]}`)
+	// Backward compatible, so the registry accepts it as a second version:
+	// a field that may be absent, with what to read when it is.
+	registered(t, subject, `{"type":"record","name":"Thing","fields":[{"name":"id","type":"string"},{"name":"total","type":["null","double"],"default":null}]}`)
+	ctx := context.Background()
+
+	nodes, err := src.Children(ctx, subjectsClass(t, src).Ref)
+	if err != nil {
+		t.Fatalf("the subjects: %v", err)
+	}
+	var ref model.ObjectRef
+	for _, n := range nodes {
+		if n.Label == subject {
+			ref = n.Ref
+		}
+	}
+	if ref.IsZero() {
+		t.Fatalf("%s is not in the tree: %+v", subject, nodes)
+	}
+
+	desc, err := src.Describe(ctx, ref)
+	if err != nil {
+		t.Fatalf("describing %s: %v", subject, err)
+	}
+	sub, ok := desc.(*model.SchemaSubject)
+	if !ok {
+		t.Fatalf("a subject is described as a %T", desc)
+	}
+	if sub.Name != subject {
+		t.Errorf("the subject describes itself as %q", sub.Name)
+	}
+	if len(sub.Versions) < 2 {
+		t.Fatalf("a subject registered twice has versions %+v", sub.Versions)
+	}
+	// Oldest first, so the newest is last and a comparison opens on the two
+	// most recent (ADR-0105).
+	if sub.Versions[0].Version >= sub.Versions[1].Version {
+		t.Errorf("the versions are in the order %d, %d", sub.Versions[0].Version, sub.Versions[1].Version)
+	}
+	for _, v := range sub.Versions {
+		// Each carries the text it was registered with: that is what is
+		// shown and what is compared.
+		if v.Definition == "" {
+			t.Errorf("version %d carries no schema text", v.Version)
+		}
+		if v.Format != "AVRO" {
+			t.Errorf("version %d says it is written in %q", v.Version, v.Format)
+		}
+		if v.ID < 1 {
+			t.Errorf("version %d has schema id %d", v.Version, v.ID)
+		}
+	}
+	// The two versions differ, which is what makes a comparison worth
+	// drawing.
+	if sub.Versions[0].Definition == sub.Versions[1].Definition {
+		t.Error("two versions registered from different schemas hold the same text")
+	}
+	// The rule the next version will be checked against. The registry
+	// resolves what a subject inherits, so an answer is expected even where
+	// this subject sets nothing of its own.
+	if sub.Compatibility == "" {
+		t.Error("the registry said nothing about how the next version will be checked")
+	}
+}
