@@ -61,6 +61,18 @@ func (b *BrowseSource) CanSort() bool { return b.src.Capabilities().Data.ServerS
 // CanFilter reports whether the source filters on the server (capability.Data).
 func (b *BrowseSource) CanFilter() bool { return b.src.Capabilities().Data.ServerFilter }
 
+// FiltersHere reports whether the grid filters the rows it has read, the
+// source not filtering them (FR-13.9, ADR-0099).
+//
+// A broker hands over bytes and asks no questions about them, so a topic's
+// records are filtered here. Every other paradigm that cannot filter on the
+// server is a separate decision — what such a grid may claim differs by what
+// a partial read of it means — and is deliberately left open.
+func (b *BrowseSource) FiltersHere() bool {
+	c := b.src.Capabilities()
+	return !c.Data.ServerFilter && c.Paradigm == model.ParadigmStream
+}
+
 // CanListValues reports whether the source can list a column's distinct
 // values, for the filter picklist.
 func (b *BrowseSource) CanListValues() bool {

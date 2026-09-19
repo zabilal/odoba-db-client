@@ -157,10 +157,13 @@ type tab struct {
 	want      source.BrowseOptions
 	applied   []grid.SortKey
 	filtered  []string
-	picked    map[int]pick    // filters chosen from a column\'s picklist
-	top       *fyne.Container // above the grid: the WHERE bar or the pipeline, when shown
-	where     *whereBar
-	pipeline  *pipelineBar
+	// local filters the rows already read, where the source will not
+	// filter them (ADR-0099). nil when nothing is filtered here.
+	local    *app.FilteredRows
+	picked   map[int]pick    // filters chosen from a column\'s picklist
+	top      *fyne.Container // above the grid: the WHERE bar or the pipeline, when shown
+	where    *whereBar
+	pipeline *pipelineBar
 	// holders are where each grid's view lives, viewers their cell viewers
 	// and forms their form views, so all go when the tab does.
 	holders map[*grid.TableGrid]*fyne.Container
@@ -705,7 +708,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	t.want = bs.Options()
 	g.Sortable = bs.CanSort()
 	g.OnSort = func(keys []grid.SortKey) { s.resort(t, keys) }
-	g.SetFilterable(bs.CanFilter()) // before the grid is shown
+	g.SetFilterable(bs.CanFilter() || bs.FiltersHere()) // before the grid is shown
 	g.OnFilter = func(texts []string) { s.refilter(t, texts) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	// Filter by Values and the cell viewer follow the selected cell.
@@ -771,6 +774,15 @@ func (s *Shell) showCount(t *tab) {
 	}
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
+	}
+	if f := t.local; f != nil {
+		// Not "filtered", which is what a filter over a whole table says. This
+		// one has seen what it has read and nothing else (ADR-0099).
+		if _, _, stopped := f.Read(); stopped {
+			text += " · filtering the first rows read, and it stopped there"
+		} else {
+			text += " · filtering what has been read"
+		}
 	}
 	if e := t.ed; e != nil {
 		if n := e.changes(); n > 0 {

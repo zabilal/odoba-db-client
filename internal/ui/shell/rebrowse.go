@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -63,6 +64,10 @@ func (s *Shell) refilter(t *tab, texts []string) {
 		s.browsed(t)
 		return
 	}
+	if t.browse != nil && t.browse.FiltersHere() {
+		s.filterHere(t, filters, texts)
+		return
+	}
 	opt := t.want
 	opt.Filters = filters
 	s.rebrowse(t, opt, t.grid.Sorts(), "Filtering…", "Could not filter: ")
@@ -71,6 +76,31 @@ func (s *Shell) refilter(t *tab, texts []string) {
 // rebrowse browses the tab's object again with new options. Only the latest
 // request is applied. One that fails leaves the rows as they were, puts the
 // sort header back, and marks the filters that were not applied.
+// filterHere applies the filters to the rows already read rather than asking
+// the source for them again (ADR-0099). Nothing is re-browsed: the same rows
+// are shown, fewer of them, and the footer says what that means.
+func (s *Shell) filterHere(t *tab, filters []source.Filter, texts []string) {
+	if len(filters) == 0 {
+		t.local = nil
+		t.model.SetFetcher(t.browse)
+	} else {
+		f, err := app.NewFilteredRows(t.browse, filters)
+		if err != nil {
+			t.problem = "Could not filter: " + err.Error()
+			s.showCount(t)
+			s.browsed(t)
+			return
+		}
+		t.local = f
+		t.model.SetFetcher(f)
+	}
+	t.filtered, t.problem, t.said = texts, "", ""
+	t.grid.SetFilterErrors()
+	t.grid.ScheduleRefresh()
+	s.count(t)
+	s.browsed(t)
+}
+
 func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, doing, failed string) {
 	t.browseSeq++
 	t.want = opt
@@ -93,6 +123,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 				return
 			}
 			t.browse, t.applied, t.filtered, t.problem, t.said = next, keys, texts, "", ""
+			t.local = nil // a filter over rows that have been replaced filters nothing
 			t.grid.SetFilterErrors()
 			t.model.SetFetcher(next)
 			t.grid.ScheduleRefresh()
