@@ -178,15 +178,16 @@ func TestLiveWillNotReadFromTheEnd(t *testing.T) {
 	src := live(t, liveConfig())
 	oneLog(t, src, "ikigai_it_seek", 2)
 
-	// The end of a log is where nothing has been written yet: reading from
-	// there is following it, and following is not written.
+	// The end of a log is where nothing has been written yet, so a read that
+	// stops there reads nothing at all. It means something only while
+	// following (T2.65), and this is a read that does not follow.
 	rs, err := src.Browse(context.Background(), model.NewRef(model.KindTopic, "cluster", "ikigai_it_seek"),
 		source.BrowseOptions{Limit: 10, Seek: &source.Seek{Mode: source.SeekEnd}})
 	if err == nil {
 		rs.Close()
 		t.Fatal("a log was read from its end")
 	}
-	if !strings.Contains(err.Error(), "following") {
+	if !strings.Contains(err.Error(), "follow") {
 		t.Errorf("reading from the end is refused with %q", err)
 	}
 }
