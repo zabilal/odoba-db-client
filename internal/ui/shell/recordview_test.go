@@ -1,9 +1,11 @@
 package shell
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
@@ -199,4 +201,61 @@ func TestARecordIsFoundByAHeaderItCarries(t *testing.T) {
 	// A header that was never sent finds nothing, rather than everything.
 	filterTo(t, fx, tb, 5, "no-such-header")
 	pump(t, fx.q, func() bool { n, _ := tb.model.Extent(); return n == 0 })
+}
+
+// How a topic was last read is remembered (T2.68, FR-13.7).
+
+func TestOpeningARecordRemembersNothingNobodyChose(t *testing.T) {
+	fx, tb := openRecords(t)
+	r := theRecord(t, fx, tb, 0)
+	if got := r.value.pick.Selected; got != cellview.FormJSON {
+		t.Fatalf("a JSON value opened as %q", got)
+	}
+	// Opening a topic is not choosing how to read it. Keeping the default
+	// would record a preference nobody expressed, and it would outlast the
+	// default that produced it.
+	if _, ok, err := fx.hist.Decoder(context.Background(), tb.connID, "value", tb.ref.Name()); ok || err != nil {
+		t.Errorf("merely opening a record remembered a decoder: ok %v, err %v", ok, err)
+	}
+}
+
+func TestChoosingHowToReadATopicIsRemembered(t *testing.T) {
+	fx, tb := openRecords(t)
+	r := theRecord(t, fx, tb, 0)
+	r.value.pick.SetSelected(cellview.FormHex)
+
+	got, ok, err := fx.hist.Decoder(context.Background(), tb.connID, "value", tb.ref.Name())
+	if err != nil || !ok || got.Name != cellview.FormHex {
+		t.Errorf("after choosing hex: %+v, ok %v, err %v", got, ok, err)
+	}
+	// The key is remembered apart from the value: they are different bytes.
+	if _, ok, _ := fx.hist.Decoder(context.Background(), tb.connID, "key", tb.ref.Name()); ok {
+		t.Error("choosing how to read a value also chose how to read the key")
+	}
+}
+
+func TestATopicReadsAsItWasReadLastTime(t *testing.T) {
+	fx, tb := openRecords(t)
+	// Somebody read this topic's values as hex before.
+	if err := fx.hist.PutDecoder(context.Background(), tb.connID, "value", tb.ref.Name(),
+		localdb.DecoderChoice{Name: cellview.FormHex}); err != nil {
+		t.Fatal(err)
+	}
+	r := theRecord(t, fx, tb, 0)
+	if got := r.value.pick.Selected; got != cellview.FormHex {
+		t.Errorf("a topic last read as hex opened as %q", got)
+	}
+}
+
+func TestARememberedWayOfReadingThatNoLongerFitsFallsBack(t *testing.T) {
+	fx, tb := openRecords(t)
+	// JSON was chosen once, and this record's bytes are not text at all.
+	if err := fx.hist.PutDecoder(context.Background(), tb.connID, "value", tb.ref.Name(),
+		localdb.DecoderChoice{Name: cellview.FormJSON}); err != nil {
+		t.Fatal(err)
+	}
+	r := theRecord(t, fx, tb, 2)
+	if got := r.value.pick.Selected; got != cellview.FormHex {
+		t.Errorf("bytes that are not text opened as %q", got)
+	}
 }

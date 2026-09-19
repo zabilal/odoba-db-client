@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ikigai-db/ikigai-db/internal/app/decode"
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
@@ -78,11 +79,13 @@ type Form struct {
 	View View
 }
 
-// Names a form goes by, which are what the chooser shows.
+// Names a form goes by, which are what the chooser shows. They are the
+// decoders' own names: a form is a decoder, seen from the side the person is
+// on (T2.68).
 const (
-	FormJSON = "JSON"
-	FormText = "Text"
-	FormHex  = "Hex"
+	FormJSON = decode.NameJSON
+	FormText = decode.NameText
+	FormHex  = decode.NameHex
 )
 
 // Forms are the ways a value can be read, the most decoded first: a person
@@ -100,13 +103,15 @@ func Forms(v any, col model.ColumnDef, loc *time.Location) []Form {
 		return []Form{{Name: FormText, View: Prepare(v, col, loc)}}
 	}
 	var out []Form
-	if json.Valid(b) {
-		out = append(out, Form{Name: FormJSON, View: jsonView(b, len(b))})
+	for _, d := range decode.Applicable(b) {
+		// The decoder says what the bytes are; this says how that reads. A
+		// decoder returning bytes unchanged is how hex stays a hex dump.
+		// Applicable has already refused what these cannot read, so the rule
+		// about which apply lives there and this only draws them.
+		val, _ := d.Decode(b)
+		out = append(out, Form{Name: d.Name(), View: Prepare(val, col, loc)})
 	}
-	if utf8.Valid(b) {
-		out = append(out, Form{Name: FormText, View: textView(string(b))})
-	}
-	return append(out, Form{Name: FormHex, View: hexView(b)})
+	return out
 }
 
 // HeaderRows are a record's headers as a table: a name and a value, in the

@@ -73,6 +73,9 @@ type Deps struct {
 	// Params remembers the values given to query parameters. Nil asks with
 	// nothing filled in.
 	Params app.ParamStore
+	// Decoders remembers which decoder a topic's key and value are read with
+	// (FR-13.7). Nil keeps the choice for as long as the view lives.
+	Decoders app.DecoderStore
 }
 
 // Shell is one main window.
