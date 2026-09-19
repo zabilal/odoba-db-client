@@ -23,15 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.75 — consumer groups (FR-13.10): the list, each group's state,
-           and its members. The tree already holds a Consumer Groups class
-           and lists the groups under it with the state and protocol that
-           the listing carries (T2.59); what is missing is describing one —
-           its members, what each is assigned, and what it is doing.
-           Describe has no KindConsumerGroup case and the model has no type
-           for a group, so both are part of it; kadm.DescribeGroups is where
-           to start, and the structure view's *model.Cluster arm is the
-           shape to follow.
+NEXT TASK: T2.76 — per-partition current offset, end offset and lag
+           (FR-13.10). A group is described now (T2.75), with its Offsets
+           left empty on purpose: reading them costs a request for the
+           group's commits and another for the ends of the logs. kadm packs
+           both into Client.Lag, which returns DescribedGroupLags carrying a
+           GroupMemberLag per topic and partition, its Lag -1 where a commit
+           or a list failed — the same -1 model.GroupOffset.Lag already
+           documents. The structure arm gains a second table beneath the
+           members, and the model's warning holds: lag is read at two
+           instants and may briefly read negative, so it is clamped rather
+           than trusted, which TotalLag already does.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -81,7 +83,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-19 — a registry's subjects in the tree, a subject
+LAST DONE: 2026-09-19 — a consumer group described by who is in it, what
+           each member was given to read, and what the group is doing, its
+           lag left to T2.76 because reading it costs two requests nobody
+           asked for (T2.75); before it a registry's subjects in the tree, a
+           subject
            described by its versions, and two of them compared line by line,
            the schema laid out first because a registry keeps it as the one
            line it was registered as (T2.74, ADR-0105); before it a
@@ -592,7 +598,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.74** Schema Registry browser: subjects, versions, compatibility, version diff → FR-13.14 — *the client could read subjects, versions and schema text since T2.69, and there was nowhere to see any of it. Subjects hang under the cluster wherever a registry was named and nowhere else: a class opening onto nothing reads as a tree that failed, and a kind declared in the capabilities but never in the tree is the broken promise the shared suite looks for, so the claim is made from the same fact the tree is built from. Nothing is counted to draw it — counting subjects would put a third round trip, to a second server that can be down while the cluster is perfectly well, in front of every cluster somebody opens, and would stop them browsing topics when it failed; so the class is unbadged and what the registry has to say is said when somebody opens it, which is the cost ADR-0092 refused when it left a topic unbadged by size. A subject is a leaf: its versions are revisions of one thing rather than things of their own, so describing it is what shows them — every version with its schema id and language, the text of the newest, and the rule the next one will be checked against, asked for in the way that lets the registry resolve what a subject inherits, because what somebody wants to know is the rule that applies and not that this subject is silent about it; a registry too old for that parameter ignores it and says nothing, reaching the same place by a longer road, and a rule that cannot be read leaves the field empty rather than failing the describe, the versions being what a subject is and the rule a remark about it. The comparison had to be built rather than found, nothing in this application comparing two texts: a longest common subsequence over lines, written here rather than taken as a dependency — a hundred lines with no ambiguity in them, wanted in exactly one view — with the lines both texts share at their ends matched directly and kept out of the table, which is exact rather than a shortcut and keeps the ordinary change, a field added to a schema otherwise untouched, down to almost nothing; and a cap past which the answer becomes coarse, so that a text nobody anticipated degrades into a blunt answer rather than into a pause. The decision the feature rests on is smaller than any of that: a registry keeps a schema as the single string it was registered with, and for Avro and JSON Schema that is one line however large the schema is, so compared as they arrive two versions can only ever be reported as one line changing — true, and useless — and laying them out first is the entire difference between a comparison that says something and one that does not. It compares text and not meaning, two schemas saying the same thing in a different order reading as a change, because that is what was registered and what the next version will be checked against; a comparison that understood all three languages well enough to say nothing that matters changed would be three comparisons, each able to be wrong in its own way. What changed is marked by a sign as well as by colour, and the comparison names the two versions in itself rather than only in the pickers above it, a control not being a caption. Three tests were too weak and writing the mutations found them: the cap first tested with two texts sharing no lines at all, where the coarse answer and the careful one are identical and the guard cannot be observed at all; nothing holding the comparison to opening on the two most recent versions, because with two versions the last two and the first and the last are the same pair and it takes three to tell them apart; and an assertion on a picker's selected text, which Fyne draws through a rich text rather than a label and which the test walk could not see — answered not by weakening the test but by having the comparison say which two versions it is between. The driver's own tree work is held by tagged tests against a live registry, the mutation runner building without tags and reaching none of it (ADR-0105)*
 
 ### Groups, produce, admin
-- [ ] **T2.75** Consumer groups: list, state, members → FR-13.10
+- [x] **T2.75** Consumer groups: list, state, members → FR-13.10 — *the tree has listed groups with their state since T2.59 and opening one gave nothing; this describes one. Almost all of it was decided already: the model held ConsumerGroup, GroupMember and GroupOffset before the task started, so what was missing was a case in Describe and a structure arm to draw it, which is the shape T2.74 left behind and following it was the whole of the work. A group stays a leaf — its members are not nodes, the live test from T2.59 saying so in as many words — and describing it says what the group is doing, who is in it, what client each member is and where it runs, and what each was given to read. An assignment is gathered by topic, so a member holding twenty partitions of one topic reads as that rather than as twenty entries; a member given nothing says so, which is what somebody is looking for when a group has members and is not getting through its logs. A group need not be consuming a log at all — Kafka Connect uses the same machinery for its own purposes — so an assignment that is not a consumer's reads as none rather than being unpacked as though it were partitions of a topic, which would invent an assignment nobody made. Lag is left out on purpose: it costs a request for the group's committed offsets and another for the ends of the logs, and the model says as much where it holds them — offsets are populated on demand, never while a group is being listed — so a live test holds describing a group to spending neither until T2.76 asks for them. One mutation was removed rather than excused: the guard it first aimed at, a check that a group has members before drawing a table of them, survived because section already declines to draw a table that is nothing but its own headings, so the check in front of it decided nothing and came out; the mutation now holds section's own check, which is what the arm leans on instead and what the rest of the file has relied on for as long as it has had tables*
 - [ ] **T2.76** Per-partition current offset / end offset / **lag** → FR-13.10
 - [ ] **T2.77** Produce a message: key, value, headers, partition, schema validation → FR-13.11
 - [ ] **T2.78** Topic admin: create, delete, add partitions → FR-13.12
