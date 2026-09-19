@@ -5,6 +5,7 @@ go 1.26.6
 require (
 	fyne.io/fyne/v2 v2.8.1
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/bufbuild/protocompile v0.14.1
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/gocql/gocql v1.7.0
 	github.com/godbus/dbus/v5 v5.2.2
@@ -16,6 +17,7 @@ require (
 	github.com/twmb/franz-go/pkg/sr v1.8.0
 	github.com/zalando/go-keyring v0.2.8
 	go.mongodb.org/mongo-driver/v2 v2.9.1
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/inf.v0 v0.9.1
 	modernc.org/sqlite v1.58.0
 )

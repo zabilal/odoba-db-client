@@ -9,6 +9,7 @@ import (
 
 	"github.com/hamba/avro/v2"
 	"github.com/twmb/franz-go/pkg/sr"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
@@ -158,14 +159,22 @@ func (s *kafkaSource) Decoder(ctx context.Context, subject string) (_ source.Dec
 		return nil, registryError(err)
 	}
 	d := &schemaDecoder{subject: subject, schema: versionOf(ss)}
-	if d.schema.Format == "AVRO" {
-		// Parsed once, when the decoder is asked for. A schema this build
-		// cannot read is worth saying now rather than on every record.
+	// Read once, when the decoder is asked for: a schema this build cannot
+	// read is worth saying now rather than on every record, and compiling a
+	// .proto is work a topic's records should not each pay for.
+	switch d.schema.Format {
+	case "AVRO":
 		parsed, err := avroSchema(d.schema.Definition)
 		if err != nil {
 			return nil, err
 		}
 		d.parsed = parsed
+	case "PROTOBUF":
+		file, err := protoFile(ctx, d.schema.Definition)
+		if err != nil {
+			return nil, err
+		}
+		d.proto = file
 	}
 	return d, nil
 }
@@ -207,6 +216,10 @@ type schemaDecoder struct {
 	// is written in. Nil means the language is one nobody has written a
 	// reader for yet, and Decode says so rather than guessing.
 	parsed avro.Schema
+
+	// proto is the compiled file a Protobuf schema describes. Only one of
+	// these two is ever set: a schema is written in one language.
+	proto protoreflect.FileDescriptor
 }
 
 // Name identifies the decoder in the UI: the language, the subject and the
@@ -230,6 +243,20 @@ func (d *schemaDecoder) Decode(data []byte) (any, error) {
 	}
 	if d.parsed != nil {
 		return decodeAvro(d.parsed, rest)
+	}
+	if d.proto != nil {
+		// Protobuf says which of a file's messages this record is, in an
+		// index after the header. Avro carries no such thing, which is why
+		// this is read here rather than beside the id.
+		index, body, err := header.DecodeIndex(rest, 0)
+		if err != nil {
+			return nil, fmt.Errorf("kafka: this record does not say which message it is: %w", err)
+		}
+		desc, err := messageAt(d.proto, index)
+		if err != nil {
+			return nil, err
+		}
+		return decodeProto(desc, body)
 	}
 	return nil, fmt.Errorf("kafka: this record is %s, written by schema %d; reading %s is not written yet (%d bytes after the header)",
 		title(d.schema.Format), id, title(d.schema.Format), len(rest))
