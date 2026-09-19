@@ -13,6 +13,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
 // A stream source whose records are described by a registry (T2.70). It is
@@ -178,5 +179,57 @@ func TestASourceThatHasNotPromisedSchemasIsNotAskedForThem(t *testing.T) {
 	}
 	if got := strings.Join(r.value.pick.Options, ","); got != "JSON,Text,Hex" {
 		t.Errorf("its value is offered as %q", got)
+	}
+}
+
+func TestASchemasReadingIsPutBackWhenTheRegistryAnswers(t *testing.T) {
+	fx, tb := openDescribedRecords(t)
+	// Somebody read this topic's values by its schema before.
+	if err := fx.hist.PutDecoder(context.Background(), tb.connID, "value", tb.ref.Name(),
+		localdb.DecoderChoice{Name: "Avro (events-value v1)"}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := theRecord(t, fx, tb, 0)
+	// The decoder is resolved after the bytes arrive, so the form somebody
+	// chose does not exist when the view first draws. It must still be put
+	// back once it does.
+	pump(t, fx.q, func() bool { return r.value.pick.Selected == "Avro (events-value v1)" })
+	if got := r.value.pick.Selected; got != "Avro (events-value v1)" {
+		t.Errorf("a remembered schema reading came back as %q", got)
+	}
+}
+
+func TestAChoiceMadeHereSurvivesTheRegistryAnswering(t *testing.T) {
+	fx, tb := openDescribedRecords(t)
+	r := theRecord(t, fx, tb, 0)
+
+	// Chosen in this view, before the registry has answered.
+	r.value.pick.SetSelected("Hex")
+	pump(t, fx.q, func() bool {
+		for _, n := range r.value.pick.Options {
+			if strings.HasPrefix(n, "Avro") {
+				return true
+			}
+		}
+		return false
+	})
+	// What somebody picked here is not overruled by what arrives afterwards.
+	if got := r.value.pick.Selected; got != "Hex" {
+		t.Errorf("a choice made here became %q when the registry answered", got)
+	}
+}
+
+func TestARememberedLocalReadingIsStillPutBack(t *testing.T) {
+	fx, tb := openDescribedRecords(t)
+	if err := fx.hist.PutDecoder(context.Background(), tb.connID, "value", tb.ref.Name(),
+		localdb.DecoderChoice{Name: "Hex"}); err != nil {
+		t.Fatal(err)
+	}
+	r := theRecord(t, fx, tb, 0)
+	// The local forms are there from the first draw, so this was already
+	// working; it keeps working.
+	if got := r.value.pick.Selected; got != "Hex" {
+		t.Errorf("a remembered local reading came back as %q", got)
 	}
 }

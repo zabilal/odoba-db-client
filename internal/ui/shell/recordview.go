@@ -172,10 +172,13 @@ func (p *formPicker) set(v any, col model.ColumnDef) {
 	if p.at < len(p.forms) {
 		was = p.forms[p.at].Name
 	}
-	if was == "" {
-		// Nothing chosen yet in this view: the topic reads as it did the last
-		// time somebody read it (FR-13.7).
-		was = p.s.rememberedDecoder(p.connID, p.field, p.topic)
+	// How this topic was last read, which outlasts the first record: a
+	// schema's decoder is resolved after the bytes arrive, so the form
+	// somebody chose by name is not among the forms when the view first
+	// draws and would otherwise never be put back. Picking in this view
+	// writes the choice, so what is remembered is what was picked.
+	if remembered := p.s.rememberedDecoder(p.connID, p.field, p.topic); remembered != "" {
+		was = remembered
 	}
 	p.forms = cellview.Forms(v, col, time.Local, p.decoder)
 	names := make([]string, len(p.forms))
