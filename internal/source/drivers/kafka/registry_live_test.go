@@ -13,6 +13,7 @@ import (
 
 	"github.com/hamba/avro/v2"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -236,12 +237,11 @@ func TestLiveClaimingARegistryMeansImplementingOne(t *testing.T) {
 	}
 }
 
-func TestLiveALanguageNotWrittenYetIsRefusedByItsOwnDecoder(t *testing.T) {
+func TestLiveARecordUnderAJSONSchemaReadsAsItsDocument(t *testing.T) {
 	src := described(t)
-	// JSON Schema is the one language this build still does not read (T2.72),
-	// Avro and Protobuf having been written. The decoder for such a subject
-	// must say so rather than read it by a schema of another language, which
-	// would be nonsense rather than an error.
+	// The last of the three languages. A JSON Schema record is a JSON
+	// document with five bytes in front of it, and those five bytes are what
+	// keep it from reading as JSON on its own (T2.72).
 	registeredAs(t, "ikigai_it_shape-value", "JSON", `{"type":"object","properties":{"id":{"type":"string"}}}`)
 
 	reg := src.(source.SchemaRegistry)
@@ -259,8 +259,25 @@ func TestLiveALanguageNotWrittenYetIsRefusedByItsOwnDecoder(t *testing.T) {
 	}
 	id := versions[len(versions)-1].ID
 	record := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, []byte(`{"id":"x"}`)...)
-	if _, err := dec.Decode(record); err == nil || !strings.Contains(err.Error(), "not written yet") {
-		t.Errorf("a JSON Schema record says %v", err)
+	v, err := dec.Decode(record)
+	if err != nil {
+		t.Fatalf("decoding a JSON Schema record: %v", err)
+	}
+	// The document itself, with its own text kept: every number keeps its
+	// digits, as it does for a JSON value from anywhere else (ADR-0100).
+	doc, ok := v.(model.JSON)
+	if !ok {
+		t.Fatalf("a JSON Schema record decoded to %T", v)
+	}
+	if string(doc) != `{"id":"x"}` {
+		t.Errorf("it decoded to %s", doc)
+	}
+
+	// And what follows the header has to be a document: bytes that are not
+	// say so, rather than being handed over as though they were.
+	nonsense := append([]byte{0, byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)}, []byte("not json")...)
+	if _, err := dec.Decode(nonsense); err == nil || !strings.Contains(err.Error(), "not a JSON document") {
+		t.Errorf("bytes that are not a document say %v", err)
 	}
 }
 
