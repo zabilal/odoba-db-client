@@ -24,7 +24,7 @@ func TestAReadFromTheBeginningStartsWhereTheLogDoes(t *testing.T) {
 		"nothing asked for":       nil,
 		"the beginning asked for": {Mode: source.SeekBeginning},
 	} {
-		got, err := spansOf(begins, ends, nil, seek)
+		got, err := spansOf(begins, ends, nil, seek, false)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -43,7 +43,7 @@ func TestAReadFromAnOffsetIsHeldInsideTheLog(t *testing.T) {
 	begins, ends := logs()
 
 	// Inside the log: exactly where it was asked for.
-	got, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 40})
+	got, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 40}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestAReadFromAnOffsetIsHeldInsideTheLog(t *testing.T) {
 
 	// Before the log begins is the beginning of it: a log is aged out from
 	// the front, and asking for what has gone is not an error.
-	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 0})
+	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 0}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestAReadFromAnOffsetIsHeldInsideTheLog(t *testing.T) {
 
 	// Past the end there is nothing to read, so that log is left out rather
 	// than waited on.
-	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 60})
+	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekOffset, Offset: 60}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestTheLastFewAreCountedInEachLog(t *testing.T) {
 	// Each log has its own end, so a count back is a count back in each: this
 	// asks for the last twenty and gets twenty from each of the two that have
 	// them, which is what a topic of many partitions means by "the last N".
-	got, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekLast, Count: 20})
+	got, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekLast, Count: 20}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestTheLastFewAreCountedInEachLog(t *testing.T) {
 	}
 
 	// More than the log holds is the whole log, not a negative offset.
-	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekLast, Count: 1_000_000})
+	got, err = spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekLast, Count: 1_000_000}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestAReadFromATimeLeavesOutLogsWithNothingAfterIt(t *testing.T) {
 	// Partition 0 has something at or after that time; partition 2 has not,
 	// and is left out rather than read from its beginning — which would be
 	// answering a question nobody asked.
-	got, err := spansOf(begins, ends, map[int32]int64{0: 70}, &source.Seek{Mode: source.SeekTimestamp})
+	got, err := spansOf(begins, ends, map[int32]int64{0: 70}, &source.Seek{Mode: source.SeekTimestamp}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestAReadFromATimeLeavesOutLogsWithNothingAfterIt(t *testing.T) {
 
 func TestAReadCanBeNarrowedToPartitions(t *testing.T) {
 	begins, ends := logs()
-	got, err := spansOf(begins, ends, nil, &source.Seek{Partitions: []int32{2}})
+	got, err := spansOf(begins, ends, nil, &source.Seek{Partitions: []int32{2}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestAReadCanBeNarrowedToPartitions(t *testing.T) {
 		t.Errorf("the partition asked for: %+v", got)
 	}
 	// One that holds nothing is still nothing to read, named or not.
-	got, err = spansOf(begins, ends, nil, &source.Seek{Partitions: []int32{1}})
+	got, err = spansOf(begins, ends, nil, &source.Seek{Partitions: []int32{1}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,8 +137,64 @@ func TestAReadCanBeNarrowedToPartitions(t *testing.T) {
 
 func TestAWayOfReadingALogThatDoesNotExist(t *testing.T) {
 	begins, ends := logs()
-	_, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekMode(200)})
+	_, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekMode(200)}, false)
 	if err == nil {
 		t.Fatal("a log was read in a way nobody has written")
+	}
+}
+
+// Following a log (T2.65): a tail begins where the log is now, and has no end
+// to stop before.
+
+func TestATailBeginsWhereTheLogIsNow(t *testing.T) {
+	begins, ends := logs()
+
+	// Nowhere named, and following: a tail is about what comes next, so it
+	// starts at the end of each log rather than replaying what is there.
+	got, err := spansOf(begins, ends, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every log is kept, the empty one included: a log with nothing in it is
+	// exactly where something may be written next.
+	if len(got) != 3 {
+		t.Fatalf("a tail of three logs follows %d: %+v", len(got), got)
+	}
+	for partition, want := range ends {
+		if got[partition].from != want {
+			t.Errorf("partition %d is followed from %d, and ends at %d", partition, got[partition].from, want)
+		}
+		// Nothing to stop before: the log ends when the reader does.
+		if got[partition].to != -1 {
+			t.Errorf("partition %d is followed until %d", partition, got[partition].to)
+		}
+	}
+
+	// The end asked for by name means the same thing.
+	named, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekEnd}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(named) != len(got) || named[0] != got[0] {
+		t.Errorf("the end asked for: %+v, and the end by default: %+v", named, got)
+	}
+}
+
+func TestATailCanBeginBeforeWhatIsAlreadyThere(t *testing.T) {
+	begins, ends := logs()
+
+	// Somebody following from a position wants what is there and then what
+	// comes next, so the start is honoured and there is still no end.
+	got, err := spansOf(begins, ends, nil, &source.Seek{Mode: source.SeekLast, Count: 20}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].from != 80 || got[0].to != -1 {
+		t.Errorf("a tail from the last twenty: %+v", got[0])
+	}
+	// A log that holds nothing has nothing behind its end, so a tail of it
+	// starts where it is — and is still followed.
+	if got[1].from != 0 || got[1].to != -1 {
+		t.Errorf("a tail of an empty log: %+v", got[1])
 	}
 }

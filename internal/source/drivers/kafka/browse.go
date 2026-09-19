@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -57,19 +58,22 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	if len(opt.Sorts) > 0 {
 		return nil, errors.New("kafka: records are in the order they were written, which is the only order a log has")
 	}
-	if opt.Seek != nil && opt.Seek.Mode == source.SeekEnd {
-		// The end of a log is where nothing has been written yet. Reading
-		// from there means waiting for what comes next, which is following
-		// it rather than reading it (T2.65).
-		return nil, errors.New("kafka: reading from the end of a log is following it, which is not written yet")
-	}
-	if opt.Follow {
-		return nil, errors.New("kafka: this connection reads the log as it stands; following it is not written yet")
+	if opt.Seek != nil && opt.Seek.Mode == source.SeekEnd && !opt.Follow {
+		// The end of a log is where nothing has been written yet, so a read
+		// that stops there reads nothing at all. It means something only
+		// while following, which is what it is for (FR-13.6).
+		return nil, errors.New("kafka: reading from the end of a log returns nothing unless the log is being followed")
 	}
 
 	limit := opt.Limit
 	if limit <= 0 {
 		limit = records
+	}
+	if opt.Follow {
+		// A tail is bounded by whoever is reading it — the grid keeps what it
+		// can show and lets the rest go (NFR-P10) — because a log being
+		// written to has no number of records to stop at.
+		limit = 0
 	}
 	if opt.Offset > 0 {
 		// A log is read from a position, not by skipping a count: what the
@@ -115,7 +119,7 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 		}
 	}
 
-	spans, err := spansOf(begins, ends, timed, opt.Seek)
+	spans, err := spansOf(begins, ends, timed, opt.Seek, opt.Follow)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +142,8 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 		return nil, &source.ConnectError{Kind: source.ConnectConfig,
 			Hint: "These settings could not become a reader.", Err: err}
 	}
-	return &recordRows{client: client, topic: topic, until: until, left: limit}, nil
+	return &recordRows{client: client, topic: topic, until: until,
+		left: limit, following: opt.Follow}, nil
 }
 
 // span is where one partition's read begins, and the offset it stops before.
@@ -168,7 +173,7 @@ func offsets(listed map[int32]kadm.ListedOffset) (map[int32]int64, error) {
 // begins is the beginning of it — a log is aged out from the front, and a
 // position that has been aged past is not an error — and a partition with
 // nothing left to read is left out rather than waited on.
-func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek) (map[int32]span, error) {
+func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek, following bool) (map[int32]span, error) {
 	only := map[int32]bool{}
 	if seek != nil {
 		for _, p := range seek.Partitions {
@@ -185,9 +190,16 @@ func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek) (map[int32]
 			continue
 		}
 		from := start
+		if following && (seek == nil || seek.Mode == source.SeekBeginning) {
+			// Following with nowhere named begins where the log is now: a
+			// tail is about what comes next, not about what is already there.
+			from = end
+		}
 		if seek != nil {
 			switch seek.Mode {
 			case source.SeekBeginning:
+			case source.SeekEnd:
+				from = end
 			case source.SeekOffset:
 				from = seek.Offset
 			case source.SeekLast:
@@ -206,10 +218,15 @@ func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek) (map[int32]
 		if from < start {
 			from = start
 		}
-		if from >= end {
+		if from >= end && !following {
 			continue
 		}
-		out[partition] = span{from: from, to: end}
+		to := end
+		if following {
+			// A log being followed has no end to stop before.
+			to = -1
+		}
+		out[partition] = span{from: from, to: to}
 	}
 	return out, nil
 }
@@ -221,9 +238,17 @@ type recordRows struct {
 	until  map[int32]int64 // where each partition had ended when the read began
 	left   int64
 
-	held   []*kgo.Record
-	closed bool
-	mu     sync.Mutex
+	// following keeps the stream open: Next waits for what is written next
+	// rather than saying the log has ended, because it has not.
+	following bool
+
+	held []*kgo.Record
+	mu   sync.Mutex
+
+	// closed is not kept under mu. Closing has to work while a following read
+	// is waiting, and that read holds mu for as long as it waits — so a close
+	// that wanted the same lock could never run (T2.65).
+	closed atomic.Bool
 }
 
 // recordColumns are what a record is, in the order somebody reads it: where it
@@ -243,7 +268,7 @@ func (r *recordRows) Next(ctx context.Context) (model.Row, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.closed || r.left <= 0 {
+	if r.closed.Load() || (!r.following && r.left <= 0) {
 		return nil, io.EOF
 	}
 	for len(r.held) == 0 {
@@ -257,17 +282,28 @@ func (r *recordRows) Next(ctx context.Context) (model.Row, error) {
 	}
 	rec := r.held[0]
 	r.held = r.held[1:]
-	r.left--
+	if !r.following {
+		r.left--
+	}
 	return rowOf(rec), nil
 }
 
 // fill reads another batch, and says whether there is nothing left to read.
 func (r *recordRows) fill(ctx context.Context) (bool, error) {
-	if len(r.until) == 0 {
+	if !r.following && len(r.until) == 0 {
 		return true, nil
 	}
 	max := int(r.left)
+	if r.following {
+		// However many arrive: a tail takes what there is and waits for more.
+		max = 0
+	}
 	fetches := r.client.PollRecords(ctx, max)
+	if r.closed.Load() {
+		// Closed while waiting in there, which ends the read rather than
+		// breaking it: what a closed client says about the poll is noise.
+		return true, nil
+	}
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -282,6 +318,11 @@ func (r *recordRows) fill(ctx context.Context) (bool, error) {
 		}
 	}
 	fetches.EachRecord(func(rec *kgo.Record) {
+		if r.following {
+			// Nothing is past the end of a log somebody is still writing to.
+			r.held = append(r.held, rec)
+			return
+		}
 		end, wanted := r.until[rec.Partition]
 		if !wanted || rec.Offset >= end {
 			// Past where the log ended when this read began: somebody else is
@@ -293,16 +334,20 @@ func (r *recordRows) fill(ctx context.Context) (bool, error) {
 			delete(r.until, rec.Partition)
 		}
 	})
+	if r.following {
+		// Never done: the log ends when the reader stops, not before.
+		return false, nil
+	}
 	return len(r.held) == 0 && len(r.until) == 0, nil
 }
 
 func (r *recordRows) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed {
+	if r.closed.Swap(true) {
 		return nil
 	}
-	r.closed = true
+	// Closing the client is what ends a poll that is waiting for records, and
+	// a tail waits in one by design. Taking no lock here is the point: the
+	// reader holds it until something arrives, which may be never.
 	r.client.Close()
 	return nil
 }

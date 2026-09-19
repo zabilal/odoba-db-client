@@ -285,7 +285,7 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if !caps.Stream.Consume {
 		t.Error("records are read and consuming is not claimed")
 	}
-	unwritten := capability.Stream{Consume: true, SeekTimestamp: true}
+	unwritten := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true}
 	if caps.Stream != unwritten {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
@@ -319,12 +319,11 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 		opt  source.BrowseOptions
 		says string
 	}{
-		"a condition in a language it has not got":    {source.BrowseOptions{Where: "value = 1"}, "language"},
-		"a filter a broker will not apply":            {source.BrowseOptions{Filters: []source.Filter{{Column: "key", Op: source.OpEqual, Values: []any{1}}}}, "filter"},
-		"an order a log does not have":                {source.BrowseOptions{Sorts: []source.Sort{{Column: "offset"}}}, "order"},
-		"a log read from its end, which is following": {source.BrowseOptions{Seek: &source.Seek{Mode: source.SeekEnd}}, "following"},
-		"a log followed before following is":          {source.BrowseOptions{Follow: true}, "following"},
-		"rows skipped rather than a place named":      {source.BrowseOptions{Offset: 10}, "position"},
+		"a condition in a language it has not got":     {source.BrowseOptions{Where: "value = 1"}, "language"},
+		"a filter a broker will not apply":             {source.BrowseOptions{Filters: []source.Filter{{Column: "key", Op: source.OpEqual, Values: []any{1}}}}, "filter"},
+		"an order a log does not have":                 {source.BrowseOptions{Sorts: []source.Sort{{Column: "offset"}}}, "order"},
+		"a log read from its end, which reads nothing": {source.BrowseOptions{Seek: &source.Seek{Mode: source.SeekEnd}}, "end of a log"},
+		"rows skipped rather than a place named":       {source.BrowseOptions{Offset: 10}, "position"},
 	} {
 		_, err := s.Browse(ctx, topic, c.opt)
 		if err == nil {
