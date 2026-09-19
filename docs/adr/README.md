@@ -109,3 +109,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0102](0102-reading-a-record-by-its-schema.md) | Reading a record by its schema | Accepted |
 | [0103](0103-compiling-a-schema-to-read-a-record.md) | Compiling a schema to read a record | Accepted |
 | [0104](0104-a-document-with-five-bytes-in-front.md) | A document with five bytes in front | Accepted |
+| [0105](0105-comparing-two-versions-of-a-schema.md) | Comparing two versions of a schema | Accepted |

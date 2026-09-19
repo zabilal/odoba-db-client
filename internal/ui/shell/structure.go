@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/app/textdiff"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
@@ -327,6 +328,36 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 		if len(v.Attrs) > 0 {
 			add(section("What it says about itself", attrRows(v.Attrs)))
 		}
+	case *model.SchemaSubject:
+		// A subject is one thing that has been revised. What there is to say
+		// is how often, under what rule the next revision will be judged,
+		// what the newest one says, and what changed (FR-13.14, ADR-0105).
+		add(quietLabel(subjectHolds(v)))
+		if v.Compatibility != "" {
+			add(plain(compatibilityLine(v.Compatibility)))
+		}
+		if len(v.Versions) > 0 {
+			rows := [][]string{{"Version", "Schema id", "Language"}}
+			for _, ver := range v.Versions {
+				rows = append(rows, []string{
+					strconv.Itoa(int(ver.Version)), strconv.Itoa(int(ver.ID)), ver.Format,
+				})
+			}
+			add(section("Versions", rows))
+
+			// Laid out rather than as the registry keeps it: a schema is
+			// registered as one line however large it is (ADR-0105).
+			newest := v.Versions[len(v.Versions)-1]
+			if newest.Definition != "" {
+				def := widget.NewLabelWithStyle(textdiff.Indent(newest.Definition),
+					fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
+				def.Selectable = true
+				add(container.NewVBox(bold(fmt.Sprintf("Schema, version %d", newest.Version)), def))
+			}
+		}
+		if len(v.Versions) > 1 {
+			add(versionComparison(v.Versions))
+		}
 	case *model.Cluster:
 		// A cluster has no columns either. What there is to say is who its
 		// brokers are, which of them answers for the whole, and what it calls
@@ -481,6 +512,112 @@ func foreignKeyRows(fks []model.ForeignKey) [][]string {
 
 // section is a heading over a grid whose first row names its columns. A
 // section with no rows below that is nothing, and left out.
+// subjectHolds is what a subject amounts to in one line.
+func subjectHolds(s *model.SchemaSubject) string {
+	switch len(s.Versions) {
+	case 0:
+		return "Nothing has been registered under this subject."
+	case 1:
+		return "One version, and nothing has replaced it."
+	}
+	return fmt.Sprintf("%d versions, the newest of them version %d.",
+		len(s.Versions), s.Versions[len(s.Versions)-1].Version)
+}
+
+// compatibilityLine says what the registry will hold the next version to.
+//
+// The rule is the registry's own and the registry is what enforces it, so
+// this reads its levels back rather than judging anything: a level this build
+// has not heard of is named and left unexplained, which is better than
+// explaining it wrongly.
+func compatibilityLine(level string) string {
+	gloss := map[string]string{
+		"NONE":                "new versions are not checked against the ones before them",
+		"BACKWARD":            "a new version must be able to read what the version before it wrote",
+		"BACKWARD_TRANSITIVE": "a new version must be able to read what every earlier version wrote",
+		"FORWARD":             "the version before it must be able to read what a new version writes",
+		"FORWARD_TRANSITIVE":  "every earlier version must be able to read what a new version writes",
+		"FULL":                "a new version and the one before it must each be able to read what the other wrote",
+		"FULL_TRANSITIVE":     "a new version and every earlier one must each be able to read what the other wrote",
+	}[level]
+	if gloss == "" {
+		return "Compatibility: " + level + "."
+	}
+	return "Compatibility: " + level + " — " + gloss + "."
+}
+
+// versionComparison is two versions picked, and the difference between them
+// (FR-13.14, ADR-0105).
+//
+// It keeps its own state: which two versions somebody is looking at is
+// nobody's business outside this view, so the pickers redraw the comparison
+// beneath them rather than the tab around them.
+func versionComparison(versions []model.SchemaVersion) fyne.CanvasObject {
+	names := make([]string, len(versions))
+	at := map[string]model.SchemaVersion{}
+	for i, v := range versions {
+		names[i] = fmt.Sprintf("Version %d", v.Version)
+		at[names[i]] = v
+	}
+	body := container.NewVBox()
+	before := widget.NewSelect(names, nil)
+	after := widget.NewSelect(names, nil)
+	redraw := func(string) {
+		body.Objects = []fyne.CanvasObject{comparison(at[before.Selected], at[after.Selected])}
+		body.Refresh()
+	}
+	before.OnChanged, after.OnChanged = redraw, redraw
+	// The comparison somebody opens this view wanting: the newest against the
+	// one before it. Put in place rather than selected, which would draw a
+	// comparison against nothing on the way past.
+	before.Selected, after.Selected = names[len(names)-2], names[len(names)-1]
+	redraw("")
+	return container.NewVBox(bold("What changed"),
+		container.NewHBox(before, quietLabel("compared with"), after), body)
+}
+
+// comparison is one version against another, line by line. A line that
+// arrived is marked +, and one that went -, so that what changed is never
+// colour alone (ADR-0105).
+func comparison(before, after model.SchemaVersion) fyne.CanvasObject {
+	lines := textdiff.Lines(textdiff.Indent(before.Definition), textdiff.Indent(after.Definition))
+	added, removed := textdiff.Summary(lines)
+	box := container.NewVBox()
+	// Which two versions these are, said in the comparison itself. The
+	// pickers above it are a control rather than a caption, and somebody
+	// reading or copying this out should not have to look elsewhere to know
+	// what was compared with what.
+	between := fmt.Sprintf("From version %d to version %d", before.Version, after.Version)
+	if added == 0 && removed == 0 {
+		box.Add(plain(between + ": the same text."))
+		return box
+	}
+	box.Add(quietLabel(fmt.Sprintf("%s: %s arrived, %s went.", between, lineCount(added), lineCount(removed))))
+	for _, l := range lines {
+		sign, importance := "  ", widget.LowImportance
+		switch l.Op {
+		case textdiff.Added:
+			sign, importance = "+ ", widget.SuccessImportance
+		case textdiff.Removed:
+			sign, importance = "- ", widget.DangerImportance
+		}
+		row := widget.NewLabelWithStyle(sign+l.Text, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
+		row.Importance = importance
+		row.Selectable = true
+		box.Add(row)
+	}
+	return box
+}
+
+// lineCount is a number of lines in words, so that one line is never "1
+// lines".
+func lineCount(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return fmt.Sprintf("%d lines", n)
+}
+
 func section(title string, rows [][]string) fyne.CanvasObject {
 	if len(rows) < 2 {
 		return container.NewVBox()

@@ -306,3 +306,142 @@ func TestStructureShowsACollectionsShape(t *testing.T) {
 		t.Errorf("the view's structure shows what it has not got:\n%s", got)
 	}
 }
+
+// A subject in the structure view (T2.74, FR-13.14, ADR-0105).
+
+const (
+	subjectV1 = `{"type":"record","name":"Order","fields":[{"name":"id","type":"string"}]}`
+	subjectV2 = `{"type":"record","name":"Order","fields":[{"name":"id","type":"string"},{"name":"total","type":"double"}]}`
+)
+
+func TestStructureShowsASubjectsVersionsAndWhatChanged(t *testing.T) {
+	subject := &model.SchemaSubject{
+		Name:          "orders-value",
+		Compatibility: "BACKWARD",
+		Versions: []model.SchemaVersion{
+			{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1},
+			{Version: 2, ID: 9, Format: "AVRO", Definition: subjectV2},
+		}}
+	got := strings.Join(labelTexts(structureView(subject, nil, nil)), "\n")
+	for _, want := range []string{
+		"2 versions, the newest of them version 2.",
+		"Versions", "Schema id", "AVRO",
+		// The rule read back in the registry's own words, and in words.
+		"Compatibility: BACKWARD",
+		"must be able to read what the version before it wrote",
+		"Schema, version 2",
+		"What changed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a subject does not say %q:\n%s", want, got)
+		}
+	}
+	// Laid out, not shown as the single line a registry keeps it as: one line
+	// can be neither read nor compared (ADR-0105).
+	if strings.Contains(got, `"fields":[{"name":"id"`) {
+		t.Errorf("the schema is shown as the one line it was registered as:\n%s", got)
+	}
+	// The comparison opens on the newest against the one before it, and what
+	// arrived is marked as having arrived — by a sign, not by colour alone.
+	if !strings.Contains(got, "+ ") {
+		t.Errorf("nothing is marked as having arrived:\n%s", got)
+	}
+	if !strings.Contains(got, "arrived") {
+		t.Errorf("the comparison does not count what changed:\n%s", got)
+	}
+	var arrived []string
+	for _, l := range labelTexts(structureView(subject, nil, nil)) {
+		if strings.HasPrefix(l, "+ ") {
+			arrived = append(arrived, l)
+		}
+	}
+	if !strings.Contains(strings.Join(arrived, "\n"), "total") {
+		t.Errorf("the field the newer version added is not among what arrived: %v", arrived)
+	}
+}
+
+func TestStructureComparesNothingWhereThereIsNothingToCompare(t *testing.T) {
+	one := &model.SchemaSubject{Name: "orders-value",
+		Versions: []model.SchemaVersion{{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1}}}
+	got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n")
+	if !strings.Contains(got, "One version, and nothing has replaced it.") {
+		t.Errorf("a subject with one version says:\n%s", got)
+	}
+	if strings.Contains(got, "What changed") {
+		t.Errorf("a subject with nothing to compare offers a comparison:\n%s", got)
+	}
+	// Its schema is still there to read.
+	if !strings.Contains(got, "Schema, version 1") {
+		t.Errorf("the only version's schema is not shown:\n%s", got)
+	}
+
+	// A subject with no versions says so rather than drawing an empty table.
+	none := strings.Join(labelTexts(structureView(&model.SchemaSubject{Name: "orders-value"}, nil, nil)), "\n")
+	if !strings.Contains(none, "Nothing has been registered") {
+		t.Errorf("an empty subject says:\n%s", none)
+	}
+	// And a compatibility mode the registry never gave is not invented.
+	if strings.Contains(none, "Compatibility") {
+		t.Errorf("a subject with no compatibility mode shows one:\n%s", none)
+	}
+}
+
+func TestStructureSaysWhenTwoVersionsAreTheSameText(t *testing.T) {
+	// Two versions can hold the same text: a schema deleted and registered
+	// again is a new version of what was already there.
+	same := &model.SchemaSubject{Name: "orders-value",
+		Versions: []model.SchemaVersion{
+			{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1},
+			{Version: 2, ID: 7, Format: "AVRO", Definition: subjectV1},
+		}}
+	got := strings.Join(labelTexts(structureView(same, nil, nil)), "\n")
+	if !strings.Contains(got, "From version 1 to version 2: the same text.") {
+		t.Errorf("two versions of one text read as:\n%s", got)
+	}
+	if strings.Contains(got, "arrived") {
+		t.Errorf("two versions of one text report lines changing:\n%s", got)
+	}
+}
+
+func TestStructureNamesACompatibilityModeItCannotExplain(t *testing.T) {
+	// A registry may grow a level this build has not heard of. Naming it
+	// without explaining it is better than explaining it wrongly.
+	odd := &model.SchemaSubject{Name: "orders-value", Compatibility: "SIDEWAYS",
+		Versions: []model.SchemaVersion{{Version: 1, ID: 1, Format: "AVRO", Definition: subjectV1}}}
+	got := strings.Join(labelTexts(structureView(odd, nil, nil)), "\n")
+	if !strings.Contains(got, "Compatibility: SIDEWAYS.") {
+		t.Errorf("an unfamiliar compatibility mode reads as:\n%s", got)
+	}
+}
+
+func TestStructureComparesTheTwoMostRecentVersions(t *testing.T) {
+	// Three versions, and the comparison opens on the last two: that is the
+	// question somebody has when they open a subject (ADR-0105).
+	three := &model.SchemaSubject{Name: "orders-value",
+		Versions: []model.SchemaVersion{
+			{Version: 1, ID: 1, Format: "AVRO",
+				Definition: `{"type":"record","name":"Order","fields":[{"name":"scrapped","type":"string"}]}`},
+			{Version: 2, ID: 2, Format: "AVRO", Definition: subjectV1},
+			{Version: 3, ID: 3, Format: "AVRO", Definition: subjectV2},
+		}}
+	got := strings.Join(labelTexts(structureView(three, nil, nil)), "\n")
+	// The pickers say which two versions are being compared, and they are
+	// the newest and the one before it.
+	for _, want := range []string{"From version 2 to version 3", "compared with"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the comparison does not say %q:\n%s", want, got)
+		}
+	}
+	// Version 1 is two comparisons away and nothing of it is shown — neither
+	// as a version being compared nor as a line of one.
+	if strings.Contains(got, "version 1") {
+		t.Errorf("the comparison opens on the oldest version:\n%s", got)
+	}
+	if strings.Contains(got, "scrapped") {
+		t.Errorf("the comparison reaches back past the version before the newest:\n%s", got)
+	}
+	// What version 3 added over version 2 is what it shows.
+	if !strings.Contains(got, "total") {
+		t.Errorf("what the newest version added is not shown:\n%s", got)
+	}
+}

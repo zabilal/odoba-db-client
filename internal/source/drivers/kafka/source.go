@@ -386,6 +386,11 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,
+			// Subjects, like the registry itself, only where one was named.
+			// A kind declared here and never in the tree, or in the tree and
+			// undeclared, is the broken promise conformance looks for
+			// (REQ-DRV-1).
+			model.KindSubject: s.registry != nil,
 		},
 	}
 }

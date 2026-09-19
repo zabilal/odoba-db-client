@@ -59,6 +59,8 @@ func (s *kafkaSource) Children(ctx context.Context, ref model.ObjectRef) (_ []mo
 			return s.topicNodes(ctx, ref)
 		case model.KindConsumerGroup:
 			return s.groupNodes(ctx, ref)
+		case model.KindSubject:
+			return s.subjectNodes(ctx, ref)
 		}
 		return nil, nil
 	case model.KindTopic:
@@ -93,6 +95,20 @@ func (s *kafkaSource) classes(ctx context.Context, ref model.ObjectRef) ([]model
 		// empty: a node opening onto nothing reads as a tree that failed
 		// rather than as a cluster nobody has written to yet.
 		out = []model.Node{model.ClassNode(ref, model.KindTopic, 0)}
+	}
+	// Schemas live on a second server (ADR-0101), and nothing is asked of it
+	// here. Counting subjects would put a third round trip — to a host that
+	// can be down while the cluster is perfectly well — in front of every
+	// cluster somebody opens, and would stop them browsing topics when it
+	// failed. So the class is shown wherever a registry was named, unbadged
+	// for the reason a topic carries no size (ADR-0092), and what the
+	// registry has to say is said when somebody opens it.
+	if s.registry != nil {
+		out = append(out, model.Node{
+			Ref:         model.ClassRef(ref, model.KindSubject),
+			Label:       model.ClassLabel(model.KindSubject),
+			HasChildren: true,
+		})
 	}
 	return out, nil
 }
@@ -158,6 +174,8 @@ func (s *kafkaSource) Describe(ctx context.Context, ref model.ObjectRef) (_ any,
 		return s.cluster(ctx)
 	case model.KindTopic:
 		return s.topic(ctx, ref.Name())
+	case model.KindSubject:
+		return s.subject(ctx, ref.Name())
 	}
 	return nil, nil
 }
@@ -229,6 +247,32 @@ func (s *kafkaSource) groupNodes(ctx context.Context, class model.ObjectRef) ([]
 			Ref:   model.NewRef(model.KindConsumerGroup, cluster, g.Group),
 			Label: g.Group,
 			Attrs: attrs,
+		})
+	}
+	return out, nil
+}
+
+// subjectNodes are what the registry holds, in the order it lists them
+// (FR-13.14).
+//
+// A subject is a leaf. Its versions are revisions of one thing rather than
+// things of their own, so they are shown when the subject is described and
+// not hung under it as nodes somebody would have to open one at a time.
+//
+// There is no badge for the same reason: how many versions a subject has is a
+// request per subject, which is the cost ADR-0092 refused when it left topics
+// unbadged by size.
+func (s *kafkaSource) subjectNodes(ctx context.Context, class model.ObjectRef) ([]model.Node, error) {
+	subjects, err := s.Subjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cluster := class.Path[0]
+	out := make([]model.Node, 0, len(subjects))
+	for _, sub := range subjects {
+		out = append(out, model.Node{
+			Ref:   model.NewRef(model.KindSubject, cluster, sub.Name),
+			Label: sub.Name,
 		})
 	}
 	return out, nil

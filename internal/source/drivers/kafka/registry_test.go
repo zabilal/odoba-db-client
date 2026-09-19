@@ -194,3 +194,31 @@ func TestAJSONSchemaRecordIsItsDocumentWithoutItsHeader(t *testing.T) {
 		t.Errorf("the decoder is called %q", got)
 	}
 }
+
+func TestSubjectsAreOfferedOnlyWhereARegistryIsNamed(t *testing.T) {
+	// A kind declared here and never in the tree, or in the tree and not
+	// declared, is the broken promise the shared suite looks for (REQ-DRV-1).
+	with := (&kafkaSource{registry: &sr.Client{}}).Capabilities()
+	if !with.Objects[model.KindSubject] {
+		t.Error("a connection naming a registry does not offer subjects")
+	}
+	if !with.Stream.SchemaRegistry {
+		t.Error("a connection naming a registry does not claim one")
+	}
+
+	without := (&kafkaSource{}).Capabilities()
+	if without.Objects[model.KindSubject] {
+		t.Error("a connection naming no registry offers subjects it could never list")
+	}
+	if without.Stream.SchemaRegistry {
+		t.Error("a connection naming no registry claims one")
+	}
+	// What a cluster holds otherwise does not depend on a second server
+	// being there.
+	for _, k := range []model.ObjectKind{model.KindCluster, model.KindFolder,
+		model.KindTopic, model.KindPartition, model.KindConsumerGroup} {
+		if !without.Objects[k] {
+			t.Errorf("a connection with no registry does not offer %s", k)
+		}
+	}
+}

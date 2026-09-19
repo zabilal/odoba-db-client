@@ -143,6 +143,41 @@ func versionOf(ss sr.SubjectSchema) model.SchemaVersion {
 	}
 }
 
+// subject is one subject as the structure view shows it: every version it has
+// had, the schema each was registered with, and the rule the next one will be
+// checked against (FR-13.14).
+func (s *kafkaSource) subject(ctx context.Context, name string) (*model.SchemaSubject, error) {
+	versions, err := s.SubjectVersions(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SchemaSubject{
+		Name:          name,
+		Versions:      versions,
+		Compatibility: s.compatibility(ctx, name),
+	}, nil
+}
+
+// compatibility is the rule this subject's next version will be checked
+// against, or nothing.
+//
+// DefaultToGlobal asks the registry to resolve the inheritance itself. Most
+// subjects set no rule of their own, and what somebody wants to know is the
+// rule that applies, not that this subject is silent about it. A registry too
+// old for the parameter ignores it and says nothing, which reaches the same
+// place by a longer road.
+//
+// A rule that cannot be read leaves the field empty rather than failing the
+// describe: the versions are what a subject is, and the rule is a remark
+// about it. Reached only through subject, which has already found a registry.
+func (s *kafkaSource) compatibility(ctx context.Context, name string) string {
+	res := s.registry.Compatibility(sr.WithParams(ctx, sr.DefaultToGlobal), name)
+	if len(res) == 0 || res[0].Err != nil {
+		return ""
+	}
+	return res[0].Level.String()
+}
+
 // Decoder returns a decoder for a subject's records.
 //
 // What it does today is read the five bytes a record begins with and say which
