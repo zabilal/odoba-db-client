@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	explorerview "github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
+	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
 	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -44,12 +47,38 @@ type journey struct {
 
 // harness is the application over one engine, as a person would have it.
 type harness struct {
-	s    *shell.Shell
-	q    *uithread.Queue
-	w    fyne.Window
-	tabs *tabbar.Tabs
-	db   *localdb.DB
-	conn store.SavedConnection
+	s     *shell.Shell
+	q     *uithread.Queue
+	w     fyne.Window
+	tabs  *tabbar.Tabs
+	db    *localdb.DB
+	conn  store.SavedConnection
+	files *chooser
+}
+
+// chooser stands in for the file dialog. A person picks a file; a journey
+// says which, and the rest of the path is the application's own.
+type chooser struct {
+	answer func(string, error)
+	asked  string // the message the dialog would have shown
+}
+
+func (c *chooser) Save(_ fyne.Window, o filedlg.Options, done filedlg.Done) {
+	c.asked = o.Message
+	c.answer = done
+}
+func (c *chooser) Open(_ fyne.Window, o filedlg.Options, done filedlg.Done) {
+	c.asked = o.Message
+	c.answer = done
+}
+
+// picks answers the dialog now waiting, as choosing that file would.
+func (c *chooser) picks(t *testing.T, q *uithread.Queue, path string) {
+	t.Helper()
+	waitFor(t, q, "the file dialog", func() bool { return c.answer != nil })
+	done := c.answer
+	c.answer = nil
+	q.Run(func() { done(path, nil) })
 }
 
 func start(t *testing.T, j journey) *harness {
@@ -73,11 +102,12 @@ func start(t *testing.T, j journey) *harness {
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	t.Cleanup(func() { ws.CloseAll() })
 	q := &uithread.Queue{}
-	s := shell.New(a, shell.Deps{Conns: conns, WS: ws, History: db, Saved: db, Run: q.Run})
+	files := &chooser{}
+	s := shell.New(a, shell.Deps{Conns: conns, WS: ws, History: db, Saved: db, Run: q.Run, Files: files})
 	w := s.Window()
 	t.Cleanup(w.Close) // quit as a person does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
-	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c}
+	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
 }
 
 // openTable walks the sidebar to the fixture table and opens its rows, which
@@ -195,6 +225,138 @@ func runJ2(t *testing.T, j journey) {
 		n, final := g.Model().Extent()
 		return final && n == fixtureRows
 	})
+}
+
+// runJ5 is journey J5: move data. Export a filtered result to a file, then
+// import a CSV into a table, with its columns paired and a dry run first.
+func runJ5(t *testing.T, j journey) {
+	h := start(t, j)
+	openTable(t, h, j)
+	g := h.s.ActiveGrid()
+	if g == nil {
+		t.Fatal("the table's tab shows no grid")
+	}
+	dir := t.TempDir()
+
+	// Export only what is filtered, not the whole table.
+	g.SetFilterText(1, "person 1")
+	g.ApplyFilters()
+	waitFor(t, h.q, "the filtered rows", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n > 0 && n < fixtureRows
+	})
+	filtered, _ := g.Model().Extent()
+
+	if err := h.s.Commands().Run("data.export"); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	sheet := h.w.Canvas().Overlays().Top()
+	if sheet == nil {
+		t.Fatal("Export showed nothing")
+	}
+	test.Tap(button(t, sheet, "Choose File…"))
+	out := filepath.Join(dir, "people.csv")
+	h.files.picks(t, h.q, out)
+
+	var exported []byte
+	waitFor(t, h.q, "the file to be written", func() bool {
+		b, err := os.ReadFile(out)
+		exported = b
+		return err == nil && bytes.Count(b, []byte("\n")) == int(filtered)+1
+	})
+	if !bytes.HasPrefix(exported, []byte("id,name\n")) {
+		t.Errorf("the export starts %q, and should name its columns first", first(exported))
+	}
+	if bytes.Contains(exported, []byte("person 2,")) || bytes.Contains(exported, []byte(",person 2")) {
+		t.Errorf("the export carries rows the filter left out:\n%s", exported)
+	}
+
+	// Clear the filter, so what the import adds is counted against the whole
+	// table rather than against a view of it.
+	g.SetFilterText(1, "")
+	g.ApplyFilters()
+	waitFor(t, h.q, "every row again", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n == fixtureRows
+	})
+
+	// Import a file whose columns are in the other order, so that pairing
+	// them by name is what puts each value in the right place.
+	in := filepath.Join(dir, "newcomers.csv")
+	const body = "name,id\nAda,1001\nGrace,1002\n"
+	if err := os.WriteFile(in, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.s.Commands().Run("data.import"); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	h.files.picks(t, h.q, in)
+	waitFor(t, h.q, "the import to open", func() bool {
+		return h.tabs.Selected() != nil && strings.HasPrefix(h.tabs.Selected().Text, "Import newcomers.csv")
+	})
+	imp := h.tabs.Selected().Content
+
+	// Wait for the file's columns to be paired with the table's before
+	// asking anything of them. Until that lands the panel pairs by position,
+	// and this file is deliberately in the other order — which is the point
+	// of the journey, and would otherwise be a race that passes whenever the
+	// two orders happen to agree.
+	waitFor(t, h.q, "the columns to be paired", func() bool {
+		picked := selected(imp)
+		return slices.Contains(picked, "id") && slices.Contains(picked, "name")
+	})
+
+	// A dry run first. It reads every row as the import would write it and
+	// says so in its own words, which are not the import's.
+	test.Tap(button(t, imp, "Dry Run"))
+	waitFor(t, h.q, "the dry run", func() bool {
+		return strings.Contains(strings.Join(labelsIn(imp), " "), "All 2 rows would go in.")
+	})
+	if n, _ := g.Model().Extent(); n != fixtureRows {
+		t.Errorf("the dry run wrote %d rows, and it must write none", n-fixtureRows)
+	}
+
+	// Then the import itself, which the table catches up with on its own.
+	test.Tap(button(t, imp, "Import"))
+	waitFor(t, h.q, "the table to hold them", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n == fixtureRows+2
+	})
+	g.SetFilterText(0, "1001")
+	g.ApplyFilters()
+	waitFor(t, h.q, "the imported row", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n == 1
+	})
+	row, ok := g.Model().Row(context.Background(), 0)
+	if !ok {
+		t.Fatal("the imported row never loaded")
+	}
+	if got := fmt.Sprint(row[1]); got != "Ada" {
+		t.Errorf("the imported row reads %v; its columns were paired the wrong way round", row)
+	}
+}
+
+// selected is what every Select under o currently reads, which is how the
+// import's column pairing is seen from outside the shell.
+func selected(o fyne.CanvasObject) []string {
+	var out []string
+	for _, s := range find[*widget.Select](o) {
+		out = append(out, s.Selected)
+	}
+	return out
+}
+
+// first is the opening of a file, for an error message.
+func first(b []byte) string {
+	if len(b) > 40 {
+		b = b[:40]
+	}
+	return string(b)
 }
 
 // labelsIn is every label's text under o, which is how a dialog's words are

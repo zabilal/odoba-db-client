@@ -23,11 +23,13 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.94 — E2E J5 (move data): the import journey, a file read
-           and mapped to a table's columns, dry run, then written.
-           J2 left openTable in place to begin from, and T2.93's
-           lesson applies: assert on what the engine writes, not on
-           the way one engine happens to write it.
+NEXT TASK: T2.95 — E2E J7 (work safely in production): read-only
+           enforced, visually distinct, writes asking for explicit
+           confirmation. Every piece of it landed in 2.J, so this is
+           the journey that walks them: a production connection is
+           marked in the window, a write asks and is refused until
+           the name is typed, and a read-only connection refuses
+           whatever is typed (T2.90, T2.91, T2.92, ADR-0113).
            T2.88 stays [~]: DBGate and TablePlus are not done and its
            line says what each would need.
            Still true: there is no way in from the window for an SSH
@@ -103,7 +105,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — the J2 journey end to end on four engines: filter, edit, review
+LAST DONE: 2026-09-22 — the J5 journey on four engines: a filtered export written to a
+           chosen file, and a CSV imported with its columns
+           paired by name, dry run first (T2.94); before it
+           the J2 journey end to end on four engines: filter, edit, review
            the SQL that would run, commit, and see the value come
            back changed (T2.93); before it
            every write path in every driver held to its guard by one shared
@@ -729,7 +734,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.K Quality
 
 - [x] **T2.93** E2E: **J2** (find a row and fix it) — *filter by a value, edit a cell, review the SQL that would run, commit it, and see the value come back from the server changed. Run on SQLite untagged and on PostgreSQL, MySQL and MariaDB tagged, through the same widgets and commands a person uses. What the journey is really for is that the review is not decoration: it asserts the statement shown is an UPDATE of that table's name column and that nothing else is offered, then commits and waits for the row to read back as it was set — so a commit that reported success and wrote nothing would fail it, which is one of the mutations. The sidebar walk that opens a table was factored out of J1 rather than copied, since every journey working on a table begins with it. Two things had to be got right. The review quotes each part of a qualified name separately, so the assertion is on the table's own name and not on the way a query would write it — the first version passed on SQLite and failed on PostgreSQL, which is what running a journey on four engines is for. And the grid is a TableGrid wrapping a widget.Table rather than a canvas object itself, so no tree walk finds it; Shell.ActiveGrid is exported for the journeys the way Explorer already was, since driving the widget a person drives is the point and a tab's fields are not reachable from outside the package. 5 mutations, each caught, and each named the step it broke: a filter that filters nothing, a review without its SQL, a commit that reports success and writes nothing, a grid nobody can reach, and an edit accepted and not recorded*
-- [ ] **T2.94** E2E: **J5** (move data)
+- [x] **T2.94** E2E: **J5** (move data) — *both halves: export a filtered result to a file, then import a CSV into a table with its columns paired and a dry run first. On SQLite untagged and on PostgreSQL, MySQL and MariaDB tagged. The file dialog is answered by a stand-in chooser on the harness, which is the right seam — a person picks a file and the journey says which, and everything on either side of that is the application's own. The export asserts the file holds the filtered rows and not one more, names its columns first, and carries none of what the filter left out. The import uses a file whose columns are in the other order from the table's, so that pairing them by name is what puts each value in the right place, then dry runs, then writes, and the table catches up on its own. One thing nearly slipped through and is the reason the journey is worth having: the first version tapped Dry Run as soon as the import tab appeared, before the pairing had landed, so the panel was still pairing by position — the dry run reported that every row would be refused, and the test passed anyway because its assertion was loose enough to match that sentence. Tightened to the dry run's own words, it failed, and the fix is to wait for the pairing rather than for the tab. A file in the table's own column order would have hidden it entirely, which is why this one is deliberately reversed. 6 mutations, each caught: an export written somewhere other than the file chosen, in a format nobody asked for, or without naming its columns; columns paired by position rather than by name; a dry run that writes what it was only meant to read; and an import that writes nothing*
 - [ ] **T2.95** E2E: **J7** (work safely in production)
 - [ ] **T2.96** E2E: **J8** (debug a stream)
 - [ ] **T2.97** NFR-P10 benchmark: 10k msg/s tail stays responsive, memory bounded
