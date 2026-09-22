@@ -109,8 +109,14 @@ type ConnectionConfig struct {
 	// Params carries driver-specific non-secret settings, keyed by Field.Key.
 	Params map[string]string
 
-	TLS    TLSConfig
-	SSH    *SSHConfig
+	TLS TLSConfig
+	SSH *SSHConfig
+
+	// Cloud, where it is set, is where the password comes from instead of
+	// the keychain: a token minted from an identity this machine already
+	// holds (FR-1.14).
+	Cloud *CloudConfig
+
 	Guard  Guard
 	Labels map[string]string
 }
@@ -148,6 +154,22 @@ type SSHConfig struct {
 
 	// JumpHosts are traversed in order before reaching Host.
 	JumpHosts []string
+}
+
+// CloudConfig says a connection signs in with a cloud identity rather than
+// with a password of its own (FR-1.14).
+//
+// Nothing secret belongs in here. What it names is where to look — a
+// provider, a profile, a tenant — and the identity itself is one the machine
+// already holds. A credential somebody typed goes to the keychain instead
+// (FR-1.5).
+type CloudConfig struct {
+	// Provider is one of "aws", "gcp", "azure".
+	Provider string
+
+	// Params are the provider's own settings, written to the settings file
+	// in plain sight.
+	Params map[string]string
 }
 
 // Source is a live connection.

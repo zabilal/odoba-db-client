@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ikigai-db/ikigai-db/internal/cloud"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/redact"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -52,12 +53,54 @@ func throughTunnel(ctx context.Context, cfg source.ConnectionConfig) (source.Con
 	return cfg, nil, err
 }
 
+// withCloudToken makes a connection's password a token minted from a cloud
+// identity, where it asks for one (FR-1.14).
+//
+// No driver knows any of this happened: a driver asks for a password and is
+// handed one. That is what keeps this one implementation rather than one per
+// driver, exactly as a tunnel is (ADR-0110).
+//
+// The order this is called in is not free. The endpoint is taken here,
+// before throughTunnel rewrites the host and port to the local end of a
+// tunnel. An AWS token is signed over the endpoint it may be spent at, and
+// one signed over 127.0.0.1 is refused by the database it was meant for.
+func withCloudToken(ctx context.Context, cfg source.ConnectionConfig) source.ConnectionConfig {
+	if cfg.Cloud == nil {
+		return cfg
+	}
+	target := cloud.Target{Host: cfg.Host, Port: cfg.Port, User: cfg.User}
+	asked := cloud.Config{Provider: cfg.Cloud.Provider, Params: cfg.Cloud.Params}
+	keychain := cfg.Secret
+	cfg.Secret = func(key string) (string, error) {
+		if key != "password" {
+			if keychain == nil {
+				return "", nil
+			}
+			return keychain(key)
+		}
+		// Detached from the connect context deliberately: a driver that
+		// reconnects asks for the password again, and by then whoever opened
+		// the connection has stopped waiting. A deadline of its own bounds
+		// it instead, so a metadata service that never answers cannot hold a
+		// reconnection open for ever.
+		mint, cancel := context.WithTimeout(context.WithoutCancel(ctx), tokenTimeout)
+		defer cancel()
+		return cloud.Token(mint, asked, target)
+	}
+	return cfg
+}
+
 // ErrNotFound: no connection or folder with that ID.
 var ErrNotFound = errors.New("app: not found")
 
 // testTimeout bounds "test connection". A server that has not answered in 15
 // seconds is not going to, and the user is waiting.
 const testTimeout = 15 * time.Second
+
+// tokenTimeout bounds minting a cloud token. Every provider here is reached
+// over the network, and one that does not answer must not become a
+// connection that never returns.
+const tokenTimeout = 15 * time.Second
 
 // SecretEdit describes changes to a connection's secrets. A key that is absent
 // is left as it is. That is what "leave the password blank to keep the saved
@@ -417,7 +460,7 @@ func (c *Connections) Test(ctx context.Context, conn store.SavedConnection, type
 	// Carried through a tunnel where one is asked for, and within the same
 	// budget: a server nobody can reach through SSH is a failure to report
 	// rather than a wait to sit through.
-	cfg, closeTunnel, err := throughTunnel(ctx, cfg)
+	cfg, closeTunnel, err := throughTunnel(ctx, withCloudToken(ctx, cfg))
 	if err != nil {
 		return testFailure(err, start)
 	}
@@ -485,7 +528,7 @@ func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (_
 		}
 		return c.vault.Get(id, key)
 	}
-	cfg, closeTunnel, err := throughTunnel(ctx, conn.ConnectionConfig(lookup))
+	cfg, closeTunnel, err := throughTunnel(ctx, withCloudToken(ctx, conn.ConnectionConfig(lookup)))
 	if err != nil {
 		return nil, err
 	}
