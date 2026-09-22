@@ -23,15 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 3.B is finished: T3.8 to T3.15 are done and FR-7.1 to
-           FR-7.5 are met on PostgreSQL. Next is 3.C, the ER diagram,
-           starting at T3.16 — generate one from a schema or a subset
-           of its tables (FR-8.1). The foreign keys it draws are
-           already read and already compared, so what is new is
-           layout: where a table goes, and how a diagram of sixty
-           tables is anything but a ball of string. W3 in the
-           prototypes is the thing being productionised, so what it
-           settled is worth reading before deciding anything.
+NEXT TASK: T3.17 — pan, zoom and drag, with the layout kept (FR-8.2).
+           The canvas has a viewport that pans, zooms, culls and hit
+           tests (T0.50-T0.54); what it has never had is a Fyne
+           widget in front of it, so this is the first drawing of a
+           node on a screen and the first of the spike's numbers put
+           to a real one. The layout is kept per connection and per
+           diagram, and Node.Pinned exists so a hand-arranged
+           diagram is not undone by a re-layout — where the positions
+           are kept is the question to settle, and the scratchpad's
+           store is the likely answer.
+           3.B is finished: T3.8 to T3.15 are done and FR-7.1 to
+           FR-7.5 are met on PostgreSQL.
            Comparing two live databases has no way in from the window
            (T3.11 compares against a saved model); nothing saves a
            model either (T4.8 is [~]: the format, reader and writer
@@ -134,7 +137,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — six properties over generated schemas, the first
+LAST DONE: 2026-09-22 — a schema drawn as a diagram, in a package between
+           the model and the canvas: what the catalogue says and
+           nothing inferred, so a join table is two foreign keys and
+           is drawn as two (T3.16, ADR-0127); before it
+           six properties over generated schemas, the first
            fuzzing here, which found three defects 39 tests could
            not: a one-sided materialized view called a view, the
            three kinds of constraint sharing one identity, and a
@@ -874,7 +881,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.C ER diagram → J4 (productionise W3)
 
-- [ ] **T3.16** Auto-generate from schema or table subset → FR-8.1
+- [x] **T3.16** Auto-generate from schema or table subset → FR-8.1 — *the canvas spike built the graph model, the layout, the routing and the viewport and is deliberately free of any idea of a database, one canvas serving the ER diagram and the query designer (ADR-0007). This is the half that knows about databases, in a package between the model and the canvas: a table is a node, a column is a port, a foreign key is an edge, and nothing in it imports Fyne, so a diagram is built and checked without a window (ADR-0127). It draws what the catalogue says and nothing it has inferred: a join table between two others is two foreign keys and is drawn as two, calling it a many-to-many being this program's opinion about a convention, drawn as though the server had said it — wrong sometimes and unfalsifiable always. An edge attaches to the columns the key is about rather than to the boxes, because a table with twenty columns should show which two are joined. A relationship is one-to-one when the child's own side is unique — its primary key, a unique constraint or a unique index over exactly those columns — and one-to-many otherwise; a unique index over only some rows guarantees nothing about the rest, and one over an expression needs no check of its own, an expression column carrying no name and so matching nothing a key names, which is why the check it had was removed as a line no test could tell the absence of. A subset says what leads out of it, or a table whose relationships point off the page looks unrelated. A table is named by its schema and its name, two schemas being able to hold tables of one name, and a bare name is accepted only where the database has one schema, since elsewhere a diagram quietly drawing the wrong table of two would be worse than one drawing neither. A table pointing at itself gets an edge to itself, that being a real and common relationship. Views are drawn only when asked for: nothing points at a view, so a schema with many draws mostly boxes with no lines. 18 mutations, each caught*
 - [ ] **T3.17** Pan, zoom, drag with persisted layout → FR-8.2
 - [ ] **T3.18** Render columns, keys, cardinality → FR-8.3
 - [ ] **T3.19** Export PNG / SVG → FR-8.4
