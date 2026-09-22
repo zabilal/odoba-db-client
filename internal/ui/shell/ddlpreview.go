@@ -47,6 +47,13 @@ func (p *designPanel) preview() {
 
 // show puts the statements up, and runs exactly those if asked.
 func (p *designPanel) show(stmts []source.Statement) {
+	p.s.previewDDL(p.t, stmts, func() { p.s.reopenDesign(p.t) })
+}
+
+// previewDDL shows what would run, and runs exactly that if asked. after is
+// what to do once it has, which for every caller is to read the object again
+// rather than assume it is now what was asked for.
+func (s *Shell) previewDDL(t *tab, stmts []source.Statement, after func()) {
 	body := widget.NewTextGridFromString(scriptOf(stmts))
 	head := widget.NewLabel(fmt.Sprintf("%s will run, in this order. Nothing has run yet.",
 		nounCount(len(stmts), "statement")))
@@ -56,59 +63,62 @@ func (p *designPanel) show(stmts []source.Statement) {
 		container.NewBorder(head, nil, nil, nil, container.NewVScroll(body)),
 		func(ok bool) {
 			if ok {
-				p.run(stmts, false)
+				s.runDDL(t, stmts, false, after)
 			}
-		}, p.s.win)
+		}, s.win)
 	d.Resize(fyne.NewSize(680, 460))
 	d.Show()
 }
 
-// run sends the statements that were read, and nothing else.
-func (p *designPanel) run(stmts []source.Statement, confirmed bool) {
-	live, ok := p.s.d.WS.Get(p.t.connID)
+// runDDL sends the statements that were read, and nothing else.
+func (s *Shell) runDDL(t *tab, stmts []source.Statement, confirmed bool, after func()) {
+	live, ok := s.d.WS.Get(t.connID)
 	if !ok {
-		p.t.footer.SetText("This connection is not open.")
+		t.footer.SetText("This connection is not open.")
 		return
 	}
-	p.t.footer.SetText("Running…")
-	ctx := p.t.ctx
+	t.footer.SetText("Running…")
+	ctx := t.ctx
 	go func() {
 		out, err := app.ApplyDDL(ctx, live.Source, stmts, confirmed)
-		p.s.d.Run(func() {
+		s.d.Run(func() {
 			if ctx.Err() != nil {
 				return
 			}
-			p.ran(stmts, out, err)
+			s.ranDDL(t, stmts, out, err, after)
 		})
 	}()
 }
 
-// ran says what happened, and asks again where the connection wants asking.
-func (p *designPanel) ran(stmts []source.Statement, out app.DDLOutcome, err error) {
+// ranDDL says what happened, and asks again where the connection wants
+// asking.
+func (s *Shell) ranDDL(t *tab, stmts []source.Statement, out app.DDLOutcome, err error, after func()) {
 	switch {
 	case err == nil:
-		// Read again from the server rather than assumed: what the table is
+		// Read again from the server rather than assumed: what the object is
 		// now is what the server says it is, not what was asked for.
-		p.t.footer.SetText(nounCount(out.Ran, "statement") + " ran.")
-		p.s.reopenDesign(p.t)
+		t.footer.SetText(nounCount(out.Ran, "statement") + " ran.")
+		if after != nil {
+			after()
+		}
 
 	case errors.Is(err, source.ErrConfirmationRequired):
 		// Nothing ran: the guard refused before the first statement
 		// reached the server, so asking and then running is safe (FR-4.9).
-		p.s.askToType(p.t.connID, "Change Structure on Production?",
-			productionBody("changes the structure of", p.s.connName(p.t.connID), "Nothing has run yet."),
-			"Run", func() { p.run(stmts, true) },
-			func() { p.t.footer.SetText("Not run") })
+		s.askToType(t.connID, "Change Structure on Production?",
+			productionBody("changes the structure of", s.connName(t.connID), "Nothing has run yet."),
+			"Run", func() { s.runDDL(t, stmts, true, after) },
+			func() { t.footer.SetText("Not run") })
 
 	case errors.Is(err, source.ErrReadOnly):
-		p.t.footer.SetText("Not run: this connection is read-only, and these statements change it.")
+		t.footer.SetText("Not run: this connection is read-only, and these statements change it.")
 
 	default:
 		// Part-way is the truth and is said as such: which statement
 		// stopped it, and how many had already run.
-		p.t.footer.SetText(fmt.Sprintf("%s ran, then %s failed: %v", nounCount(out.Ran, "statement"),
+		t.footer.SetText(fmt.Sprintf("%s ran, then %s failed: %v", nounCount(out.Ran, "statement"),
 			firstLineOf(out.Failed), err))
-		p.s.showError(err)
+		s.showError(err)
 	}
 }
 

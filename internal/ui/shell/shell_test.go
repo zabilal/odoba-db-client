@@ -146,6 +146,20 @@ func (f fakeSource) Describe(_ context.Context, ref model.ObjectRef) (any, error
 	if ref.Name() == "boom" {
 		panic("fakesql: describing fell over")
 	}
+	// The objects whose structure is their source (FR-6.5).
+	switch ref.Kind {
+	case model.KindView, model.KindMaterializedView:
+		return &model.View{Name: ref.Name(), Materialized: ref.Kind == model.KindMaterializedView,
+			Definition: "SELECT id, name FROM items"}, nil
+	case model.KindRoutine:
+		return &model.Routine{Name: ref.Name(), Kind: model.RoutineFunction, Language: "sql",
+			Definition: "CREATE OR REPLACE FUNCTION " + ref.Name() + " RETURNS integer AS $$ SELECT 1 $$"}, nil
+	case model.KindTrigger:
+		return &model.Trigger{Name: ref.Name(),
+			Definition: "CREATE TRIGGER " + ref.Name() + " AFTER INSERT ON items EXECUTE FUNCTION log()"}, nil
+	case model.KindSequence:
+		return &model.Sequence{Name: ref.Name(), Start: 1, Increment: 1}, nil
+	}
 	tbl := &model.Table{Name: ref.Name(), RowsEstimate: 41,
 		Columns: []model.Column{
 			{Name: "id", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}, Identity: true},
@@ -950,7 +964,17 @@ func TestSortingAColumnBrowsesAgainOnTheServer(t *testing.T) {
 // show. What it renders is not SQL anybody would run: it is the shape of the
 // change, which is what a test about the preview is asking about.
 
-func (fakeSource) CreateObject(_ model.ObjectRef, obj any) ([]source.Statement, error) {
+func (fakeSource) CreateObject(ref model.ObjectRef, obj any) ([]source.Statement, error) {
+	switch v := obj.(type) {
+	case *model.View:
+		return []source.Statement{{SQL: "CREATE OR REPLACE VIEW " + ref.Name() + " AS " + v.Definition}}, nil
+	case *model.Routine:
+		return []source.Statement{{SQL: v.Definition}}, nil
+	case *model.Trigger:
+		return []source.Statement{{SQL: "DROP TRIGGER " + v.Name}, {SQL: v.Definition}}, nil
+	case *model.Sequence:
+		return []source.Statement{{SQL: fmt.Sprintf("ALTER SEQUENCE %s START WITH %d", ref.Name(), v.Start)}}, nil
+	}
 	return []source.Statement{{SQL: "CREATE"}}, nil
 }
 

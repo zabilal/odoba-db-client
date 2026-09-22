@@ -34,6 +34,16 @@ import (
 
 // CreateObject renders the DDL that would recreate an object.
 func (d dialect) CreateObject(ref model.ObjectRef, obj any) ([]source.Statement, error) {
+	switch v := obj.(type) {
+	case *model.View:
+		return d.createView(ref, v)
+	case *model.Routine:
+		return d.createRoutine(v)
+	case *model.Trigger:
+		return d.createTrigger(ref, v)
+	case *model.Sequence:
+		return d.createSequence(ref, v)
+	}
 	t, ok := obj.(*model.Table)
 	if !ok {
 		return nil, fmt.Errorf("postgres: %T cannot be rendered as DDL yet", obj)
@@ -504,4 +514,104 @@ func backsAConstraint(t *model.Table, name string) bool {
 		return true
 	}
 	return slices.ContainsFunc(t.Uniques, func(u model.UniqueConstraint) bool { return u.Name == name })
+}
+
+// Objects whose structure is their source (FR-6.5).
+//
+// What an engine keeps is what it gives back, so a routine and a trigger are
+// re-sent as the statement PostgreSQL itself printed. That is why editing
+// one is editing text: rewriting it from parts would mean this program
+// parsing PL/pgSQL, and it does not.
+
+// createView renders a view, or replaces the one there. A materialized view
+// cannot be replaced in place, so it goes and is made again — which is a
+// real difference and is rendered as two statements rather than hidden.
+func (d dialect) createView(ref model.ObjectRef, v *model.View) ([]source.Statement, error) {
+	if strings.TrimSpace(v.Definition) == "" {
+		return nil, fmt.Errorf("postgres: view %s has no definition to render", v.Name)
+	}
+	name := d.QualifyRef(ref)
+	if name == "" {
+		name = d.QuoteIdentifier(v.Name)
+	}
+	body := strings.TrimRight(strings.TrimSpace(v.Definition), ";")
+	if v.Materialized {
+		return append([]source.Statement{{SQL: "DROP MATERIALIZED VIEW IF EXISTS " + name}},
+			source.Statement{SQL: "CREATE MATERIALIZED VIEW " + name + " AS\n" + body}), nil
+	}
+	return []source.Statement{{SQL: "CREATE OR REPLACE VIEW " + name + " AS\n" + body}}, nil
+}
+
+// createRoutine re-sends what PostgreSQL printed. pg_get_functiondef writes
+// CREATE OR REPLACE already, so a routine edited and sent again replaces
+// itself — and one whose arguments changed makes a second routine beside the
+// first, which is what PostgreSQL does and not something to hide.
+func (d dialect) createRoutine(r *model.Routine) ([]source.Statement, error) {
+	def := strings.TrimRight(strings.TrimSpace(r.Definition), ";")
+	if def == "" {
+		return nil, fmt.Errorf("postgres: routine %s has no definition to render", r.Name)
+	}
+	return []source.Statement{{SQL: def}}, nil
+}
+
+// createTrigger drops and makes again, because PostgreSQL has no CREATE OR
+// REPLACE TRIGGER before 14 and this does not ask which version it is
+// talking to. The drop is written IF EXISTS so that making one that is not
+// there yet works too.
+func (d dialect) createTrigger(ref model.ObjectRef, t *model.Trigger) ([]source.Statement, error) {
+	def := strings.TrimRight(strings.TrimSpace(t.Definition), ";")
+	if def == "" {
+		return nil, fmt.Errorf("postgres: trigger %s has no definition to render", t.Name)
+	}
+	on := d.triggerTable(ref)
+	if on == "" {
+		return nil, fmt.Errorf("postgres: %s does not say which table its trigger is on", ref)
+	}
+	return []source.Statement{
+		{SQL: "DROP TRIGGER IF EXISTS " + d.QuoteIdentifier(t.Name) + " ON " + on},
+		{SQL: def},
+	}, nil
+}
+
+// createSequence renders a sequence's numbers, which is all a sequence is.
+func (d dialect) createSequence(ref model.ObjectRef, q *model.Sequence) ([]source.Statement, error) {
+	name := d.QualifyRef(ref)
+	if name == "" {
+		name = d.QuoteIdentifier(q.Name)
+	}
+	var b strings.Builder
+	b.WriteString("ALTER SEQUENCE " + name)
+	if q.Increment != 0 {
+		fmt.Fprintf(&b, " INCREMENT BY %d", q.Increment)
+	}
+	if q.MinValue != nil {
+		fmt.Fprintf(&b, " MINVALUE %d", *q.MinValue)
+	} else {
+		b.WriteString(" NO MINVALUE")
+	}
+	if q.MaxValue != nil {
+		fmt.Fprintf(&b, " MAXVALUE %d", *q.MaxValue)
+	} else {
+		b.WriteString(" NO MAXVALUE")
+	}
+	fmt.Fprintf(&b, " START WITH %d", q.Start)
+	if q.Cycle {
+		b.WriteString(" CYCLE")
+	} else {
+		b.WriteString(" NO CYCLE")
+	}
+	out := []source.Statement{{SQL: b.String()}}
+	if q.Comment != "" {
+		out = append(out, source.Statement{SQL: "COMMENT ON SEQUENCE " + name + " IS " + literal(q.Comment)})
+	}
+	return out, nil
+}
+
+// triggerTable is the table a trigger's ref hangs under: database, schema,
+// table, trigger.
+func (d dialect) triggerTable(ref model.ObjectRef) string {
+	if p := ref.Path; len(p) >= 4 {
+		return d.QuoteIdentifier(p[len(p)-3]) + "." + d.QuoteIdentifier(p[len(p)-2])
+	}
+	return ""
 }
