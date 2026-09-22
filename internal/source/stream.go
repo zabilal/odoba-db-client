@@ -29,17 +29,13 @@ type GroupInspector interface {
 	GroupOffsets(ctx context.Context, groupID string) ([]model.GroupOffset, error)
 }
 
-// StreamAdmin inspects and manages consumer groups and topics.
-type StreamAdmin interface {
-	GroupInspector
-
-	// ResetOffsets moves a group's committed offsets.
-	//
-	// This is AccessAdmin: it changes what a running consumer will read next,
-	// and is one of the most destructive operations in the product. It is
-	// guarded without exception (FR-13.13, FR-13.21).
-	ResetOffsets(ctx context.Context, req ResetRequest) error
-
+// TopicAdmin makes, unmakes and reshapes topics (FR-13.12).
+//
+// It is separate from resetting a group's offsets for the reason the reading
+// half was separated from both: each of these is a claim of its own, and one
+// interface for all of them would make offering any a promise to do the rest
+// (ADR-0107).
+type TopicAdmin interface {
 	// CreateTopic, DeleteTopic and AlterTopicConfig are AccessDDL (FR-13.12).
 	CreateTopic(ctx context.Context, spec TopicSpec) error
 	DeleteTopic(ctx context.Context, topic string, confirmed bool) error
@@ -49,6 +45,25 @@ type StreamAdmin interface {
 	// and it changes key-to-partition mapping for future records, so the UI
 	// must say so before calling.
 	AddPartitions(ctx context.Context, topic string, count int32, confirmed bool) error
+}
+
+// OffsetResetter moves a consumer group's committed offsets (FR-13.13).
+type OffsetResetter interface {
+	// ResetOffsets moves a group's committed offsets.
+	//
+	// This is AccessAdmin: it changes what a running consumer will read next,
+	// and is one of the most destructive operations in the product. It is
+	// guarded without exception (FR-13.13, FR-13.21).
+	ResetOffsets(ctx context.Context, req ResetRequest) error
+}
+
+// StreamAdmin is the whole of it: reading groups, administering topics, and
+// moving offsets. A driver that does all three satisfies it, and one that
+// does some of them implements those and says so in its capabilities.
+type StreamAdmin interface {
+	GroupInspector
+	TopicAdmin
+	OffsetResetter
 }
 
 // ResetRequest describes a consumer-group offset reset.

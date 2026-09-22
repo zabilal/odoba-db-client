@@ -308,8 +308,21 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.StreamProducer); !ok {
 		t.Error("claims Stream.Produce but does not implement StreamProducer")
 	}
+	// And topics can be made, unmade and reshaped (T2.78), which is a claim
+	// about topics and not about resetting anybody's offsets: that is a
+	// separate claim behind a separate interface, and it is not written, so
+	// this driver must not satisfy it (ADR-0107).
+	if !caps.Stream.TopicAdmin {
+		t.Error("topics are made and unmade, and administering them is not claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.TopicAdmin); !ok {
+		t.Error("claims Stream.TopicAdmin but does not implement TopicAdmin")
+	}
+	if _, ok := any(&kafkaSource{}).(source.OffsetResetter); ok {
+		t.Error("implements OffsetResetter, and resetting offsets is not written")
+	}
 	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-		ConsumerGroups: true, Produce: true}
+		ConsumerGroups: true, Produce: true, TopicAdmin: true}
 	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
@@ -475,5 +488,72 @@ func TestARecordWithNoTopicIsRefused(t *testing.T) {
 	_, _, err := s.Produce(context.Background(), source.ProduceRequest{Partition: -1, Value: []byte("x")})
 	if err == nil || !strings.Contains(err.Error(), "topic") {
 		t.Errorf("a record with no topic is refused with %v", err)
+	}
+}
+
+// Making and unmaking topics, refused before anything is dialled (T2.78).
+
+func TestChangingTopicsIsRefusedBeforeItDials(t *testing.T) {
+	ro := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
+	prod := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{Environment: source.EnvProduction}}}
+	ctx := context.Background()
+
+	for name, act := range map[string]func(*kafkaSource, bool) error{
+		"creating a topic": func(s *kafkaSource, c bool) error {
+			return s.CreateTopic(ctx, source.TopicSpec{Name: "t", Partitions: 1, ReplicationFactor: 1, Confirmed: c})
+		},
+		"deleting a topic":  func(s *kafkaSource, c bool) error { return s.DeleteTopic(ctx, "t", c) },
+		"adding partitions": func(s *kafkaSource, c bool) error { return s.AddPartitions(ctx, "t", 1, c) },
+		"configuring a topic": func(s *kafkaSource, c bool) error {
+			return s.AlterTopicConfig(ctx, "t", map[string]string{"retention.ms": "1000"}, c)
+		},
+	} {
+		if err := act(ro, false); !errors.Is(err, source.ErrReadOnly) {
+			t.Errorf("%s on a read-only connection: %v", name, err)
+		}
+		// Consent cannot buy past read-only, here as anywhere else.
+		if err := act(ro, true); !errors.Is(err, source.ErrReadOnly) {
+			t.Errorf("%s confirmed on a read-only connection: %v", name, err)
+		}
+		if err := act(prod, false); !errors.Is(err, source.ErrConfirmationRequired) {
+			t.Errorf("%s on a production connection, unasked: %v", name, err)
+		}
+	}
+}
+
+func TestATopicThatCouldNotExistIsRefusedBeforeItDials(t *testing.T) {
+	// None of these needs a cluster to be wrong, and each is refused here so
+	// that the answer is a plain one rather than a broker's.
+	//
+	// What each refusal says is checked, not merely that there was one: this
+	// source has no connection at all, so anything reaching it would fail
+	// too, and a test asking only whether something went wrong would pass on
+	// a crash just as happily.
+	s := &kafkaSource{}
+	ctx := context.Background()
+	for name, c := range map[string]struct {
+		err  error
+		says string
+	}{
+		"a topic with no name": {
+			s.CreateTopic(ctx, source.TopicSpec{Partitions: 1, ReplicationFactor: 1}), "needs a name"},
+		"a topic cut into none": {
+			s.CreateTopic(ctx, source.TopicSpec{Name: "t", Partitions: 0, ReplicationFactor: 1}), "at least one partition"},
+		"a topic kept in no copies": {
+			s.CreateTopic(ctx, source.TopicSpec{Name: "t", Partitions: 1, ReplicationFactor: 0}), "at least one copy"},
+		"deleting a topic unnamed":   {s.DeleteTopic(ctx, "", false), "without a name"},
+		"adding no partitions":       {s.AddPartitions(ctx, "t", 0, false), "at least one"},
+		"adding partitions to none":  {s.AddPartitions(ctx, "", 1, false), "without a name"},
+		"configuring nothing at all": {s.AlterTopicConfig(ctx, "t", nil, false), "nothing was given"},
+		"configuring no topic": {
+			s.AlterTopicConfig(ctx, "", map[string]string{"a": "b"}, false), "without a name"},
+	} {
+		if c.err == nil {
+			t.Errorf("%s was accepted", name)
+			continue
+		}
+		if !strings.Contains(c.err.Error(), c.says) {
+			t.Errorf("%s is refused with %q, which does not say %q", name, c.err, c.says)
+		}
 	}
 }

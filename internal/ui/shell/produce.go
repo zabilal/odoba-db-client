@@ -157,24 +157,14 @@ func produceFrom(topic, key, value, partition, headers, subject string) (source.
 }
 
 // headersFrom reads one header per line, written as name: value.
-//
-// The first colon separates, because a header's value may hold one — a trace
-// parent and a URL both do — and a name may not.
 func headersFrom(text string) ([]model.RecordHeader, error) {
+	pairs, err := pairsFrom(text, "header")
+	if err != nil {
+		return nil, err
+	}
 	var out []model.RecordHeader
-	for i, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		name, val, found := strings.Cut(line, ":")
-		if !found {
-			return nil, fmt.Errorf("header %d is %q, which is not a name and a value with a colon between them", i+1, line)
-		}
-		if name = strings.TrimSpace(name); name == "" {
-			return nil, fmt.Errorf("header %d has a value and no name to go with it", i+1)
-		}
-		out = append(out, model.RecordHeader{Key: name, Value: []byte(strings.TrimSpace(val))})
+	for _, p := range pairs {
+		out = append(out, model.RecordHeader{Key: p[0], Value: []byte(p[1])})
 	}
 	return out, nil
 }

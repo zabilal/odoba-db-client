@@ -241,9 +241,14 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Stream.ConsumerGroups but does not implement GroupInspector")
 		}
 	}
-	if caps.Stream.TopicAdmin || caps.Stream.ResetOffsets {
-		if _, ok := src.(source.StreamAdmin); !ok {
-			t.Error("claims stream administration but does not implement StreamAdmin")
+	if caps.Stream.TopicAdmin {
+		if _, ok := src.(source.TopicAdmin); !ok {
+			t.Error("claims Stream.TopicAdmin but does not implement TopicAdmin")
+		}
+	}
+	if caps.Stream.ResetOffsets {
+		if _, ok := src.(source.OffsetResetter); !ok {
+			t.Error("claims Stream.ResetOffsets but does not implement OffsetResetter")
 		}
 	}
 	if caps.Stream.Produce {
