@@ -90,37 +90,62 @@ func (n Node) Differs() bool { return n.Status != Same }
 //
 // from is what is there and to is what is wanted, so Added means "in to and
 // not in from" — the thing a sync script would create.
-func Compare(from, to *model.Database) Node {
+func Compare(from, to *model.Database) Node { return CompareWith(from, to, Options{}) }
+
+// CompareWith is Compare with some differences left out (FR-7.5).
+//
+// The rules are applied while the comparison is made, so what is left out is
+// not a difference at all: it does not make its table read as changed, it is
+// not counted, and it cannot be chosen for a sync script.
+func CompareWith(from, to *model.Database, opt Options) Node {
 	if from == nil {
 		from = &model.Database{}
 	}
 	if to == nil {
 		to = &model.Database{}
 	}
+	c := comparer{opt: opt}
 	n := Node{Kind: model.KindDatabase, Name: pick(to.Name, from.Name)}
 	n.Detail = fields(
-		field("charset", from.Charset, to.Charset),
-		field("collation", from.Collate, to.Collate),
-		field("comment", from.Comment, to.Comment),
+		field("charset", c.collation(from.Charset), c.collation(to.Charset)),
+		field("collation", c.collation(from.Collate), c.collation(to.Collate)),
+		field("comment", opt.comment(from.Comment), opt.comment(to.Comment)),
 	)
 	n.Children = match(from.Schemas, to.Schemas, model.KindSchema,
-		func(s model.Schema) string { return s.Name }, compareSchema)
+		func(s model.Schema) string { return s.Name }, c.compareSchema,
+		func(name string) bool { return opt.skipSchema(name) })
 	return settle(n)
 }
 
-func compareSchema(from, to model.Schema) Node {
+// comparer carries what a comparison was told to leave out, so that every
+// comparison below it is made the same way.
+type comparer struct{ opt Options }
+
+// collation is a charset or a collation, or nothing where they are left out.
+func (c comparer) collation(s string) string {
+	if c.opt.Collation {
+		return ""
+	}
+	return s
+}
+
+// skipObject is the rule a name pattern makes, for the lists of objects
+// inside a schema.
+func (c comparer) skipObject(name string) bool { return c.opt.skipName(name) }
+
+func (c comparer) compareSchema(from, to model.Schema) Node {
 	n := Node{Kind: model.KindSchema, Name: to.Name}
 	n.Detail = fields(
 		field("owner", from.Owner, to.Owner),
-		field("comment", from.Comment, to.Comment),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
-	n.Detail = append(n.Detail, attrFields(from.Attrs, to.Attrs)...)
+	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	n.Children = slices.Concat(
-		match(from.Tables, to.Tables, model.KindTable, func(t model.Table) string { return t.Name }, compareTable),
-		match(from.Views, to.Views, model.KindView, func(v model.View) string { return v.Name }, compareView),
-		match(from.Routines, to.Routines, model.KindRoutine, routineName, compareRoutine),
-		match(from.Sequences, to.Sequences, model.KindSequence, func(s model.Sequence) string { return s.Name }, compareSequence),
-		match(from.UserTypes, to.UserTypes, model.KindUserType, func(t model.UserType) string { return t.Name }, compareUserType),
+		match(from.Tables, to.Tables, model.KindTable, func(t model.Table) string { return t.Name }, c.compareTable, c.skipObject),
+		match(from.Views, to.Views, model.KindView, func(v model.View) string { return v.Name }, c.compareView, c.skipObject),
+		match(from.Routines, to.Routines, model.KindRoutine, routineName, c.compareRoutine, c.skipObject),
+		match(from.Sequences, to.Sequences, model.KindSequence, func(s model.Sequence) string { return s.Name }, c.compareSequence, c.skipObject),
+		match(from.UserTypes, to.UserTypes, model.KindUserType, func(t model.UserType) string { return t.Name }, c.compareUserType, c.skipObject),
 	)
 	return settle(n)
 }
@@ -135,20 +160,20 @@ func routineName(r model.Routine) string {
 	return r.Name + "(" + strings.Join(parts, ", ") + ")"
 }
 
-func compareTable(from, to model.Table) Node {
+func (c comparer) compareTable(from, to model.Table) Node {
 	n := Node{Kind: model.KindTable, Name: to.Name}
 	// RowsEstimate is deliberately absent: it is a statistic, it is -1 when
 	// unknown, and a model read from a file never has one.
-	n.Detail = fields(field("comment", from.Comment, to.Comment))
-	n.Detail = append(n.Detail, attrFields(from.Attrs, to.Attrs)...)
+	n.Detail = fields(field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)))
+	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	n.Children = slices.Concat(
-		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, compareColumn),
-		matchOne(from.PrimaryKey, to.PrimaryKey, model.KindConstraint, keyName, comparePrimaryKey),
-		match(from.Uniques, to.Uniques, model.KindConstraint, func(u model.UniqueConstraint) string { return u.Name }, compareUnique),
-		match(from.ForeignKeys, to.ForeignKeys, model.KindForeignKey, func(f model.ForeignKey) string { return f.Name }, compareForeignKey),
-		match(from.Checks, to.Checks, model.KindConstraint, func(c model.CheckConstraint) string { return c.Name }, compareCheck),
-		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, compareIndex),
-		match(from.Triggers, to.Triggers, model.KindTrigger, func(t model.Trigger) string { return t.Name }, compareTrigger),
+		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, c.compareColumn),
+		matchOne(from.PrimaryKey, to.PrimaryKey, model.KindConstraint, keyName, c.comparePrimaryKey),
+		match(from.Uniques, to.Uniques, model.KindConstraint, func(u model.UniqueConstraint) string { return u.Name }, c.compareUnique),
+		match(from.ForeignKeys, to.ForeignKeys, model.KindForeignKey, func(f model.ForeignKey) string { return f.Name }, c.compareForeignKey),
+		match(from.Checks, to.Checks, model.KindConstraint, func(c model.CheckConstraint) string { return c.Name }, c.compareCheck),
+		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, c.compareIndex),
+		match(from.Triggers, to.Triggers, model.KindTrigger, func(t model.Trigger) string { return t.Name }, c.compareTrigger),
 	)
 	return settle(n)
 }
@@ -161,7 +186,7 @@ func compareTable(from, to model.Table) Node {
 // as well would report one difference twice, and where they disagreed with
 // the word it would be a defect in the driver rather than a difference
 // between two schemas.
-func compareColumn(from, to model.Column) Node {
+func (c comparer) compareColumn(from, to model.Column) Node {
 	n := Node{Kind: model.KindColumn, Name: to.Name}
 	n.Detail = fields(
 		field("type", from.Type.Native, to.Type.Native),
@@ -170,10 +195,10 @@ func compareColumn(from, to model.Column) Node {
 		field("default", defaultOf(from), defaultOf(to)),
 		field("identity", yes(from.Identity), yes(to.Identity)),
 		field("auto-increment", yes(from.AutoIncrement), yes(to.AutoIncrement)),
-		field("generated", from.Generated, to.Generated),
-		field("comment", from.Comment, to.Comment),
+		field("generated", c.opt.text(from.Generated), c.opt.text(to.Generated)),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
-	n.Detail = append(n.Detail, attrFields(from.Attrs, to.Attrs)...)
+	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	return settle(n)
 }
 
@@ -188,25 +213,25 @@ func defaultOf(c model.Column) string {
 
 func keyName(k *model.PrimaryKey) string { return k.Name }
 
-func comparePrimaryKey(from, to *model.PrimaryKey) Node {
+func (c comparer) comparePrimaryKey(from, to *model.PrimaryKey) Node {
 	n := Node{Kind: model.KindConstraint, Name: to.Name}
 	n.Detail = fields(field("columns", list(from.Columns), list(to.Columns)))
 	return settle(n)
 }
 
-func compareUnique(from, to model.UniqueConstraint) Node {
+func (c comparer) compareUnique(from, to model.UniqueConstraint) Node {
 	n := Node{Kind: model.KindConstraint, Name: to.Name}
 	n.Detail = fields(field("columns", list(from.Columns), list(to.Columns)))
 	return settle(n)
 }
 
-func compareCheck(from, to model.CheckConstraint) Node {
+func (c comparer) compareCheck(from, to model.CheckConstraint) Node {
 	n := Node{Kind: model.KindConstraint, Name: to.Name}
-	n.Detail = fields(field("expression", from.Expression, to.Expression))
+	n.Detail = fields(field("expression", c.opt.text(from.Expression), c.opt.text(to.Expression)))
 	return settle(n)
 }
 
-func compareForeignKey(from, to model.ForeignKey) Node {
+func (c comparer) compareForeignKey(from, to model.ForeignKey) Node {
 	n := Node{Kind: model.KindForeignKey, Name: to.Name}
 	n.Detail = fields(
 		field("columns", list(from.Columns), list(to.Columns)),
@@ -225,16 +250,16 @@ func refOf(f model.ForeignKey) string {
 	return name + " (" + list(f.RefColumns) + ")"
 }
 
-func compareIndex(from, to model.Index) Node {
+func (c comparer) compareIndex(from, to model.Index) Node {
 	n := Node{Kind: model.KindIndex, Name: to.Name}
 	n.Detail = fields(
 		field("columns", indexColumns(from.Columns), indexColumns(to.Columns)),
 		field("unique", yes(from.Unique), yes(to.Unique)),
 		field("method", from.Method, to.Method),
-		field("predicate", from.Predicate, to.Predicate),
+		field("predicate", c.opt.text(from.Predicate), c.opt.text(to.Predicate)),
 		field("include", list(from.Include), list(to.Include)),
 	)
-	n.Detail = append(n.Detail, attrFields(from.Attrs, to.Attrs)...)
+	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	return settle(n)
 }
 
@@ -255,18 +280,19 @@ func indexColumns(cols []model.IndexColumn) string {
 	return strings.Join(parts, ", ")
 }
 
-func compareView(from, to model.View) Node {
+func (c comparer) compareView(from, to model.View) Node {
 	n := Node{Kind: viewKind(to), Name: to.Name}
 	n.Detail = fields(
 		field("materialized", yes(from.Materialized), yes(to.Materialized)),
-		// Text, compared as text. Two servers will print the same view
-		// differently, and FR-7.5's ignore rules are where that is answered.
-		field("definition", from.Definition, to.Definition),
-		field("comment", from.Comment, to.Comment),
+		// Text, compared as text, unless a rule says to read its
+		// whitespace as one space: two servers print the same view
+		// differently, and FR-7.5's rules are where that is answered.
+		field("definition", c.opt.text(from.Definition), c.opt.text(to.Definition)),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
 	n.Children = slices.Concat(
-		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, compareColumn),
-		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, compareIndex),
+		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, c.compareColumn),
+		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, c.compareIndex),
 	)
 	return settle(n)
 }
@@ -278,14 +304,14 @@ func viewKind(v model.View) model.ObjectKind {
 	return model.KindView
 }
 
-func compareRoutine(from, to model.Routine) Node {
+func (c comparer) compareRoutine(from, to model.Routine) Node {
 	n := Node{Kind: model.KindRoutine, Name: routineName(to)}
 	n.Detail = fields(
 		field("kind", string(from.Kind), string(to.Kind)),
 		field("language", from.Language, to.Language),
 		field("returns", returnOf(from), returnOf(to)),
-		field("definition", from.Definition, to.Definition),
-		field("comment", from.Comment, to.Comment),
+		field("definition", c.opt.text(from.Definition), c.opt.text(to.Definition)),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
 	return settle(n)
 }
@@ -297,7 +323,7 @@ func returnOf(r model.Routine) string {
 	return r.Returns.Native
 }
 
-func compareSequence(from, to model.Sequence) Node {
+func (c comparer) compareSequence(from, to model.Sequence) Node {
 	n := Node{Kind: model.KindSequence, Name: to.Name}
 	n.Detail = fields(
 		field("type", from.DataType, to.DataType),
@@ -306,7 +332,7 @@ func compareSequence(from, to model.Sequence) Node {
 		field("minimum", bound(from.MinValue), bound(to.MinValue)),
 		field("maximum", bound(from.MaxValue), bound(to.MaxValue)),
 		field("cycle", yes(from.Cycle), yes(to.Cycle)),
-		field("comment", from.Comment, to.Comment),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
 	return settle(n)
 }
@@ -319,19 +345,19 @@ func bound(v *int64) string {
 	return fmt.Sprint(*v)
 }
 
-func compareTrigger(from, to model.Trigger) Node {
+func (c comparer) compareTrigger(from, to model.Trigger) Node {
 	n := Node{Kind: model.KindTrigger, Name: to.Name}
 	n.Detail = fields(
 		field("timing", from.Timing, to.Timing),
 		field("events", list(from.Events), list(to.Events)),
 		field("for each row", yes(from.ForEachRow), yes(to.ForEachRow)),
-		field("condition", from.Condition, to.Condition),
-		field("definition", from.Definition, to.Definition),
+		field("condition", c.opt.text(from.Condition), c.opt.text(to.Condition)),
+		field("definition", c.opt.text(from.Definition), c.opt.text(to.Definition)),
 	)
 	return settle(n)
 }
 
-func compareUserType(from, to model.UserType) Node {
+func (c comparer) compareUserType(from, to model.UserType) Node {
 	n := Node{Kind: model.KindUserType, Name: to.Name}
 	n.Detail = fields(
 		field("category", from.Category, to.Category),
@@ -339,7 +365,7 @@ func compareUserType(from, to model.UserType) Node {
 		field("values", list(from.EnumValues), list(to.EnumValues)),
 		field("fields", fieldDefs(from.Fields), fieldDefs(to.Fields)),
 		field("base type", from.BaseType, to.BaseType),
-		field("comment", from.Comment, to.Comment),
+		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
 	return settle(n)
 }

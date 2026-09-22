@@ -357,3 +357,107 @@ func TestSavingNothingAtAll(t *testing.T) {
 		t.Error("it saved nothing as something")
 	}
 }
+
+// What a comparison leaves out travels with the model (FR-7.5).
+
+func TestRulesTravelWithTheModel(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "model")
+	if err := Write(dir, rich()); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Ignore(dir); err != nil || got.Any() {
+		t.Fatalf("a new model said %+v, %v", got, err)
+	}
+
+	want := diff.Options{Schemas: []string{"audit"}, Names: []string{"*_tmp"},
+		Whitespace: true, Collation: true, Comments: true}
+	if err := SetIgnore(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Ignore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Describe() != want.Describe() {
+		t.Errorf("it kept %q, want %q", got.Describe(), want.Describe())
+	}
+
+	// And they are in the root file, where a commit that changes them
+	// touches one file and says so.
+	data, err := os.ReadFile(filepath.Join(dir, dbFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "audit") {
+		t.Errorf("the root file holds %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "public", "tables", "orders.json")); err != nil {
+		t.Errorf("keeping a rule disturbed the objects: %v", err)
+	}
+}
+
+// Saving the model again keeps the rules agreed about it: reading the
+// database again is no reason to throw away an agreement about it.
+func TestSavingAgainKeepsTheRules(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "model")
+	if err := Write(dir, rich()); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetIgnore(dir, diff.Options{Comments: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(dir, rich()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Ignore(dir)
+	if err != nil || !got.Comments {
+		t.Errorf("after saving again it says %+v, %v", got, err)
+	}
+}
+
+// Rules that say nothing are not written at all, so a model with none has a
+// root file with none in it.
+func TestNoRulesAreNotWrittenDown(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "model")
+	if err := Write(dir, rich()); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetIgnore(dir, diff.Options{Comments: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetIgnore(dir, diff.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, dbFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "ignore") {
+		t.Errorf("the root file still holds %q", data)
+	}
+}
+
+// A rule that is not one is refused before it is written down.
+func TestARuleThatIsNotOneIsNotKept(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "model")
+	if err := Write(dir, rich()); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetIgnore(dir, diff.Options{Names: []string{"[unclosed"}}); err == nil {
+		t.Error("a pattern that will not parse was kept")
+	}
+	if got, _ := Ignore(dir); got.Any() {
+		t.Errorf("it kept %+v", got)
+	}
+}
+
+// A directory with no model in it says so rather than answering no rules,
+// which would read as a model that ignores nothing.
+func TestAskingAboutAModelThatIsNotThere(t *testing.T) {
+	if _, err := Ignore(t.TempDir()); !errors.Is(err, ErrNotAModel) {
+		t.Errorf("it said %v", err)
+	}
+	if err := SetIgnore(t.TempDir(), diff.Options{Comments: true}); !errors.Is(err, ErrNotAModel) {
+		t.Errorf("it said %v", err)
+	}
+}
