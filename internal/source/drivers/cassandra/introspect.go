@@ -33,7 +33,11 @@ func (s *cassandraSource) Root(ctx context.Context) (_ []model.Node, err error) 
 	current := strings.TrimSpace(s.cfg.Database)
 	out := make([]model.Node, 0, len(names))
 	for _, name := range names {
-		node := model.Node{Ref: model.NewRef(model.KindDatabase, name), Label: name, HasChildren: true}
+		// Describable: a keyspace has how it is replicated and how it is
+		// durably written, which Describe has returned all along and nothing
+		// could reach (ADR-0106).
+		node := model.Node{Ref: model.NewRef(model.KindDatabase, name), Label: name,
+			HasChildren: true, Describable: true}
 		if name == current {
 			node.Attrs = map[string]string{"current": "true"}
 		}

@@ -31,6 +31,15 @@ func TestLiveTheTreeIsTheCluster(t *testing.T) {
 	if !cluster.HasChildren {
 		t.Error("the cluster claims no children though it holds its topics")
 	}
+	// And it can be described — its brokers, and which of them answers for
+	// the whole. Nothing could ask for that while the action was offered
+	// only for what can be read (ADR-0106).
+	if !cluster.Describable {
+		t.Error("the cluster offers no description, though Describe returns one")
+	}
+	if cluster.Browsable {
+		t.Error("the cluster offers rows, which it has not got")
+	}
 	kids, err := src.Children(ctx, cluster.Ref)
 	if err != nil || len(kids) == 0 {
 		t.Fatalf("the cluster holds %v: %v", kids, err)

@@ -84,6 +84,12 @@ func TestLiveListsTheKeyspacesAPersonPutThere(t *testing.T) {
 		if n.Ref.Kind != model.KindDatabase || !n.HasChildren {
 			t.Errorf("%s is %+v", n.Label, n)
 		}
+		// A keyspace is described — how it is replicated, and whether it is
+		// durably written — and has no rows of its own, so it must offer the
+		// description or nothing can reach it (ADR-0106).
+		if !n.Describable {
+			t.Errorf("the keyspace %s offers no description, though Describe returns one", n.Label)
+		}
 	}
 	if found == nil {
 		t.Fatalf("the keyspaces are %v, and %s is not among them", labels(nodes), fixture)

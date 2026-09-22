@@ -58,7 +58,10 @@ NEXT TASK: T2.76 — per-partition current offset, end offset and lag
            the directory its file sits in. Both pass alone, five times out of
            five; the shell package takes 29-40s tagged, and that is when they
            bite. Nothing here is the copying or the script: it is what
-           outlives a test under load.
+           outlives a test under load. A fourth on 2026-09-22, untagged and
+           under no tags at all: TestCopyAsInsertAsksTheDialect at the same
+           5s pump budget, with the shell package taking 42s, passing five
+           times out of five alone. Three of the four are that one wait.
            Open beside them: gocql writes its own account of a failed
            connection to stderr, beside the ConnectError this driver makes
            of it; quieting it means handing gocql a logger, which belongs
@@ -83,7 +86,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-19 — a consumer group described by who is in it, what
+LAST DONE: 2026-09-22 — the structure of an object with no rows made
+           reachable at all: a node now says whether it can be described,
+           separately from whether it can be read, and the four kinds whose
+           description nothing could ask for — Kafka's cluster, its subjects
+           and its consumer groups, and Cassandra's keyspaces — open at last
+           (ADR-0106); before it a consumer group described by who is in it, what
            each member was given to read, and what the group is doing, its
            lag left to T2.76 because reading it costs two requests nobody
            asked for (T2.75); before it a registry's subjects in the tree, a

@@ -118,6 +118,20 @@ type Node struct {
 	// collection, key pattern or topic. Drives the "open data" action.
 	Browsable bool
 
+	// Describable reports whether this node has a structure worth showing
+	// that is not its rows: a cluster, a consumer group, a registry subject.
+	// Drives the "open structure" action.
+	//
+	// Browsable stood in for this and could not do the job. A table is both,
+	// so the two agreed everywhere they were tested; but a consumer group
+	// has a description and no rows at all, and deciding whether to offer its
+	// structure by asking whether it can be read answered wrongly for every
+	// object of that kind (ADR-0106).
+	//
+	// Anything browsable can also be described, so a node that yields rows
+	// need not set this.
+	Describable bool
+
 	// Badge carries a lazily-fetched, cancellable count or size (FR-2.5).
 	// Nil until loaded; loading must never block tree expansion.
 	Badge *Badge

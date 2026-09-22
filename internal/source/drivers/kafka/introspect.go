@@ -37,6 +37,10 @@ func (s *kafkaSource) Root(ctx context.Context) (_ []model.Node, err error) {
 		// It holds its topics, and always says so: the class is shown even
 		// when empty, so this never opens onto nothing.
 		HasChildren: true,
+		// And it has an account of itself — its brokers, and which of them
+		// answers for the whole — which Describe has returned since T2.59
+		// and nothing could reach until this was said out loud (ADR-0106).
+		Describable: true,
 	}}, nil
 }
 
@@ -299,6 +303,9 @@ func (s *kafkaSource) groupNodes(ctx context.Context, class model.ObjectRef) ([]
 			Ref:   model.NewRef(model.KindConsumerGroup, cluster, g.Group),
 			Label: g.Group,
 			Attrs: attrs,
+			// Who is in it and what each was given to read: a description,
+			// and no rows at all (ADR-0106).
+			Describable: true,
 		})
 	}
 	return out, nil
@@ -325,6 +332,10 @@ func (s *kafkaSource) subjectNodes(ctx context.Context, class model.ObjectRef) (
 		out = append(out, model.Node{
 			Ref:   model.NewRef(model.KindSubject, cluster, sub.Name),
 			Label: sub.Name,
+			// Its versions and their schemas are what it is, and they are
+			// shown by describing it rather than by opening rows it has not
+			// got (ADR-0106).
+			Describable: true,
 		})
 	}
 	return out, nil
