@@ -123,6 +123,8 @@ func (p *designPanel) draw() {
 	for _, c := range p.design.Columns() {
 		p.rows.Add(p.row(c))
 	}
+	p.rows.Add(widget.NewSeparator())
+	p.rows.Add(p.constraintRows())
 	p.rows.Refresh()
 	p.say()
 }
@@ -214,7 +216,7 @@ func (p *designPanel) addColumn() {
 func (p *designPanel) say() {
 	changes := p.design.Changes()
 	p.undo.Enable()
-	if len(changes) == 0 {
+	if !p.design.Changed() {
 		p.undo.Disable()
 		p.t.footer.SetText("No changes yet.")
 		return
@@ -228,7 +230,8 @@ func (p *designPanel) say() {
 			said = append(said, fmt.Sprintf("%s %s", c.Name, c.Kind))
 		}
 	}
-	p.t.footer.SetText(fmt.Sprintf("%s: %s", nounCount(len(changes), "change"), strings.Join(said, ", ")))
+	said = append(said, sayConstraints(p.design.ConstraintChanges())...)
+	p.t.footer.SetText(fmt.Sprintf("%s: %s", nounCount(len(said), "change"), strings.Join(said, ", ")))
 }
 
 // typeText is a column's type as somebody would type it, which is the

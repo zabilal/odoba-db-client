@@ -127,9 +127,9 @@ func (d *Design) DropColumn(name string) error {
 	if at < 0 {
 		return fmt.Errorf("this table has no column called %q", name)
 	}
-	if d.to.PrimaryKey != nil && slices.Contains(d.to.PrimaryKey.Columns, d.to.Columns[at].Name) {
-		return fmt.Errorf("%s is part of this table's primary key, so dropping it would drop the key too; "+
-			"change the key first", name)
+	if what, held := d.keyed(d.to.Columns[at].Name); held {
+		return fmt.Errorf("%s is part of %s, so dropping it would drop that too; change it first",
+			name, what)
 	}
 	d.to.Columns = slices.Delete(d.to.Columns, at, at+1)
 	d.origin = slices.Delete(d.origin, at, at+1)
@@ -175,8 +175,11 @@ func (d *Design) RevertAll() {
 	}
 }
 
-// Changed reports whether anything is different from what was read.
-func (d *Design) Changed() bool { return len(d.Changes()) > 0 }
+// Changed reports whether anything is different from what was read: a
+// column, or a key or constraint on them.
+func (d *Design) Changed() bool {
+	return len(d.Changes()) > 0 || len(d.ConstraintChanges()) > 0
+}
 
 // ChangeKind says what happened to one column.
 type ColumnChangeKind uint8
@@ -284,6 +287,20 @@ func copyTable(t *model.Table) *model.Table {
 		pk.Columns = slices.Clone(t.PrimaryKey.Columns)
 		out.PrimaryKey = &pk
 	}
+	// Every constraint is copied too, and its columns with it. A slice
+	// shared with the table that was read is a design that edits it, which
+	// is the defect the columns already had a test for.
+	out.Uniques = make([]model.UniqueConstraint, len(t.Uniques))
+	for i, u := range t.Uniques {
+		u.Columns = slices.Clone(u.Columns)
+		out.Uniques[i] = u
+	}
+	out.ForeignKeys = make([]model.ForeignKey, len(t.ForeignKeys))
+	for i, f := range t.ForeignKeys {
+		f.Columns, f.RefColumns = slices.Clone(f.Columns), slices.Clone(f.RefColumns)
+		out.ForeignKeys[i] = f
+	}
+	out.Checks = slices.Clone(t.Checks)
 	return &out
 }
 
