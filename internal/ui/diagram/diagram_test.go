@@ -1,8 +1,11 @@
 package diagram
 
 import (
+	"bytes"
+	"image/png"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -323,6 +326,23 @@ func TestAColumnIsDrawnWithItsTypeAndItsMark(t *testing.T) {
 	if got := counted(w)["circle"]; got != 2 {
 		t.Errorf("it drew %d key marks for two keyed columns", got)
 	}
+
+	// A type sits against the right edge of its box, which means it is
+	// moved back by its own width rather than drawn from where it ends.
+	n := w.Graph().Nodes[0]
+	right := float32(w.View().ToScreen(n.Pos).X + n.Size.W*w.View().Zoom)
+	for _, o := range test.WidgetRenderer(w).(*renderer).Objects() {
+		tx, ok := o.(*fcanvas.Text)
+		if !ok || tx.Text != "integer" {
+			continue
+		}
+		if end := tx.Position().X + tx.MinSize().Width; end > right {
+			t.Errorf("the type ends at %v, past the box's edge at %v", end, right)
+		}
+		if tx.Position().X >= right {
+			t.Errorf("the type starts at %v, at or past the box's edge at %v", tx.Position().X, right)
+		}
+	}
 }
 
 // A key is marked rather than only emboldened: weight alone is not a
@@ -395,5 +415,153 @@ func TestANodeWithMoreColumnsThanFit(t *testing.T) {
 	// And it drew no more rows than it says it can.
 	if got := len(said); got > canvas.NodeMaxPorts+8 {
 		t.Errorf("it drew %d pieces of text for a node of %d columns", got, len(g.Nodes[0].Ports))
+	}
+}
+
+// Taking a diagram away (FR-8.4).
+
+// What is exported is the whole diagram, not what happens to be on screen.
+func TestAnExportIsTheWholeDiagram(t *testing.T) {
+	w := drawn(t)
+	// Looking at a corner of it, closely.
+	w.View().Zoom = 3
+	w.View().Pan = canvas.Point{X: -1000, Y: -1000}
+
+	s := w.Scene(1)
+	drawn := map[string]bool{}
+	for _, sh := range s.Shapes {
+		if t, ok := sh.(Text); ok {
+			drawn[t.S] = true
+		}
+	}
+	for _, want := range []string{"people", "orders"} {
+		if !drawn[want] {
+			t.Errorf("the export left out %q; it holds %v", want, drawn)
+		}
+	}
+	b := w.Graph().Bounds()
+	if s.W < b.Width() || s.H < b.Height() {
+		t.Errorf("it is %vx%v for a diagram of %vx%v", s.W, s.H, b.Width(), b.Height())
+	}
+	// And it is panned so that the diagram is inside the picture: the
+	// leftmost box sits a margin in, not off the top-left corner.
+	left, top := s.W, s.H
+	for _, sh := range s.Shapes {
+		if box, ok := sh.(Box); ok {
+			left, top = min(left, box.X), min(top, box.Y)
+		}
+	}
+	if left <= 0 || top <= 0 || left > 2*exportPadding || top > 2*exportPadding {
+		t.Errorf("the nearest box is at %v, %v in a picture of %vx%v", left, top, s.W, s.H)
+	}
+}
+
+// Nothing is chosen in an exported picture: a selection is a thing somebody
+// is doing, not a thing about the schema.
+func TestAnExportHasNothingSelected(t *testing.T) {
+	w := drawn(t)
+	w.Tapped(&fyne.PointEvent{Position: fyne.NewPos(20, 20)})
+	if w.Selected() == "" {
+		t.Fatal("nothing was chosen to begin with")
+	}
+	for _, sh := range w.Scene(1).Shapes {
+		if b, ok := sh.(Box); ok && b.StrokeWidth > 1 {
+			t.Errorf("a box is drawn as chosen: %+v", b)
+		}
+	}
+}
+
+// A schema too large to draw at its natural size is drawn smaller rather
+// than written as a file nothing will open.
+func TestAVeryLargeDiagramIsDrawnSmaller(t *testing.T) {
+	g := two()
+	g.Nodes[1].Pos = canvas.Point{X: 200000, Y: 0}
+	w := drawn(t)
+	*w.Graph() = *g
+
+	s := w.Scene(1)
+	if s.W > ExportLimit+1 || s.H > ExportLimit+1 {
+		t.Errorf("it is %vx%v, past the limit of %v", s.W, s.H, ExportLimit)
+	}
+	if s.W <= 0 || s.H <= 0 {
+		t.Errorf("it is %vx%v", s.W, s.H)
+	}
+}
+
+// An SVG is the same scene written as text, so what is in the picture is in
+// the file — searchable and copyable, rather than outlines.
+func TestAnSVGHoldsTheNamesAsText(t *testing.T) {
+	w := drawn(t)
+	var b strings.Builder
+	if err := w.SVG(&b, 1); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		`<?xml version="1.0"`, "<svg ", "</svg>", ">people<", ">orders<", "<rect ", "<line ",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the file has no %q in it", want)
+		}
+	}
+	// A column's type sits against the right edge by being told to end
+	// there, which needs no font metrics.
+	if !strings.Contains(out, `text-anchor="end"`) {
+		w.Graph().Nodes[0].Ports[0].Detail = "integer"
+		b.Reset()
+		if err := w.SVG(&b, 1); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(b.String(), `text-anchor="end"`) {
+			t.Error("a column's type is not aligned to the right edge")
+		}
+	}
+}
+
+// A table called <b> is a table called <b>, not a file that will not parse.
+func TestAnSVGSaysWhatANameIs(t *testing.T) {
+	w := drawn(t)
+	w.Graph().Nodes[0].Title = `a & b <c> "d"`
+	var b strings.Builder
+	if err := w.SVG(&b, 1); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "a &amp; b &lt;c&gt; &quot;d&quot;") {
+		t.Errorf("it wrote %q", out)
+	}
+	if strings.Contains(out, "<c>") {
+		t.Error("a name was written as markup")
+	}
+}
+
+// A PNG is this widget rendered, so the file is what the window shows.
+func TestAPNGIsWritten(t *testing.T) {
+	w := drawn(t)
+	var b bytes.Buffer
+	if err := w.PNG(&b, 0.5, theme.New()); err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(&b)
+	if err != nil {
+		t.Fatalf("it wrote something that is not a PNG: %v", err)
+	}
+	// The picture is the size of the diagram, not of the widget's minimum.
+	want := w.Scene(0.5)
+	if got := img.Bounds(); float64(got.Dx()) < want.W-2 || float64(got.Dx()) > want.W+2 ||
+		float64(got.Dy()) < want.H-2 || float64(got.Dy()) > want.H+2 {
+		t.Errorf("it is %v for a diagram of %vx%v", got, want.W, want.H)
+	}
+	// And it is not blank: a diagram drawn on a background has more than one
+	// colour in it.
+	seen := map[uint32]bool{}
+	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y += 3 {
+		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x += 3 {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			seen[r<<20|g<<10|bl] = true
+		}
+	}
+	if len(seen) < 2 {
+		t.Errorf("the picture is one colour")
 	}
 }

@@ -45,6 +45,11 @@ type Widget struct {
 	last     fyne.Position
 	selected string
 
+	// minSize is what the widget claims to need, which is how an exported
+	// picture asks to be drawn at the size of the whole diagram. Zero on a
+	// widget in a window, which takes whatever room it is given.
+	minSize fyne.Size
+
 	renderer *renderer
 }
 
