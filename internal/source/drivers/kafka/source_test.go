@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"strings"
 	"testing"
 
@@ -589,5 +590,49 @@ func TestMovingAGroupsOffsetsIsRefusedBeforeItDials(t *testing.T) {
 	if err := (&kafkaSource{}).ResetOffsets(ctx, source.ResetRequest{}); err == nil ||
 		!strings.Contains(err.Error(), "without a name") {
 		t.Errorf("moving a group that was not named is refused with %v", err)
+	}
+}
+
+// Reading never joins a consumer group (T2.81, FR-13.19).
+
+func TestNoReadEverNamesAConsumerGroup(t *testing.T) {
+	// FR-13.19 is a promise about what this driver never does, and a test
+	// exercising only today's paths would say nothing about tomorrow's. So
+	// this reads the driver's own source: naming a group to the client is
+	// exactly how a reader would become a participant, and committing
+	// offsets on the way past is what would then perturb the consumers
+	// somebody was only looking at.
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("reading the driver's own files: %v", err)
+	}
+	checked := 0
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		checked++
+		if strings.Contains(string(body), "kgo.ConsumerGroup(") {
+			t.Errorf("%s names a consumer group to the client, which would make a read a member of one", name)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no source was checked, so this proves nothing")
+	}
+
+	// And the mechanism that replaces it is really there, so this fails if
+	// somebody takes the assignment away rather than only if they add the
+	// wrong thing.
+	browse, err := os.ReadFile("browse.go")
+	if err != nil {
+		t.Fatalf("reading browse.go: %v", err)
+	}
+	if !strings.Contains(string(browse), "kgo.ConsumePartitions(") {
+		t.Error("browse.go no longer assigns partitions explicitly, which is what keeps a read out of every group")
 	}
 }

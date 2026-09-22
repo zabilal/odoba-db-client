@@ -23,17 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.81 — proving that browsing never joins a consumer group and
-           never commits an offset (FR-13.19): explicit partition assignment
-           only. The driver was written that way from T2.63 — browse.go
-           assigns partitions rather than subscribing — so this is a task
-           about evidence rather than about code: a live test that reads a
-           topic and then shows the cluster gained no group and no committed
-           offset from it, and that a group already there is untouched by a
-           read going past it. Worth checking while passing: T2.83 asks that
-           producing and offset resets inherit read-only mode and the
-           production guardrail, which T2.77 and T2.80 both did and both
-           hold with untagged tests — confirm it rather than build it again.
+NEXT TASK: T2.82 — every consume bounded and cancellable (FR-13.20): a
+           limit on records, bytes or a time window, and a read that stops
+           when it is given up on. Much of this is already true and already
+           held: a browse takes a limit and stops at each log's end (T2.63),
+           a tail ends when its context is cancelled (T2.65), and there are
+           live tests for both. What to establish rather than assume is
+           whether a read is bounded by bytes or by time as well as by
+           count, and whether a request with no bound at all is refused
+           rather than quietly allowed. Read source.BrowseOptions first: it
+           decides what a caller is able to ask for. T2.83 is already
+           satisfied by T2.77 and T2.80 — confirm rather than rebuild.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -86,7 +86,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a consumer group moved to where it should read from
+LAST DONE: 2026-09-22 — evidence that reading a topic joins no consumer
+           group and moves nobody's offsets, held both by a live cluster and
+           by a check on the driver's own source, because the promise is
+           about what it never does (T2.81); before it a consumer group
+           moved to where it should read from
            next: the beginning, the end, a time or a named offset, sharing
            the code that decides where a read begins so that both mean the
            same thing, and refusing a group that anything is still reading
@@ -639,7 +643,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.80** Consumer-group offset reset (earliest/latest/timestamp/specific) → FR-13.13 — *the most destructive thing here, and it deletes nothing: a group moved back processes again everything it has already done, and one moved forward never sees what it skipped. It is AccessAdmin, refused before the client is touched, so a read-only connection refuses without dialling and a production one refuses until it has been asked; untagged tests hold all of that. Where a seek lands was pulled out of the browsing code and shared rather than written again — the model asks that resetting to a timestamp mean exactly what reading from that timestamp meant, and one piece of code is the only way to promise it — but what was deliberately not shared is browsing's own question of whether there is anything there to read, which drops a partition whose position is at or past the end; moving a group to the end of its log is the commonest move there is, and borrowing that rule wholesale would have silently skipped every partition. Two of the mutations land on the extracted part and die to the browse tests that were already there, which is what says the extraction kept its meaning. A position past the end is clamped to the end, a group committed beyond its own log reading nothing until the log caught up. A group is moved where it has been rather than everywhere it could go: committing an offset for a partition it never read would add to what it is doing rather than change it. A group with anything reading through it is refused in words about what somebody was trying to do — Kafka refuses the commit too, but in words about group membership, which tells nobody to go and stop their consumers. The interface says what will happen before it happens and reads the position back in the confirmation, because a time somebody typed and a time this understood are not always the same time; a time written without a zone is this machine's own rather than silently UTC, since moving a group half a day because nobody said which noon was meant is exactly the incident all of this guards against*
 
 ### Safety — non-negotiable
-- [ ] **T2.81** **Browsing never joins a consumer group or commits offsets** — explicit partition assignment only → FR-13.19
+- [x] **T2.81** **Browsing never joins a consumer group or commits offsets** — explicit partition assignment only → FR-13.19 — *the driver has read this way since T2.63, so this is a task about evidence rather than about code, and the evidence has to be of two kinds because the requirement is about what the driver never does. A live test reads a topic twice over and shows that the cluster gained no group from it, and that a group already sitting where it had got to is exactly where it was afterwards — which is the whole of what the requirement protects: somebody inspecting a topic must not move anybody's consumers. And an untagged test reads the driver's own source, because a test exercising only today's paths says nothing about tomorrow's: no file outside the tests may name a consumer group to the client, and browse.go must still assign partitions explicitly, so the check fails both if somebody adds the wrong thing and if somebody takes the right thing away. Both mutations are the forbidden defect written into the driver — a read made a member of a group, and explicit assignment swapped for a subscription — and both die to that check. What this does not do is prove the property for code nobody has written yet elsewhere; it holds the driver, which is where reading happens*
 - [ ] **T2.82** Every consume bounded (max messages / bytes / time) and cancellable → FR-13.20
 - [ ] **T2.83** Produce and offset-reset inherit read-only mode + production guardrails → FR-13.21
 - [ ] **T2.84** Conformance green against kafka + schema-registry testcontainers
