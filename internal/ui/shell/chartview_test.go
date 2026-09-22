@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/chart"
 )
 
@@ -252,5 +253,140 @@ func TestAChartIsDrawnInTheWindowsColours(t *testing.T) {
 	}
 	if len(c.Colours) == 0 {
 		t.Error("the series were given no colours")
+	}
+}
+
+// What a click on a chart does (FR-11.4).
+
+// lastBrowse is what the fake was last asked for.
+func lastBrowse(t *testing.T) source.BrowseOptions {
+	t.Helper()
+	browses.Lock()
+	defer browses.Unlock()
+	if len(browses.opts) == 0 {
+		t.Fatal("the source was never browsed")
+	}
+	return browses.opts[len(browses.opts)-1]
+}
+
+// lined draws the fake's rows as a line against the id column, which is the
+// shape a click can be traced back through.
+func lined(t *testing.T) (*fixture, *tab, *chartPanel) {
+	t.Helper()
+	fx, tb, p := charted(t)
+	p.kinds.SetSelected(chart.KindName(chart.Line))
+	p.xs.SetSelected("id")
+	return fx, tb, p
+}
+
+// A mark that stands for one row narrows the result to the value on the
+// bottom axis at that point.
+func TestClickingAMarkNarrowsTheResult(t *testing.T) {
+	fx, tb, p := lined(t)
+	rows := fx.s.tabFor(strings.TrimPrefix(tb.key, "chart:"))
+	if rows == nil {
+		t.Fatal("the result is gone")
+	}
+	browsed := browsesSoFar()
+	p.pick(chart.Reading{Row: 3, X: 3, Y: 3})
+	pump(t, fx.q, func() bool { return browsesSoFar() > browsed })
+
+	if last := lastBrowse(t); len(last.Filters) != 1 || last.Filters[0].Column != "id" {
+		t.Errorf("the rows were re-read with %+v, want one filter on id", last.Filters)
+	}
+	if got := rows.grid.FilterTexts()[0]; got != "=3" {
+		t.Errorf("the filter row says %q, want =3", got)
+	}
+	if pk, ok := rows.picked[0]; !ok || len(pk.values) != 1 {
+		t.Errorf("picked %+v, want the one value", rows.picked)
+	}
+	if fx.s.activeTab() != rows {
+		t.Error("the result was not brought forward to be looked at")
+	}
+	if !strings.Contains(tb.footer.Text, "Narrowed id to =3") {
+		t.Errorf("the chart says %q", tb.footer.Text)
+	}
+}
+
+// The value comes from the row rather than from the chart, because a chart
+// holds numbers and a filter has to hold what the source gave.
+func TestWhatIsNarrowedToIsTheSourcesOwnValue(t *testing.T) {
+	fx, tb, p := lined(t)
+	rows := fx.s.tabFor(strings.TrimPrefix(tb.key, "chart:"))
+	browsed := browsesSoFar()
+	p.pick(chart.Reading{Row: 7, X: 7, Y: 7})
+	pump(t, fx.q, func() bool { return browsesSoFar() > browsed })
+	pk := rows.picked[0]
+	if len(pk.values) != 1 {
+		t.Fatalf("picked %+v", pk)
+	}
+	if v, ok := pk.values[0].(int64); !ok || v != 7 {
+		t.Errorf("it filtered on %#v, want the int64 the source gave", pk.values[0])
+	}
+}
+
+// Where nothing on the bottom axis names anything to filter by, a click
+// brings the row itself forward instead.
+func TestClickingWhereTheAxisIsTheRowNumberShowsTheRow(t *testing.T) {
+	fx, tb, p := charted(t)
+	p.kinds.SetSelected(chart.KindName(chart.Line))
+	if p.roles.X != chart.RowNumber {
+		t.Fatalf("the axis is column %d; this test needs the row number", p.roles.X)
+	}
+	rows := fx.s.tabFor(strings.TrimPrefix(tb.key, "chart:"))
+	p.pick(chart.Reading{Row: 5, X: 5, Y: 5})
+	if got := rows.grid.FilterTexts()[0]; got != "" {
+		t.Errorf("the filter row says %q, want nothing filtered", got)
+	}
+	if fx.s.activeTab() != rows {
+		t.Error("the result was not brought forward")
+	}
+}
+
+// A histogram's bar counts an interval that is open at its top, which the
+// filter row's range is not. It says so rather than narrowing to something
+// near enough.
+func TestClickingAHistogramBarSaysWhyItCannotNarrow(t *testing.T) {
+	fx, tb, p := charted(t)
+	if p.kind != chart.Histogram {
+		t.Fatalf("the chart is a %s; this test needs a histogram", p.kind)
+	}
+	rows := fx.s.tabFor(strings.TrimPrefix(tb.key, "chart:"))
+	p.pick(chart.Reading{Row: chart.NoRow, X: 0, Y: 12})
+	if got := rows.grid.FilterTexts()[0]; got != "" {
+		t.Errorf("the filter row says %q, want nothing filtered", got)
+	}
+	if !strings.Contains(tb.footer.Text, "up to the next one") {
+		t.Errorf("the chart says %q", tb.footer.Text)
+	}
+}
+
+// A mark that stands for several rows narrows to nothing, and says so.
+func TestClickingSomethingThatStandsForManyRows(t *testing.T) {
+	_, tb, p := lined(t)
+	p.pick(chart.Reading{Row: chart.NoRow})
+	if !strings.Contains(tb.footer.Text, "more than one row") {
+		t.Errorf("the chart says %q", tb.footer.Text)
+	}
+}
+
+// A chart outlives the result it was drawn from, and says so rather than
+// falling over.
+func TestClickingWhenTheResultIsClosed(t *testing.T) {
+	fx, tb, p := lined(t)
+	rows := fx.s.tabFor(strings.TrimPrefix(tb.key, "chart:"))
+	fx.s.closeTab(rows.item)
+	p.pick(chart.Reading{Row: 3, X: 3, Y: 3})
+	if !strings.Contains(tb.footer.Text, "no longer open") {
+		t.Errorf("the chart says %q", tb.footer.Text)
+	}
+}
+
+// The widget hands a click straight to the panel, which is what makes the
+// whole path work in the window.
+func TestAClickOnTheChartReachesThePanel(t *testing.T) {
+	_, _, p := lined(t)
+	if p.w.OnPick == nil {
+		t.Fatal("the widget has nowhere to hand a click")
 	}
 }
