@@ -297,8 +297,10 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.GroupInspector); !ok {
 		t.Error("claims Stream.ConsumerGroups but does not implement GroupInspector")
 	}
-	if _, ok := any(&kafkaSource{}).(source.StreamAdmin); ok {
-		t.Error("implements StreamAdmin, whose resetting and administering are not written")
+	// And with topics and offsets written too (T2.78, T2.80), this driver
+	// satisfies the whole of stream administration for the first time.
+	if _, ok := any(&kafkaSource{}).(source.StreamAdmin); !ok {
+		t.Error("does all three of reading groups, administering topics and moving offsets, and does not satisfy StreamAdmin")
 	}
 	// Producing is written now (T2.77), and is the first thing this driver
 	// does that changes anything.
@@ -318,11 +320,14 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.TopicAdmin); !ok {
 		t.Error("claims Stream.TopicAdmin but does not implement TopicAdmin")
 	}
-	if _, ok := any(&kafkaSource{}).(source.OffsetResetter); ok {
-		t.Error("implements OffsetResetter, and resetting offsets is not written")
+	if !caps.Stream.ResetOffsets {
+		t.Error("a group's offsets can be moved and moving them is not claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.OffsetResetter); !ok {
+		t.Error("claims Stream.ResetOffsets but does not implement OffsetResetter")
 	}
 	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-		ConsumerGroups: true, Produce: true, TopicAdmin: true}
+		ConsumerGroups: true, Produce: true, TopicAdmin: true, ResetOffsets: true}
 	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
@@ -555,5 +560,34 @@ func TestATopicThatCouldNotExistIsRefusedBeforeItDials(t *testing.T) {
 		if !strings.Contains(c.err.Error(), c.says) {
 			t.Errorf("%s is refused with %q, which does not say %q", name, c.err, c.says)
 		}
+	}
+}
+
+// Moving a group's offsets, refused before anything is dialled (T2.80).
+
+func TestMovingAGroupsOffsetsIsRefusedBeforeItDials(t *testing.T) {
+	ctx := context.Background()
+	req := source.ResetRequest{GroupID: "readers", Seek: source.Seek{Mode: source.SeekBeginning}}
+
+	ro := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
+	if err := ro.ResetOffsets(ctx, req); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection moves offsets, refusing with %v", err)
+	}
+	// Consent cannot buy past read-only, here least of all.
+	confirmed := req
+	confirmed.Confirmed = true
+	if err := ro.ResetOffsets(ctx, confirmed); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a confirmed move got past read-only with %v", err)
+	}
+
+	prod := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{Environment: source.EnvProduction}}}
+	if err := prod.ResetOffsets(ctx, req); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("a production connection moves offsets unasked, refusing with %v", err)
+	}
+
+	// And a move with no group to move needs no cluster to be wrong.
+	if err := (&kafkaSource{}).ResetOffsets(ctx, source.ResetRequest{}); err == nil ||
+		!strings.Contains(err.Error(), "without a name") {
+		t.Errorf("moving a group that was not named is refused with %v", err)
 	}
 }

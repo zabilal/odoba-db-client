@@ -69,7 +69,7 @@ func (s *Shell) newTopic() {
 			s.showError(err)
 			return
 		}
-		s.changeTopics(conn, fmt.Sprintf("create %s", spec.Name),
+		s.changeCluster(conn, fmt.Sprintf("create %s", spec.Name),
 			func(src source.Source, confirmed bool) error {
 				spec.Confirmed = confirmed
 				return app.CreateTopic(s.ctx, src, spec)
@@ -91,7 +91,7 @@ func (s *Shell) deleteSelectedTopic() {
 			if !yes {
 				return
 			}
-			s.changeTopics(conn, fmt.Sprintf("delete %s", topic),
+			s.changeCluster(conn, fmt.Sprintf("delete %s", topic),
 				func(src source.Source, confirmed bool) error {
 					return app.DeleteTopic(s.ctx, src, topic, confirmed)
 				})
@@ -126,7 +126,7 @@ func (s *Shell) addPartitionsToSelected() {
 				s.showError(err)
 				return
 			}
-			s.changeTopics(conn, fmt.Sprintf("add partitions to %s", topic),
+			s.changeCluster(conn, fmt.Sprintf("add partitions to %s", topic),
 				func(src source.Source, confirmed bool) error {
 					return app.AddPartitions(s.ctx, src, topic, add, confirmed)
 				})
@@ -161,7 +161,7 @@ func (s *Shell) editTopicSettings() {
 			s.showError(errors.New("nothing was written, so nothing would change"))
 			return
 		}
-		s.changeTopics(conn, fmt.Sprintf("change the settings of %s", topic),
+		s.changeCluster(conn, fmt.Sprintf("change the settings of %s", topic),
 			func(src source.Source, confirmed bool) error {
 				return app.AlterTopicConfig(s.ctx, src, topic, set, confirmed)
 			})
@@ -170,17 +170,17 @@ func (s *Shell) editTopicSettings() {
 	d.Show()
 }
 
-// topicChange is one change to the cluster's topics, made with or without
+// clusterChange is one change to the cluster's topics, made with or without
 // consent having been given for it.
-type topicChange func(src source.Source, confirmed bool) error
+type clusterChange func(src source.Source, confirmed bool) error
 
-// changeTopics makes the change, asks where the connection says to ask, and
+// changeCluster makes the change, asks where the connection says to ask, and
 // refreshes the tree where it worked.
-func (s *Shell) changeTopics(connID, what string, change topicChange) {
-	s.attemptTopicChange(connID, what, change, false)
+func (s *Shell) changeCluster(connID, what string, change clusterChange) {
+	s.attemptClusterChange(connID, what, change, false)
 }
 
-func (s *Shell) attemptTopicChange(connID, what string, change topicChange, confirmed bool) {
+func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, confirmed bool) {
 	go func() {
 		live, err := s.d.WS.Connect(s.ctx, connID)
 		if err == nil {
@@ -189,7 +189,7 @@ func (s *Shell) attemptTopicChange(connID, what string, change topicChange, conf
 		s.d.Run(func() {
 			switch {
 			case errors.Is(err, source.ErrConfirmationRequired):
-				s.askBeforeChangingTopics(connID, what, change)
+				s.askBeforeChanging(connID, what, change)
 			case errors.Is(err, source.ErrReadOnly):
 				s.showError(fmt.Errorf("not done: this connection is read-only, and to %s would change the cluster", what))
 			case err != nil:
@@ -201,17 +201,17 @@ func (s *Shell) attemptTopicChange(connID, what string, change topicChange, conf
 	}()
 }
 
-// askBeforeChangingTopics is the production guardrail. The driver refused
+// askBeforeChanging is the production guardrail. The driver refused
 // before it dialled, so nothing has happened yet and asking is safe (FR-4.9).
-func (s *Shell) askBeforeChangingTopics(connID, what string, change topicChange) {
+func (s *Shell) askBeforeChanging(connID, what string, change clusterChange) {
 	c, _ := s.d.Conns.Get(connID)
-	d := dialog.NewConfirm("Change Structure on Production?",
+	d := dialog.NewConfirm("Change This Production Cluster?",
 		fmt.Sprintf("This would %s on “%s”, which is marked Production. Nothing has happened yet.", what, c.Name),
 		func(yes bool) {
 			if !yes {
 				return
 			}
-			s.attemptTopicChange(connID, what, change, true)
+			s.attemptClusterChange(connID, what, change, true)
 		}, s.win)
 	d.SetConfirmText("Continue")
 	d.SetDismissText("Cancel")

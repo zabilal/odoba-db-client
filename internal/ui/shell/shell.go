@@ -366,6 +366,8 @@ func (s *Shell) registerCommands() {
 			Enabled: s.selectionIsTopic, Run: s.addPartitionsToSelected},
 		{ID: cmdTopicConfig, Category: "Explorer", Title: "Topic Settings…", Keywords: []string{"config", "retention", "settings", "alter", "kafka"},
 			Enabled: s.selectionIsTopic, Run: s.editTopicSettings},
+		{ID: cmdGroupReset, Category: "Explorer", Title: "Move Offsets…", Keywords: []string{"reset", "offsets", "rewind", "replay", "group", "kafka"},
+			Enabled: s.selectionIsGroup, Run: s.resetSelectedGroup},
 		{ID: cmdRefresh, Category: "Explorer", Title: "Refresh", Keywords: []string{"reload", "tree"},
 			Shortcut: sc("R", commands.ModShortcut), Run: s.refreshSelected},
 		{ID: cmdReload, Category: "Tab", Title: "Reload Rows", Keywords: []string{"refresh", "data"},
