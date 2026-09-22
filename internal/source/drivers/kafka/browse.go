@@ -173,6 +173,49 @@ func offsets(listed map[int32]kadm.ListedOffset) (map[int32]int64, error) {
 // begins is the beginning of it — a log is aged out from the front, and a
 // position that has been aged past is not an error — and a partition with
 // nothing left to read is left out rather than waited on.
+// positionOf is where a seek lands in one partition, given where that
+// partition begins and ends and — where the seek names a time — the offset
+// the broker gave for that time.
+//
+// It is shared between reading a log and moving a group's offsets, so that
+// "from that timestamp" means the same thing in both, which is what the model
+// asks for where it holds a reset's seek. What it does not decide is whether
+// there is anything there to read: that question belongs to reading alone,
+// and moving a group to the end of a log is an ordinary thing to want.
+//
+// found is false where the seek names nothing in this partition, which today
+// means a time nothing was written at or after.
+func positionOf(start, end, atTime int64, timed bool, seek *source.Seek, following bool) (from int64, found bool, err error) {
+	from = start
+	if following && (seek == nil || seek.Mode == source.SeekBeginning) {
+		// Following with nowhere named begins where the log is now: a tail is
+		// about what comes next, not about what is already there.
+		from = end
+	}
+	if seek != nil {
+		switch seek.Mode {
+		case source.SeekBeginning:
+		case source.SeekEnd:
+			from = end
+		case source.SeekOffset:
+			from = seek.Offset
+		case source.SeekLast:
+			from = end - seek.Count
+		case source.SeekTimestamp:
+			if !timed {
+				return 0, false, nil // nothing in this log at or after that time
+			}
+			from = atTime
+		default:
+			return 0, false, fmt.Errorf("kafka: there is no way to read a log from %d", seek.Mode)
+		}
+	}
+	if from < start {
+		from = start
+	}
+	return from, true, nil
+}
+
 func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek, following bool) (map[int32]span, error) {
 	only := map[int32]bool{}
 	if seek != nil {
@@ -189,36 +232,16 @@ func spansOf(begins, ends, timed map[int32]int64, seek *source.Seek, following b
 		if !ok {
 			continue
 		}
-		from := start
-		if following && (seek == nil || seek.Mode == source.SeekBeginning) {
-			// Following with nowhere named begins where the log is now: a
-			// tail is about what comes next, not about what is already there.
-			from = end
+		at, haveTime := timed[partition]
+		from, found, err := positionOf(start, end, at, haveTime, seek, following)
+		if err != nil {
+			return nil, err
 		}
-		if seek != nil {
-			switch seek.Mode {
-			case source.SeekBeginning:
-			case source.SeekEnd:
-				from = end
-			case source.SeekOffset:
-				from = seek.Offset
-			case source.SeekLast:
-				from = end - seek.Count
-			case source.SeekTimestamp:
-				at, found := timed[partition]
-				if !found {
-					// Nothing in this log at or after that time.
-					continue
-				}
-				from = at
-			default:
-				return nil, fmt.Errorf("kafka: there is no way to read a log from %d", seek.Mode)
-			}
-		}
-		if from < start {
-			from = start
+		if !found {
+			continue
 		}
 		if from >= end && !following {
+			// Nothing there to read, which is reading's own question to ask.
 			continue
 		}
 		to := end

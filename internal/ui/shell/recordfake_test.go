@@ -20,6 +20,7 @@ import (
 // headers with a name that repeats.
 
 var topicRef = model.NewRef(model.KindTopic, "cluster", "events")
+var groupRef = model.NewRef(model.KindConsumerGroup, "cluster", "readers")
 
 // recordFake is a stream source: a cluster of one topic, whose rows are
 // records rather than rows of a table.
@@ -80,6 +81,14 @@ func (r *recordSource) AddPartitions(_ context.Context, topic string, count int3
 	return nil
 }
 
+func (r *recordSource) ResetOffsets(_ context.Context, req source.ResetRequest) error {
+	if err := r.allowed(req.Confirmed); err != nil {
+		return err
+	}
+	r.changed = append(r.changed, "move "+req.GroupID)
+	return nil
+}
+
 func (r *recordSource) AlterTopicConfig(_ context.Context, topic string, _ map[string]string, confirmed bool) error {
 	if err := r.allowed(confirmed); err != nil {
 		return err
@@ -103,9 +112,9 @@ func (*recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
 		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-			Produce: true, TopicAdmin: true},
+			Produce: true, TopicAdmin: true, ResetOffsets: true},
 		Objects: map[model.ObjectKind]bool{
-			model.KindCluster: true, model.KindTopic: true,
+			model.KindCluster: true, model.KindTopic: true, model.KindConsumerGroup: true,
 		},
 	}
 }
@@ -125,7 +134,12 @@ func (*recordSource) Root(context.Context) ([]model.Node, error) {
 
 func (*recordSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	if ref.Kind == model.KindCluster {
-		return []model.Node{{Ref: topicRef, Label: "events", Browsable: true}}, nil
+		return []model.Node{
+			{Ref: topicRef, Label: "events", Browsable: true},
+			// A group: described, never browsed, and the one thing here
+			// whose offsets can be moved (ADR-0106).
+			{Ref: groupRef, Label: "readers", Describable: true},
+		}, nil
 	}
 	return nil, nil
 }
@@ -143,6 +157,8 @@ func (*recordSource) Describe(_ context.Context, ref model.ObjectRef) (any, erro
 	case model.KindCluster:
 		return &model.Cluster{ID: "cluster", Controller: 1,
 			Brokers: []model.Broker{{ID: 1, Host: "kafka1", Port: 9092}}}, nil
+	case model.KindConsumerGroup:
+		return &model.ConsumerGroup{ID: "readers", State: "Empty"}, nil
 	}
 	return nil, errors.New("recordfake: nothing to describe")
 }

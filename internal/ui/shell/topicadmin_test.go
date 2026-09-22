@@ -112,7 +112,7 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 	deleting := func(s source.Source, confirmed bool) error {
 		return app.DeleteTopic(context.Background(), s, "events", confirmed)
 	}
-	fx.s.changeTopics(tb.connID, "delete events", deleting)
+	fx.s.changeCluster(tb.connID, "delete events", deleting)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
 
 	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "marked Production") ||
@@ -130,7 +130,7 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 	}
 
 	// Saying yes does it once, with the consent given for it.
-	fx.s.changeTopics(tb.connID, "delete events", deleting)
+	fx.s.changeCluster(tb.connID, "delete events", deleting)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
 	tapOnTop(t, fx, "Continue")
 	pump(t, fx.q, func() bool { return len(src.changed) == 1 })
@@ -148,7 +148,7 @@ func TestAReadOnlyConnectionChangesNoTopics(t *testing.T) {
 	src := live.Source.(*recordSource)
 	src.refuse = fmt.Errorf("%w: structural change refused", source.ErrReadOnly)
 
-	fx.s.changeTopics(tb.connID, "delete events", func(s source.Source, confirmed bool) error {
+	fx.s.changeCluster(tb.connID, "delete events", func(s source.Source, confirmed bool) error {
 		return app.DeleteTopic(context.Background(), s, "events", confirmed)
 	})
 	pump(t, fx.q, func() bool { return strings.Contains(fx.s.errors.text, "read-only") })

@@ -40,6 +40,10 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 		// a topic is already where topics are made.
 		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdProduce, "",
 			cmdTopicNew, cmdTopicConfig, cmdTopicPartition, cmdTopicDelete, "", cmdRefresh}
+	case s.selectionIsGroup():
+		// A group holds no rows and is not written to. What can be done to
+		// one is move where it reads from next.
+		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdGroupReset, "", cmdRefresh}
 	case s.selectionProducible():
 		// A topic is the only thing here that can be written to, and the menu
 		// says so only where that is true. Scripting a SELECT of a log, or a
