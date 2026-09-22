@@ -127,6 +127,9 @@ func (fs *fakeSession) Query(_ context.Context, st source.Statement) (*source.Re
 		if err := fs.guard.AllowStatement(source.AccessDDL, nil, st.Confirmed); err != nil {
 			return nil, err
 		}
+		if failStructuralAt(st.SQL) {
+			return nil, fmt.Errorf("fakesql: %q will not run", st.SQL)
+		}
 		recordStructural(st.SQL)
 		return &source.Result{Affected: 0}, nil
 	}
@@ -561,6 +564,26 @@ func isStructural(sql string) bool {
 		}
 	}
 	return false
+}
+
+// failStructural names a statement the server will refuse, so that a test
+// can see a change that ran part-way: some of it landed and the rest did
+// not, which is what happens when DDL cannot be rolled back.
+var failStructural struct {
+	sync.Mutex
+	contains string
+}
+
+func willNotRun(contains string) {
+	failStructural.Lock()
+	failStructural.contains = contains
+	failStructural.Unlock()
+}
+
+func failStructuralAt(sql string) bool {
+	failStructural.Lock()
+	defer failStructural.Unlock()
+	return failStructural.contains != "" && strings.Contains(sql, failStructural.contains)
 }
 
 func recordStructural(sql string) {

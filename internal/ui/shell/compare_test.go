@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -401,5 +402,188 @@ func TestChoosingSomethingThatNeedsNoStatements(t *testing.T) {
 	}
 	if !strings.Contains(tb.footer.Text, "needs no statements") {
 		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+}
+
+// Applying a script, or keeping it (FR-7.4).
+
+// Applying goes through the preview, like every other structural change:
+// what is read is what runs.
+func TestApplyingWhatWasChosenIsReadFirst(t *testing.T) {
+	forgetStatements()
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Columns = append(db.Schemas[0].Tables[0].Columns,
+			model.Column{Name: "note", Position: 3,
+				Type: model.DataType{Class: model.TypeString, Native: "text", Length: -1}})
+	})
+	p.choose(p.findID(t, "note"), true)
+	p.applyScript()
+
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	shown := previewText(fx.s.win.Canvas().Overlays().Top())
+	if !strings.Contains(shown, "note") {
+		t.Errorf("the preview shows %q", shown)
+	}
+	if n := len(ranStatements()); n != 0 {
+		t.Errorf("%d statements ran before the preview was answered", n)
+	}
+
+	tapOnTop(t, fx, "Run")
+	pump(t, fx.q, func() bool { return len(ranStatements()) > 0 })
+	if got := ranStatements()[0]; !strings.Contains(got, "note") {
+		t.Errorf("it ran %q, which is not what was read", got)
+	}
+	// And both sides are read again, because what ran has moved one of them.
+	pump(t, fx.q, func() bool { return tb.compare != nil && tb.compare != p })
+}
+
+// The script is kept as a file, named after what was compared.
+func TestSavingTheScriptToAFile(t *testing.T) {
+	forgetStatements()
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
+			model.Table{Name: "orders", RowsEstimate: -1})
+	})
+	p.choose(p.findID(t, "orders"), true)
+	p.saveScript()
+
+	if len(fx.files.saves) != 1 {
+		t.Fatalf("it asked to save %d times", len(fx.files.saves))
+	}
+	if got := fx.files.saves[0].Name; got != "main-sync.sql" {
+		t.Errorf("it suggests %q", got)
+	}
+	if got := fx.files.saves[0].Extensions; !slices.Contains(got, "sql") {
+		t.Errorf("it offers %q", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "sync.sql")
+	fx.files.answer(path, nil)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "orders") {
+		t.Errorf("the file holds %q", data)
+	}
+	if !strings.HasPrefix(string(data), "-- 1 difference chosen") {
+		t.Errorf("it does not say what it is: %q", data)
+	}
+	if !strings.Contains(tb.footer.Text, "Saved to sync.sql") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+	if n := len(ranStatements()); n != 0 {
+		t.Errorf("%d statements ran; saving runs nothing", n)
+	}
+
+	// Cancelling writes nothing and says nothing: it is an answer, not a
+	// failure.
+	tb.footer.SetText("nothing said yet")
+	p.saveScript()
+	fx.files.answer("", nil)
+	if got := tb.footer.Text; got != "nothing said yet" {
+		t.Errorf("cancelling said %q", got)
+	}
+	if got := fx.s.errors.text; got != "" {
+		t.Errorf("cancelling reported a failure: %q", got)
+	}
+}
+
+// A name a filesystem will not take does not become one.
+func TestWhatASavedScriptIsCalled(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"main", "main-sync.sql"},
+		{"a/b", "a-b-sync.sql"},
+		{`C:\thing`, "C--thing-sync.sql"},
+	} {
+		if got := scriptFileName(c.in); got != c.want {
+			t.Errorf("%q became %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// Nothing is offered until something is chosen, and all three come back
+// together.
+func TestTheThreeThingsToDoWithAScript(t *testing.T) {
+	_, _, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
+			model.Table{Name: "orders", RowsEstimate: -1})
+	})
+	for _, b := range p.buttons() {
+		if !b.Disabled() {
+			t.Errorf("%q is offered with nothing chosen", b.Text)
+		}
+	}
+	p.choose(p.findID(t, "orders"), true)
+	for _, b := range p.buttons() {
+		if b.Disabled() {
+			t.Errorf("%q is not offered with something chosen", b.Text)
+		}
+	}
+	// And all three go again when the choice is taken back.
+	p.choose(p.findID(t, "orders"), false)
+	for _, b := range p.buttons() {
+		if !b.Disabled() {
+			t.Errorf("%q is still offered with nothing chosen", b.Text)
+		}
+	}
+}
+
+// A change that runs part-way has still moved the database, so both sides
+// are read again rather than the screen being left showing a comparison of
+// something that is no longer there.
+func TestAChangeThatRunsPartWayIsStillReadAgain(t *testing.T) {
+	forgetStatements()
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
+			model.Table{Name: "orders", RowsEstimate: -1},
+			model.Table{Name: "refused", RowsEstimate: -1})
+	})
+	t.Cleanup(func() { willNotRun("") })
+	willNotRun("refused")
+
+	p.choose(p.findID(t, "orders"), true)
+	p.choose(p.findID(t, "refused"), true)
+	p.applyScript()
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	tapOnTop(t, fx, "Run")
+
+	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "failed") })
+	if !strings.Contains(tb.footer.Text, "1 statement ran") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+	// One of the two landed, so the comparison on screen is of a database
+	// that has moved: it is made again.
+	pump(t, fx.q, func() bool { return tb.compare != nil && tb.compare != p })
+}
+
+// Nothing running means nothing to read again: a connection that refused
+// before the first statement leaves the comparison exactly as it was.
+func TestAChangeThatRanNothingLeavesTheComparisonAlone(t *testing.T) {
+	forgetStatements()
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
+			model.Table{Name: "refused", RowsEstimate: -1})
+	})
+	t.Cleanup(func() { willNotRun("") })
+	willNotRun("refused")
+
+	p.choose(p.findID(t, "refused"), true)
+	p.applyScript()
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	tapOnTop(t, fx, "Run")
+	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "failed") })
+
+	if !strings.Contains(tb.footer.Text, "0 statements ran") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+	// Reading again replaces the body with its own line before it starts,
+	// so this is asked of something that has already happened or has not —
+	// never of something still on its way.
+	if said := labelText(tb.body); strings.Contains(said, "Reading both sides again") {
+		t.Errorf("it started reading both sides again although nothing had run: %q", said)
+	}
+	if tb.compare != p {
+		t.Error("it read both sides again although nothing had run")
 	}
 }
