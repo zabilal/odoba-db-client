@@ -93,7 +93,8 @@ func (ss *pgSession) Close() error {
 
 // Query runs one statement on the session's connection.
 func (ss *pgSession) Query(ctx context.Context, stmt source.Statement) (*source.Result, error) {
-	if err := ss.src.cfg.Guard.Allow(ss.src.Classify(stmt.SQL), stmt.Confirmed); err != nil {
+	if err := ss.src.cfg.Guard.AllowStatement(ss.src.Classify(stmt.SQL),
+		unboundedIn(sqllex.PostgreSQL, stmt.SQL), stmt.Confirmed); err != nil {
 		return nil, err
 	}
 	sql, args, err := bindNamed(stmt)
@@ -163,7 +164,8 @@ func (ss *pgSession) QueryMulti(ctx context.Context, script string, opts source.
 	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts {
-		if err := ss.src.cfg.Guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
+		if err := ss.src.cfg.Guard.AllowStatement(ss.src.Classify(st.Text),
+			unboundedIn(sqllex.PostgreSQL, st.Text), confirmed); err != nil {
 			return nil, err
 		}
 	}

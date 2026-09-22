@@ -186,3 +186,33 @@ func TestNothingAsksTheClusterToScanItself(t *testing.T) {
 		t.Errorf("a browse asked the cluster to scan itself: %s", st.SQL)
 	}
 }
+
+// CQL wants a primary key on a DELETE or UPDATE and would refuse most of
+// these itself. It is asked here anyway, rather than leaving a server to be
+// the guardrail (FR-4.9).
+func TestCQLNoticesAStatementThatChangesEveryRow(t *testing.T) {
+	for _, c := range []struct{ stmt, target string }{
+		{"DELETE FROM orders", "orders"},
+		{"UPDATE orders SET paid = true", "orders"},
+		{"DELETE FROM shop.orders", "orders"},
+	} {
+		u := unboundedIn(c.stmt)
+		if u == nil {
+			t.Errorf("%q was not noticed", c.stmt)
+			continue
+		}
+		if u.Target != c.target {
+			t.Errorf("%q names %q, want %q", c.stmt, u.Target, c.target)
+		}
+	}
+	for _, stmt := range []string{
+		"DELETE FROM orders WHERE id = 1",
+		"UPDATE orders SET paid = true WHERE id = 1",
+		"SELECT * FROM orders",
+		"TRUNCATE orders",
+	} {
+		if u := unboundedIn(stmt); u != nil {
+			t.Errorf("%q was taken for one: %v", stmt, u)
+		}
+	}
+}

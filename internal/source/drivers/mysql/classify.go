@@ -133,3 +133,21 @@ func classifyOne(stmt string) source.Access {
 	}
 	return source.AccessWrite
 }
+
+// unboundedIn reports a DELETE or UPDATE in this text that names no WHERE
+// (FR-4.9).
+func unboundedIn(stmt string) *source.UnboundedError {
+	for _, s := range sqlscript.SplitDelimited(sqllex.MySQL, stmt) {
+		var ws []string
+		for _, t := range tokens(s.Text) {
+			switch t.kind {
+			case sqllex.TokKeyword, sqllex.TokIdentifier, sqllex.TokFunction, sqllex.TokType:
+				ws = append(ws, t.text)
+			}
+		}
+		if u := source.UnboundedIn(ws); u != nil {
+			return u
+		}
+	}
+	return nil
+}

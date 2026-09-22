@@ -64,7 +64,7 @@ func (ss *session) Close() error {
 // many it changed; one that does, INSERT … RETURNING included, streams them.
 func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Result, error) {
 	access := ss.src.Classify(stmt.SQL)
-	if err := ss.src.cfg.Guard.Allow(access, stmt.Confirmed); err != nil {
+	if err := ss.src.cfg.Guard.AllowStatement(access, unboundedIn(stmt.SQL), stmt.Confirmed); err != nil {
 		return nil, err
 	}
 	args := append([]any(nil), stmt.Args...)
@@ -129,7 +129,8 @@ func (ss *session) QueryMulti(ctx context.Context, script string, opts source.Sc
 	confirmed := opts.Confirmed
 	stmts := ss.src.SplitScript(script)
 	for _, st := range stmts {
-		if err := ss.src.cfg.Guard.Allow(ss.src.Classify(st.Text), confirmed); err != nil {
+		if err := ss.src.cfg.Guard.AllowStatement(ss.src.Classify(st.Text),
+			unboundedIn(st.Text), confirmed); err != nil {
 			return nil, err
 		}
 	}

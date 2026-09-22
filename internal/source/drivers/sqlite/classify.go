@@ -107,3 +107,15 @@ func words(stmt string) ([]string, bool) {
 	}
 	return out, assign
 }
+
+// unboundedIn reports a DELETE or UPDATE in this text that names no WHERE
+// (FR-4.9).
+func unboundedIn(stmt string) *source.UnboundedError {
+	for _, s := range sqlscript.Split(sqllex.SQLite, stmt, sqlscript.TriggerBlocks) {
+		ws, _ := words(s.Text)
+		if u := source.UnboundedIn(ws); u != nil {
+			return u
+		}
+	}
+	return nil
+}

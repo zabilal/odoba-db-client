@@ -7,6 +7,8 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+
+	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
 var d = dialect{}
@@ -354,6 +356,42 @@ func TestATypedWhereIsOneReadOnlyCondition(t *testing.T) {
 	for _, w := range []string{"pg_terminate_backend(1234)", "1 = 1; DROP TABLE orders", "id = $1"} {
 		if _, err := d.BuildBrowse(ref, source.BrowseOptions{Where: w}); err == nil {
 			t.Errorf("WHERE %q should be refused", w)
+		}
+	}
+}
+
+// A DELETE or UPDATE with no WHERE is asked about on every connection
+// (FR-4.9), and it is this driver's lexer that decides what counts.
+func TestPostgresNoticesAStatementThatChangesEveryRow(t *testing.T) {
+	for _, c := range []struct{ stmt, target string }{
+		{"DELETE FROM orders", "orders"},
+		{"UPDATE orders SET paid = true", "orders"},
+		{"UPDATE public.orders SET paid = true", "orders"},
+		{"WITH x AS (SELECT * FROM audit) DELETE FROM orders", "orders"},
+		// The second statement in a string runs too, and pgx runs both.
+		{"SELECT 1; DELETE FROM orders", "orders"},
+	} {
+		u := unboundedIn(sqllex.PostgreSQL, c.stmt)
+		if u == nil {
+			t.Errorf("%q was not noticed", c.stmt)
+			continue
+		}
+		if u.Target != c.target {
+			t.Errorf("%q names %q, want %q", c.stmt, u.Target, c.target)
+		}
+	}
+	for _, stmt := range []string{
+		"DELETE FROM orders WHERE id = 1",
+		"UPDATE orders SET paid = true WHERE id = 1",
+		"SELECT * FROM orders FOR UPDATE",
+		"SELECT 1",
+		// The lexer keeps this driver honest: a DELETE in a comment or a
+		// string is not one.
+		"SELECT 1 -- DELETE FROM orders",
+		"SELECT 'DELETE FROM orders'",
+	} {
+		if u := unboundedIn(sqllex.PostgreSQL, stmt); u != nil {
+			t.Errorf("%q was taken for one: %v", stmt, u)
 		}
 	}
 }

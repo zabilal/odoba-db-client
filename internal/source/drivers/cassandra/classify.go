@@ -86,3 +86,16 @@ func classifyOne(stmt string) source.Access {
 	}
 	return source.AccessWrite
 }
+
+// unboundedIn reports a DELETE or UPDATE in this text that names no WHERE
+// (FR-4.9). CQL will refuse most of these itself, since it wants a primary
+// key, but it is asked here too rather than relying on a server to be the
+// guardrail.
+func unboundedIn(stmt string) *source.UnboundedError {
+	for _, s := range sqlscript.SplitWith(sqllex.CQL, stmt, sqlscript.BatchBlocks, sqlscript.BatchCloses) {
+		if u := source.UnboundedIn(words(s.Text)); u != nil {
+			return u
+		}
+	}
+	return nil
+}
