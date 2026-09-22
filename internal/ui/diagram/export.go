@@ -2,15 +2,14 @@ package diagram
 
 import (
 	"fmt"
-	"image/color"
 	"image/png"
 	"io"
-	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/software"
 
 	"github.com/ikigai-db/ikigai-db/internal/ui/canvas"
+	"github.com/ikigai-db/ikigai-db/internal/ui/scene"
 )
 
 // Taking a diagram away (FR-8.4).
@@ -82,59 +81,5 @@ func (w *Widget) PNG(out io.Writer, zoom float64, t fyne.Theme) error {
 // diagram can be searched for and copied, and the file stays small enough to
 // put in a document.
 func (w *Widget) SVG(out io.Writer, zoom float64) error {
-	s := w.Scene(zoom)
-	var b strings.Builder
-	fmt.Fprintf(&b, `<?xml version="1.0" encoding="UTF-8"?>`+"\n")
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" `+
-		`viewBox="0 0 %.0f %.0f">`+"\n", s.W, s.H, s.W, s.H)
-	fmt.Fprintf(&b, `  <rect width="100%%" height="100%%" fill="%s"/>`+"\n", hex(s.Background))
-
-	for _, sh := range s.Shapes {
-		switch v := sh.(type) {
-		case Box:
-			fmt.Fprintf(&b, `  <rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="%.2f" `+
-				`fill="%s" stroke="%s" stroke-width="%.2f"/>`+"\n",
-				v.X, v.Y, v.W, v.H, v.Radius, hex(v.Fill), hex(v.Stroke), v.StrokeWidth)
-		case Line:
-			fmt.Fprintf(&b, `  <line x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f" `+
-				`stroke="%s" stroke-width="%.2f"/>`+"\n",
-				v.X1, v.Y1, v.X2, v.Y2, hex(v.Stroke), v.Width)
-		case Dot:
-			fmt.Fprintf(&b, `  <circle cx="%.2f" cy="%.2f" r="%.2f" fill="%s"/>`+"\n",
-				v.X, v.Y, v.R, hex(v.Fill))
-		case Text:
-			anchor := ""
-			if v.Trailing {
-				// The renderer measures and moves; SVG is told to end here
-				// instead, which needs no font metrics at all.
-				anchor = ` text-anchor="end"`
-			}
-			weight := ""
-			if v.Bold {
-				weight = ` font-weight="bold"`
-			}
-			// y is the top of a line of text here and the baseline in SVG,
-			// so the size is added to put them in the same place.
-			fmt.Fprintf(&b, `  <text x="%.2f" y="%.2f" font-size="%.2f" fill="%s"%s%s`+
-				` font-family="sans-serif">%s</text>`+"\n",
-				v.X, v.Y+v.Size, v.Size, hex(v.Fill), anchor, weight, escape(v.S))
-		}
-	}
-	b.WriteString("</svg>\n")
-	_, err := io.WriteString(out, b.String())
-	return err
-}
-
-// hex writes a colour the way SVG reads one. Alpha is ignored: nothing in a
-// diagram is drawn part-transparent, and a colour that looked right on a
-// screen and wrong in a file would be worse than one that is simply opaque.
-func hex(c color.NRGBA) string {
-	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
-}
-
-// escape writes a label so that a table called <b> is a table called <b>.
-func escape(s string) string {
-	return strings.NewReplacer(
-		"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",
-	).Replace(s)
+	return scene.WriteSVG(out, w.Scene(zoom))
 }

@@ -1,10 +1,10 @@
 package diagram
 
 import (
-	"image/color"
 	"strconv"
 
 	"github.com/ikigai-db/ikigai-db/internal/ui/canvas"
+	"github.com/ikigai-db/ikigai-db/internal/ui/scene"
 	"github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
 
@@ -18,58 +18,24 @@ import (
 // So the drawing is said here, in screen coordinates, and each of the three
 // turns these into its own shapes. Nothing in this file imports Fyne.
 
-// Shape is one thing to draw.
-type Shape interface{ shape() }
-
-// Box is a node's rectangle.
-type Box struct {
-	X, Y, W, H  float64
-	Fill        color.NRGBA
-	Stroke      color.NRGBA
-	StrokeWidth float64
-	Radius      float64
-}
-
-// Line is a segment of an edge, a hairline under a header, or part of a
-// cardinality mark.
-type Line struct {
-	X1, Y1, X2, Y2 float64
-	Stroke         color.NRGBA
-	Width          float64
-}
-
-// Text is a label. Trailing means it ends at X rather than beginning there,
-// which is how a column's type sits against the right edge of its box
-// without this having to measure it.
-type Text struct {
-	X, Y     float64
-	S        string
-	Size     float64
-	Fill     color.NRGBA
-	Bold     bool
-	Trailing bool
-}
-
-// Dot is the mark beside a column the primary key is made of.
-type Dot struct {
-	X, Y, R float64
-	Fill    color.NRGBA
-}
-
-func (Box) shape()  {}
-func (Line) shape() {}
-func (Text) shape() {}
-func (Dot) shape()  {}
-
-// Scene is everything worth drawing, in the order it is drawn.
-type Scene struct {
-	Shapes []Shape
-	// W and H are the size of what was drawn, which an exported file needs
-	// and a screen already knows.
-	W, H float64
-	// Background is what the diagram sits on.
-	Background color.NRGBA
-}
+// The vocabulary itself lives in internal/ui/scene, which is where the Fyne
+// renderer and the SVG writer read it from. It is named here so that a
+// diagram's shapes read as a diagram's shapes.
+type (
+	// Shape is one thing to draw.
+	Shape = scene.Shape
+	// Box is a node's rectangle.
+	Box = scene.Box
+	// Line is a segment of an edge, a hairline under a header, or part of
+	// a cardinality mark.
+	Line = scene.Line
+	// Text is a label.
+	Text = scene.Text
+	// Dot is the mark beside a column the primary key is made of.
+	Dot = scene.Dot
+	// Scene is everything worth drawing, in the order it is drawn.
+	Scene = scene.Scene
+)
 
 // Draw says what to draw of a graph, seen through a viewport.
 //
@@ -143,7 +109,7 @@ func nodeShapes(view *canvas.Viewport, pal theme.Palette, n canvas.Node,
 			Size: portTextSize * z, Fill: pal.Label, Bold: p.Key})
 		if p.Detail != "" {
 			out = append(out, Text{X: at.X + n.Size.W*z - textInset, Y: y, S: p.Detail,
-				Size: detailTextSize * z, Fill: pal.TertiaryLabel, Trailing: true})
+				Size: detailTextSize * z, Fill: pal.TertiaryLabel, Align: scene.Trailing})
 		}
 		y += canvas.NodePortH * z
 	}

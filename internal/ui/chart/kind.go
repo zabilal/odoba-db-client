@@ -299,3 +299,34 @@ func nameOf(names func(int) string, i int) string {
 	}
 	return names(i)
 }
+
+// What each kind is called in the window.
+
+// kindNames are what each kind is called in the window.
+var kindNames = map[Kind]string{
+	Line:       "Line",
+	Area:       "Area",
+	Bar:        "Bar",
+	StackedBar: "Stacked Bar",
+	Pie:        "Pie",
+	Scatter:    "Scatter",
+	Histogram:  "Histogram",
+}
+
+// KindName is what a kind is called.
+func KindName(k Kind) string {
+	if n, ok := kindNames[k]; ok {
+		return n
+	}
+	return string(k)
+}
+
+// KindNamed is the kind with a name, or a line, which draws anything.
+func KindNamed(name string) Kind {
+	for k, n := range kindNames {
+		if n == name {
+			return k
+		}
+	}
+	return Line
+}
