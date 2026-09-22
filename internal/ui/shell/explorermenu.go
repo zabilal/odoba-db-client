@@ -33,12 +33,23 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 	s.Explorer.Tree.Select(id)
 	s.sync()
 	ids := []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, "", cmdRefresh}
-	if s.selectionProducible() {
+	switch {
+	case s.selectionIsTopic():
+		// Everything a topic can be asked for: read from, written to, grown,
+		// and taken away. New Topic is here too, because somebody looking at
+		// a topic is already where topics are made.
+		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdProduce, "",
+			cmdTopicNew, cmdTopicPartition, cmdTopicDelete, "", cmdRefresh}
+	case s.selectionProducible():
 		// A topic is the only thing here that can be written to, and the menu
 		// says so only where that is true. Scripting a SELECT of a log, or a
 		// greyed "Write a Record" on every table, would each be an item about
 		// something the object cannot do at all.
 		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdProduce, "", cmdRefresh}
+	case s.selectionTopicAdmin():
+		// A cluster, or the class its topics hang under: nothing to write to
+		// here, but this is where a topic is made.
+		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdTopicNew, "", cmdRefresh}
 	}
 	if id == view.ConnectionID(conn) {
 		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdReconnect, cmdDisconnect, "", cmdConnDelete}

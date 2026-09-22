@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -36,19 +37,63 @@ func (recordFake) Open(context.Context, source.ConnectionConfig) (source.Source,
 }
 
 type recordSource struct {
-	// produced is every record this connection was asked to write, and
-	// refuse is what it says when asked. Between them a test can watch the
-	// shell ask, and watch it send nothing until it has an answer.
+	// produced is every record this connection was asked to write, changed
+	// is every change it was asked to make to its topics, and refuse is what
+	// it says when asked. Between them a test can watch the shell ask, and
+	// watch it do nothing until it has an answer.
 	produced []source.ProduceRequest
+	changed  []string
 	refuse   error
+}
+
+// allowed refuses the way the guard does: a read-only connection refuses
+// whatever anybody consents to, and a production one asks once and then
+// accepts.
+func (r *recordSource) allowed(confirmed bool) error {
+	if r.refuse != nil && (!confirmed || errors.Is(r.refuse, source.ErrReadOnly)) {
+		return r.refuse
+	}
+	return nil
+}
+
+func (r *recordSource) CreateTopic(_ context.Context, spec source.TopicSpec) error {
+	if err := r.allowed(spec.Confirmed); err != nil {
+		return err
+	}
+	r.changed = append(r.changed, "create "+spec.Name)
+	return nil
+}
+
+func (r *recordSource) DeleteTopic(_ context.Context, topic string, confirmed bool) error {
+	if err := r.allowed(confirmed); err != nil {
+		return err
+	}
+	r.changed = append(r.changed, "delete "+topic)
+	return nil
+}
+
+func (r *recordSource) AddPartitions(_ context.Context, topic string, count int32, confirmed bool) error {
+	if err := r.allowed(confirmed); err != nil {
+		return err
+	}
+	r.changed = append(r.changed, fmt.Sprintf("add %d to %s", count, topic))
+	return nil
+}
+
+func (r *recordSource) AlterTopicConfig(_ context.Context, topic string, _ map[string]string, confirmed bool) error {
+	if err := r.allowed(confirmed); err != nil {
+		return err
+	}
+	r.changed = append(r.changed, "configure "+topic)
+	return nil
 }
 
 // Produce stands in for a broker, and refuses the way the guard does: a
 // read-only connection refuses whatever anybody consents to, and a production
 // one asks once and then accepts.
 func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (model.TopicPartition, int64, error) {
-	if r.refuse != nil && (!rec.Confirmed || errors.Is(r.refuse, source.ErrReadOnly)) {
-		return model.TopicPartition{}, 0, r.refuse
+	if err := r.allowed(rec.Confirmed); err != nil {
+		return model.TopicPartition{}, 0, err
 	}
 	r.produced = append(r.produced, rec)
 	return model.TopicPartition{Topic: rec.Topic, Partition: 1}, 42, nil
@@ -57,7 +102,8 @@ func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (mo
 func (*recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
-		Stream:   capability.Stream{Consume: true, SeekTimestamp: true, Follow: true, Produce: true},
+		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
+			Produce: true, TopicAdmin: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true,
 		},

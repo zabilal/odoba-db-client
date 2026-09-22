@@ -388,7 +388,8 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// about changing one: resetting offsets and administering topics are
 		// claimed separately and are not written yet (ADR-0107).
 		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-			ConsumerGroups: true, Produce: true, SchemaRegistry: s.registry != nil},
+			ConsumerGroups: true, Produce: true, TopicAdmin: true,
+			SchemaRegistry: s.registry != nil},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,
