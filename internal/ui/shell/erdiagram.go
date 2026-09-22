@@ -3,6 +3,9 @@ package shell
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -15,6 +18,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/canvas"
 	"github.com/ikigai-db/ikigai-db/internal/ui/diagram"
 	"github.com/ikigai-db/ikigai-db/internal/ui/erd"
+	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 )
 
 // The way into a diagram (FR-8.1, FR-8.2).
@@ -139,6 +143,7 @@ func (p *diagramPanel) toolbar() fyne.CanvasObject {
 		widget.NewButton("−", func() { p.w.Zoom(false) }),
 		widget.NewButton("+", func() { p.w.Zoom(true) }),
 		widget.NewButton("Lay Out Again", p.layOutAgain),
+		widget.NewButton("Export…", p.export),
 	)
 }
 
@@ -206,4 +211,74 @@ func (p *diagramPanel) layOutAgain() {
 			p.s.d.Log.Warn("forgetting a diagram's arrangement", "err", err)
 		}
 	}()
+}
+
+// export writes the diagram as a picture (FR-8.4).
+//
+// The format follows the name: somebody who types .svg means SVG, and asking
+// again in a second dialog would be asking a question they have answered.
+func (p *diagramPanel) export() {
+	p.s.d.Files.Save(p.s.win, filedlg.Options{
+		Message:    "Export " + p.t.label,
+		Name:       diagramFileName(p.t.label),
+		Extensions: []string{"png", "svg"},
+		Kind:       "picture",
+		Accept:     "Export",
+	}, func(path string, err error) {
+		switch {
+		case err != nil:
+			p.s.showError(fmt.Errorf("could not export the diagram: %w", err))
+		case path == "":
+			// Cancelled, which is an answer.
+		default:
+			p.write(path)
+		}
+	})
+}
+
+// write puts the picture in a file, in the format its name asks for.
+//
+// Everything that can go wrong comes back one way, so there is one place
+// that says so and one that says it worked.
+func (p *diagramPanel) write(path string) {
+	if err := p.encode(path); err != nil {
+		p.s.showError(fmt.Errorf("could not export the diagram: %w", err))
+		return
+	}
+	p.t.footer.SetText("Exported to " + filepath.Base(path) + ".")
+}
+
+// encode writes the file, in the format the name asks for.
+func (p *diagramPanel) encode(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if strings.EqualFold(filepath.Ext(path), ".svg") {
+		err = p.w.SVG(f, exportZoom)
+	} else {
+		err = p.w.PNG(f, exportZoom, p.s.d.Theme)
+	}
+	if err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+// exportZoom is the scale an exported diagram is drawn at: its natural size,
+// where a box is as large as it is on screen at zoom 1 and every label is
+// legible. A picture too large for that is drawn smaller by the exporter.
+const exportZoom = 1.0
+
+// diagramFileName is what an exported diagram is called by default.
+func diagramFileName(label string) string {
+	name := strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == ':' {
+			return '-'
+		}
+		return r
+	}, label)
+	return name + ".png"
 }

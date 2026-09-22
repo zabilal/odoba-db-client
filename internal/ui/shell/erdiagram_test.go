@@ -1,6 +1,9 @@
 package shell
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -182,5 +185,89 @@ func TestChoosingABoxNamesIt(t *testing.T) {
 	p.w.OnSelect("main.items")
 	if !strings.Contains(tb.footer.Text, "main.items") {
 		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+}
+
+// Exporting a diagram (FR-8.4).
+
+// The format follows the name: somebody who types .svg means SVG.
+func TestExportingADiagramFollowsTheNameGiven(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		holds string
+	}{
+		{"schema.svg", "<svg "},
+		{"schema.SVG", "<svg "},
+		{"schema.png", "\x89PNG"},
+		{"schema", "\x89PNG"}, // no extension: a picture, which means PNG
+	} {
+		fx, tb, p := diagrammed(t)
+		p.export()
+		if len(fx.files.saves) != 1 {
+			t.Fatalf("%s: it asked to save %d times", c.name, len(fx.files.saves))
+		}
+		if got := fx.files.saves[0].Name; got != "main.png" {
+			t.Errorf("%s: it suggests %q", c.name, got)
+		}
+		if got := fx.files.saves[0].Extensions; !slices.Contains(got, "png") || !slices.Contains(got, "svg") {
+			t.Errorf("%s: it offers %q", c.name, got)
+		}
+
+		path := filepath.Join(t.TempDir(), c.name)
+		fx.files.answer(path, nil)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if !strings.Contains(string(data), c.holds) {
+			t.Errorf("%s: it wrote %d bytes beginning %q", c.name, len(data), first(data, 8))
+		}
+		if !strings.Contains(tb.footer.Text, "Exported to "+c.name) {
+			t.Errorf("%s: the footer says %q", c.name, tb.footer.Text)
+		}
+	}
+}
+
+func first(b []byte, n int) string {
+	if len(b) < n {
+		n = len(b)
+	}
+	return string(b[:n])
+}
+
+// Cancelling writes nothing and reports nothing.
+func TestCancellingAnExport(t *testing.T) {
+	fx, tb, p := diagrammed(t)
+	tb.footer.SetText("nothing said yet")
+	p.export()
+	fx.files.answer("", nil)
+	if tb.footer.Text != "nothing said yet" {
+		t.Errorf("cancelling said %q", tb.footer.Text)
+	}
+	if fx.s.errors.text != "" {
+		t.Errorf("cancelling reported a failure: %q", fx.s.errors.text)
+	}
+}
+
+// A file that cannot be written is reported, not swallowed.
+func TestAnExportThatCannotBeWritten(t *testing.T) {
+	fx, _, p := diagrammed(t)
+	p.export()
+	fx.files.answer(filepath.Join(t.TempDir(), "no-such-directory", "d.png"), nil)
+	if !strings.Contains(fx.s.errors.text, "could not export") {
+		t.Errorf("it said %q", fx.s.errors.text)
+	}
+}
+
+// A name a filesystem would read as a path does not become one.
+func TestWhatAnExportedDiagramIsCalled(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"main", "main.png"},
+		{"a/b", "a-b.png"},
+		{`C:\thing`, "C--thing.png"},
+	} {
+		if got := diagramFileName(c.in); got != c.want {
+			t.Errorf("%q became %q, want %q", c.in, got, c.want)
+		}
 	}
 }
