@@ -23,16 +23,21 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.22 — which columns are the axes, worked out rather than
-           asked for (FR-11.2). chart.Check and chart.Extent say what
-           a kind needs, so this is about reading a result: a time or
-           a number that ascends is an x, a number is a y, a short
-           column of repeated text is a series, and a column of keys
-           is none of them. What it guesses has to be changeable,
-           because it will be wrong sometimes and a chart nobody can
-           correct is a chart nobody trusts. Nothing in the window
-           draws a chart yet — the kinds and the shapes exist and no
-           tab opens one; that belongs with T3.22 or T3.24.
+NEXT TASK: T3.23 — export a chart as PNG or SVG (FR-11.3). The
+           diagram settled the shape of this (ADR-0130): say the
+           drawing once and let each format read it, so an exported
+           picture cannot differ from the one it was exported from.
+           A chart is further from that than a diagram was — the
+           marks are rasterised into an image on purpose (ADR-0004),
+           which is a raster, and an SVG of a hundred thousand
+           scatter points is a file nothing will open. What an SVG
+           should do with a rasterised layer is the question to
+           settle, and embedding the raster inside it is the likely
+           answer.
+           Nothing in the window draws a chart yet: the kinds, the
+           shapes, the roles and the reading all exist and no tab
+           opens one. That belongs with T3.24, which needs a chart on
+           a screen to hover over.
            3.C is finished: T3.16 to T3.20 are done and FR-8.1 to
            FR-8.5 are met on any connection whose structure can be
            read.
@@ -144,7 +149,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — the seven kinds a result can be drawn as, each
+LAST DONE: 2026-09-22 — which columns are the axes, guessed the way somebody
+           would by eye and changeable because it will be wrong
+           sometimes, with every row that cannot be drawn counted
+           rather than quietly dropped (T3.22, ADR-0133); before it
+           the seven kinds a result can be drawn as, each
            refusing what it cannot draw honestly and saying what to
            draw instead — a bar's axis reaching zero where a line's
            does not, a pie gathering its tail rather than dropping it
@@ -920,7 +929,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 3.D Charts (productionise W4)
 
 - [x] **T3.21** Chart types: line, bar, stacked bar, area, pie, scatter, histogram → FR-11.1 — *the spike settled how marks reach a screen, rasterised into one image rather than drawn as thousands of canvas objects (ADR-0004), and gave scales, ticks, downsampling and a hit index; what it did not give is the shapes. A chart is read as a statement about data, so a mark nobody's row put there is a lie told in a picture and harder to catch than one told in a number — which is what most of these decisions are about (ADR-0132). A kind that cannot honestly draw the data refuses and says what to draw instead: a pie of negative values has no share of a whole, and a stack of +5 and −5 is a bar of nothing standing for two numbers that are not nothing. A bar's axis reaches zero and a line's does not — a bar's length is its value, so an axis starting at 90 draws 91 as ten times 90.1, while a line is about change and cutting the axis is how change is seen. A bar reaches the axis rather than the foot of the chart, so a negative value hangs below it; a stack is as tall as its parts together and each layer stands on what is below it. A histogram's edges are round numbers, bins from 3.7194 to 12.8831 being bins nobody can say anything about, and its bars touch because the values between two edges are one continuous run where gaps would read as categories; a value never falls in a bin that ends at it. A pie gathers its tail rather than dropping it, past a dozen wedges being a colour wheel, and says how many it gathered — dropping them would be a chart that quietly left data out. A mark too small to round to a pixel is still drawn, absent being a different statement from small; and a chart of no rows is an answer rather than a failure. 22 mutations, each caught. Three pieces of code came out while writing them, because no test could tell the absence of any: a spare histogram bin that made the clamp on the largest value unreachable, a guard on an area of one point that the loop already said, and a special case for every-value-the-same that the general path handles better — it gave an interval from a value to the next float after it, where the general path gives two round numbers. This task's gate also caught a data race that is not this task's and is fixed here: a Redis cluster's shards are asked for all at once by ForEachMaster, and the results were appended from several goroutines without a lock — so a cluster of three shards was occasionally reported as having two, and never the same two twice. The race detector says so plainly once it is pointed at the live cluster*
-- [ ] **T3.22** Column-role assignment with auto-detection → FR-11.2
+- [x] **T3.22** Column-role assignment with auto-detection → FR-11.2 — *a result is a table and a chart is not, so something has to say which column runs along the bottom, which are drawn, and which splits the drawing into several. It guesses, and everything it guesses can be changed: asking first is a form to fill in before seeing whether the chart was worth having, and it will be wrong sometimes, where a chart nobody can correct is a chart nobody trusts (ADR-0133). The order is what somebody would do by eye — a moment in time along the bottom, because a result ordered by one is almost always a result about change; failing that a column of labels, the categories of a bar chart; then a column of a few repeated labels to split the numbers, looked for after the axis so the two are never the same column. What cannot be drawn is left out rather than pressed into a role, a chart of an identifier being a chart of nothing, and a column with a different value in nearly every row is an identifier however it is named — which is also the point past which the colours would repeat. A category is given a position and its name comes back to be drawn, an axis being a line and a word not a place on one. A row that cannot be read is left out and how many is said, a chart drawn over gaps nobody was told about lying by omission. A line is sorted along its axis and nothing else is, a line drawn in the order rows arrived zigzagging wherever the result was not sorted, which reads as data going backwards in time; a bar chart's order is the order somebody asked for. Neither an infinity nor a not-a-number is a place on an axis, drawing one moving every other point to make room; and a null is named rather than left blank, since a chart cannot leave a gap in a legend and an empty name would read as one somebody chose. 23 mutations, each caught; four were mine that would not build, one found the axis column could also have been taken as the series where the axis was a label, and one retired a fallback that could never fire — it turned a numeric axis into a drawn column, and an axis is only ever taken from a column that orders or one that labels*
 - [ ] **T3.23** Export PNG / SVG → FR-11.3
 - [ ] **T3.24** Hover tooltips and click-to-filter → FR-11.4
 
