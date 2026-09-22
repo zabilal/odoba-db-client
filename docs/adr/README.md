@@ -132,3 +132,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0125](0125-a-rule-about-what-not-to-compare.md) | A rule about what not to compare | Accepted |
 | [0126](0126-what-a-property-finds-that-a-test-does-not.md) | What a property finds that a test does not | Accepted |
 | [0127](0127-a-diagram-draws-what-the-catalogue-says.md) | A diagram draws what the catalogue says | Accepted |
+| [0128](0128-a-diagram-lays-itself-out-and-remembers-the-hand.md) | A diagram lays itself out, and remembers the hand | Accepted |
