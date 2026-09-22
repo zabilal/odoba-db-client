@@ -364,21 +364,14 @@ func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOp
 	t.footer.SetText("")
 	switch {
 	case errors.Is(err, source.ErrConfirmationRequired):
-		c, _ := s.d.Conns.Get(t.connID)
-		d := dialog.NewConfirm("Change Data on Production?",
-			fmt.Sprintf("This script changes data on “%s”, which is marked Production. Nothing has run yet.", c.Name),
-			func(yes bool) {
-				if yes {
-					opts.Confirmed = true // the values given still go with it
-					s.execute(t, script, base, opts)
-				} else {
-					t.footer.SetText("Not run")
-				}
-			}, s.win)
-		d.SetConfirmText("Run")
-		d.SetDismissText("Cancel")
-		d.SetConfirmImportance(widget.DangerImportance)
-		d.Show()
+		s.askToType(t.connID, "Change Data on Production?",
+			productionBody("script changes data on", s.connName(t.connID), "Nothing has run yet."),
+			"Run",
+			func() {
+				opts.Confirmed = true // the values given still go with it
+				s.execute(t, script, base, opts)
+			},
+			func() { t.footer.SetText("Not run") })
 	case errors.Is(err, source.ErrReadOnly):
 		s.note(t.query, "Not run: the script changes data, and this connection is read-only.")
 	default:

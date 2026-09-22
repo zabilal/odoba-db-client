@@ -211,6 +211,7 @@ func TestSavingADocumentOnProductionAsksFirst(t *testing.T) {
 	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "marked Production") {
 		t.Fatalf("saving a document on production asks first: %q", text)
 	}
+	typeOnTop(t, fx, "prod")
 	tapOnTop(t, fx, "Commit")
 	pump(t, fx.q, func() bool { return len(writtenPlans()) > before })
 	plan := writtenPlans()[before]

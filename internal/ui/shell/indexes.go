@@ -98,24 +98,17 @@ func (s *Shell) reviewIndex(t *tab, plan func(confirmed bool) (*source.WritePlan
 			s.runIndex(t, p)
 			return
 		}
-		c, _ := s.d.Conns.Get(t.connID)
-		ask := dialog.NewConfirm("Change Structure on Production?",
-			fmt.Sprintf("This changes the structure of “%s”, which is marked Production. Nothing has been sent yet.", c.Name),
-			func(yes bool) {
-				if !yes {
-					return
-				}
+		s.askToType(t.connID, "Change Structure on Production?",
+			productionBody("changes the structure of", s.connName(t.connID), "Nothing has been sent yet."),
+			"Run",
+			func() {
 				consented, err := plan(true)
 				if err != nil {
 					s.showError(err)
 					return
 				}
 				s.runIndex(t, consented)
-			}, s.win)
-		ask.SetConfirmText("Run")
-		ask.SetDismissText("Cancel")
-		ask.SetConfirmImportance(widget.DangerImportance)
-		ask.Show()
+			}, nil)
 	}, s.win)
 	d.SetConfirmImportance(widget.HighImportance)
 	d.Resize(fyne.NewSize(560, 320))

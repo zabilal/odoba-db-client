@@ -153,6 +153,7 @@ func TestProductionAsksBeforeCommitting(t *testing.T) {
 	}
 	reviewed(t, fx)
 	tapOnTop(t, fx, "Commit")
+	typeOnTop(t, fx, "prod")
 	tapOnTop(t, fx, "Commit")
 	pump(t, fx.q, func() bool { return len(writtenPlans()) == before+1 })
 	if plan := writtenPlans()[before]; !plan.Statements[0].Confirmed {

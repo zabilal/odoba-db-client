@@ -23,23 +23,24 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 2.J — production guardrails (J7), the section after this
-           one. Read its lines before starting; some of it is already
-           standing, since Guard, environments and read-only have been
-           carried through every driver and now survive an import and
-           an export too.
+NEXT TASK: T2.91 — always confirm DELETE and UPDATE with no WHERE
+           (FR-4.9). This is the other half of the requirement and it
+           is not about environments at all: such a statement is asked
+           about on every connection, production or not, because what
+           makes it dangerous is the statement. The typed dialog from
+           T2.90 is there to use (ADR-0113), but the wording will have
+           to differ — on a development database the connection's name
+           is not the thing worth reading twice, the missing WHERE is.
+           Classify already tells a write from a read; what is new is
+           noticing the absent WHERE, per dialect, without pretending
+           to parse SQL properly.
            T2.88 stays [~]: DBGate and TablePlus are not done and its
-           line says what each would need. DBGate needs the owner to
-           install it so the file it writes can be observed, because
-           its storage is undocumented and its source may not be read
-           here.
-           Still true, and now worth saying as a decision somebody has
-           to make: there is no way in from the window for an SSH
+           line says what each would need.
+           Still true: there is no way in from the window for an SSH
            tunnel, a cloud identity, an import from another tool, or
            an exported connection set. Four features have a finished
            half and no user interface, and nothing in the task list
-           claims them. They will not build themselves into the
-           connection editor by being mentioned again.
+           claims them.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -98,7 +99,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — connections exported as a file somebody keeps and read back into
+LAST DONE: 2026-09-22 — a production write confirmed by typing the connection's name
+           rather than by pressing a button, one dialog serving
+           every site that writes (T2.90, ADR-0113); before it
+           connections exported as a file somebody keeps and read back into
            another installation, secrets excluded unless asked
            for and the file saying which it is, correcting on the
            way a folder that T2.88 wrote as a name where an
@@ -705,7 +709,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.J Production guardrails → J7
 
-- [ ] **T2.90** Typed confirmation for writes on `production` connections → FR-4.9
+- [x] **T2.90** Typed confirmation for writes on `production` connections → FR-4.9 — *the guard has refused production writes since it was written and every driver consults it; what the window did with the refusal was put up a dialog with a Yes button. That is confirm and not typed, and the difference is the point: by the time somebody is running statements they have dismissed a great many dialogs, and a button in a familiar place is pressed by the hand before it is read by the eye. So the confirmation is typed, and what is typed is the connection's name — not a fixed word, which would become as automatic as the button. The name, because the mistake this guards against is almost never the wrong statement but the right statement on the wrong connection, and the name is the only thing that tells one production database from another (ADR-0113). The match is exact after trimming space around it, since a pasted name brings whitespace and that is not the carelessness this is for, while PROD does not confirm prod. A connection that cannot be found asks for the word production: the store refuses to save one with no name, so that case is a connection deleted while an operation was in flight, and without a fallback the confirmation would be given by typing nothing. One dialog serves all seven sites — running a script, committing pending changes, saving a document, a pipeline that writes, changing an index, producing a record, changing a cluster — because six near-identical dialogs is how the click-through survived this long, and one means the guardrail cannot be half-applied. Fyne decided the vehicle: ConfirmDialog keeps its confirm button unexported and cannot be disabled, while FormDialog disables the button whenever an item fails validation, so the confirmation is a form whose entry validates against the name. The cost is that a form exposes no confirm-button importance, so it is no longer danger-red; the typing is the better friction. A second Fyne quirk, worth the note: a Form draws its item labels through RichText rather than Label, so labelTexts cannot see them — the same trap as a Select in T2.74 — and the tests read them through a RichText walk. Eight existing tests had to change because they encoded the click-through; they now type the name, which is what a person does. 11 mutations, each caught*
 - [ ] **T2.91** Always confirm `DELETE`/`UPDATE` with no WHERE → FR-4.9
 - [ ] **T2.92** Verify read-only blocks every write path incl. Kafka produce → NFR-S4
 

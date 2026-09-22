@@ -204,19 +204,10 @@ func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, 
 // askBeforeChanging is the production guardrail. The driver refused
 // before it dialled, so nothing has happened yet and asking is safe (FR-4.9).
 func (s *Shell) askBeforeChanging(connID, what string, change clusterChange) {
-	c, _ := s.d.Conns.Get(connID)
-	d := dialog.NewConfirm("Change This Production Cluster?",
-		fmt.Sprintf("This would %s on “%s”, which is marked Production. Nothing has happened yet.", what, c.Name),
-		func(yes bool) {
-			if !yes {
-				return
-			}
-			s.attemptClusterChange(connID, what, change, true)
-		}, s.win)
-	d.SetConfirmText("Continue")
-	d.SetDismissText("Cancel")
-	d.SetConfirmImportance(widget.DangerImportance)
-	d.Show()
+	s.askToType(connID, "Change This Production Cluster?",
+		productionBody("would "+what+" on", s.connName(connID), "Nothing has happened yet."),
+		"Continue",
+		func() { s.attemptClusterChange(connID, what, change, true) }, nil)
 }
 
 // topicFrom reads what was typed into the topic it describes.
