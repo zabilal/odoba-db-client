@@ -89,7 +89,7 @@ func TestAKeyspaceAndAKeyAreShownAsWhatTheyAre(t *testing.T) {
 		{Title: "Memory", Values: []model.Figure{{Name: "used_memory_human", Value: "1.05M"}}},
 		{Title: "Statistics", Values: []model.Figure{{Name: "keyspace_hits", Value: "42"}}},
 	}}
-	got := strings.Join(labelTexts(structureView(ks, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(ks, structureActions{})), "\n")
 	for _, want := range []string{"3 keys, 1 of them set to expire", "Memory", "used_memory_human",
 		"1.05M", "Statistics", "keyspace_hits", "42"} {
 		if !strings.Contains(got, want) {
@@ -98,14 +98,14 @@ func TestAKeyspaceAndAKeyAreShownAsWhatTheyAre(t *testing.T) {
 	}
 	// A server that says nothing about itself says so, rather than showing
 	// empty headings.
-	quiet := strings.Join(labelTexts(structureView(&model.Keyspace{Name: "db0", Keys: -1, Expiring: -1}, nil, nil)), "\n")
+	quiet := strings.Join(labelTexts(structureView(&model.Keyspace{Name: "db0", Keys: -1, Expiring: -1}, structureActions{})), "\n")
 	if !strings.Contains(quiet, "says nothing about itself") || strings.Contains(quiet, "keys,") {
 		t.Errorf("a server that says nothing:\n%s", quiet)
 	}
 
 	key := &model.StoredKey{Name: "user:1", Kind: "hash", TTL: 90 * time.Second,
 		Bytes: 104, Length: 2, Encoding: "listpack"}
-	got = strings.Join(labelTexts(structureView(key, nil, nil)), "\n")
+	got = strings.Join(labelTexts(structureView(key, structureActions{})), "\n")
 	for _, want := range []string{"A hash: fields and their values.", "Kind", "hash", "Held as",
 		"listpack", "Length", "2", "Bytes", "104", "Expires", "in 1m30s"} {
 		if !strings.Contains(got, want) {
@@ -115,7 +115,7 @@ func TestAKeyspaceAndAKeyAreShownAsWhatTheyAre(t *testing.T) {
 	// A key that never expires says so, and one the server would say nothing
 	// about shows nothing rather than -1.
 	plain := strings.Join(labelTexts(structureView(&model.StoredKey{Name: "user:1", Kind: "string",
-		Bytes: -1, Length: -1}, nil, nil)), "\n")
+		Bytes: -1, Length: -1}, structureActions{})), "\n")
 	if !strings.Contains(plain, "never") || strings.Contains(plain, "-1") {
 		t.Errorf("a key with nothing said about it:\n%s", plain)
 	}
@@ -124,7 +124,7 @@ func TestAKeyspaceAndAKeyAreShownAsWhatTheyAre(t *testing.T) {
 	}
 	// A kind nobody here has a line for is still said to be something.
 	other := strings.Join(labelTexts(structureView(&model.StoredKey{Name: "ts", Kind: "TSDB-TYPE",
-		Bytes: -1, Length: -1}, nil, nil)), "\n")
+		Bytes: -1, Length: -1}, structureActions{})), "\n")
 	if !strings.Contains(other, "A TSDB-TYPE.") {
 		t.Errorf("a kind nobody knows:\n%s", other)
 	}

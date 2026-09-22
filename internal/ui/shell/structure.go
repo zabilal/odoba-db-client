@@ -131,25 +131,76 @@ type indexActions struct {
 	drop func(names []string)
 }
 
+// structureActions are what a structure view can do beyond showing what was
+// described: work that costs a request, and is therefore offered rather than
+// done. Each is zero where it does not apply.
+type structureActions struct {
+	// sample infers a collection's shape from its documents (FR-12.4).
+	sample func()
+
+	// indexes adds and drops them, where the source makes them on its own
+	// (FR-6.3).
+	indexes *indexActions
+
+	// progress reads a consumer group's per-partition offsets and lag, which
+	// describing the group deliberately does not (FR-13.10, T2.75).
+	progress func()
+}
+
 // showStructure draws what was described, with the sampling offered where the
-// source's structure is its data's (FR-12.4), and the indexes where it makes
-// them on their own (FR-6.3).
+// source's structure is its data's (FR-12.4), the indexes where it makes them
+// on their own (FR-6.3), and a group's progress where the source can read it
+// (FR-13.10).
 func (s *Shell) showStructure(t *tab, connID string, desc any, inferred bool) {
-	var sample func()
-	var idx *indexActions
-	if coll, ok := desc.(*model.Collection); ok {
+	var acts structureActions
+	switch d := desc.(type) {
+	case *model.Collection:
 		if inferred {
-			sample = func() { s.sampleShape(t, connID, coll) }
+			acts.sample = func() { s.sampleShape(t, connID, d) }
 		}
 		if live, ok := s.d.WS.Get(connID); ok && live.Source.Capabilities().Schema.Indexes {
-			idx = &indexActions{
+			acts.indexes = &indexActions{
 				add:  func() { s.addIndex(t) },
 				drop: func(names []string) { s.dropIndex(t, names) },
 			}
 		}
+	case *model.ConsumerGroup:
+		// Offered only where the source says it can read a group, which is a
+		// promise about reading and not about changing one (ADR-0107).
+		if live, ok := s.d.WS.Get(connID); ok && live.Source.Capabilities().Stream.ConsumerGroups {
+			acts.progress = func() { s.readGroupProgress(t, connID, d) }
+		}
 	}
-	t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc, sample, idx))}
+	t.body.Objects = []fyne.CanvasObject{container.NewVScroll(structureView(desc, acts))}
 	t.body.Refresh()
+}
+
+// readGroupProgress reads how far a group has got and redraws the structure
+// with it. It is a separate act from describing the group because it costs
+// the group's committed offsets and the ends of every log they are in, and
+// nobody should pay that for opening a group (T2.75, FR-13.10).
+func (s *Shell) readGroupProgress(t *tab, connID string, g *model.ConsumerGroup) {
+	ctx, id := t.ctx, g.ID
+	t.footer.SetText("Reading how far the group has got…")
+	go func() {
+		live, err := s.d.WS.Connect(ctx, connID)
+		var offsets []model.GroupOffset
+		if err == nil {
+			offsets, err = app.GroupOffsets(ctx, live.Source, id)
+		}
+		s.d.Run(func() {
+			if ctx.Err() != nil {
+				return // the tab closed while it was reading
+			}
+			t.footer.SetText("")
+			if err != nil {
+				s.showError(fmt.Errorf("could not read the group's progress: %w", err))
+				return
+			}
+			g.Offsets = offsets
+			s.showStructure(t, connID, g, false)
+		})
+	}()
 }
 
 // sampleShape reads documents and redraws the structure with what they hold.
@@ -182,9 +233,11 @@ func (s *Shell) sampleShape(t *tab, connID string, coll *model.Collection) {
 // structureView lays out what Describe returned. Sections with nothing in
 // them are left out (UX principle 2).
 //
-// sample, where there is one, reads documents to say what an object holds:
-// only a source whose structure is its data's has one.
-func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject {
+// acts are what this view can offer to do that costs a request: sampling the
+// documents of a source whose structure is its data's, adding and dropping
+// indexes, and reading how far a consumer group has got. Each is offered only
+// where it applies, and none of it happens unless somebody asks.
+func structureView(desc any, acts structureActions) fyne.CanvasObject {
 	box := container.NewVBox()
 	add := func(o fyne.CanvasObject) { box.Add(o) }
 	switch v := desc.(type) {
@@ -249,7 +302,7 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 			add(quietLabel(fmt.Sprintf("Fields seen in %d documents sampled.", v.Shape.Sampled)))
 			add(section("Fields", fieldRows(v.Shape.Fields)))
 		}
-		if sample != nil {
+		if acts.sample != nil {
 			// A collection has no declared fields; reading some of its
 			// documents is the only way to say what it holds, and it is
 			// offered rather than done (FR-12.4).
@@ -257,14 +310,14 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 			if v.Shape != nil {
 				label = "Sample again"
 			}
-			b := widget.NewButton(label, sample)
+			b := widget.NewButton(label, acts.sample)
 			b.Importance = widget.LowImportance
 			add(container.NewHBox(b))
 		}
 		add(section("Indexes", documentIndexRows(v.Indexes)))
-		if idx != nil {
-			addIdx := widget.NewButton("Add Index…", func() { idx.add() })
-			dropIdx := widget.NewButton("Drop Index…", func() { idx.drop(indexNames(v)) })
+		if acts.indexes != nil {
+			addIdx := widget.NewButton("Add Index…", func() { acts.indexes.add() })
+			dropIdx := widget.NewButton("Drop Index…", func() { acts.indexes.drop(indexNames(v)) })
 			addIdx.Importance, dropIdx.Importance = widget.LowImportance, widget.LowImportance
 			if len(indexNames(v)) == 0 {
 				dropIdx.Disable()
@@ -372,6 +425,29 @@ func structureView(desc any, sample func(), idx *indexActions) fyne.CanvasObject
 			rows = append(rows, []string{m.ID, m.ClientID, m.Host, assignedText(m.Assignment)})
 		}
 		add(section("Members", rows))
+		if len(v.Offsets) > 0 {
+			progress := [][]string{{"Topic", "Partition", "Committed", "End of log", "Behind"}}
+			for _, o := range v.Offsets {
+				progress = append(progress, []string{o.Topic, strconv.Itoa(int(o.Partition)),
+					offsetText(o.Current), offsetText(o.End), lagText(o)})
+			}
+			add(section("Progress", progress))
+			add(quietLabel(behindText(v)))
+		}
+		if acts.progress != nil {
+			// Offered, never done: it costs the group's commits and the ends
+			// of every log they are in (T2.75, FR-13.10).
+			label := "Read how far it has got"
+			if len(v.Offsets) > 0 {
+				label = "Read it again"
+			}
+			b := widget.NewButton(label, acts.progress)
+			b.Importance = widget.LowImportance
+			add(container.NewHBox(b))
+			if len(v.Offsets) == 0 {
+				add(quietLabel("How far each member has got is a pair of requests to the cluster, so it is read when you ask for it."))
+			}
+		}
 	case *model.Cluster:
 		// A cluster has no columns either. What there is to say is who its
 		// brokers are, which of them answers for the whole, and what it calls
@@ -526,6 +602,66 @@ func foreignKeyRows(fks []model.ForeignKey) [][]string {
 
 // section is a heading over a grid whose first row names its columns. A
 // section with no rows below that is nothing, and left out.
+// offsetText is a position in a log, or says that nobody could give one.
+// Nothing here reads as -1: that is a fact about the protocol rather than
+// about the data, and nobody should have to know how to read one.
+func offsetText(at int64) string {
+	if at < 0 {
+		return "none"
+	}
+	return strconv.FormatInt(at, 10)
+}
+
+// lagText is how far behind one partition is.
+//
+// Two different unknowns arrive as -1 and must not read alike. A partition
+// the group has never committed to, or one whose end nobody could read,
+// cannot be measured at all and says so. Where both ends are known a
+// negative is the measurement rather than the group — the commit and the end
+// of the log are read a moment apart, so a busy partition can appear to be
+// ahead of itself — and it is clamped, which is what the model asks of
+// anybody reading Lag.
+func lagText(o model.GroupOffset) string {
+	if o.Current < 0 || o.End < 0 {
+		return "unknown"
+	}
+	if o.Lag <= 0 {
+		return "up to date"
+	}
+	return strconv.FormatInt(o.Lag, 10)
+}
+
+// behindText is what the group amounts to across every partition it reads,
+// which is the number somebody opens this view for.
+//
+// It counts only what could be measured and says how much it left out: a
+// total quietly omitting the partitions nobody could read would be the most
+// misleading number on the page.
+func behindText(g *model.ConsumerGroup) string {
+	unknown := 0
+	for _, o := range g.Offsets {
+		if o.Current < 0 || o.End < 0 {
+			unknown++
+		}
+	}
+	var text string
+	switch n := g.TotalLag(); {
+	case n == 0:
+		text = "Up to date on every partition that could be measured."
+	case n == 1:
+		text = "One record behind, across the partitions that could be measured."
+	default:
+		text = fmt.Sprintf("%d records behind, across the partitions that could be measured.", n)
+	}
+	switch {
+	case unknown == 1:
+		text += " One could not be, and is not counted."
+	case unknown > 1:
+		text += fmt.Sprintf(" %d could not be, and are not counted.", unknown)
+	}
+	return text
+}
+
 // groupHolds is what a group amounts to in one line: what it is doing, and
 // how many are doing it.
 func groupHolds(g *model.ConsumerGroup) string {

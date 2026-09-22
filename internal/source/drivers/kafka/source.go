@@ -381,8 +381,11 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// SchemaRegistry is claimed only where one was named: claiming it
 		// otherwise would promise subjects this connection can never list
 		// (REQ-DRV-1).
+		// ConsumerGroups is reading a group and its lag, and promises nothing
+		// about changing one: resetting offsets and administering topics are
+		// claimed separately and are not written yet (ADR-0107).
 		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-			SchemaRegistry: s.registry != nil},
+			ConsumerGroups: true, SchemaRegistry: s.registry != nil},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,

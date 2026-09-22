@@ -29,6 +29,21 @@ func InferShape(ctx context.Context, src source.Source, ref model.ObjectRef, n i
 	return inf.InferShape(ctx, ref, n)
 }
 
+// GroupOffsets reads how far a consumer group has got on every partition it
+// reads, and how far behind that leaves it (FR-13.10).
+//
+// A source that cannot read a group says so rather than answering with no
+// progress at all: no progress and no lag would draw as a group that is up to
+// date, which is a different thing from one nobody can ask about.
+func GroupOffsets(ctx context.Context, src source.Source, groupID string) (_ []model.GroupOffset, err error) {
+	defer panics.Recover(&err, "reading a group's progress")
+	gi, ok := src.(source.GroupInspector)
+	if !ok {
+		return nil, errors.New("this source cannot read a consumer group's progress")
+	}
+	return gi.GroupOffsets(ctx, groupID)
+}
+
 // Referrers lists the foreign keys of other tables that refer to a table,
 // where the source lists them; none where it does not (FR-3.11).
 func Referrers(ctx context.Context, src source.Source, ref model.ObjectRef) (_ []model.Referrer, err error) {
