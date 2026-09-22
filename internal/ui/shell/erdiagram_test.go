@@ -31,18 +31,25 @@ func TestASchemaOpensAsADiagram(t *testing.T) {
 	if tb.item.Text != "Diagram: main" {
 		t.Errorf("the tab is called %q", tb.item.Text)
 	}
-	if got := len(p.w.Graph().Nodes); got != 1 {
-		t.Fatalf("it drew %d tables", got)
+	var names []string
+	for _, n := range p.w.Graph().Nodes {
+		names = append(names, n.ID)
 	}
-	if got := p.w.Graph().Nodes[0].ID; got != "main.items" {
-		t.Errorf("it drew %q", got)
+	slices.Sort(names)
+	want := []string{"audit.log", "main.alone", "main.items", "main.lines", "main.orders"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("it drew %v, want %v", names, want)
 	}
 	// Every box has a size and a place, or nothing could be drawn.
-	n := p.w.Graph().Nodes[0]
-	if n.Size.W <= 0 || n.Size.H <= 0 {
-		t.Errorf("it is %v across", n.Size)
+	for _, n := range p.w.Graph().Nodes {
+		if n.Size.W <= 0 || n.Size.H <= 0 {
+			t.Errorf("%s is %v across", n.ID, n.Size)
+		}
 	}
-	if !strings.Contains(tb.footer.Text, "1 table") {
+	if !strings.Contains(tb.footer.Text, "5 tables") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+	if !strings.Contains(tb.footer.Text, "2 relationships") {
 		t.Errorf("the footer says %q", tb.footer.Text)
 	}
 }
@@ -51,8 +58,8 @@ func TestASchemaOpensAsADiagram(t *testing.T) {
 // diagram is opened.
 func TestABoxStaysWhereItWasPut(t *testing.T) {
 	fx, tb, p := diagrammed(t)
-	p.w.Graph().Nodes[0].Pos = canvas.Point{X: 700, Y: 400}
-	p.w.Graph().Nodes[0].Pinned = true
+	p.w.Graph().NodeByID("main.items").Pos = canvas.Point{X: 700, Y: 400}
+	p.w.Graph().NodeByID("main.items").Pinned = true
 	p.keep()
 
 	// The write happens off the UI goroutine, so wait for it to land.
@@ -79,8 +86,8 @@ func TestABoxStaysWhereItWasPut(t *testing.T) {
 // unpins everything and forgets the arrangement.
 func TestLayingOutAgainForgetsWhatWasMoved(t *testing.T) {
 	fx, _, p := diagrammed(t)
-	p.w.Graph().Nodes[0].Pos = canvas.Point{X: 700, Y: 400}
-	p.w.Graph().Nodes[0].Pinned = true
+	p.w.Graph().NodeByID("main.items").Pos = canvas.Point{X: 700, Y: 400}
+	p.w.Graph().NodeByID("main.items").Pinned = true
 	p.keep()
 	pump(t, fx.q, func() bool {
 		_, ok := p.arrangement()
@@ -88,8 +95,10 @@ func TestLayingOutAgainForgetsWhatWasMoved(t *testing.T) {
 	})
 
 	p.layOutAgain()
-	if p.w.Graph().Nodes[0].Pinned {
-		t.Error("a box is still pinned after laying out again")
+	for _, n := range p.w.Graph().Nodes {
+		if n.Pinned {
+			t.Errorf("%s is still pinned after laying out again", n.ID)
+		}
 	}
 	pump(t, fx.q, func() bool {
 		_, ok := p.arrangement()
@@ -269,5 +278,213 @@ func TestWhatAnExportedDiagramIsCalled(t *testing.T) {
 		if got := diagramFileName(c.in); got != c.want {
 			t.Errorf("%q became %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// Narrowing a diagram to what is near one table (FR-8.5).
+
+func namesIn(p *diagramPanel) []string {
+	var out []string
+	for _, n := range p.w.Graph().Nodes {
+		out = append(out, n.ID)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// A diagram of two hundred tables is a ball of string. One of the tables
+// within a relationship or two of the one somebody is looking at is a
+// diagram.
+func TestFocusingOnATableNarrowsTheDiagram(t *testing.T) {
+	_, tb, p := diagrammed(t)
+
+	p.focusOn("main.items")
+	if got, want := namesIn(p), []string{"main.items", "main.orders"}; !slices.Equal(got, want) {
+		t.Errorf("one relationship away it drew %v, want %v", got, want)
+	}
+	if !strings.Contains(tb.footer.Text, "Around main.items, 1 relationship away") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+
+	// Further out reaches the table beyond.
+	p.degree = 2
+	p.draw()
+	p = tb.diagram
+	if got := namesIn(p); !slices.Contains(got, "main.lines") {
+		t.Errorf("two relationships away it drew %v", got)
+	}
+	// And never the one nothing points at.
+	if slices.Contains(namesIn(p), "main.alone") {
+		t.Errorf("it drew a table nothing connects to: %v", namesIn(p))
+	}
+}
+
+// Just that table is a diagram of one box, which is how somebody sees what a
+// table is without anything else in the way.
+func TestFocusingOnJustOneTable(t *testing.T) {
+	_, _, p := diagrammed(t)
+	p.degree = 0
+	p.focusOn("main.items")
+	if got, want := namesIn(p), []string{"main.items"}; !slices.Equal(got, want) {
+		t.Errorf("it drew %v, want %v", got, want)
+	}
+}
+
+// A narrowed diagram says what leads out of it, or the tables it draws look
+// unrelated to everything it does not.
+func TestANarrowedDiagramSaysWhatLeadsOut(t *testing.T) {
+	_, tb, p := diagrammed(t)
+	p.degree = 0
+	p.focusOn("main.orders")
+	if !strings.Contains(tb.footer.Text, "lead outside") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+}
+
+// Showing everything widens it back.
+func TestShowingEverythingAgain(t *testing.T) {
+	_, tb, p := diagrammed(t)
+	p.focusOn("main.items")
+	p.showEverything()
+	p = tb.diagram
+	if got := len(namesIn(p)); got != 5 {
+		t.Errorf("it drew %d tables, want all 5", got)
+	}
+	if strings.Contains(tb.footer.Text, "Around") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+}
+
+// Focusing is offered on the table somebody is looking at, which is the one
+// they chose: a starting point asked for in a list they have to read is a
+// starting point they have to find twice.
+func TestFocusingIsOfferedOnWhatIsChosen(t *testing.T) {
+	_, _, p := diagrammed(t)
+	if !p.chosen.Disabled() {
+		t.Error("with nothing chosen there is a table to focus on")
+	}
+	if !p.all.Disabled() {
+		t.Error("showing everything is offered on a diagram of everything")
+	}
+
+	p.refreshFocus("main.items")
+	if p.chosen.Disabled() {
+		t.Error("with a table chosen there is nothing to focus on")
+	}
+	if !strings.Contains(p.chosen.Text, "main.items") {
+		t.Errorf("it offers %q", p.chosen.Text)
+	}
+
+	p.focusOn("main.items")
+	if p = p.t.diagram; p.all.Disabled() {
+		t.Error("on a narrowed diagram, showing everything is not offered")
+	}
+}
+
+// How far out is said in words: "one relationship away" says what it does
+// and a bare number does not.
+func TestHowFarOutIsSaidInWords(t *testing.T) {
+	for n, want := range map[int]string{0: "Just that table", 1: "1 relationship away",
+		2: "2 relationships away", 3: "3 relationships away"} {
+		if got := degreeNames[n]; got != want {
+			t.Errorf("%d is called %q, want %q", n, got, want)
+		}
+		if got := degreeOf(want); got != n {
+			t.Errorf("%q read back as %d, want %d", want, got, n)
+		}
+	}
+	// A name nobody offers reads as one relationship, which is the useful
+	// answer rather than none at all.
+	if got := degreeOf("whatever"); got != 1 {
+		t.Errorf("an unknown name read as %d", got)
+	}
+}
+
+// Focusing on nothing changes nothing. The button is disabled with nothing
+// chosen, and calling it anyway is neither a way to empty the diagram nor a
+// way to widen one somebody has narrowed.
+func TestFocusingOnNothing(t *testing.T) {
+	_, tb, p := diagrammed(t)
+	p.focusOn("main.items")
+	p = tb.diagram
+	before := namesIn(p)
+
+	p.focusOn("")
+	if got := namesIn(tb.diagram); !slices.Equal(got, before) {
+		t.Errorf("it drew %v, was %v", got, before)
+	}
+	if tb.diagram.focus != "main.items" {
+		t.Errorf("it is now focused on %q", tb.diagram.focus)
+	}
+}
+
+// A diagram opened on a schema draws that schema, and still does after it
+// has been narrowed and widened again: what to draw is remembered rather
+// than worked out afresh from a node nobody has any more.
+func TestADiagramOfOneSchemaStaysThatSchema(t *testing.T) {
+	fx := newFixture(t)
+	c := fx.create(t, "db1", nil)
+	tb := fx.s.OpenDiagram(c.ID, model.NewRef(model.KindSchema, "main", "main"))
+	pump(t, fx.q, func() bool { return tb.diagram != nil })
+
+	if got := tb.diagram.opt.Schemas; !slices.Equal(got, []string{"main"}) {
+		t.Fatalf("it was asked for %v", got)
+	}
+	before := namesIn(tb.diagram)
+	// One schema, not the other: a diagram of a schema is of that schema.
+	if slices.Contains(before, "audit.log") {
+		t.Errorf("a diagram of main drew %v", before)
+	}
+
+	tb.diagram.focusOn("main.items")
+	tb.diagram.showEverything()
+	if got := namesIn(tb.diagram); !slices.Equal(got, before) {
+		t.Errorf("after narrowing and widening it draws %v, was %v", got, before)
+	}
+	if got := tb.diagram.opt.Schemas; !slices.Equal(got, []string{"main"}) {
+		t.Errorf("it is now drawing %v", got)
+	}
+}
+
+// A narrowed diagram is fitted rather than shown at the view kept for a
+// larger one, which would look like a failure: a corner of a picture that no
+// longer exists.
+func TestANarrowedDiagramIsFitted(t *testing.T) {
+	fx, tb, p := diagrammed(t)
+
+	// Somebody has been looking closely at one corner, and that is kept.
+	p.w.View().Zoom = 2.5
+	p.w.View().Pan = canvas.Point{X: 400, Y: 300}
+	p.w.Graph().Nodes[0].Pinned = true
+	p.keep()
+	pump(t, fx.q, func() bool {
+		l, ok := p.arrangement()
+		return ok && l.Zoom == 2.5
+	})
+
+	p.focusOn("main.items")
+	if got := tb.diagram.w.View().Zoom; got == 2.5 {
+		t.Errorf("the narrowed diagram is at the zoom kept for the whole one: %v", got)
+	}
+	// Fitted means the whole of what is drawn is on screen.
+	view, whole := tb.diagram.w.View().VisibleRect(), tb.diagram.w.Graph().Bounds()
+	if view.Width() < whole.Width() || view.Height() < whole.Height() {
+		t.Errorf("it shows %v of %v", view, whole)
+	}
+}
+
+// Choosing a box is what offers focusing on it: a starting point asked for
+// in a list somebody has to read is one they have to find twice.
+func TestChoosingABoxOffersFocusingOnIt(t *testing.T) {
+	_, _, p := diagrammed(t)
+	if !p.chosen.Disabled() {
+		t.Fatal("with nothing chosen there is a table to focus on")
+	}
+	p.w.OnSelect("main.items")
+	if p.chosen.Disabled() {
+		t.Error("after choosing a box, focusing on it is not offered")
+	}
+	if !strings.Contains(p.chosen.Text, "main.items") {
+		t.Errorf("it offers %q", p.chosen.Text)
 	}
 }
