@@ -6,6 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+
 	"github.com/ikigai-db/ikigai-db/internal/diff"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/schemafile"
@@ -275,5 +279,127 @@ func TestComparingAgainstAModelThatIsNotThere(t *testing.T) {
 	pump(t, fx.q, func() bool { return strings.Contains(labelText(tb.body), "could not compare") })
 	if tb.compare != nil {
 		t.Error("it drew a comparison it could not make")
+	}
+}
+
+// Choosing differences, and writing a script for them (FR-7.3).
+
+// A difference is ticked, and what is the same cannot be: there is nothing
+// to write for it, and a tick box that does nothing is one somebody ticks.
+func TestOnlyADifferenceCanBeChosen(t *testing.T) {
+	_, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
+			model.Table{Name: "orders", RowsEstimate: -1})
+	})
+	if !p.write.Disabled() {
+		t.Error("with nothing chosen there is a script to write")
+	}
+
+	p.choose(p.findID(t, "orders"), true)
+	if p.write.Disabled() {
+		t.Error("with a difference chosen there is no script to write")
+	}
+	if !strings.Contains(tb.footer.Text, "1 difference chosen") {
+		t.Errorf("the footer says %q", tb.footer.Text)
+	}
+
+	// Unticking it puts things back.
+	p.choose(p.findID(t, "orders"), false)
+	if !p.write.Disabled() || strings.Contains(tb.footer.Text, "chosen") {
+		t.Errorf("after unticking: %v, %q", p.write.Disabled(), tb.footer.Text)
+	}
+
+	// And what is the same has no tick box to tick: there is nothing to
+	// write for it, and one that does nothing is one somebody will tick.
+	if tick := p.tickFor(t, "id"); !tick.Disabled() {
+		t.Error("a column that is the same on both sides can be chosen")
+	}
+	if tick := p.tickFor(t, "orders"); tick.Disabled() {
+		t.Error("the table that differs cannot be chosen")
+	}
+}
+
+// tickFor draws a node's row and answers the tick box in it.
+func (p *comparePanel) tickFor(t *testing.T, name string) *widget.Check {
+	t.Helper()
+	row := container.NewHBox(widget.NewCheck("", nil), widget.NewIcon(theme.DocumentIcon()),
+		widget.NewLabel(""))
+	p.draw(p.findID(t, name), row)
+	tick, ok := row.Objects[0].(*widget.Check)
+	if !ok {
+		t.Fatalf("the row holds %T", row.Objects[0])
+	}
+	return tick
+}
+
+// What is the same is never chosen, whatever is ticked above it.
+func TestWhatIsTheSameIsNeverChosen(t *testing.T) {
+	_, _, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Columns[1].Type.Native = "varchar(40)"
+	})
+	p.choose(p.findID(t, "main"), true) // the schema, and everything under it
+	if p.chosen[p.findID(t, "id")] {
+		t.Error("a column that is the same on both sides was chosen")
+	}
+	if !p.chosen[p.findID(t, "name")] {
+		t.Error("the column that differs was not chosen")
+	}
+}
+
+// Choosing an object chooses what is under it, because a table is one
+// decision and its columns are not separate ones when it is being made.
+func TestChoosingAnObjectChoosesWhatIsUnderIt(t *testing.T) {
+	_, _, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Columns[1].Type.Native = "varchar(40)"
+		db.Schemas[0].Tables[0].Columns = append(db.Schemas[0].Tables[0].Columns,
+			model.Column{Name: "note", Position: 3,
+				Type: model.DataType{Class: model.TypeString, Native: "text", Length: -1}})
+	})
+	p.choose(p.findID(t, "items"), true)
+	for _, name := range []string{"items", "name", "note"} {
+		if !p.chosen[p.findID(t, name)] {
+			t.Errorf("%q was not chosen", name)
+		}
+	}
+}
+
+// The script is written from what was chosen, and nothing runs.
+func TestWritingTheScriptForWhatWasChosen(t *testing.T) {
+	forgetStatements()
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Columns = append(db.Schemas[0].Tables[0].Columns,
+			model.Column{Name: "note", Position: 3,
+				Type: model.DataType{Class: model.TypeString, Native: "text", Length: -1}})
+	})
+	p.choose(p.findID(t, "note"), true)
+	p.writeScript()
+
+	got := newestQuery(t, fx, 1)
+	if !strings.Contains(got, "note") {
+		t.Errorf("the script is %q", got)
+	}
+	if !strings.HasPrefix(got, "-- 1 difference chosen") {
+		t.Errorf("it does not say what it is: %q", got)
+	}
+	if !strings.Contains(got, "Nothing here has run") {
+		t.Errorf("it does not say that nothing ran: %q", got)
+	}
+	if n := len(ranStatements()); n != 0 {
+		t.Errorf("%d statements ran; a script is written, never run", n)
+	}
+	_ = tb
+}
+
+// A selection that renders nothing says so rather than opening an empty tab.
+func TestChoosingSomethingThatNeedsNoStatements(t *testing.T) {
+	fx, tb, p := comparing(t, nil)
+	before := len(fx.s.open)
+	p.chosen[p.findID(t, "items")] = true
+	p.writeScript()
+	if got := len(fx.s.open); got != before {
+		t.Errorf("%d tabs are open, was %d", got, before)
+	}
+	if !strings.Contains(tb.footer.Text, "needs no statements") {
+		t.Errorf("the footer says %q", tb.footer.Text)
 	}
 }

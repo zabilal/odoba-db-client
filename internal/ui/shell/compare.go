@@ -72,6 +72,15 @@ type comparePanel struct {
 	tree    *widget.Tree
 	detail  *fyne.Container
 	summary *widget.Label
+
+	// live and wanted are the two models the comparison was made from. The
+	// tree describes what differs and deliberately does not carry the
+	// objects (ADR-0119), so writing a script needs them both again.
+	live, wanted *model.Database
+	// chosen is the differences ticked, by the names the comparison gives
+	// them, which is what app.SyncScript is written from.
+	chosen app.Selection
+	write  *widget.Button
 }
 
 func compareKey(connID string, ref model.ObjectRef, against string) string {
@@ -143,7 +152,7 @@ func (s *Shell) OpenComparison(connID string, ref model.ObjectRef, dir string) *
 		ctx, cancel := context.WithTimeout(ctx, compareTimeout)
 		defer cancel()
 		live, err := s.d.WS.Connect(ctx, connID)
-		var got diff.Node
+		var got app.Comparison
 		if err == nil {
 			got, err = app.CompareWithSaved(ctx, live.Source, databaseOf(ref), dir)
 		}
@@ -171,8 +180,9 @@ func databaseOf(ref model.ObjectRef) string {
 }
 
 // showComparison draws the tree, the filter and the detail beside it.
-func (s *Shell) showComparison(t *tab, root diff.Node, dir string) {
-	p := &comparePanel{s: s, t: t, root: root, filter: showDifferences}
+func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
+	p := &comparePanel{s: s, t: t, root: got.Tree, filter: showDifferences,
+		live: got.Live, wanted: got.Wanted, chosen: app.Selection{}}
 	t.compare = p
 	p.index()
 
@@ -194,15 +204,19 @@ func (s *Shell) showComparison(t *tab, root diff.Node, dir string) {
 		func(id widget.TreeNodeID) []widget.TreeNodeID { return p.visibleKids(id) },
 		func(id widget.TreeNodeID) bool { return len(p.kids[id]) > 0 },
 		func(bool) fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.DocumentIcon()), widget.NewLabel("template"))
+			return container.NewHBox(widget.NewCheck("", nil),
+				widget.NewIcon(theme.DocumentIcon()), widget.NewLabel("template"))
 		},
 		func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { p.draw(id, o) },
 	)
 	p.tree.OnSelected = func(id widget.TreeNodeID) { p.showDetail(id) }
 
+	p.write = widget.NewButton("Write the Script…", p.writeScript)
+	p.write.Disable()
+
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(
-			container.NewBorder(nil, nil, widget.NewLabel("Show"), nil, filter),
+			container.NewBorder(nil, nil, widget.NewLabel("Show"), p.write, filter),
 			nil, nil, nil,
 			container.NewHSplit(
 				container.NewBorder(p.summary, nil, nil, nil, p.tree),
@@ -224,7 +238,9 @@ func (p *comparePanel) index() {
 
 	var walk func(n diff.Node, parent string) (string, map[diff.Status]bool)
 	walk = func(n diff.Node, parent string) (string, map[diff.Status]bool) {
-		id := parent + "/" + string(n.Kind) + ":" + n.Name
+		// The same names the engine gives them, so that what is ticked here
+		// means the same thing to whatever writes a script from it.
+		id := diff.ID(parent, n)
 		p.nodes[id] = n
 		held := map[diff.Status]bool{n.Status: true}
 		for _, c := range n.Children {
@@ -267,22 +283,99 @@ func (p *comparePanel) visible(id string) bool {
 	return ok && held[want]
 }
 
-// draw puts a node's name and what happened to it in a row.
+// draw puts a node's tick box, its name and what happened to it in a row.
 func (p *comparePanel) draw(id widget.TreeNodeID, o fyne.CanvasObject) {
 	row, ok := o.(*fyne.Container)
-	if !ok || len(row.Objects) != 2 {
+	if !ok || len(row.Objects) != 3 {
 		return
 	}
 	n := p.nodes[id]
-	icon, _ := row.Objects[0].(*widget.Icon)
-	label, _ := row.Objects[1].(*widget.Label)
-	if icon == nil || label == nil {
+	tick, _ := row.Objects[0].(*widget.Check)
+	icon, _ := row.Objects[1].(*widget.Icon)
+	label, _ := row.Objects[2].(*widget.Label)
+	if tick == nil || icon == nil || label == nil {
 		return
 	}
+	// Only a difference can be chosen: there is nothing to write for
+	// something that is the same on both sides, and a tick box that does
+	// nothing is a tick box somebody will tick.
+	tick.OnChanged = nil
+	tick.SetChecked(p.chosen[id])
+	if n.Status == diff.Same {
+		tick.Disable()
+	} else {
+		tick.Enable()
+	}
+	tick.OnChanged = func(on bool) { p.choose(id, on) }
+
 	icon.SetResource(iconFor(n.Status))
 	label.SetText(rowText(n))
 	label.Importance = importanceOf(n.Status)
 	label.Refresh()
+}
+
+// choose ticks or unticks one difference, and everything under it: choosing
+// a table means the table, and choosing it is the only way to say so about
+// the columns the tree does not list under it.
+func (p *comparePanel) choose(id string, on bool) {
+	var mark func(string)
+	mark = func(at string) {
+		if n := p.nodes[at]; n.Status != diff.Same {
+			if on {
+				p.chosen[at] = true
+			} else {
+				delete(p.chosen, at)
+			}
+		}
+		for _, kid := range p.kids[at] {
+			mark(kid)
+		}
+	}
+	mark(id)
+	// Choosing something inside an object is choosing a change to the
+	// object, so nothing above is ticked: what is above is where the
+	// statement will be aimed, not a second decision.
+	p.saySelection()
+	p.tree.Refresh()
+}
+
+// saySelection says how much is chosen, and turns the button on when there
+// is anything to write.
+func (p *comparePanel) saySelection() {
+	if len(p.chosen) == 0 {
+		p.write.Disable()
+		p.t.footer.SetText("Nothing has run. A comparison reads both sides and changes neither.")
+		return
+	}
+	p.write.Enable()
+	p.t.footer.SetText(nounCount(len(p.chosen), "difference") +
+		" chosen. Nothing has run: the script is written for you to read.")
+}
+
+// writeScript renders the chosen differences and opens them as a script.
+func (p *comparePanel) writeScript() {
+	live, ok := p.s.d.WS.Get(p.t.connID)
+	if !ok {
+		p.t.footer.SetText("This connection is not open.")
+		return
+	}
+	stmts, err := app.SyncScript(live.Source, p.live, p.wanted, p.root, p.chosen)
+	if err != nil {
+		p.s.showError(err)
+		return
+	}
+	if len(stmts) == 0 {
+		p.t.footer.SetText("What was chosen needs no statements.")
+		return
+	}
+	p.s.openScript(p.t.connID, syncHeader(len(p.chosen))+scriptOf(stmts))
+}
+
+// syncHeader says what the script is and what it is not, because a list of
+// DROP statements wants saying out loud.
+func syncHeader(n int) string {
+	return "-- " + nounCount(n, "difference") + " chosen, written as statements.\n" +
+		"-- Nothing here has run. Read it, edit it, and run it where you mean to.\n"
 }
 
 // rowText names a node and says what happened to it, in the words the two
