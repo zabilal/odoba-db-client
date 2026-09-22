@@ -97,6 +97,9 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (_ source.S
 	if err != nil {
 		return nil, err
 	}
+	// Records are written through this client, and where each one goes is
+	// decided per record rather than per client (produce.go).
+	opts = append(opts, kgo.RecordPartitioner(sentPartition{kgo.StickyKeyPartitioner(nil)}))
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		// Nothing has been dialled here: NewClient only reads the options.
@@ -385,7 +388,7 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// about changing one: resetting offsets and administering topics are
 		// claimed separately and are not written yet (ADR-0107).
 		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-			ConsumerGroups: true, SchemaRegistry: s.registry != nil},
+			ConsumerGroups: true, Produce: true, SchemaRegistry: s.registry != nil},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,

@@ -300,7 +300,16 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.StreamAdmin); ok {
 		t.Error("implements StreamAdmin, whose resetting and administering are not written")
 	}
-	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true, ConsumerGroups: true}
+	// Producing is written now (T2.77), and is the first thing this driver
+	// does that changes anything.
+	if !caps.Stream.Produce {
+		t.Error("records are written and producing is not claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.StreamProducer); !ok {
+		t.Error("claims Stream.Produce but does not implement StreamProducer")
+	}
+	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
+		ConsumerGroups: true, Produce: true}
 	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
@@ -424,4 +433,47 @@ func kind(err error) source.ConnectKind {
 		return ce.Kind
 	}
 	return source.ConnectUnknown
+}
+
+// Writing a record, refused before anything is dialled (T2.77, FR-13.21).
+//
+// These reach no broker on purpose: the guard is checked before the client is
+// touched, so a source with no connection at all still answers them. That is
+// the point being held — a refusal that had to dial first would already have
+// cost something.
+
+func TestAReadOnlyConnectionRefusesToWriteBeforeItDials(t *testing.T) {
+	s := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
+	req := source.ProduceRequest{Topic: "orders", Partition: -1, Value: []byte("x")}
+
+	_, _, err := s.Produce(context.Background(), req)
+	if !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection refuses a write with %v", err)
+	}
+	// Consent cannot buy past read-only: it is a decision about the
+	// connection, not a question about this record.
+	req.Confirmed = true
+	if _, _, err := s.Produce(context.Background(), req); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a confirmed write got past read-only with %v", err)
+	}
+}
+
+func TestAProductionConnectionRefusesToWriteUnasked(t *testing.T) {
+	s := &kafkaSource{cfg: source.ConnectionConfig{
+		Guard: source.Guard{Environment: source.EnvProduction}}}
+	req := source.ProduceRequest{Topic: "orders", Partition: -1, Value: []byte("x")}
+
+	_, _, err := s.Produce(context.Background(), req)
+	if !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("a production connection writes unasked, refusing with %v", err)
+	}
+}
+
+func TestARecordWithNoTopicIsRefused(t *testing.T) {
+	// Nowhere to write it to, and no cluster needs to be asked about that.
+	s := &kafkaSource{}
+	_, _, err := s.Produce(context.Background(), source.ProduceRequest{Partition: -1, Value: []byte("x")})
+	if err == nil || !strings.Contains(err.Error(), "topic") {
+		t.Errorf("a record with no topic is refused with %v", err)
+	}
 }

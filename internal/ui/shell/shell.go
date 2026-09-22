@@ -356,6 +356,8 @@ func (s *Shell) registerCommands() {
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},
+		{ID: cmdProduce, Category: "Explorer", Title: "Write a Record…", Keywords: []string{"produce", "publish", "send", "message", "kafka"},
+			Enabled: s.selectionProducible, Run: s.produceToSelected},
 		{ID: cmdRefresh, Category: "Explorer", Title: "Refresh", Keywords: []string{"reload", "tree"},
 			Shortcut: sc("R", commands.ModShortcut), Run: s.refreshSelected},
 		{ID: cmdReload, Category: "Tab", Title: "Reload Rows", Keywords: []string{"refresh", "data"},
