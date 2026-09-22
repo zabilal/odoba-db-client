@@ -256,6 +256,10 @@ type Slice struct {
 	Name  string
 	Value float64
 	Share float64
+
+	// Index is the row the wedge came from, or NoRow for the one that
+	// gathered a tail, which came from several.
+	Index int
 }
 
 // PieLimit is how many wedges a pie is drawn with before the rest are
@@ -278,14 +282,14 @@ func Slices(s Series, names func(int) string) []Slice {
 	}
 	out := make([]Slice, 0, len(s.Points))
 	for i, p := range s.Points {
-		out = append(out, Slice{Name: nameOf(names, i), Value: p.Y, Share: p.Y / total})
+		out = append(out, Slice{Name: nameOf(names, i), Value: p.Y, Share: p.Y / total, Index: p.Index})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
 	if len(out) <= PieLimit {
 		return out
 	}
 	rest := out[PieLimit-1:]
-	gathered := Slice{Name: fmt.Sprintf("Other (%d)", len(rest))}
+	gathered := Slice{Name: fmt.Sprintf("Other (%d)", len(rest)), Index: NoRow}
 	for _, s := range rest {
 		gathered.Value += s.Value
 		gathered.Share += s.Share

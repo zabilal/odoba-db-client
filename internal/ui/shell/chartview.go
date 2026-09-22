@@ -12,9 +12,11 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/chart"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
 // The way into a chart (FR-11.1, FR-11.2, FR-11.3).
@@ -149,6 +151,7 @@ func (p *chartPanel) draw() {
 	c := p.s.chartOf(p.kind, p.built, p.roles, p.cols)
 	if p.w == nil {
 		p.w = chart.New(c)
+		p.w.OnPick = p.pick
 		p.holder.Objects = []fyne.CanvasObject{p.w}
 		p.holder.Refresh()
 	} else {
@@ -359,4 +362,71 @@ func chartFileName(label string) string {
 		return r
 	}, label)
 	return name + ".png"
+}
+
+// What a click on a chart does (FR-11.4).
+//
+// A mark that stands for one row can be traced back to it, so clicking it
+// narrows the result to the value on the bottom axis at that point — which
+// is what somebody who has just seen a spike wants to do next.
+//
+// A mark that stands for many rows cannot. A histogram's bar counts an
+// interval that is open at its top, and the filter row's range is closed at
+// both ends, so filtering to it would show rows the bar did not count. It
+// says so rather than filtering to something near enough.
+
+// pick acts on a click.
+func (p *chartPanel) pick(r chart.Reading) {
+	switch {
+	case p.kind == chart.Histogram:
+		p.t.footer.SetText("That bar counts everything from " + chart.Along(p.w.Chart(), r.X) +
+			" up to the next one, which the filter row cannot say exactly.")
+	case r.Row < 0 || r.Row >= len(p.rows):
+		p.t.footer.SetText("That stands for more than one row, so there is nothing to narrow to.")
+	case p.roles.X == chart.RowNumber:
+		p.show(r.Row)
+	default:
+		p.narrow(r.Row)
+	}
+}
+
+// of is the tab the rows came from, if it is still open.
+func (p *chartPanel) of() *tab {
+	return p.s.tabFor(strings.TrimPrefix(p.t.key, "chart:"))
+}
+
+// narrow filters the result to the value the mark stands for.
+//
+// The value is taken from the row rather than from the chart, because a
+// chart holds numbers and a filter has to hold what the source gave: a
+// moment, a decimal, a string.
+func (p *chartPanel) narrow(row int) {
+	of := p.of()
+	if of == nil || of.grid == nil {
+		p.t.footer.SetText("The rows this was drawn from are no longer open.")
+		return
+	}
+	col := p.roles.X
+	v := p.rows[row][col]
+	pk := pick{values: []any{v}, text: filterexpr.Pick([]any{v}, false)}
+	if of.picked == nil {
+		of.picked = map[int]pick{}
+	}
+	of.picked[col] = pk
+	of.grid.SetFilterText(col, pk.text)
+	of.grid.ApplyFilters()
+	p.s.selectTab(of)
+	p.t.footer.SetText("Narrowed " + chart.ColumnName(p.cols, col) + " to " + pk.text + ".")
+}
+
+// show brings the row itself forward, which is what a click means where
+// nothing on the bottom axis names anything to filter by.
+func (p *chartPanel) show(row int) {
+	of := p.of()
+	if of == nil || of.grid == nil {
+		p.t.footer.SetText("The rows this was drawn from are no longer open.")
+		return
+	}
+	of.grid.GoTo(grid.CellID{Row: row, Col: 0})
+	p.s.selectTab(of)
 }
