@@ -106,7 +106,14 @@ func Layout(g *Graph, opt LayoutOptions) {
 func layoutComponent(g *Graph, comp []int, opt LayoutOptions, salt int64) {
 	n := len(comp)
 	if n == 1 {
-		g.Nodes[comp[0]].Pos = Point{}
+		// A lone table — one nobody points at, of which a schema has many —
+		// starts at the origin and is packed onto the shelf from there. One
+		// somebody has put somewhere stays put: Pinned means Pinned, and a
+		// table dragged out of the shelf and into the picture is exactly the
+		// arrangement this is meant to survive.
+		if !g.Nodes[comp[0]].Pinned {
+			g.Nodes[comp[0]].Pos = Point{}
+		}
 		return
 	}
 

@@ -102,17 +102,58 @@ func (r *renderer) node(n canvas.Node, detail canvas.DetailLevel) []fyne.CanvasO
 	if detail != canvas.DetailFull {
 		return out
 	}
-	y := at.Y + canvas.NodeHeaderH*w.view.Zoom
+	// A hairline under the header, so a table's name is not read as its
+	// first column.
+	rule := fcanvas.NewLine(w.palette.Separator)
+	rule.StrokeWidth = 1
+	ruleY := float32(at.Y + canvas.NodeHeaderH*w.view.Zoom)
+	rule.Position1 = fyne.NewPos(float32(at.X), ruleY)
+	rule.Position2 = fyne.NewPos(float32(at.X)+size.Width, ruleY)
+	out = append(out, rule)
+
+	y := at.Y + canvas.NodeHeaderH*w.view.Zoom + canvas.NodePaddingY*w.view.Zoom
 	for i, p := range n.Ports {
 		if i >= canvas.NodeMaxPorts {
+			// A node taller than this is unreadable and would make the
+			// diagram taller than it is wide. What is left is counted.
 			out = append(out, r.text("+"+strconv.Itoa(len(n.Ports)-i)+" more",
-				w.palette.TertiaryLabel, at.X, y, false))
+				w.palette.TertiaryLabel, at.X+keyGutter*w.view.Zoom, y, false))
 			break
 		}
-		out = append(out, r.text(p.Label, w.palette.Label, at.X, y, p.Key))
+		if p.Key {
+			// A key is marked rather than only emboldened: weight alone is
+			// not a difference somebody can see at a glance down a column
+			// of names, and colour alone is not one everybody can see.
+			out = append(out, r.keyMark(at.X, y))
+		}
+		out = append(out, r.text(p.Label, w.palette.Label, at.X+keyGutter*w.view.Zoom, y, p.Key))
+		if p.Detail != "" {
+			out = append(out, r.detail(p.Detail, at.X+n.Size.W*w.view.Zoom, y))
+		}
 		y += canvas.NodePortH * w.view.Zoom
 	}
 	return out
+}
+
+// keyMark is the diamond drawn beside a column the primary key is made of.
+func (r *renderer) keyMark(x, y float64) *fcanvas.Circle {
+	z := r.w.view.Zoom
+	side := float32(keyMarkSize * z)
+	c := fcanvas.NewCircle(r.w.palette.AccentText)
+	c.Move(fyne.NewPos(float32(x)+textInset, float32(y)+float32(portTextSize*z)/2-side/2))
+	c.Resize(fyne.NewSize(side, side))
+	return c
+}
+
+// detail is a column's type, drawn to the right of its name in the quieter
+// of the two label colours: it is there to be read when looked for, not to
+// compete with the name.
+func (r *renderer) detail(s string, right, y float64) *fcanvas.Text {
+	t := fcanvas.NewText(s, r.w.palette.TertiaryLabel)
+	t.TextSize = float32(detailTextSize * r.w.view.Zoom)
+	t.Alignment = fyne.TextAlignTrailing
+	t.Move(fyne.NewPos(float32(right)-textInset-t.MinSize().Width, float32(y)))
+	return t
 }
 
 // text draws one row inside a box.
@@ -136,13 +177,77 @@ func (r *renderer) edge(e canvas.Edge) []fyne.CanvasObject {
 	for i := 1; i < len(route.Points); i++ {
 		a := w.view.ToScreen(route.Points[i-1])
 		b := w.view.ToScreen(route.Points[i])
-		line := fcanvas.NewLine(w.palette.OpaqueSeparator)
-		line.StrokeWidth = 1
-		line.Position1 = fyne.NewPos(float32(a.X), float32(a.Y))
-		line.Position2 = fyne.NewPos(float32(b.X), float32(b.Y))
-		out = append(out, line)
+		out = append(out, r.line(a, b, w.palette.OpaqueSeparator))
+	}
+	if len(route.Points) < 2 || w.view.Detail() == canvas.DetailBox {
+		// Too far out for a marker to be anything but a smudge.
+		return out
+	}
+	// The child's end says how many rows it may have, which is what the
+	// catalogue was read for: many for an ordinary key, one where the
+	// child's own side is unique. The parent's end is always one, because a
+	// foreign key points at a single row.
+	out = append(out, r.marker(route.Points[0], route.FromSide, childEnd(e))...)
+	out = append(out, r.marker(route.Points[len(route.Points)-1], route.ToSide, singleEnd)...)
+	return out
+}
+
+// childEnd is what the child's end of a relationship allows.
+func childEnd(e canvas.Edge) end {
+	if e.Cardinality == canvas.OneToOne {
+		return singleEnd
+	}
+	return manyEnd
+}
+
+// end is what a relationship allows at one of its ends.
+type end uint8
+
+const (
+	manyEnd end = iota
+	singleEnd
+)
+
+// marker draws the crow's foot or the bar at one end of a relationship.
+//
+// A crow's foot for many and a bar for one is the convention every diagram
+// of this kind uses, and a convention somebody already knows beats a legend
+// they have to read.
+func (r *renderer) marker(at canvas.Point, side canvas.Side, kind end) []fyne.CanvasObject {
+	w := r.w
+	p := w.view.ToScreen(at)
+	size := markerSize * w.view.Zoom
+	// The mark is drawn back along the line, into the gap between the box
+	// and the first corner.
+	dx := size
+	if side == canvas.SideRight {
+		dx = -size
+	}
+	c := w.palette.OpaqueSeparator
+
+	if kind == singleEnd {
+		// A bar across the line: exactly one.
+		return []fyne.CanvasObject{r.line(
+			canvas.Point{X: p.X + dx, Y: p.Y - size*0.6},
+			canvas.Point{X: p.X + dx, Y: p.Y + size*0.6}, c)}
+	}
+	// Three lines fanning back from the end: many.
+	var out []fyne.CanvasObject
+	for _, dy := range []float64{-size * 0.6, 0, size * 0.6} {
+		out = append(out, r.line(
+			canvas.Point{X: p.X, Y: p.Y},
+			canvas.Point{X: p.X + dx, Y: p.Y + dy}, c))
 	}
 	return out
+}
+
+// line draws one segment between two points already in screen space.
+func (r *renderer) line(a, b canvas.Point, c color.Color) *fcanvas.Line {
+	l := fcanvas.NewLine(c)
+	l.StrokeWidth = 1
+	l.Position1 = fyne.NewPos(float32(a.X), float32(a.Y))
+	l.Position2 = fyne.NewPos(float32(b.X), float32(b.Y))
+	return l
 }
 
 // Text sizes in graph units, scaled by the zoom so a box reads the same
@@ -150,5 +255,15 @@ func (r *renderer) edge(e canvas.Edge) []fyne.CanvasObject {
 const (
 	headerTextSize = 12.0
 	portTextSize   = 10.0
+	detailTextSize = 9.0
 	textInset      = 5
+
+	// keyGutter is the room left at the left of a row for the key mark, so
+	// that every column's name starts at the same place whether or not it
+	// is part of the key.
+	keyGutter   = 12.0
+	keyMarkSize = 5.0
+
+	// markerSize is how far back along a line a cardinality mark reaches.
+	markerSize = 7.0
 )

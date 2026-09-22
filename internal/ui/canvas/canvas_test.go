@@ -464,3 +464,38 @@ func BenchmarkPanFrame(b *testing.B) {
 		edgeBuf = v.VisibleEdges(g, nodeBuf, edgeBuf)
 	}
 }
+
+// Pinned means pinned, whatever a node is connected to.
+//
+// A lone table is its own component, and a component of one used to be moved
+// to the origin without being asked whether it had been placed. A schema has
+// dozens of those, so a table dragged out of the shelf and into the picture
+// went back to the shelf on the next layout — which is the one arrangement
+// FR-8.2 exists to keep.
+func TestPinnedNodesKeepTheirPlaces(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		nodes []Node
+		edges []Edge
+	}{
+		{"a table nobody points at", []Node{{ID: "a", Title: "alone"}}, nil},
+		{"a table in a component of its own", []Node{
+			{ID: "a", Title: "alone"}, {ID: "b", Title: "x"}, {ID: "c", Title: "y"}},
+			[]Edge{{From: "b", To: "c", FromPort: -1, ToPort: -1}}},
+		{"a table joined to others", []Node{
+			{ID: "a", Title: "alone"}, {ID: "b", Title: "x"}},
+			[]Edge{{From: "a", To: "b", FromPort: -1, ToPort: -1}}},
+	} {
+		g := NewGraph(c.nodes, c.edges)
+		MeasureNodes(g)
+		put := Point{X: 700, Y: 400}
+		g.NodeByID("a").Pos = put
+		g.NodeByID("a").Pinned = true
+
+		Layout(g, DefaultLayout())
+
+		if got := g.NodeByID("a").Pos; got != put {
+			t.Errorf("%s: it was moved to %+v from %+v", c.what, got, put)
+		}
+	}
+}

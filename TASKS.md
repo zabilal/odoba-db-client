@@ -23,18 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.18 — what a node draws: columns, keys and cardinality
-           (FR-8.3). The widget draws a box, a title and column names
-           already; what it does not draw is the type beside a
-           column, the mark on a key, or anything at all at the ends
-           of a line. Cardinality is on the edge and comes from the
-           catalogue (T3.16), so this is drawing rather than
-           deciding — a crow's foot at the many end and a bar at the
-           one end is the convention, and whether that reads at
-           overview zoom is the thing to settle.
-           There is still no way into a diagram from the window: a
-           widget and a store exist and no command opens one. That
-           belongs with this task.
+NEXT TASK: T3.19 — export a diagram as PNG or SVG (FR-8.4). What is
+           drawn is Fyne objects over a viewport, and neither format
+           comes from those: a PNG means drawing the same graph into
+           an image at a chosen scale, and an SVG means writing the
+           same shapes as text. So the drawing has to be said once
+           and used three times, which is a refactor before it is a
+           feature — the renderer's node and edge functions are the
+           seam, and what they should answer is shapes rather than
+           Fyne objects.
+           erd supports a subset of tables and the window does not
+           ask for one yet: the footer's line about relationships
+           leading outside a diagram cannot fire until T3.20's
+           neighbourhood filter gives a way to ask.
            3.B is finished: T3.8 to T3.15 are done and FR-7.1 to
            FR-7.5 are met on PostgreSQL.
            Comparing two live databases has no way in from the window
@@ -139,7 +140,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a diagram that lays itself out afresh each time and
+LAST DONE: 2026-09-22 — columns with their types, keys marked with a shape
+           rather than a weight, and crow's feet at the many end —
+           which found that the canvas moved a pinned lone table back
+           to the corner on every layout, the one arrangement FR-8.2
+           exists to keep (T3.18, ADR-0129); before it
+           a diagram that lays itself out afresh each time and
            puts back what a hand moved, drawn only where it is on
            screen and only as finely as the zoom makes legible
            (T3.17, ADR-0128); before it
@@ -889,7 +895,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T3.16** Auto-generate from schema or table subset → FR-8.1 — *the canvas spike built the graph model, the layout, the routing and the viewport and is deliberately free of any idea of a database, one canvas serving the ER diagram and the query designer (ADR-0007). This is the half that knows about databases, in a package between the model and the canvas: a table is a node, a column is a port, a foreign key is an edge, and nothing in it imports Fyne, so a diagram is built and checked without a window (ADR-0127). It draws what the catalogue says and nothing it has inferred: a join table between two others is two foreign keys and is drawn as two, calling it a many-to-many being this program's opinion about a convention, drawn as though the server had said it — wrong sometimes and unfalsifiable always. An edge attaches to the columns the key is about rather than to the boxes, because a table with twenty columns should show which two are joined. A relationship is one-to-one when the child's own side is unique — its primary key, a unique constraint or a unique index over exactly those columns — and one-to-many otherwise; a unique index over only some rows guarantees nothing about the rest, and one over an expression needs no check of its own, an expression column carrying no name and so matching nothing a key names, which is why the check it had was removed as a line no test could tell the absence of. A subset says what leads out of it, or a table whose relationships point off the page looks unrelated. A table is named by its schema and its name, two schemas being able to hold tables of one name, and a bare name is accepted only where the database has one schema, since elsewhere a diagram quietly drawing the wrong table of two would be worse than one drawing neither. A table pointing at itself gets an edge to itself, that being a real and common relationship. Views are drawn only when asked for: nothing points at a view, so a schema with many draws mostly boxes with no lines. 18 mutations, each caught*
 - [x] **T3.17** Pan, zoom, drag with persisted layout → FR-8.2 — *the first time any of the canvas is drawn on a screen. The widget is deliberately thin: it turns events into calls on a viewport and a graph and draws what the viewport says is worth drawing, everything about where a box goes staying in the package with no Fyne in it. Only what is on screen becomes a Fyne object, which is the whole of why a two-hundred-table schema pans at all and the rule the grid already follows; and below the zoom where a label is legible it is not drawn, because a whole-schema overview is exactly the view where every node is visible and without that, culling saves nothing at the one zoom that needs it most (ADR-0128). A diagram is laid out afresh every time and what somebody moved is put back on top — keeping every position would mean it never laid itself out again, a table added to the schema landing wherever nothing else was while the rest stayed as they were read weeks ago. A node put back is pinned, which is what stops the next layout undoing it, and a position for a table the schema no longer has is ignored. Where somebody was looking is kept too, and a zoom outside what the canvas allows is refused rather than clamped, since it means the file was written by something else. An arrangement that cannot be read is one nobody has: losing it costs a rearrangement rather than anything a person cannot do again. What is being dragged is decided once on the first step, or the view would stop and a box leap the moment one crossed the other, and a box follows the hand at any zoom because a drag moves it by as many graph units as the pointer moved pixels divided by the zoom. The palette is given to the widget rather than looked up, as the grid's cells do it: one that reached for the current theme could not be drawn in two appearances or tested without an application. 20 mutations, each caught; three caught nothing at first — two were mine that would not build, and the third found that a test resized the widget to the size it already was, so never proved the viewport was told*
-- [ ] **T3.18** Render columns, keys, cardinality → FR-8.3
+- [x] **T3.18** Render columns, keys, cardinality → FR-8.3 — *a key column is marked rather than merely emboldened, weight alone being no difference somebody sees at a glance down a column of names and colour alone being one not everybody sees; the mark sits in a gutter that is there whether or not a row has one, so names still line up. A column's type is drawn to its right in the quieter label colour, to be read when looked for rather than to compete with the name. A crow's foot at the many end and a bar at the one end, that being the convention every diagram of this kind uses and a convention somebody knows beating a legend they have to read: the child's end says what the catalogue said and the parent's is always one, a foreign key pointing at a single row (ADR-0129). Marks are not drawn below the zoom where a title is legible, where they are three pixels of noise and the whole point of the view is the shape of the schema; and a node taller than a dozen rows says how many it left out, a table of sixty columns drawn in full being taller than the diagram is wide. The way into a diagram lands here too: it opens from the same node a comparison does and reads the same snapshot, with a Lay Out Again that unpins everything and forgets the arrangement — the way back from having moved things into a mess. It also found a real defect in the spike: canvas.Layout moved a pinned node to the origin whenever that node was a component of its own, which is every table nobody points at, so a table dragged out of the shelf and into the picture went back to the shelf on the next layout — the one arrangement FR-8.2 exists to keep, and the opposite of what the spike's own comment promised. Nothing had depended on it until now. 18 mutations, each caught; two were mine that would not build, one found a test comparing line counts loosely enough that marks drawn as smudges went unnoticed, and one was retired because the canvas fix made the order of applying an arrangement no longer observable — it is kept on its merits, so that what is unpinned arranges around what is*
 - [ ] **T3.19** Export PNG / SVG → FR-8.4
 - [ ] **T3.20** Filter to N-degree neighbours → FR-8.5
 

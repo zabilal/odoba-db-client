@@ -462,6 +462,7 @@ func newFixture(t *testing.T) *fixture {
 	files := &fakeFiles{}
 	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Params: hist,
 		Decoders: hist,
+		Layouts:  hist,
 		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin", Files: files}
 	s := New(a, d)
 	t.Cleanup(s.shutdown)
@@ -995,6 +996,9 @@ func (fakeSource) RenameColumn(_ model.ObjectRef, from, to string) ([]source.Sta
 // Without it the walk would find nothing: this fake lists its tables under
 // the database directly rather than under a class folder.
 func (fakeSource) Snapshot(_ context.Context, database string) (*model.Database, error) {
+	if database == "boom" {
+		return nil, errors.New("fakesql: this schema will not be read")
+	}
 	return &model.Database{Name: database, Schemas: []model.Schema{{Name: database,
 		Tables: []model.Table{{Name: "items", RowsEstimate: -1, Columns: fakeColumns()}}}}}, nil
 }
