@@ -23,17 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.97 — the NFR-P10 benchmark: 10k msg/s tail stays
-           responsive, memory bounded. It measures app.NewTail, which
-           exists and is tested, so it is not blocked by the missing
-           tail UI — what it cannot measure is the window, only the
-           tail underneath it. ADR-0021 says what a performance gate
-           may assume about the machine it runs on.
-           OWNER DECISION, and Phase 2's exit waits on it: J8 needs a
-           way to seek to a timestamp and a way to tail a topic from
-           the window. Both halves exist below the UI and neither has
-           a control. That is feature work no task claims, so it is
-           not being done unasked. T2.96 is [~] and says so.
+NEXT TASK: Phase 3 — 3.A, the table designer (T3.1 onward), unless
+           the owner decides J8's missing controls come first.
+           PHASE 2 DOES NOT EXIT YET. Its criterion is J2, J5, J7 and
+           J8 complete; the first three are, and J8 is three steps of
+           five (T2.96). Everything else in Phase 2 is done.
+           OWNER DECISION: J8 needs a way to seek to a timestamp and a
+           way to tail a topic from the window. Both halves exist
+           below the UI — source.Seek is tested against a live cluster
+           and app.NewTail now has a performance gate — and neither
+           has a control. That is feature work no task claims, so it
+           is not being done unasked.
            T2.88 stays [~]: DBGate and TablePlus are not done and its
            line says what each would need.
            Still true: there is no way in from the window for an SSH
@@ -114,7 +114,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — three of J8's five steps walked against a live cluster and its
+LAST DONE: 2026-09-22 — a gate on the tail under NFR-P10: two seconds of records at 10k/s
+           taken in a fraction of the time they arrive over, and
+           two million passed through a thousand-record ring for
+           no heap at all (T2.97); before it
+           three of J8's five steps walked against a live cluster and its
            registry — a topic opened, its records read through
            the schema that wrote them, a group's lag asked for —
            and the two that have no way in from the window
@@ -755,7 +759,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.94** E2E: **J5** (move data) — *both halves: export a filtered result to a file, then import a CSV into a table with its columns paired and a dry run first. On SQLite untagged and on PostgreSQL, MySQL and MariaDB tagged. The file dialog is answered by a stand-in chooser on the harness, which is the right seam — a person picks a file and the journey says which, and everything on either side of that is the application's own. The export asserts the file holds the filtered rows and not one more, names its columns first, and carries none of what the filter left out. The import uses a file whose columns are in the other order from the table's, so that pairing them by name is what puts each value in the right place, then dry runs, then writes, and the table catches up on its own. One thing nearly slipped through and is the reason the journey is worth having: the first version tapped Dry Run as soon as the import tab appeared, before the pairing had landed, so the panel was still pairing by position — the dry run reported that every row would be refused, and the test passed anyway because its assertion was loose enough to match that sentence. Tightened to the dry run's own words, it failed, and the fix is to wait for the pairing rather than for the tab. A file in the table's own column order would have hidden it entirely, which is why this one is deliberately reversed. 6 mutations, each caught: an export written somewhere other than the file chosen, in a format nobody asked for, or without naming its columns; columns paired by position rather than by name; a dry run that writes what it was only meant to read; and an import that writes nothing*
 - [x] **T2.95** E2E: **J7** (work safely in production) — *the journey that walks what 2.J built. A production connection says what it is in words and not only in colour, so it survives a screenshot and a reader who cannot see the colour; a write on it asks before anything runs and cannot be clicked past, the connection's name having to be typed and the wrong word leaving the button out of reach; and a read-only connection refuses the same statement while offering nothing to type at all, because read-only is a decision about the connection rather than a question about the statement. Both halves go through the query path, where the enforcement is plainest, with a WHERE on the statement so that the question under test is the connection's and not T2.91's. On SQLite untagged and on PostgreSQL, MySQL and MariaDB tagged. 6 mutations, each caught: a production connection that says nothing about itself, a write that runs without asking, a confirmation that can be clicked past, any word accepted in place of the name, read-only offering a way past itself, and a refusal the window does not explain. The fifth flaky shell test failed the baseline again and was fixed rather than re-run, the same way the sixth was: it read canShowReferring the instant a cell was selected, and whether a selection can show referring rows depends on that row being loaded, which the grid does as pages are drawn. It waits now. Four of the six are still open and all are this shape*
 - [~] **T2.96** E2E: **J8** (debug a stream) — *three of the journey's five steps are walked and two cannot be, which is why this stays open and why Phase 2's exit is not met. What works: a Kafka topic opens onto its records; a record's value is read through the schema the registry holds, offered by subject and version and chosen rather than imposed, because until somebody says what bytes mean the window shows them as they are; and a consumer group's lag is read when asked for, which is ADR-0107's design and so is a step of the journey rather than an inconvenience. It runs only under the conformance tag: there is no in-process Kafka the way there is an in-process SQLite, so unlike every other journey it has no untagged form, and the mutations go through a mutate_tagged.py beside the usual one. It goes against the registry's own broker on 59093 rather than the plain one, because decoding needs both and they are a pair (ADR-0101). 5 mutations, each caught: a schema the registry knows but the window never offers, a decoder named so that one schema cannot be told from another, a group with no way to ask how far it has got, lag counted in offsets rather than records, and a group said to be up to date whatever it is. What cannot be walked: seeking to a timestamp and tailing live messages have no way in from the window at all. source.Seek is implemented by the driver and tested against a live cluster (T2.80, T2.82), app.NewTail is written and tested (its own test is its only caller), and shell.go opens every object with an empty BrowseOptions — no Seek, no Follow. This is the same shape as the SSH, cloud and import gaps, but it is the first one that blocks a phase exit, and finishing it means building two controls nothing in the task list claims*
-- [ ] **T2.97** NFR-P10 benchmark: 10k msg/s tail stays responsive, memory bounded
+- [x] **T2.97** NFR-P10 benchmark: 10k msg/s tail stays responsive, memory bounded — *the gate measures the tail and says so, because the window does not reach one: nothing in it follows a topic yet (T2.96), and holding a figure for what a person sees would be holding a figure for something that does not exist. So it holds the half underneath — taking two seconds' records at the rate the requirement names, against a quarter of the time they would arrive over, which is ADR-0021's arrangement of leaving the rest of a budget to what a gate cannot see. It measures 1-3ms against 500ms, and that headroom is not an accident: a tail's own bookkeeping is a mutex and a ring write, so the gate fails when a tail does per-record work it cannot afford and not when it costs a few milliseconds more, which would only make it fail on a slower runner for something nobody could see. The memory half cannot be a budget alone, because a tail that kept every record would also pass a budget on a small enough topic. So it runs the tail again over a hundred times the records — two million, which a tail that kept them would want something like a hundred megabytes for — and holds what that adds against what the first run added. Both are 0 MB. 4 mutations, each caught: a ring that grows instead of dropping, a ring made larger than it was asked for, records falling out of the window uncounted, and per-record work a fast topic cannot afford. A fifth was written and withdrawn: rebuilding the whole view for every record costs 7ms against 1ms, which is a real regression and still nothing a person could see in two seconds, so the gate is right not to fail it and the mutation was wrong to ask*
 
 ### ✅ Phase 2 exit: J2, J5, J7, J8 complete
 

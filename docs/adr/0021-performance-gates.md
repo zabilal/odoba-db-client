@@ -1,7 +1,7 @@
 # ADR-0021: Performance gates measure what CI can see
 
 **Status:** Accepted · **Date:** 2026-09-11
-**Tasks:** T1.73 · **Requirements:** NFR-P1–P6, NFR-Q3 · **Packages:** `internal/ui/grid`, `internal/ui/explorer/view`, `internal/ui/shell`, `internal/ui/editor`, `internal/testutil/race`
+**Tasks:** T1.73, T2.97 · **Requirements:** NFR-P1–P6, NFR-P10, NFR-Q3 · **Packages:** `internal/app`, `internal/ui/grid`, `internal/ui/explorer/view`, `internal/ui/shell`, `internal/ui/editor`, `internal/testutil/race`
 
 ## Context
 
@@ -25,6 +25,7 @@ Phase 0 gates already took this line for NFR-P4 and P5 (ADR-0002).
    | P4 scrolling | 16.7 ms a frame | `TestGateG0_1`: a viewport update and a table refresh | 4 ms, 8 ms | (Phase 0) |
    | P5 keystroke to glyph | 16 ms | G0-2 in `highlight_test.go`: re-highlighting | 4 ms mean, 16 ms worst | (Phase 0) |
    | P6 idle memory | 300 MB | `TestGateP6IdleHeap`: the heap five connections add, a table open in each | 100 MB | 2–5 MB |
+   | P10 live tail | responsive, memory bounded | `TestGateP10LiveTail`: taking 20 000 records, and the heap a tail holds after 2 000 000 | 500 ms, 16 MB | 1–3 ms, 0 MB |
 
 2. **P3 is measured in an application already running.** Its first
    measurement was 110 ms, over its 100 ms. That was the process's first
@@ -32,7 +33,27 @@ Phase 0 gates already took this line for NFR-P4 and P5 (ADR-0002).
    which is cold start's cost and already inside P1's figure. The gate now
    draws a grid first, logs its time, and holds the second to the budget.
 
-3. **P6 holds the heap its connections add, not the whole heap.** Read
+3. **P10 measures the tail, because the window does not reach one.** The
+   requirement is about what a person sees while a topic runs at 10 000
+   messages a second, and nothing in the window follows a topic yet (T2.96).
+   Holding a figure for that would be holding a figure for something that
+   does not exist, so the gate holds the half underneath: what taking the
+   records costs, against a quarter of the time they arrive over.
+
+   Its timing half has a great deal of headroom — 1 ms against 500 ms —
+   because a tail's own bookkeeping is a mutex and a ring write. That is not
+   a loose gate by accident. It fails when a tail does per-record work it
+   cannot afford, which is the regression that matters; it does not fail on
+   a few milliseconds, which would only make it fail on a slower runner for
+   something nobody could see.
+
+   Its memory half cannot be a budget alone: a tail that kept every record
+   would also pass a budget, on a small enough topic. So it runs the tail
+   again over a hundred times the records — two million, which a tail that
+   kept them would need something like a hundred megabytes for — and holds
+   what it adds to what the first run added.
+
+4. **P6 holds the heap its connections add, not the whole heap.** Read
    whole, the heap of a test binary holds what every earlier test left
    behind: the gate measured 35 MB alone and 254 MB after the rest of its
    package, and failed its first full run. It now reads the heap after a
