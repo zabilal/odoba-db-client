@@ -27,6 +27,15 @@ func (s *pgSource) Describe(ctx context.Context, ref model.ObjectRef) (any, erro
 		return s.describeTable(ctx, p, schema, name)
 	case model.KindView, model.KindMaterializedView:
 		return s.describeView(ctx, p, schema, name, ref.Kind == model.KindMaterializedView)
+	case model.KindRoutine:
+		return describeRoutine(ctx, p, schema, name)
+	case model.KindTrigger:
+		if len(ref.Path) < 4 {
+			return nil, fmt.Errorf("postgres: %s does not say which table its trigger is on", ref)
+		}
+		return describeTrigger(ctx, p, schema, ref.Path[2], ref.Path[3])
+	case model.KindSequence:
+		return describeSequence(ctx, p, schema, name)
 	}
 	return nil, fmt.Errorf("postgres: describing %s is not supported yet", ref.Kind)
 }
@@ -218,4 +227,70 @@ func describeIndexes(ctx context.Context, p *pgxpool.Pool, schema, rel string) (
 		out = append(out, ix)
 	}
 	return out, rows.Err()
+}
+
+// Objects whose structure is their source (FR-6.5). What comes back is what
+// the engine itself would write, because PostgreSQL keeps the text it was
+// given and will print it: pg_get_functiondef and pg_get_triggerdef answer
+// complete statements, which is what an editor over a routine wants to hold.
+//
+// Rewriting them from parts would mean spelling out a language this does not
+// parse — a function body is PL/pgSQL, or SQL, or Python — so it does not.
+
+func describeRoutine(ctx context.Context, p *pgxpool.Pool, schema, signature string) (*model.Routine, error) {
+	r := &model.Routine{Name: signature}
+	var kind string
+	err := p.QueryRow(ctx, `
+		SELECT pg_get_functiondef(p.oid), l.lanname,
+		       CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END,
+		       COALESCE(obj_description(p.oid, 'pg_proc'), '')
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		JOIN pg_language l ON l.oid = p.prolang
+		WHERE n.nspname = $1
+		  AND p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' = $2
+		  AND p.prokind IN ('f', 'p')`,
+		schema, signature).Scan(&r.Definition, &r.Language, &kind, &r.Comment)
+	if err != nil {
+		// An aggregate or a window function has no definition to print, and
+		// says so rather than coming back empty.
+		return nil, fmt.Errorf("postgres: routine %s.%s: %w", schema, signature, err)
+	}
+	r.Kind = model.RoutineKind(kind)
+	return r, nil
+}
+
+func describeTrigger(ctx context.Context, p *pgxpool.Pool, schema, table, name string) (*model.Trigger, error) {
+	t := &model.Trigger{Name: name}
+	err := p.QueryRow(ctx, `
+		SELECT pg_get_triggerdef(tr.oid)
+		FROM pg_trigger tr
+		JOIN pg_class c ON c.oid = tr.tgrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2 AND tr.tgname = $3 AND NOT tr.tgisinternal`,
+		schema, table, name).Scan(&t.Definition)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: trigger %s on %s.%s: %w", name, schema, table, err)
+	}
+	return t, nil
+}
+
+// describeSequence reads a sequence's numbers rather than its source,
+// because a sequence has none: it is what it was made with.
+func describeSequence(ctx context.Context, p *pgxpool.Pool, schema, name string) (*model.Sequence, error) {
+	q := &model.Sequence{Name: name}
+	var min, max *int64
+	err := p.QueryRow(ctx, `
+		SELECT s.data_type::text, s.start_value, s.increment_by, s.min_value, s.max_value, s.cycle,
+		       COALESCE(obj_description(c.oid, 'pg_class'), '')
+		FROM pg_sequences s
+		JOIN pg_class c ON c.relname = s.sequencename
+		JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = s.schemaname
+		WHERE s.schemaname = $1 AND s.sequencename = $2`,
+		schema, name).Scan(&q.DataType, &q.Start, &q.Increment, &min, &max, &q.Cycle, &q.Comment)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: sequence %s.%s: %w", schema, name, err)
+	}
+	q.MinValue, q.MaxValue = min, max
+	return q, nil
 }

@@ -56,6 +56,13 @@ func created(t *testing.T, tbl *model.Table) []string {
 	return sqlOf(t, stmts, err)
 }
 
+// createdObj renders any object, which is how the source kinds are asked.
+func createdObj(t *testing.T, ref model.ObjectRef, obj any) []string {
+	t.Helper()
+	stmts, err := dialect{}.CreateObject(ref, obj)
+	return sqlOf(t, stmts, err)
+}
+
 func renamedSQL(t *testing.T, ref model.ObjectRef, from, to string) []string {
 	t.Helper()
 	stmts, err := dialect{}.RenameColumn(ref, from, to)
@@ -377,5 +384,112 @@ func TestAnIndexThatBacksAConstraintIsLeftToIt(t *testing.T) {
 	// The ordinary index is left alone, because it did not change.
 	if strings.Contains(joined, "people_note_idx") {
 		t.Errorf("an index nobody changed was touched:\n%s", joined)
+	}
+}
+
+// Objects whose structure is their source (FR-6.5).
+
+func viewRef(name string) model.ObjectRef {
+	return model.NewRef(model.KindView, "db", "public", name)
+}
+
+func TestAViewIsReplacedInPlace(t *testing.T) {
+	got := createdObj(t, viewRef("recent"),
+		&model.View{Name: "recent", Definition: " SELECT * FROM people WHERE id > 40;\n"})
+	want := "CREATE OR REPLACE VIEW \"public\".\"recent\" AS\nSELECT * FROM people WHERE id > 40"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("it rendered\n\t%s\nwant\n\t%s", strings.Join(got, "\n\t"), want)
+	}
+}
+
+// A materialized view cannot be replaced in place, so it goes and is made
+// again — a real difference, rendered rather than hidden.
+func TestAMaterializedViewIsMadeAgain(t *testing.T) {
+	ref := model.NewRef(model.KindMaterializedView, "db", "public", "totals")
+	got := createdObj(t, ref,
+		&model.View{Name: "totals", Materialized: true, Definition: "SELECT count(*) FROM people"})
+	if len(got) != 2 {
+		t.Fatalf("it rendered %v", got)
+	}
+	if got[0] != `DROP MATERIALIZED VIEW IF EXISTS "public"."totals"` {
+		t.Errorf("the drop reads %s", got[0])
+	}
+	if !strings.HasPrefix(got[1], `CREATE MATERIALIZED VIEW "public"."totals" AS`) {
+		t.Errorf("the create reads %s", got[1])
+	}
+}
+
+// A routine is re-sent as the statement PostgreSQL printed, which already
+// says CREATE OR REPLACE.
+func TestARoutineIsSentBackAsItCame(t *testing.T) {
+	def := "CREATE OR REPLACE FUNCTION public.f(a integer)\n RETURNS integer\n LANGUAGE sql\nAS $function$ SELECT a $function$"
+	got := createdObj(t, model.NewRef(model.KindRoutine, "db", "public", "f(integer)"),
+		&model.Routine{Name: "f(integer)", Definition: def + ";\n"})
+	if len(got) != 1 || got[0] != def {
+		t.Errorf("it rendered\n\t%s\nwant\n\t%s", strings.Join(got, "\n\t"), def)
+	}
+}
+
+// A trigger is dropped and made again, because PostgreSQL had no CREATE OR
+// REPLACE TRIGGER until 14 and this does not ask which version it is
+// talking to.
+func TestATriggerIsDroppedAndMadeAgain(t *testing.T) {
+	ref := model.NewRef(model.KindTrigger, "db", "public", "people", "audit")
+	def := "CREATE TRIGGER audit AFTER INSERT ON public.people FOR EACH ROW EXECUTE FUNCTION log()"
+	got := createdObj(t, ref, &model.Trigger{Name: "audit", Definition: def})
+	if len(got) != 2 {
+		t.Fatalf("it rendered %v", got)
+	}
+	if got[0] != `DROP TRIGGER IF EXISTS "audit" ON "public"."people"` {
+		t.Errorf("the drop reads %s", got[0])
+	}
+	if got[1] != def {
+		t.Errorf("the create reads %s", got[1])
+	}
+}
+
+func TestASequenceIsItsNumbers(t *testing.T) {
+	min, max := int64(1), int64(9000)
+	ref := model.NewRef(model.KindSequence, "db", "public", "people_id_seq")
+	got := createdObj(t, ref, &model.Sequence{
+		Name: "people_id_seq", Start: 5, Increment: 2,
+		MinValue: &min, MaxValue: &max, Cycle: true, Comment: "counts people"})
+	if len(got) != 2 {
+		t.Fatalf("it rendered %v", got)
+	}
+	want := `ALTER SEQUENCE "public"."people_id_seq" INCREMENT BY 2 MINVALUE 1 MAXVALUE 9000 START WITH 5 CYCLE`
+	if got[0] != want {
+		t.Errorf("it rendered\n\t%s\nwant\n\t%s", got[0], want)
+	}
+	if got[1] != `COMMENT ON SEQUENCE "public"."people_id_seq" IS 'counts people'` {
+		t.Errorf("the comment reads %s", got[1])
+	}
+
+	// No bounds means saying so, not leaving the old ones in place.
+	plain := createdObj(t, ref, &model.Sequence{Name: "s", Start: 1, Increment: 1})
+	if !strings.Contains(plain[0], "NO MINVALUE") || !strings.Contains(plain[0], "NO CYCLE") {
+		t.Errorf("it rendered %s", plain[0])
+	}
+}
+
+func TestSourceThatIsNotThereIsRefused(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		obj  any
+		ref  model.ObjectRef
+	}{
+		{"a view with no definition", &model.View{Name: "v"}, viewRef("v")},
+		{"a routine with no definition", &model.Routine{Name: "f()"},
+			model.NewRef(model.KindRoutine, "db", "public", "f()")},
+		{"a trigger with no definition", &model.Trigger{Name: "t"},
+			model.NewRef(model.KindTrigger, "db", "public", "people", "t")},
+		{"a trigger on no table", &model.Trigger{Name: "t", Definition: "CREATE TRIGGER t"},
+			model.NewRef(model.KindTrigger, "db", "public")},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			if _, err := (dialect{}).CreateObject(c.ref, c.obj); err == nil {
+				t.Error("it was rendered")
+			}
+		})
 	}
 }

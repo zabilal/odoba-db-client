@@ -216,3 +216,142 @@ func TestARenameRunsAndKeepsWhatWasThere(t *testing.T) {
 func fixtureRef(name string) model.ObjectRef {
 	return model.NewRef(model.KindTable, env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", name)
 }
+
+// The objects whose structure is their source (FR-6.5). These queries are
+// catalogue queries, and a catalogue query is only right if the catalogue
+// agrees.
+
+func TestDescribingASourceObject(t *testing.T) {
+	src := openSource(t, false)
+	stamp := time.Now().UnixNano() % 100000
+	table := fmt.Sprintf("src_t_%d", stamp)
+	designedTable(t, src, &model.Table{
+		Name: table,
+		Columns: []model.Column{
+			{Name: "id", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}},
+		},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	session, err := src.Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	run := func(sql string) {
+		t.Helper()
+		if _, err := session.Query(ctx, source.Statement{SQL: sql}); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+
+	fn := fmt.Sprintf("src_f_%d", stamp)
+	view := fmt.Sprintf("src_v_%d", stamp)
+	seq := fmt.Sprintf("src_s_%d", stamp)
+	trg := fmt.Sprintf("src_g_%d", stamp)
+	run(fmt.Sprintf(`CREATE FUNCTION "ikigai_it"."%s"(a integer) RETURNS integer
+		LANGUAGE sql AS $$ SELECT a + 1 $$`, fn))
+	run(fmt.Sprintf(`CREATE VIEW "ikigai_it"."%s" AS SELECT id FROM "ikigai_it"."%s"`, view, table))
+	run(fmt.Sprintf(`CREATE SEQUENCE "ikigai_it"."%s" START WITH 7 INCREMENT BY 3`, seq))
+	run(fmt.Sprintf(`CREATE FUNCTION "ikigai_it"."%s_fn"() RETURNS trigger
+		LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`, trg))
+	run(fmt.Sprintf(`CREATE TRIGGER "%s" BEFORE INSERT ON "ikigai_it"."%s"
+		FOR EACH ROW EXECUTE FUNCTION "ikigai_it"."%s_fn"()`, trg, table, trg))
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s, err := src.Session(ctx)
+		if err != nil {
+			return
+		}
+		defer s.Close()
+		for _, sql := range []string{
+			fmt.Sprintf(`DROP VIEW IF EXISTS "ikigai_it"."%s"`, view),
+			fmt.Sprintf(`DROP SEQUENCE IF EXISTS "ikigai_it"."%s"`, seq),
+			fmt.Sprintf(`DROP FUNCTION IF EXISTS "ikigai_it"."%s"(integer)`, fn),
+			fmt.Sprintf(`DROP FUNCTION IF EXISTS "ikigai_it"."%s_fn"() CASCADE`, trg),
+		} {
+			s.Query(ctx, source.Statement{SQL: sql})
+		}
+	})
+
+	// A routine comes back as the statement PostgreSQL would write, which is
+	// what makes editing it editing text.
+	desc, err := src.Describe(ctx, model.NewRef(model.KindRoutine,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", fn+"(a integer)"))
+	if err != nil {
+		t.Fatalf("describing a function: %v", err)
+	}
+	routine, ok := desc.(*model.Routine)
+	if !ok {
+		t.Fatalf("a function described as %T", desc)
+	}
+	if !strings.Contains(routine.Definition, "CREATE OR REPLACE FUNCTION") {
+		t.Errorf("its definition reads %q", routine.Definition)
+	}
+	if routine.Language != "sql" || routine.Kind != model.RoutineFunction {
+		t.Errorf("it is a %s %s", routine.Language, routine.Kind)
+	}
+	// And what it renders is what it was given.
+	fnStmts, err := dialect{}.CreateObject(model.NewRef(model.KindRoutine,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", fn+"(a integer)"), routine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDDL(t, src, fnStmts)
+
+	// A view comes back as its body, and is replaced in place.
+	desc, err = src.Describe(ctx, model.NewRef(model.KindView,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", view))
+	if err != nil {
+		t.Fatalf("describing a view: %v", err)
+	}
+	v, ok := desc.(*model.View)
+	if !ok || strings.TrimSpace(v.Definition) == "" {
+		t.Fatalf("a view described as %T with %+v", desc, v)
+	}
+	viewStmts, err := dialect{}.CreateObject(model.NewRef(model.KindView,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", view), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDDL(t, src, viewStmts)
+
+	// A sequence comes back as its numbers.
+	desc, err = src.Describe(ctx, model.NewRef(model.KindSequence,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", seq))
+	if err != nil {
+		t.Fatalf("describing a sequence: %v", err)
+	}
+	q, ok := desc.(*model.Sequence)
+	if !ok {
+		t.Fatalf("a sequence described as %T", desc)
+	}
+	if q.Start != 7 || q.Increment != 3 {
+		t.Errorf("it starts at %d by %d", q.Start, q.Increment)
+	}
+	seqStmts, err := dialect{}.CreateObject(model.NewRef(model.KindSequence,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", seq), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDDL(t, src, seqStmts)
+
+	// A trigger comes back as the statement that made it.
+	desc, err = src.Describe(ctx, model.NewRef(model.KindTrigger,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", table, trg))
+	if err != nil {
+		t.Fatalf("describing a trigger: %v", err)
+	}
+	tr, ok := desc.(*model.Trigger)
+	if !ok || !strings.Contains(tr.Definition, "CREATE TRIGGER") {
+		t.Fatalf("a trigger described as %T with %+v", desc, tr)
+	}
+	trgStmts, err := dialect{}.CreateObject(model.NewRef(model.KindTrigger,
+		env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it", table, trg), tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDDL(t, src, trgStmts)
+}

@@ -204,6 +204,8 @@ type tab struct {
 	imp *importPanel
 	// design is the column editor, where this tab is one (design.go).
 	design *designPanel
+	// source is the source editor, where this tab is one (sourceedit.go).
+	source *sourcePanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -372,6 +374,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdDesign, Category: "Explorer", Title: "Design Columns…",
 			Keywords: []string{"alter", "column", "ddl", "structure", "table", "designer"},
 			Enabled:  s.canDesign, Run: s.designSelected},
+		{ID: cmdEditSource, Category: "Explorer", Title: "Edit Source…",
+			Keywords: []string{"view", "function", "procedure", "trigger", "sequence", "ddl", "definition"},
+			Enabled:  s.canEditSource, Run: s.editSelectedSource},
 		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},

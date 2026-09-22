@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -128,4 +130,40 @@ func ApplyDDL(ctx context.Context, src source.Source, stmts []source.Statement, 
 		out.Ran++
 	}
 	return out, nil
+}
+
+// PlanSource renders an object whose structure is its source (FR-6.5).
+//
+// Apart from PlanDDL because there is nothing to compare: a view is its
+// text, and what runs is the statement that makes it so. What was edited is
+// sent, and read first like every other structural change.
+func PlanSource(src source.Source, ref model.ObjectRef, obj any) (_ []source.Statement, err error) {
+	defer panics.Recover(&err, "rendering a source change")
+	gen, ok := ddl(src)
+	if !ok {
+		return nil, ErrNoDDL
+	}
+	return gen.CreateObject(ref, obj)
+}
+
+// SplitStatements reads a script as the statements it holds, using the
+// connection's own rules about where one ends.
+//
+// It is how a source that is already statements — a sequence's numbers,
+// which have no other form — reaches the preview: what somebody edited is
+// what runs, split the way that engine splits it.
+func SplitStatements(src source.Source, script string) []source.Statement {
+	if d, ok := src.(source.Dialect); ok {
+		var out []source.Statement
+		for _, st := range d.SplitScript(script) {
+			if strings.TrimSpace(st.Text) != "" {
+				out = append(out, source.Statement{SQL: strings.TrimRight(strings.TrimSpace(st.Text), ";")})
+			}
+		}
+		return out
+	}
+	if strings.TrimSpace(script) == "" {
+		return nil
+	}
+	return []source.Statement{{SQL: strings.TrimRight(strings.TrimSpace(script), ";")}}
 }
