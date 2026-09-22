@@ -220,7 +220,14 @@ func (*slowStream) Close() error { return nil }
 // openQuery opens a query tab on a new connection and waits for its session.
 func openQuery(t *testing.T, fx *fixture, env string) (*tab, *queryTab) {
 	t.Helper()
-	c, err := fx.conns.Create(store.SavedConnection{Name: "db1", Driver: "postgres", Host: "db1", Environment: env}, nil)
+	return openQueryOn(t, fx, env, "db1")
+}
+
+// openQueryOn opens a query against a connection to one of the fake's hosts,
+// which is how a test chooses what the server on the other end will do.
+func openQueryOn(t *testing.T, fx *fixture, env, host string) (*tab, *queryTab) {
+	t.Helper()
+	c, err := fx.conns.Create(store.SavedConnection{Name: host, Driver: "postgres", Host: host, Environment: env}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -112,7 +112,7 @@ func (s *sqliteSource) Capabilities() capability.Capabilities {
 		Paradigm: model.ParadigmRelational,
 		Query: capability.Query{
 			Supported: true, Language: "sqlite", MultiStatement: true,
-			Cancel: true, Parameters: true, EditableResults: true,
+			Cancel: true, Parameters: true, Explain: true, EditableResults: true,
 		},
 		// A local file counts quickly, so the grid gets a real scrollbar.
 		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, DistinctValues: true,

@@ -141,8 +141,11 @@ func TestCopyAsInsertAsksTheDialect(t *testing.T) {
 	if !c.Enabled() {
 		t.Fatal("a table's rows can be copied as INSERT")
 	}
+	// The clipboard rather than the status line, which is shared with every
+	// other thing the window says and can be talked over before this looks.
+	was := fx.s.app.Clipboard().Content()
 	c.Run()
-	pump(t, fx.q, func() bool { return strings.HasPrefix(fx.s.status.Text, "Copied") })
+	pump(t, fx.q, func() bool { return fx.s.app.Clipboard().Content() != was })
 	if got := fx.s.app.Clipboard().Content(); got != "INSERT 2 [1 item 1];\nINSERT 2 [2 item 2];" {
 		t.Errorf("clipboard %q", got)
 	}

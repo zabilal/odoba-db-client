@@ -83,7 +83,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
 	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys",
-		labels: cfg.Host == "labels", guard: cfg.Guard}, nil
+		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -106,7 +106,36 @@ type fakeSource struct {
 	unkeyed   bool // its rows cannot be told apart
 	fkeys     bool // its items refer to parts by name
 	labels    bool // its items refer to owners by id, and to parts by name
+	noAnalyse bool // it will plan a statement but not run one to measure it
 	guard     source.Guard
+}
+
+// Explain answers a small tree, measured where it was asked to run the
+// statement (FR-5.13). The shape is what the window draws: a step that does
+// most of the work under one that does little.
+func (f fakeSource) Explain(_ context.Context, st source.Statement, analyze bool) (*source.Plan, error) {
+	if analyze && f.noAnalyse {
+		return nil, fmt.Errorf("fakesql: this server will not measure a statement")
+	}
+	access := source.AccessRead
+	if analyze {
+		access = fakeSource{}.Classify(st.SQL)
+	}
+	if err := f.guard.Allow(access, st.Confirmed); err != nil {
+		return nil, err
+	}
+	if strings.Contains(st.SQL, "unplannable") {
+		return nil, fmt.Errorf("fakesql: no plan for that")
+	}
+	leaf := &source.PlanNode{Operation: "Seq Scan on items", Detail: "Filter: (id > 1)",
+		EstimatedCost: 90, EstimatedRows: 10, ActualRows: -1}
+	root := &source.PlanNode{Operation: "Aggregate", EstimatedCost: 100, EstimatedRows: 1,
+		ActualRows: -1, Children: []*source.PlanNode{leaf}}
+	if analyze {
+		leaf.ActualRows, leaf.ActualTime = 9000, 90*time.Millisecond
+		root.ActualRows, root.ActualTime = 1, 100*time.Millisecond
+	}
+	return &source.Plan{Root: root, Text: `{"Plan": "as the server said"}`}, nil
 }
 
 func (fakeSource) Root(context.Context) ([]model.Node, error) {
@@ -134,6 +163,8 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 
 func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
+		Query: capability.Query{Supported: true, Language: "postgresql", MultiStatement: true,
+			Explain: true, ExplainAnalyze: !f.noAnalyse},
 		Data:   capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true},
 		Schema: capability.Schema{DDL: true}}
 }

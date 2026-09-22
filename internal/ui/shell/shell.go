@@ -215,6 +215,8 @@ type tab struct {
 	diagram *diagramPanel
 	// chart is the chart of a result, where this tab is one (chartview.go).
 	chart *chartPanel
+	// plan is a query plan, where this tab is one (explain.go).
+	plan *planPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -563,6 +565,13 @@ func (s *Shell) registerCommands() {
 					s.promptSave(t, true)
 				}
 			}},
+		{ID: cmdExplain, Category: "Query", Title: "Explain Query Plan",
+			Keywords: []string{"explain", "plan", "cost", "index", "slow", "analyse", "analyze"},
+			Shortcut: sc("E", commands.ModShortcut|commands.ModAlt),
+			Enabled:  s.canExplain, Run: func() { s.explainActive(false) }},
+		{ID: cmdExplainMeasure, Category: "Query", Title: "Run and Measure the Plan…",
+			Keywords: []string{"explain", "analyse", "analyze", "plan", "measure", "timing", "slow"},
+			Enabled:  s.canAnalyse, Run: func() { s.explainActive(true) }},
 		{ID: cmdOpenSaved, Category: "Query", Title: "Saved Queries", Keywords: []string{"saved", "library", "load"},
 			Shortcut: sc("O", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.Saved != nil },
 			Run: func() { s.togglePanel(panelSaved, func() { s.showSaved() }) }},
