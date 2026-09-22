@@ -272,3 +272,16 @@ func contains(words []string, w string) bool {
 	}
 	return false
 }
+
+// unboundedIn reports a DELETE or UPDATE in this text that names no WHERE
+// (FR-4.9). The script is split first, for the same reason classify splits
+// it: every statement in the string really does run.
+func unboundedIn(d *sqllex.Dialect, text string) *source.UnboundedError {
+	for _, s := range splitScript(d, text) {
+		words, _ := scan(d, s.Text)
+		if u := source.UnboundedIn(words); u != nil {
+			return u
+		}
+	}
+	return nil
+}

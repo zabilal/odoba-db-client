@@ -162,7 +162,7 @@ func (c *cqlSession) QueryMulti(ctx context.Context, script string, opts source.
 
 // allow puts a statement to the guard before it is sent (NFR-S4).
 func (c *cqlSession) allow(text string, confirmed bool) error {
-	return c.src.cfg.Guard.Allow(dialect{}.Classify(text), confirmed)
+	return c.src.cfg.Guard.AllowStatement(dialect{}.Classify(text), unboundedIn(text), confirmed)
 }
 
 // run sends one statement, and reads what came back.

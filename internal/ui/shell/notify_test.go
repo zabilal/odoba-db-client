@@ -146,7 +146,7 @@ func runInBackground(t *testing.T, script string, away bool, after time.Duration
 }
 
 func TestALongQueryEndedInTheBackgroundIsNotified(t *testing.T) {
-	fx, tb := runInBackground(t, "rows 1; update t;", true, 0, false)
+	fx, tb := runInBackground(t, "rows 1; update t where id = 1;", true, 0, false)
 	n := onlyNote(t, fx)
 	if n.Title != tb.item.Text || n.Content != tb.footer.Text || !strings.HasPrefix(n.Content, "Ran 2 statements") {
 		t.Errorf("notified %q: %q; the tab is %q, its footer %q", n.Title, n.Content, tb.item.Text, tb.footer.Text)

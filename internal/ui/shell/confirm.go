@@ -7,6 +7,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
 // A write on a production connection is confirmed by typing, not by clicking
@@ -32,11 +34,29 @@ const unnamed = "production"
 // askToType asks for a typed confirmation and runs the operation if it is
 // given. declined may be nil where there is nothing to say about a no.
 func (s *Shell) askToType(connID, title, body, confirmText string, run func(), declined func()) {
-	want := unnamed
-	if c, ok := s.d.Conns.Get(connID); ok && strings.TrimSpace(c.Name) != "" {
-		want = strings.TrimSpace(c.Name)
-	}
+	s.askTyping(s.connName(connID), title, body, confirmText, run, declined)
+}
 
+// askEverything asks about a statement that changes every row it can reach,
+// whatever connection it runs on (FR-4.9).
+//
+// What has to be typed here is the table, not the connection: on a
+// development database the connection's name is not the thing worth reading
+// twice, and on any database the table is. Where the statement will not say
+// plainly which table it changes, the verb is typed instead — that at least
+// cannot be done without reading the word DELETE.
+func (s *Shell) askEverything(u *source.UnboundedError, run func(), declined func()) {
+	want, changes := u.Target, "every row in "+u.Target
+	if want == "" {
+		want, changes = u.Verb, "every row it can reach"
+	}
+	s.askTyping(want, "Change Every Row?",
+		fmt.Sprintf("This %s has no WHERE, so it changes %s. Nothing has run yet.", u.Verb, changes),
+		"Run", run, declined)
+}
+
+// askTyping is the dialog both of those put up.
+func (s *Shell) askTyping(want, title, body, confirmText string, run func(), declined func()) {
 	note := widget.NewLabel(body)
 	note.Wrapping = fyne.TextWrapWord
 
@@ -75,9 +95,9 @@ func productionBody(what, name, nothing string) string {
 
 // connName is the name to put in that sentence.
 func (s *Shell) connName(connID string) string {
-	c, _ := s.d.Conns.Get(connID)
-	if strings.TrimSpace(c.Name) == "" {
+	c, ok := s.d.Conns.Get(connID)
+	if !ok || strings.TrimSpace(c.Name) == "" {
 		return unnamed
 	}
-	return c.Name
+	return strings.TrimSpace(c.Name)
 }

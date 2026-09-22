@@ -56,6 +56,19 @@ func (fakeSource) Classify(stmt string) source.Access {
 	}
 	return source.AccessRead
 }
+
+// fakeWords stands in for a dialect's lexer. This fake's script language is
+// words, so splitting on spaces is the whole of it.
+func fakeWords(stmt string) []string {
+	var out []string
+	for _, w := range strings.Fields(strings.ToLower(strings.TrimSuffix(strings.TrimSpace(stmt), ";"))) {
+		if w = strings.Trim(w, ",;()"); w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 func (fakeSource) SplitScript(script string) []source.ScriptStatement {
 	var out []source.ScriptStatement
 	at := 0
@@ -122,7 +135,8 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts sourc
 	fs.named.Store(&opts.Named)
 	stmts := fakeSource{}.SplitScript(script)
 	for _, st := range stmts {
-		if err := fs.guard.Allow(fakeSource{}.Classify(st.Text), confirmed); err != nil {
+		if err := fs.guard.AllowStatement(fakeSource{}.Classify(st.Text),
+			source.UnboundedIn(fakeWords(st.Text)), confirmed); err != nil {
 			return nil, err
 		}
 	}
@@ -238,7 +252,7 @@ func TestRunRunsTheStatementAtTheCaret(t *testing.T) {
 func TestRunAllShowsEveryResult(t *testing.T) {
 	fx := newFixture(t)
 	_, q := openQuery(t, fx, "")
-	q.editor.Document().SetText("rows 1; update t; rows 3;")
+	q.editor.Document().SetText("rows 1; update t where id = 1; rows 3;")
 	fx.s.run(cmdQueryRunAll)
 	pump(t, fx.q, func() bool { return !q.executing })
 	if len(q.sets) != 2 || len(q.results.Items) != 3 {

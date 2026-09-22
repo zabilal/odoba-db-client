@@ -178,3 +178,76 @@ func TestAConnectionWithNoNameStillHasSomethingToType(t *testing.T) {
 		t.Errorf("it ran %d times", ran)
 	}
 }
+
+// FR-4.9's other half. A DELETE or UPDATE with no WHERE is asked about
+// wherever it runs, because what makes it dangerous is the statement.
+func TestAStatementThatChangesEveryRowIsAskedAboutOnAnyConnection(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "dev") // not production
+	q.editor.Document().SetText("delete from orders")
+	before := executed.Load()
+
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	if executed.Load() != before {
+		t.Fatal("it ran before it was confirmed")
+	}
+
+	top := fx.s.win.Canvas().Overlays().Top()
+	text := strings.Join(labelTexts(top), " ")
+	for _, want := range []string{"no WHERE", "every row in orders", "Nothing has run yet"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the question does not say %q: %q", want, text)
+		}
+	}
+
+	run := findButton(top, "Run")
+	if run == nil || !run.Disabled() {
+		t.Fatal("it could be run with one click")
+	}
+	// The connection's name is not what is asked for here: the table is.
+	typeOnTop(t, fx, "db1")
+	if !run.Disabled() {
+		t.Error("the connection's name was accepted for the table's")
+	}
+	typeOnTop(t, fx, "orders")
+	if run.Disabled() {
+		t.Fatal("the table was typed and Run stayed out of reach")
+	}
+	test.Tap(run)
+	pump(t, fx.q, func() bool { return executed.Load() > before })
+}
+
+// On production the connection is what is asked about, because the mistake
+// that matters most there is the right statement on the wrong connection
+// (ADR-0113). One question, not two.
+func TestOnProductionTheConnectionIsAskedAboutAndNotTheTable(t *testing.T) {
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "production")
+	q.editor.Document().SetText("delete from orders")
+	before := executed.Load()
+
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+
+	top := fx.s.win.Canvas().Overlays().Top()
+	if text := strings.Join(labelTexts(top), " "); !strings.Contains(text, "marked Production") {
+		t.Fatalf("it asked %q", text)
+	}
+	run := findButton(top, "Run")
+	typeOnTop(t, fx, "orders")
+	if !run.Disabled() {
+		t.Error("the table's name was accepted for the connection's")
+	}
+	typeOnTop(t, fx, "db1")
+	if run.Disabled() {
+		t.Fatal("the connection was named and Run stayed out of reach")
+	}
+	// And that one consent carries the statement through: it is not asked
+	// about twice.
+	test.Tap(run)
+	pump(t, fx.q, func() bool { return executed.Load() > before })
+	if top := fx.s.win.Canvas().Overlays().Top(); top != nil {
+		t.Errorf("it asked a second time: %q", strings.Join(labelTexts(top), " "))
+	}
+}

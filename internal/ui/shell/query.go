@@ -362,7 +362,17 @@ func (s *Shell) execute(t *tab, script string, base int, opts source.ScriptOptio
 // running it confirmed is safe (FR-4.9).
 func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOptions, err error) {
 	t.footer.SetText("")
+	var everything *source.UnboundedError
 	switch {
+	case errors.As(err, &everything):
+		// Before the production case, because this is one too and the
+		// question worth asking is the narrower one.
+		s.askEverything(everything,
+			func() {
+				opts.Confirmed = true
+				s.execute(t, script, base, opts)
+			},
+			func() { t.footer.SetText("Not run") })
 	case errors.Is(err, source.ErrConfirmationRequired):
 		s.askToType(t.connID, "Change Data on Production?",
 			productionBody("script changes data on", s.connName(t.connID), "Nothing has run yet."),

@@ -97,3 +97,32 @@ func TestSplitScriptKeepsRoutineBodies(t *testing.T) {
 		t.Errorf("%+v", got)
 	}
 }
+
+func TestMySQLNoticesAStatementThatChangesEveryRow(t *testing.T) {
+	for _, c := range []struct{ stmt, target string }{
+		{"DELETE FROM orders", "orders"},
+		{"UPDATE orders SET paid = 1", "orders"},
+		{"UPDATE LOW_PRIORITY IGNORE orders SET paid = 1", "orders"},
+		{"SELECT 1; DELETE FROM orders", "orders"},
+	} {
+		u := unboundedIn(c.stmt)
+		if u == nil {
+			t.Errorf("%q was not noticed", c.stmt)
+			continue
+		}
+		if u.Target != c.target {
+			t.Errorf("%q names %q, want %q", c.stmt, u.Target, c.target)
+		}
+	}
+	for _, stmt := range []string{
+		"DELETE FROM orders WHERE id = 1",
+		"UPDATE orders SET paid = 1 WHERE id = 1",
+		"SELECT * FROM orders FOR UPDATE",
+		"SELECT 1 -- DELETE FROM orders",
+		"SELECT 'DELETE FROM orders'",
+	} {
+		if u := unboundedIn(stmt); u != nil {
+			t.Errorf("%q was taken for one: %v", stmt, u)
+		}
+	}
+}
