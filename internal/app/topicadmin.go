@@ -44,4 +44,15 @@ func AddPartitions(ctx context.Context, src source.Source, topic string, count i
 	return a.AddPartitions(ctx, topic, count, confirmed)
 }
 
+// AlterTopicConfig changes the settings it is given and leaves the others
+// where they were.
+func AlterTopicConfig(ctx context.Context, src source.Source, topic string, set map[string]string, confirmed bool) (err error) {
+	defer panics.Recover(&err, "changing a topic's configuration")
+	a, ok := src.(source.TopicAdmin)
+	if !ok {
+		return errNoTopicAdmin
+	}
+	return a.AlterTopicConfig(ctx, topic, set, confirmed)
+}
+
 var errNoTopicAdmin = errors.New("this source cannot make or unmake topics")

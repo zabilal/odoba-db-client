@@ -638,3 +638,75 @@ func TestStructureOffersToReadAGroupsProgressRatherThanReadingIt(t *testing.T) {
 		t.Error("a source that cannot read a group's progress offers to")
 	}
 }
+
+// A topic's settings, and which of them somebody chose (T2.79, FR-13.12).
+
+func TestStructureShowsATopicsSettingsAndWhichWereChosen(t *testing.T) {
+	topic := &model.Topic{Name: "orders", ReplicationFactor: 1,
+		Partitions: []model.Partition{{ID: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}}},
+		Config: []model.ConfigEntry{
+			{Name: "cleanup.policy", Value: "compact", Source: "DYNAMIC_TOPIC_CONFIG"},
+			{Name: "retention.ms", Value: "604800000", Source: "DEFAULT_CONFIG"},
+			{Name: "max.message.bytes", Value: "2097152", Source: "DYNAMIC_BROKER_CONFIG"},
+			{Name: "flush.ms", Value: "", Source: "STATIC_BROKER_CONFIG"},
+			{Name: "ssl.key.password", Source: "DYNAMIC_TOPIC_CONFIG", Sensitive: true},
+		}}
+	got := strings.Join(labelTexts(structureView(topic, structureActions{})), "\n")
+	for _, want := range []string{
+		"Settings", "Setting", "Value", "Where from",
+		"cleanup.policy", "compact", "set on this topic",
+		"retention.ms", "Kafka's own default",
+		"max.message.bytes", "set on the broker",
+		"the broker's configuration file",
+		// A value the server withholds says so, rather than showing blank.
+		"hidden by the server",
+		// And one that really is empty says that instead, which is a
+		// different fact about the setting.
+		"empty",
+		// Three of the five were somebody's doing.
+		"5 settings, 3 of them set rather than inherited.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a topic's settings do not say %q:\n%s", want, got)
+		}
+	}
+	// The shouted constants are the broker's words and stay there.
+	for _, shouted := range []string{"DYNAMIC_TOPIC_CONFIG", "DEFAULT_CONFIG", "STATIC_BROKER_CONFIG"} {
+		if strings.Contains(got, shouted) {
+			t.Errorf("%s is shown as the broker shouts it:\n%s", shouted, got)
+		}
+	}
+}
+
+func TestATopicSaysNothingAboutSettingsItHasNot(t *testing.T) {
+	bare := &model.Topic{Name: "orders", ReplicationFactor: 1}
+	got := strings.Join(labelTexts(structureView(bare, structureActions{})), "\n")
+	if strings.Contains(got, "Where from") {
+		t.Errorf("a topic whose settings could not be read draws a table of them:\n%s", got)
+	}
+	// And says nothing about them either: a count of none would claim the
+	// broker answered, when it did not.
+	if strings.Contains(got, " settings,") {
+		t.Errorf("a topic whose settings could not be read counts them anyway:\n%s", got)
+	}
+
+	// A source this build has never met arrives as the broker said it: that
+	// is more use to somebody than calling it unknown.
+	odd := &model.Topic{Name: "orders", Config: []model.ConfigEntry{
+		{Name: "a.setting", Value: "1", Source: "GROUP_CONFIG"}}}
+	if got := strings.Join(labelTexts(structureView(odd, structureActions{})), "\n"); !strings.Contains(got, "GROUP_CONFIG") {
+		t.Errorf("a source nobody here has met is not passed through:\n%s", got)
+	}
+	// And one the broker never gave says so rather than leaving a blank.
+	none := &model.Topic{Name: "orders", Config: []model.ConfigEntry{
+		{Name: "a.setting", Value: "1"}}}
+	if got := strings.Join(labelTexts(structureView(none, structureActions{})), "\n"); !strings.Contains(got, "not said") {
+		t.Errorf("a setting with no source reads as:\n%s", got)
+	}
+	// Nothing chosen at all reads as that, rather than as a count of none.
+	all := &model.Topic{Name: "orders", Config: []model.ConfigEntry{
+		{Name: "a.setting", Value: "1", Source: "DEFAULT_CONFIG"}}}
+	if got := strings.Join(labelTexts(structureView(all, structureActions{})), "\n"); !strings.Contains(got, "every one of them as the cluster leaves it") {
+		t.Errorf("a topic nobody has configured reads as:\n%s", got)
+	}
+}

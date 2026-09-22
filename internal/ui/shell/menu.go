@@ -26,6 +26,7 @@ const (
 	cmdTopicNew       = "topic.new"
 	cmdTopicDelete    = "topic.delete"
 	cmdTopicPartition = "topic.addPartitions"
+	cmdTopicConfig    = "topic.settings"
 	cmdScriptSelect   = "object.script.select"
 	cmdScriptInsert   = "object.script.insert"
 	cmdScriptUpdate   = "object.script.update"

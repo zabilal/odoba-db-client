@@ -135,6 +135,41 @@ func (s *Shell) addPartitionsToSelected() {
 	d.Show()
 }
 
+func (s *Shell) editTopicSettings() {
+	conn, n, ok := s.Explorer.SelectedNode()
+	if !ok || n.Ref.Kind != model.KindTopic {
+		return
+	}
+	topic := n.Ref.Name()
+	settings := widget.NewMultiLineEntry()
+	settings.SetPlaceHolder("one per line, written as name: value")
+	note := widget.NewLabel("Only the settings written here change; every other one stays as it is. " +
+		"What this topic is set to now, and which of it somebody chose, is in its structure.")
+	note.Wrapping = fyne.TextWrapWord
+	body := container.NewVBox(widget.NewForm(widget.NewFormItem("Set", settings)), note)
+
+	d := dialog.NewCustomConfirm("Settings for "+topic, "Apply", "Cancel", body, func(ok bool) {
+		if !ok {
+			return
+		}
+		set, err := settingsFrom(settings.Text)
+		if err != nil {
+			s.showError(err)
+			return
+		}
+		if len(set) == 0 {
+			s.showError(errors.New("nothing was written, so nothing would change"))
+			return
+		}
+		s.changeTopics(conn, fmt.Sprintf("change the settings of %s", topic),
+			func(src source.Source, confirmed bool) error {
+				return app.AlterTopicConfig(s.ctx, src, topic, set, confirmed)
+			})
+	}, s.win)
+	d.Resize(fyne.NewSize(560, 340))
+	d.Show()
+}
+
 // topicChange is one change to the cluster's topics, made with or without
 // consent having been given for it.
 type topicChange func(src source.Source, confirmed bool) error

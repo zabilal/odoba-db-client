@@ -39,7 +39,7 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 		// and taken away. New Topic is here too, because somebody looking at
 		// a topic is already where topics are made.
 		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdProduce, "",
-			cmdTopicNew, cmdTopicPartition, cmdTopicDelete, "", cmdRefresh}
+			cmdTopicNew, cmdTopicConfig, cmdTopicPartition, cmdTopicDelete, "", cmdRefresh}
 	case s.selectionProducible():
 		// A topic is the only thing here that can be written to, and the menu
 		// says so only where that is true. Scripting a SELECT of a log, or a

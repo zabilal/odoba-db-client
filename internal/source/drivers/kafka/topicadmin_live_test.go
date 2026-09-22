@@ -110,3 +110,64 @@ func TestLiveWhatCannotBeAskedOfATopicReachesNoBroker(t *testing.T) {
 		t.Error("a topic was configured with nothing")
 	}
 }
+
+func TestLiveATopicSaysWhatItIsSetToAndWhoSetIt(t *testing.T) {
+	src := producing(t, source.Guard{})
+	a := administers(t, src)
+	ctx := context.Background()
+	const name = "ikigai_it_config"
+
+	_ = a.DeleteTopic(ctx, name, false)
+	if err := a.CreateTopic(ctx, source.TopicSpec{Name: name, Partitions: 1, ReplicationFactor: 1,
+		Config: map[string]string{"retention.ms": "600000"}}); err != nil {
+		t.Fatalf("creating %s: %v", name, err)
+	}
+	t.Cleanup(func() { _ = a.DeleteTopic(context.Background(), name, false) })
+	settled(t, src, name, 1)
+
+	desc, err := src.Describe(ctx, model.NewRef(model.KindTopic, "cluster", name))
+	if err != nil {
+		t.Fatalf("describing %s: %v", name, err)
+	}
+	top, ok := desc.(*model.Topic)
+	if !ok {
+		t.Fatalf("a topic is described as a %T", desc)
+	}
+	if len(top.Config) == 0 {
+		t.Fatal("a topic is described with none of its settings")
+	}
+
+	var retention *model.ConfigEntry
+	for i, c := range top.Config {
+		if c.Name == "retention.ms" {
+			retention = &top.Config[i]
+		}
+		// Every setting says where it came from: that distinction is the
+		// whole of what FR-13.12 asks for here.
+		if c.Source == "" {
+			t.Errorf("%s says nothing about where it came from", c.Name)
+		}
+	}
+	if retention == nil {
+		t.Fatal("the setting the topic was created with is not among its settings")
+	}
+	if retention.Value != "600000" {
+		t.Errorf("retention.ms reads as %q", retention.Value)
+	}
+	// It was given when the topic was made, so it is somebody's choice
+	// rather than the cluster's default.
+	if !retention.IsOverride() {
+		t.Errorf("a setting given at creation reads as inherited: %+v", retention)
+	}
+	// And most of what a topic has is nobody's choice, which is the other
+	// half of the same distinction.
+	inherited := 0
+	for _, c := range top.Config {
+		if !c.IsOverride() {
+			inherited++
+		}
+	}
+	if inherited == 0 {
+		t.Error("every one of a topic's settings reads as chosen, which no topic's are")
+	}
+}

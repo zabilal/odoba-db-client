@@ -456,7 +456,39 @@ func (s *kafkaSource) topic(ctx context.Context, name string) (*model.Topic, err
 	if size, ok := s.topicSize(ctx, name, d.Partitions.Numbers()); ok {
 		t.Attrs["size on disk"] = sizeText(size)
 	}
+	t.Config = s.topicConfig(ctx, name)
 	return t, nil
+}
+
+// topicConfig is what a topic is configured with, and where each setting came
+// from (FR-13.12).
+//
+// Best effort, as its size is: a broker that will not say leaves a topic
+// described without its settings, rather than a topic that cannot be
+// described at all.
+func (s *kafkaSource) topicConfig(ctx context.Context, name string) []model.ConfigEntry {
+	resps, err := s.admin.DescribeTopicConfigs(ctx, name)
+	if err != nil {
+		return nil
+	}
+	for _, r := range resps {
+		if r.Name != name || r.Err != nil {
+			continue
+		}
+		out := make([]model.ConfigEntry, 0, len(r.Configs))
+		for _, c := range r.Configs {
+			out = append(out, model.ConfigEntry{
+				Name: c.Key, Value: c.MaybeValue(),
+				// The source is kept as the broker's own word for it: what
+				// that means in English is the view's business, and a word
+				// this build has not met must still arrive intact.
+				Source: c.Source.String(), Sensitive: c.Sensitive,
+			})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		return out
+	}
+	return nil
 }
 
 // partitionsOf are a topic's logs: where each is led from, who keeps a copy,

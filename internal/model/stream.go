@@ -83,9 +83,20 @@ type ConfigEntry struct {
 	ReadOnly bool
 }
 
-// IsOverride reports whether the entry was explicitly set rather than inherited.
+// IsOverride reports whether the entry was explicitly set rather than
+// inherited.
+//
+// What is not an override is named rather than inferred: the value Kafka
+// compiles in, a broker's own configuration file, the cluster-wide default
+// for brokers — which is a default however dynamically it was set — and a
+// source this build does not recognise, which is no evidence that anybody
+// chose anything.
 func (c ConfigEntry) IsOverride() bool {
-	return c.Source != "" && c.Source != "DEFAULT_CONFIG" && c.Source != "STATIC_BROKER_CONFIG"
+	switch c.Source {
+	case "", "UNKNOWN", "DEFAULT_CONFIG", "STATIC_BROKER_CONFIG", "DYNAMIC_DEFAULT_BROKER_CONFIG":
+		return false
+	}
+	return true
 }
 
 // ConsumerGroup describes a group of cooperating consumers (FR-13.10).
