@@ -236,7 +236,10 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			ApproximateCount: true,
 			Insert:           true, Update: true, Delete: true, TransactionalWrite: true, BulkLoad: true,
 		},
-		Schema: capability.Schema{ForeignKeys: true},
+		// DDL because this driver renders a table's structure as statements
+		// (ddl.go). What it does not do is run them: the preview does, once
+		// somebody has read it (FR-6.4).
+		Schema: capability.Schema{ForeignKeys: true, DDL: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase:         true,
 			model.KindSchema:           true,

@@ -71,11 +71,28 @@ type ScriptStatement struct {
 type DDLGenerator interface {
 	// CreateObject renders the DDL that would recreate an object. The concrete
 	// type matches Introspector.Describe for the same kind.
-	CreateObject(obj any) ([]Statement, error)
+	//
+	// The ref names it. A model.Table carries a bare name and nothing about
+	// the schema it is in, so rendering from the object alone would produce
+	// statements for whichever table of that name the search path reaches —
+	// which is the right one until it is not.
+	CreateObject(ref model.ObjectRef, obj any) ([]Statement, error)
 
 	// AlterObject renders the DDL transforming from into to. Both are the same
 	// concrete type. An empty result means the two are equivalent.
-	AlterObject(from, to any) ([]Statement, error)
+	//
+	// Columns are matched by name. Two tables cannot say which column was
+	// renamed to which — a rename and a drop-with-an-add look identical —
+	// and guessing wrong drops a column's data. Whatever does know renames
+	// them first, with RenameColumn, and hands over a table already using
+	// the new names.
+	AlterObject(ref model.ObjectRef, from, to any) ([]Statement, error)
+
+	// RenameColumn renders renaming one of a table's columns.
+	//
+	// Apart from AlterObject because only the caller knows a rename
+	// happened: a designer does, a schema diff does not (ADR-0114).
+	RenameColumn(ref model.ObjectRef, from, to string) ([]Statement, error)
 
 	// DropObject renders the DDL removing an object.
 	DropObject(ref model.ObjectRef, cascade bool) ([]Statement, error)

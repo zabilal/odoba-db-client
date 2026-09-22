@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,6 +121,15 @@ func logClose(what string) {
 // a page, so that only a count says how many. It counts them; failReread
 // makes them fail.
 func (fs *fakeSession) Query(_ context.Context, st source.Statement) (*source.Result, error) {
+	// A structural statement runs here too, through the guard, which is how
+	// the designer's preview reaches a server (FR-6.4).
+	if isStructural(st.SQL) {
+		if err := fs.guard.AllowStatement(source.AccessDDL, nil, st.Confirmed); err != nil {
+			return nil, err
+		}
+		recordStructural(st.SQL)
+		return &source.Result{Affected: 0}, nil
+	}
 	if !strings.HasPrefix(st.SQL, "items") {
 		return nil, fmt.Errorf("not in this test")
 	}
@@ -536,4 +546,39 @@ func TestQueryTabForgetsTheSchemaAfterDDL(t *testing.T) {
 	if got := completed(t, fx, q, "select * from it|"); !has(got, "items") {
 		t.Errorf("offering %v, want the tables read again", got)
 	}
+}
+
+// What the designer sent, so that a test can say what ran and in what order.
+var structural struct {
+	sync.Mutex
+	stmts []string
+}
+
+func isStructural(sql string) bool {
+	for _, w := range []string{"ADD COLUMN", "DROP COLUMN", "RENAME ", "CREATE ", "ALTER ", "DROP "} {
+		if strings.HasPrefix(sql, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func recordStructural(sql string) {
+	structural.Lock()
+	defer structural.Unlock()
+	structural.stmts = append(structural.stmts, sql)
+}
+
+// ranStatements are the structural statements this test binary has sent.
+// They are reset by whoever is about to look at them.
+func ranStatements() []string {
+	structural.Lock()
+	defer structural.Unlock()
+	return slices.Clone(structural.stmts)
+}
+
+func forgetStatements() {
+	structural.Lock()
+	defer structural.Unlock()
+	structural.stmts = nil
 }

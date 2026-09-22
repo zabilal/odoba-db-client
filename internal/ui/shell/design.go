@@ -42,6 +42,9 @@ type designPanel struct {
 	rows *fyne.Container
 	add  *widget.Button
 	undo *widget.Button
+	// preview_ shows what the design would run, and is the only way to run
+	// it (ddlpreview.go).
+	preview_ *widget.Button
 }
 
 // canDesign reports whether the selection is a table this can design.
@@ -100,6 +103,33 @@ func (s *Shell) OpenDesign(connID string, n model.Node) *tab {
 	return t
 }
 
+// reopenDesign reads the table again and designs it afresh, after something
+// changed it. What the table is now is what the server says it is, not what
+// was asked for: a statement can succeed and still leave something other
+// than what was typed.
+func (s *Shell) reopenDesign(t *tab) {
+	t.body.Objects = []fyne.CanvasObject{quiet("Reading the table…")}
+	t.body.Refresh()
+	go func() {
+		live, err := s.d.WS.Connect(t.ctx, t.connID)
+		var desc any
+		if err == nil {
+			desc, err = app.Describe(t.ctx, live.Source, t.ref)
+		}
+		s.d.Run(func() {
+			if t.ctx.Err() != nil {
+				return
+			}
+			table, ok := desc.(*model.Table)
+			if err != nil || !ok {
+				s.tabFailed(t, fmt.Errorf("could not read the table again: %w", err))
+				return
+			}
+			s.showDesign(t, table)
+		})
+	}()
+}
+
 // showDesign draws the editor over a table that has been read.
 func (s *Shell) showDesign(t *tab, table *model.Table) {
 	p := &designPanel{s: s, t: t, design: app.NewDesign(t.ref, table), rows: container.NewVBox()}
@@ -109,7 +139,8 @@ func (s *Shell) showDesign(t *tab, table *model.Table) {
 		p.design.RevertAll()
 		p.draw()
 	})
-	head := container.NewHBox(p.add, p.undo)
+	p.preview_ = widget.NewButton("Preview…", p.preview)
+	head := container.NewHBox(p.add, p.preview_, p.undo)
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(head, nil, nil, nil, container.NewVScroll(p.rows)),
 	}
@@ -217,8 +248,14 @@ func (p *designPanel) addColumn() {
 func (p *designPanel) say() {
 	changes := p.design.Changes()
 	p.undo.Enable()
+	if p.preview_ != nil {
+		p.preview_.Enable()
+	}
 	if !p.design.Changed() {
 		p.undo.Disable()
+		if p.preview_ != nil {
+			p.preview_.Disable()
+		}
 		p.t.footer.SetText("No changes yet.")
 		return
 	}
