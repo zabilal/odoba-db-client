@@ -8,6 +8,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/diff"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
+	"github.com/ikigai-db/ikigai-db/internal/schemafile"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -167,4 +168,37 @@ func describeInto(ctx context.Context, src source.Source, ref model.ObjectRef, i
 		into.UserTypes = append(into.UserTypes, *v)
 	}
 	return nil
+}
+
+// Comparing a live database against a model somebody saved (FR-7.1).
+//
+// The saved model is the wanted state — it is the one in version control,
+// reviewed and agreed — and the live database is what is there. So it goes
+// on the "to" side, and Added is what the database is missing.
+
+// SaveModel writes a database's structure to a directory as a tree of files,
+// one per object, for version control to hold (FR-7.6).
+func SaveModel(ctx context.Context, src source.Source, database, dir string) error {
+	db, err := Snapshot(ctx, src, database)
+	if err != nil {
+		return err
+	}
+	return schemafile.Write(dir, db)
+}
+
+// ReadModel loads a model saved by SaveModel.
+func ReadModel(dir string) (*model.Database, error) { return schemafile.Read(dir) }
+
+// CompareWithSaved says what a live database is missing against a saved
+// model, or has that the model does not.
+func CompareWithSaved(ctx context.Context, src source.Source, database, dir string) (diff.Node, error) {
+	live, err := Snapshot(ctx, src, database)
+	if err != nil {
+		return diff.Node{}, fmt.Errorf("reading %s: %w", naming(database), err)
+	}
+	saved, err := schemafile.Read(dir)
+	if err != nil {
+		return diff.Node{}, err
+	}
+	return diff.Compare(live, saved), nil
 }
