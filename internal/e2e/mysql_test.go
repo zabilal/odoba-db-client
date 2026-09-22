@@ -81,3 +81,5 @@ func TestJ2MySQL(t *testing.T)   { runJ2(t, mysqlJourney(t, "mysql", "IKIGAI_MYS
 func TestJ2MariaDB(t *testing.T) { runJ2(t, mysqlJourney(t, "mariadb", "IKIGAI_MARIADB_PORT", 53307)) }
 func TestJ5MySQL(t *testing.T)   { runJ5(t, mysqlJourney(t, "mysql", "IKIGAI_MYSQL_PORT", 53306)) }
 func TestJ5MariaDB(t *testing.T) { runJ5(t, mysqlJourney(t, "mariadb", "IKIGAI_MARIADB_PORT", 53307)) }
+func TestJ7MySQL(t *testing.T)   { runJ7(t, mysqlJourney(t, "mysql", "IKIGAI_MYSQL_PORT", 53306)) }
+func TestJ7MariaDB(t *testing.T) { runJ7(t, mysqlJourney(t, "mariadb", "IKIGAI_MARIADB_PORT", 53307)) }

@@ -341,6 +341,77 @@ func runJ5(t *testing.T, j journey) {
 	}
 }
 
+// runJ7 is journey J7: work safely in production. The connection is marked
+// where it can be seen, a write asks before it happens and will not be
+// clicked past, and a read-only connection refuses whatever is typed.
+func runJ7(t *testing.T, j journey) {
+	// A production connection, under a name that has to be typed back.
+	prod := j
+	prod.conn.Name = "live"
+	prod.conn.Environment = "production"
+	h := start(t, prod)
+	openTable(t, h, prod)
+
+	// Visually distinct: the tab says what it is, in words and not only in
+	// colour, so that it survives a screenshot and a colour-blind reader.
+	waitFor(t, h.q, "the production band", func() bool {
+		return strings.Contains(strings.Join(labelsIn(h.tabs.Selected().Content), " "),
+			"Production: statements run here change live data.")
+	})
+
+	// A write asks before anything runs.
+	h.s.OpenQuery(h.conn.ID)
+	ed := find[*view.Editor](h.tabs.Selected().Content)[0]
+	stmt := "UPDATE " + j.table + " SET name = 'changed in production' WHERE id = 1"
+	test.Type(ed.Focusable(), stmt)
+	runWhenReady(t, h.q, h.s, "query.run")
+
+	waitFor(t, h.q, "the question", func() bool { return h.w.Canvas().Overlays().Top() != nil })
+	ask := h.w.Canvas().Overlays().Top()
+	if said := strings.Join(labelsIn(ask), " "); !strings.Contains(said, "marked Production") ||
+		!strings.Contains(said, "Nothing has run yet") {
+		t.Errorf("the question says %q", said)
+	}
+
+	// And it cannot be clicked past: the connection's name has to be typed.
+	run := button(t, ask, "Run")
+	if !run.Disabled() {
+		t.Fatal("a production write could be confirmed with one click")
+	}
+	typed := find[*widget.Entry](ask)[0]
+	typed.SetText("people")
+	if !run.Disabled() {
+		t.Error("something that is not the connection's name was accepted")
+	}
+	typed.SetText(prod.conn.Name)
+	if run.Disabled() {
+		t.Fatal("the connection was named and Run stayed out of reach")
+	}
+	test.Tap(run)
+	waitFor(t, h.q, "the write to run", func() bool {
+		return strings.Contains(strings.Join(labelsIn(h.tabs.Selected().Content), " "), "1 row affected")
+	})
+
+	// A read-only connection refuses the same statement, and offers nothing
+	// to type: read-only is a decision about the connection, not a question
+	// about the statement (NFR-S4).
+	ro := j
+	ro.conn.Name = "read only"
+	ro.conn.ReadOnly = true
+	h2 := start(t, ro)
+	h2.s.OpenQuery(h2.conn.ID)
+	ed2 := find[*view.Editor](h2.tabs.Selected().Content)[0]
+	test.Type(ed2.Focusable(), stmt)
+	runWhenReady(t, h2.q, h2.s, "query.run")
+
+	waitFor(t, h2.q, "the refusal", func() bool {
+		return strings.Contains(strings.Join(labelsIn(h2.tabs.Selected().Content), " "), "read-only")
+	})
+	if top := h2.w.Canvas().Overlays().Top(); top != nil {
+		t.Errorf("a read-only connection offered a way past: %q", strings.Join(labelsIn(top), " "))
+	}
+}
+
 // selected is what every Select under o currently reads, which is how the
 // import's column pairing is seen from outside the shell.
 func selected(o fyne.CanvasObject) []string {

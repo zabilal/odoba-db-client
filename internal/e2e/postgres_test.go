@@ -82,3 +82,4 @@ func TestJ1PostgreSQL(t *testing.T) { runJ1(t, postgresJourney(t)) }
 func TestJ3PostgreSQL(t *testing.T) { runJ3(t, postgresJourney(t)) }
 func TestJ2PostgreSQL(t *testing.T) { runJ2(t, postgresJourney(t)) }
 func TestJ5PostgreSQL(t *testing.T) { runJ5(t, postgresJourney(t)) }
+func TestJ7PostgreSQL(t *testing.T) { runJ7(t, postgresJourney(t)) }
