@@ -1,7 +1,10 @@
 package kafka
 
 import (
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -196,5 +199,61 @@ func TestATailCanBeginBeforeWhatIsAlreadyThere(t *testing.T) {
 	// starts where it is — and is still followed.
 	if got[1].from != 0 || got[1].to != -1 {
 		t.Errorf("a tail of an empty log: %+v", got[1])
+	}
+}
+
+// Every consume is bounded (T2.82, FR-13.20).
+
+func TestAReadWithNoBoundGetsThisDriversOwn(t *testing.T) {
+	// A caller naming no limit is given this driver's rather than all of a
+	// log: an unbounded read of a topic nobody has aged out is how looking
+	// at something becomes an incident.
+	for _, opt := range []source.BrowseOptions{{}, {Limit: 0}, {Limit: -1}} {
+		if got := boundOf(opt); got != records {
+			t.Errorf("a read asking for %d reads %d, not this driver's %d", opt.Limit, got, records)
+		}
+	}
+	// A limit somebody named is the limit they named.
+	if got := boundOf(source.BrowseOptions{Limit: 10}); got != 10 {
+		t.Errorf("a read of ten reads %d", got)
+	}
+	// And this driver's own is a page rather than a log.
+	if records <= 0 || records > 10_000 {
+		t.Errorf("this driver's own bound is %d, which is no bound worth having", records)
+	}
+}
+
+func TestATailIsBoundedByWhatItCannotOutrun(t *testing.T) {
+	// A log being written to has no count to stop at, so a tail names none.
+	// What holds it instead is how much a fetch may pull, the window of
+	// whoever is reading it (NFR-P10), and being cancelled — each of which
+	// has a test of its own.
+	if got := boundOf(source.BrowseOptions{Follow: true}); got != 0 {
+		t.Errorf("a tail stops after %d records", got)
+	}
+
+	// franz-go's own fetch defaults are far larger, and they are defaults
+	// for a service meaning to keep up with a topic. This is an application
+	// somebody is looking at a topic through.
+	if fetchBytes <= 0 || fetchBytes > 32<<20 {
+		t.Errorf("a fetch may pull %d bytes, which is not a bound worth having", fetchBytes)
+	}
+	if fetchPartitionBytes <= 0 || fetchPartitionBytes > fetchBytes {
+		t.Errorf("one partition may pull %d of a fetch's %d", fetchPartitionBytes, fetchBytes)
+	}
+	if fetchWait <= 0 || fetchWait > time.Minute {
+		t.Errorf("a fetch waits up to %v, which is not a bound worth having", fetchWait)
+	}
+	if n := len(readBounds()); n != 3 {
+		t.Errorf("a read is given %d bounds, not the three it is meant to have", n)
+	}
+	// And they reach the reader, which is the one thing a test of the values
+	// alone would never notice.
+	body, err := os.ReadFile("browse.go")
+	if err != nil {
+		t.Fatalf("reading browse.go: %v", err)
+	}
+	if !strings.Contains(string(body), "readBounds()...") {
+		t.Error("browse.go no longer gives the reader the bounds it works out")
 	}
 }
