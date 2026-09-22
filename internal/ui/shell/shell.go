@@ -206,6 +206,8 @@ type tab struct {
 	design *designPanel
 	// source is the source editor, where this tab is one (sourceedit.go).
 	source *sourcePanel
+	// compare is the schema comparison, where this tab is one (compare.go).
+	compare *comparePanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -383,6 +385,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptSchema, Category: "Explorer", Title: "Script Whole Schema",
 			Keywords: []string{"ddl", "create", "schema", "export", "everything"},
 			Enabled:  s.canScriptSchema, Run: s.scriptSelectedSchema},
+		{ID: cmdCompare, Category: "Explorer", Title: "Compare with a Saved Model…",
+			Keywords: []string{"diff", "compare", "schema", "model", "drift"},
+			Enabled:  s.canCompareSelected, Run: s.compareSelected},
 		{ID: cmdRename, Category: "Explorer", Title: "Rename…",
 			Keywords: []string{"rename", "name", "alter", "ddl", "dependencies", "depends"},
 			Enabled:  s.canRenameSelected, Run: s.renameSelected},
