@@ -17,6 +17,7 @@ require (
 	github.com/twmb/franz-go/pkg/sr v1.8.0
 	github.com/zalando/go-keyring v0.2.8
 	go.mongodb.org/mongo-driver/v2 v2.9.1
+	golang.org/x/crypto v0.53.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/inf.v0 v0.9.1
 	modernc.org/sqlite v1.58.0
@@ -78,7 +79,6 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect

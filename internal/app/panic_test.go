@@ -54,7 +54,7 @@ func TestAResultWhoseRowsPanicEndsInAnError(t *testing.T) {
 func TestAPanickingPingIsAFailedPing(t *testing.T) {
 	src := &fakeSource{}
 	src.boomPing.Store(true)
-	l := startLive("c1", src, MonitorConfig{Interval: time.Hour, MinBackoff: time.Hour, MaxBackoff: time.Hour, PingTimeout: time.Second})
+	l := startLive("c1", src, MonitorConfig{Interval: time.Hour, MinBackoff: time.Hour, MaxBackoff: time.Hour, PingTimeout: time.Second}, nil)
 	defer l.Close()
 	seen := make(chan Status, 8)
 	defer l.Subscribe(func(st Status) { seen <- st })()

@@ -480,7 +480,7 @@ func TestSchemaCacheSurvivesADriverThatPanics(t *testing.T) {
 }
 
 func TestSchemaCacheIsOneCachePerConnection(t *testing.T) {
-	l := startLive("c1", &fakeSource{}, MonitorConfig{Interval: time.Hour})
+	l := startLive("c1", &fakeSource{}, MonitorConfig{Interval: time.Hour}, nil)
 	defer l.Close()
 	if a, b := l.Schema(), l.Schema(); a != b {
 		t.Error("a connection handed out two caches")
