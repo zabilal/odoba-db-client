@@ -35,12 +35,29 @@ func (recordFake) Open(context.Context, source.ConnectionConfig) (source.Source,
 	return &recordSource{}, nil
 }
 
-type recordSource struct{}
+type recordSource struct {
+	// produced is every record this connection was asked to write, and
+	// refuse is what it says when asked. Between them a test can watch the
+	// shell ask, and watch it send nothing until it has an answer.
+	produced []source.ProduceRequest
+	refuse   error
+}
+
+// Produce stands in for a broker, and refuses the way the guard does: a
+// read-only connection refuses whatever anybody consents to, and a production
+// one asks once and then accepts.
+func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (model.TopicPartition, int64, error) {
+	if r.refuse != nil && (!rec.Confirmed || errors.Is(r.refuse, source.ErrReadOnly)) {
+		return model.TopicPartition{}, 0, r.refuse
+	}
+	r.produced = append(r.produced, rec)
+	return model.TopicPartition{Topic: rec.Topic, Partition: 1}, 42, nil
+}
 
 func (*recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
-		Stream:   capability.Stream{Consume: true, SeekTimestamp: true, Follow: true},
+		Stream:   capability.Stream{Consume: true, SeekTimestamp: true, Follow: true, Produce: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true,
 		},

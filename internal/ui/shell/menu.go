@@ -22,6 +22,7 @@ const (
 	cmdDisconnect     = "connection.disconnect"
 	cmdOpen           = "object.open"
 	cmdStructure      = "object.structure"
+	cmdProduce        = "object.produce"
 	cmdScriptSelect   = "object.script.select"
 	cmdScriptInsert   = "object.script.insert"
 	cmdScriptUpdate   = "object.script.update"
