@@ -63,6 +63,8 @@ const (
 	cmdExport         = "data.export"
 	cmdImport         = "data.import"
 	cmdChart          = "data.chart"
+	cmdExplain        = "query.explain"
+	cmdExplainMeasure = "query.explainMeasure"
 	cmdFilterValues   = "data.filterValues"
 	cmdWhere          = "data.where"
 	cmdCopyCells      = "grid.copy"
@@ -172,6 +174,7 @@ var menuBar = []struct {
 		item(cmdReconnect), item(cmdDisconnect),
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
+		item(cmdExplain), item(cmdExplainMeasure), separator,
 		item(cmdQueryComplete), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,

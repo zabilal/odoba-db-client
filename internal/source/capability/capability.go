@@ -89,6 +89,12 @@ type Query struct {
 	// Explain reports query-plan retrieval (FR-5.13).
 	Explain bool
 
+	// ExplainAnalyze reports that a plan can be had by running the
+	// statement and measuring it, rather than only by asking the planner
+	// what it would do. SQLite has no such form, so the window must not
+	// offer a button that could only ever fail there.
+	ExplainAnalyze bool
+
 	// Transactions reports explicit transaction control (FR-5.14).
 	Transactions bool
 

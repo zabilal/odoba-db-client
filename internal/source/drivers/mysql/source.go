@@ -195,7 +195,11 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 		Paradigm:  model.ParadigmRelational,
 		Structure: capability.Structure{MultipleDatabases: true, CreateDatabase: true},
 		Query: capability.Query{Supported: true, Language: lang, MultiStatement: true,
-			Cancel: true, Parameters: true},
+			Cancel: true, Parameters: true, Explain: true,
+			// Only MariaDB measures a statement into the same document it
+			// plans one into; MySQL's EXPLAIN ANALYZE answers text in a
+			// shape of its own.
+			ExplainAnalyze: s.fl.mariadb},
 		// InnoDB counts by scanning; the table statistics' estimate is cheap.
 		Data: capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ApproximateCount: true,
 			Insert: true, Update: true, Delete: true, TransactionalWrite: true, BulkLoad: true},

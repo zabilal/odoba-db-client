@@ -190,6 +190,9 @@ func checkCapabilities(t *testing.T, target Target) {
 				"a cancel button would only detach the UI (FR-5.5)")
 		}
 	}
+	if caps.Query.ExplainAnalyze && !caps.Query.Explain {
+		t.Error("claims Query.ExplainAnalyze without Query.Explain: there is no plan to analyse")
+	}
 	if caps.Query.Explain {
 		if _, ok := src.(source.Explainer); !ok {
 			t.Error("claims Query.Explain but does not implement Explainer")

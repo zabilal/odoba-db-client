@@ -227,6 +227,8 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			MultiStatement:  true,
 			Cancel:          true,
 			Parameters:      true,
+			Explain:         true,
+			ExplainAnalyze:  true,
 			EditableResults: true,
 		},
 		Data: capability.Data{
