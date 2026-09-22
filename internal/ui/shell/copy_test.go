@@ -88,12 +88,19 @@ func TestTheSelectionCommandsFollowTheGrid(t *testing.T) {
 	}
 }
 
+// copiedAs copies and waits for it to have happened.
+//
+// It waits on the clipboard rather than on the status line. The status is
+// shared: anything that redraws the window writes to it, so a copy that
+// succeeded and was then talked over is a copy this would wait for for ever.
+// The clipboard is what a copy is about and nothing else touches it.
 func copiedAs(t *testing.T, fx *fixture, tb *tab, f export.Format) string {
 	t.Helper()
+	was := fx.s.app.Clipboard().Content()
 	fx.s.copyAs(tb.ctx, tb.grid, f)
 	pump(t, fx.q, func() bool {
-		st := fx.s.status.Text
-		return strings.HasPrefix(st, "Copied") || strings.HasPrefix(st, "Could not copy")
+		return fx.s.app.Clipboard().Content() != was ||
+			strings.HasPrefix(fx.s.status.Text, "Could not copy")
 	})
 	return fx.s.app.Clipboard().Content()
 }

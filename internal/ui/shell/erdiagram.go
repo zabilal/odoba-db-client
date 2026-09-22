@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +39,21 @@ type diagramPanel struct {
 	t   *tab
 	w   *diagram.Widget
 	key string
+
+	// db is the schema as it was read, kept so that focusing on part of it
+	// redraws without asking the server again: a diagram drawn from a
+	// second reading could differ from the one somebody was looking at.
+	db  *model.Database
+	opt erd.Options
+
+	// focus is the table a diagram is centred on and how far out it
+	// reaches, or "" for all of it (FR-8.5).
+	focus  string
+	degree int
+
+	chosen *widget.Button
+	wider  *widget.Select
+	all    *widget.Button
 }
 
 func diagramKey(connID string, ref model.ObjectRef) string {
@@ -109,13 +125,28 @@ func opts(ref model.ObjectRef) erd.Options {
 
 // showDiagram draws the schema and puts back whatever was arranged.
 func (s *Shell) showDiagram(t *tab, db *model.Database, opt erd.Options) {
-	d := erd.FromSchema(db, opt)
-	p := &diagramPanel{s: s, t: t, key: t.ref.String()}
+	p := &diagramPanel{s: s, t: t, key: t.ref.String(), db: db, opt: opt, degree: 1}
 	t.diagram = p
+	p.draw()
+}
+
+// draw builds the picture from the schema already read, which is what makes
+// focusing instant and what keeps it the same schema.
+func (p *diagramPanel) draw() {
+	s, t := p.s, p.t
+	opt := p.opt
+	if p.focus != "" {
+		// A diagram of two hundred tables is a ball of string. One of the
+		// tables within a few relationships of the one somebody is looking
+		// at is a diagram (FR-8.5).
+		opt.Tables = erd.Neighbourhood(p.db, []string{p.focus}, p.degree)
+	}
+	d := erd.FromSchema(p.db, opt)
 
 	// What was arranged goes on before the layout, not after, so that
 	// everything else is arranged around it rather than laid out once and
-	// then talked over.
+	// then talked over. One arrangement serves every focus of a diagram, so
+	// a table keeps its place when the picture narrows around it.
 	kept, ok := p.arrangement()
 	if ok {
 		app.ApplyLayout(d.Graph, kept)
@@ -124,24 +155,106 @@ func (s *Shell) showDiagram(t *tab, db *model.Database, opt erd.Options) {
 
 	p.w = diagram.New(d.Graph, s.colours())
 	p.w.OnMoved = func() { p.keep() }
-	p.w.OnSelect = func(id string) { p.say(d, id) }
+	p.w.OnSelect = func(id string) { p.chose(d, id) }
 
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(p.toolbar(), nil, nil, nil, p.w),
 	}
 	t.body.Refresh()
-	if !ok || !app.RestoreView(p.w.View(), kept) {
+	if p.focus != "" || !ok || !app.RestoreView(p.w.View(), kept) {
+		// A narrowed diagram is fitted: the view kept was of a larger
+		// picture, and showing a corner of it would look like a failure.
 		p.w.Fit()
 	}
 	p.say(d, "")
 }
 
+// chose is a box being selected, which is what makes focusing on it
+// possible: the starting point of a neighbourhood is the thing somebody is
+// already looking at.
+func (p *diagramPanel) chose(d erd.Diagram, id string) {
+	p.say(d, id)
+	p.refreshFocus(id)
+}
+
+// refreshFocus turns the focus controls on and off and names what they would
+// do.
+func (p *diagramPanel) refreshFocus(chosen string) {
+	if p.chosen == nil {
+		return
+	}
+	switch {
+	case chosen != "":
+		p.chosen.SetText("Focus on " + chosen)
+		p.chosen.Enable()
+	default:
+		p.chosen.SetText("Focus on a Table")
+		p.chosen.Disable()
+	}
+	p.wider.Selected = degreeNames[p.degree]
+	p.wider.Refresh()
+	if p.focus == "" {
+		p.all.Disable()
+	} else {
+		p.all.Enable()
+	}
+}
+
+// degreeNames are how far out a focused diagram reaches, in words: "one
+// relationship away" says what it does and a bare number does not.
+var degreeNames = map[int]string{
+	0: "Just that table",
+	1: "1 relationship away",
+	2: "2 relationships away",
+	3: "3 relationships away",
+}
+
+func degreeOf(name string) int {
+	for n, s := range degreeNames {
+		if s == name {
+			return n
+		}
+	}
+	return 1
+}
+
+// focusOn narrows the diagram to a table and what is near it.
+func (p *diagramPanel) focusOn(id string) {
+	if id == "" {
+		return
+	}
+	p.focus = id
+	p.draw()
+}
+
+// showEverything widens the diagram back to the whole schema.
+func (p *diagramPanel) showEverything() {
+	p.focus = ""
+	p.draw()
+}
+
 // toolbar is the few things a diagram can be told to do.
 func (p *diagramPanel) toolbar() fyne.CanvasObject {
+	p.chosen = widget.NewButton("Focus on a Table", func() { p.focusOn(p.w.Selected()) })
+	p.all = widget.NewButton("Show Everything", p.showEverything)
+	names := make([]string, 0, len(degreeNames))
+	for n := range degreeNames {
+		names = append(names, degreeNames[n])
+	}
+	slices.Sort(names)
+	p.wider = widget.NewSelect(names, func(name string) {
+		p.degree = degreeOf(name)
+		if p.focus != "" {
+			p.draw()
+		}
+	})
+	p.refreshFocus(p.w.Selected())
+
 	return container.NewHBox(
 		widget.NewButton("Fit", func() { p.w.Fit() }),
 		widget.NewButton("−", func() { p.w.Zoom(false) }),
 		widget.NewButton("+", func() { p.w.Zoom(true) }),
+		p.chosen, p.wider, p.all,
 		widget.NewButton("Lay Out Again", p.layOutAgain),
 		widget.NewButton("Export…", p.export),
 	)
@@ -156,6 +269,9 @@ func (p *diagramPanel) say(d erd.Diagram, chosen string) {
 		// unrelated.
 		said += fmt.Sprintf(" %s lead outside what is drawn.",
 			nounCount(d.Outside, "relationship"))
+	}
+	if p.focus != "" {
+		said = "Around " + p.focus + ", " + degreeNames[p.degree] + ". " + said
 	}
 	if chosen != "" {
 		said = chosen + " — " + said

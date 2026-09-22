@@ -999,8 +999,36 @@ func (fakeSource) Snapshot(_ context.Context, database string) (*model.Database,
 	if database == "boom" {
 		return nil, errors.New("fakesql: this schema will not be read")
 	}
-	return &model.Database{Name: database, Schemas: []model.Schema{{Name: database,
-		Tables: []model.Table{{Name: "items", RowsEstimate: -1, Columns: fakeColumns()}}}}}, nil
+	// items is what the tree lists; the other three give a diagram a shape
+	// to be narrowed down — orders points at items, lines points at orders,
+	// and alone points at nothing.
+	items := model.Table{Name: "items", RowsEstimate: -1, Columns: fakeColumns(),
+		PrimaryKey: &model.PrimaryKey{Name: "items_pkey", Columns: []string{"id"}}}
+	orders := model.Table{Name: "orders", RowsEstimate: -1,
+		Columns: []model.Column{{Name: "id", Position: 1,
+			Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}},
+			{Name: "item", Position: 2,
+				Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}}},
+		PrimaryKey: &model.PrimaryKey{Name: "orders_pkey", Columns: []string{"id"}},
+		ForeignKeys: []model.ForeignKey{{Name: "orders_item_fkey", Columns: []string{"item"},
+			RefSchema: database, RefTable: "items", RefColumns: []string{"id"}}}}
+	lines := model.Table{Name: "lines", RowsEstimate: -1,
+		Columns: []model.Column{{Name: "ord", Position: 1,
+			Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}}},
+		ForeignKeys: []model.ForeignKey{{Name: "lines_ord_fkey", Columns: []string{"ord"},
+			RefSchema: database, RefTable: "orders", RefColumns: []string{"id"}}}}
+	alone := model.Table{Name: "alone", RowsEstimate: -1,
+		Columns: []model.Column{{Name: "id", Position: 1,
+			Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}}}}
+
+	// A second schema, so that drawing one is not the same as drawing the
+	// database: every real server has more than one.
+	audit := model.Schema{Name: "audit", Tables: []model.Table{{Name: "log", RowsEstimate: -1,
+		Columns: []model.Column{{Name: "id", Position: 1,
+			Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}}}}}}
+
+	return &model.Database{Name: database, Schemas: []model.Schema{
+		{Name: database, Tables: []model.Table{items, orders, lines, alone}}, audit}}, nil
 }
 
 // fakeColumns are the columns this fake's one table has, the same two its

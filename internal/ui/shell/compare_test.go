@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,8 +24,13 @@ import (
 // fake's database holds one table, items, with id and name.
 func savedModel(t *testing.T, change func(*model.Database)) string {
 	t.Helper()
-	db := &model.Database{Name: "main", Schemas: []model.Schema{{Name: "main",
-		Tables: []model.Table{{Name: "items", RowsEstimate: -1, Columns: fakeColumns()}}}}}
+	// The model is what the connection would read, so that a comparison of
+	// the two finds only what a test asked it to find. Built by hand it
+	// would have to be kept in step with the fake, and would not be.
+	db, err := fakeSource{}.Snapshot(context.Background(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if change != nil {
 		change(db)
 	}
@@ -71,13 +77,13 @@ func TestWhatEachSideIsMissingIsNamedFromWhereYouAreStanding(t *testing.T) {
 	_, _, p := comparing(t, func(db *model.Database) {
 		// A table the saved model has and the database does not.
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
-	missing := p.find(t, "orders")
+	missing := p.find(t, "extra")
 	if missing.Status != diff.Added {
 		t.Fatalf("it compared as %s", missing.Status)
 	}
-	if got := rowText(missing); got != "orders — missing here" {
+	if got := rowText(missing); got != "extra — missing here" {
 		t.Errorf("the row reads %q", got)
 	}
 	if got := statusLine(missing); !strings.Contains(got, "not in this database") {
@@ -122,10 +128,10 @@ func (p *comparePanel) findID(t *testing.T, name string) string {
 func TestTheWholeComparisonIsKeptAndTheFilterChangesWhatIsDrawn(t *testing.T) {
 	_, _, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
 	items := p.findID(t, "items")
-	orders := p.findID(t, "orders")
+	orders := p.findID(t, "extra")
 
 	p.filter = showEverything
 	if !p.visible(items) || !p.visible(orders) {
@@ -200,7 +206,7 @@ func TestAValueThatIsNotThere(t *testing.T) {
 func TestTheSummaryCountsBothSides(t *testing.T) {
 	_, _, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
 	got := p.summary.Text
 	for _, want := range []string{"1 object missing here", "0 objects only here", "changed", "the same"} {
@@ -290,13 +296,13 @@ func TestComparingAgainstAModelThatIsNotThere(t *testing.T) {
 func TestOnlyADifferenceCanBeChosen(t *testing.T) {
 	_, tb, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
 	if !p.write.Disabled() {
 		t.Error("with nothing chosen there is a script to write")
 	}
 
-	p.choose(p.findID(t, "orders"), true)
+	p.choose(p.findID(t, "extra"), true)
 	if p.write.Disabled() {
 		t.Error("with a difference chosen there is no script to write")
 	}
@@ -305,7 +311,7 @@ func TestOnlyADifferenceCanBeChosen(t *testing.T) {
 	}
 
 	// Unticking it puts things back.
-	p.choose(p.findID(t, "orders"), false)
+	p.choose(p.findID(t, "extra"), false)
 	if !p.write.Disabled() || strings.Contains(tb.footer.Text, "chosen") {
 		t.Errorf("after unticking: %v, %q", p.write.Disabled(), tb.footer.Text)
 	}
@@ -315,7 +321,7 @@ func TestOnlyADifferenceCanBeChosen(t *testing.T) {
 	if tick := p.tickFor(t, "id"); !tick.Disabled() {
 		t.Error("a column that is the same on both sides can be chosen")
 	}
-	if tick := p.tickFor(t, "orders"); tick.Disabled() {
+	if tick := p.tickFor(t, "extra"); tick.Disabled() {
 		t.Error("the table that differs cannot be chosen")
 	}
 }
@@ -442,9 +448,9 @@ func TestSavingTheScriptToAFile(t *testing.T) {
 	forgetStatements()
 	fx, tb, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
-	p.choose(p.findID(t, "orders"), true)
+	p.choose(p.findID(t, "extra"), true)
 	p.saveScript()
 
 	if len(fx.files.saves) != 1 {
@@ -463,7 +469,7 @@ func TestSavingTheScriptToAFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "orders") {
+	if !strings.Contains(string(data), "extra") {
 		t.Errorf("the file holds %q", data)
 	}
 	if !strings.HasPrefix(string(data), "-- 1 difference chosen") {
@@ -507,21 +513,21 @@ func TestWhatASavedScriptIsCalled(t *testing.T) {
 func TestTheThreeThingsToDoWithAScript(t *testing.T) {
 	_, _, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1})
+			model.Table{Name: "extra", RowsEstimate: -1})
 	})
 	for _, b := range p.buttons() {
 		if !b.Disabled() {
 			t.Errorf("%q is offered with nothing chosen", b.Text)
 		}
 	}
-	p.choose(p.findID(t, "orders"), true)
+	p.choose(p.findID(t, "extra"), true)
 	for _, b := range p.buttons() {
 		if b.Disabled() {
 			t.Errorf("%q is not offered with something chosen", b.Text)
 		}
 	}
 	// And all three go again when the choice is taken back.
-	p.choose(p.findID(t, "orders"), false)
+	p.choose(p.findID(t, "extra"), false)
 	for _, b := range p.buttons() {
 		if !b.Disabled() {
 			t.Errorf("%q is still offered with nothing chosen", b.Text)
@@ -536,13 +542,13 @@ func TestAChangeThatRunsPartWayIsStillReadAgain(t *testing.T) {
 	forgetStatements()
 	fx, tb, p := comparing(t, func(db *model.Database) {
 		db.Schemas[0].Tables = append(db.Schemas[0].Tables,
-			model.Table{Name: "orders", RowsEstimate: -1},
+			model.Table{Name: "extra", RowsEstimate: -1},
 			model.Table{Name: "refused", RowsEstimate: -1})
 	})
 	t.Cleanup(func() { willNotRun("") })
 	willNotRun("refused")
 
-	p.choose(p.findID(t, "orders"), true)
+	p.choose(p.findID(t, "extra"), true)
 	p.choose(p.findID(t, "refused"), true)
 	p.applyScript()
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
