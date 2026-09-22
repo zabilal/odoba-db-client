@@ -119,3 +119,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0112](0112-a-connection-set-as-a-file-somebody-keeps.md) | A connection set as a file somebody keeps | Accepted |
 | [0113](0113-a-production-write-is-typed-not-clicked.md) | A production write is typed, not clicked | Accepted |
 | [0114](0114-a-table-changed-on-paper-first.md) | A table changed on paper first | Accepted |
+| [0115](0115-what-is-read-is-what-runs.md) | What is read is what runs | Accepted |

@@ -134,7 +134,8 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 
 func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
-		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true}}
+		Data:   capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true},
+		Schema: capability.Schema{DDL: true}}
 }
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
 	return source.ServerInfo{Product: "FakeSQL", Version: "1.0"}, nil
@@ -943,4 +944,40 @@ func TestSortingAColumnBrowsesAgainOnTheServer(t *testing.T) {
 	})
 	tb.grid.ToggleSort(1, false)
 	pump(t, fx.q, func() bool { s := tb.browse.Options().Sorts; return len(s) == 1 && s[0].Descending })
+}
+
+// This fake renders DDL, so that the designer's preview has something to
+// show. What it renders is not SQL anybody would run: it is the shape of the
+// change, which is what a test about the preview is asking about.
+
+func (fakeSource) CreateObject(_ model.ObjectRef, obj any) ([]source.Statement, error) {
+	return []source.Statement{{SQL: "CREATE"}}, nil
+}
+
+func (fakeSource) DropObject(ref model.ObjectRef, cascade bool) ([]source.Statement, error) {
+	return []source.Statement{{SQL: "DROP " + ref.Name()}}, nil
+}
+
+func (fakeSource) RenameColumn(_ model.ObjectRef, from, to string) ([]source.Statement, error) {
+	return []source.Statement{{SQL: "RENAME " + from + " TO " + to}}, nil
+}
+
+func (fakeSource) AlterObject(_ model.ObjectRef, from, to any) ([]source.Statement, error) {
+	was, _ := from.(*model.Table)
+	now, _ := to.(*model.Table)
+	if was == nil || now == nil {
+		return nil, fmt.Errorf("fakesql: %T cannot be altered", from)
+	}
+	var out []source.Statement
+	for _, w := range was.Columns {
+		if !slices.ContainsFunc(now.Columns, func(n model.Column) bool { return n.Name == w.Name }) {
+			out = append(out, source.Statement{SQL: "DROP COLUMN " + w.Name})
+		}
+	}
+	for _, n := range now.Columns {
+		if !slices.ContainsFunc(was.Columns, func(w model.Column) bool { return w.Name == n.Name }) {
+			out = append(out, source.Statement{SQL: "ADD COLUMN " + n.Name})
+		}
+	}
+	return out, nil
 }
