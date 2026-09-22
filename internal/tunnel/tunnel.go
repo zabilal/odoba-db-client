@@ -22,9 +22,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -51,7 +53,10 @@ type Config struct {
 
 // Tunnel is a local address that carries what it is given to somewhere else.
 type Tunnel struct {
-	client   *ssh.Client
+	// hops are the SSH servers this goes through, each reached from the one
+	// before it. The last is the server the target is dialled from; where
+	// there are no jump hosts it is the only one.
+	hops     []*ssh.Client
 	listener net.Listener
 	target   string
 
@@ -59,8 +64,11 @@ type Tunnel struct {
 	err  error
 }
 
-// Open dials the SSH server, listens on a local port, and carries whatever
-// arrives there to the target through the server.
+// server is the last hop, which is the one that dials the target.
+func (t *Tunnel) server() *ssh.Client { return t.hops[len(t.hops)-1] }
+
+// Open dials the SSH server — through any jump hosts first — listens on a
+// local port, and carries whatever arrives there to the target.
 func Open(ctx context.Context, cfg Config) (*Tunnel, error) {
 	if cfg.SSH.Host == "" {
 		return nil, errors.New("this tunnel has no server to go through")
@@ -68,47 +76,102 @@ func Open(ctx context.Context, cfg Config) (*Tunnel, error) {
 	if cfg.Target == "" {
 		return nil, errors.New("this tunnel has nowhere to carry anything to")
 	}
-	auth, err := authOf(cfg.SSH, cfg.Secret)
+	auth, closeAgent, err := authOf(cfg.SSH, cfg.Secret)
 	if err != nil {
 		return nil, err
+	}
+	if closeAgent != nil {
+		// Held until every hop has signed in, because each one asks: an
+		// agent closed after the first would leave the rest with nothing to
+		// prove who this is.
+		defer closeAgent.Close()
 	}
 	known, err := knownHosts(cfg.KnownHosts)
 	if err != nil {
 		return nil, err
 	}
 
+	var hops []*ssh.Client
+	drop := func() {
+		for i := len(hops) - 1; i >= 0; i-- {
+			hops[i].Close()
+		}
+	}
+	// Each hop is dialled from the one before it; the first is dialled from
+	// here, with the context, so a server that never answers does not
+	// outlast whoever asked for it.
+	dial := func(addr string) (net.Conn, error) {
+		if len(hops) == 0 {
+			return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		}
+		return hops[len(hops)-1].Dial("tcp", addr)
+	}
+
+	// The jump hosts, in the order they were given. Every one of them has its
+	// key checked exactly as the last will: a hop nobody verified is a hop
+	// that can read everything passing through it (ADR-0109).
+	for _, jump := range cfg.SSH.JumpHosts {
+		user, addr := hopOf(jump, cfg.SSH.User)
+		c, err := hop(dial, addr, user, auth, known)
+		if err != nil {
+			drop()
+			return nil, fmt.Errorf("the jump host %s: %w", addr, err)
+		}
+		hops = append(hops, c)
+	}
+
+	// And the server itself, reached through the last of them.
 	port := cfg.SSH.Port
 	if port == 0 {
 		port = 22
 	}
-	addr := net.JoinHostPort(cfg.SSH.Host, strconv.Itoa(port))
-
-	// Dialled with the context so that a server which never answers does not
-	// outlast whoever asked for it.
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	c, err := hop(dial, net.JoinHostPort(cfg.SSH.Host, strconv.Itoa(port)), cfg.SSH.User, auth, known)
 	if err != nil {
-		return nil, fmt.Errorf("the tunnel's own server could not be reached: %w", err)
-	}
-	sc, chans, reqs, err := ssh.NewClientConn(conn, addr, &ssh.ClientConfig{
-		User: cfg.SSH.User, Auth: auth, HostKeyCallback: known,
-	})
-	if err != nil {
-		conn.Close()
+		drop()
 		return nil, err
 	}
-	client := ssh.NewClient(sc, chans, reqs)
+	hops = append(hops, c)
 
 	// The local end. Loopback only: a tunnel is for this application, and a
 	// listener on every interface would carry anything on the network into
 	// the database at the other end.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		client.Close()
+		drop()
 		return nil, err
 	}
-	t := &Tunnel{client: client, listener: listener, target: cfg.Target}
+	t := &Tunnel{hops: hops, listener: listener, target: cfg.Target}
 	go t.serve()
 	return t, nil
+}
+
+// hop signs in to one SSH server, reached however dial reaches it.
+func hop(dial func(string) (net.Conn, error), addr, user string,
+	auth []ssh.AuthMethod, known ssh.HostKeyCallback) (*ssh.Client, error) {
+	c, err := dial(addr)
+	if err != nil {
+		return nil, fmt.Errorf("could not be reached: %w", err)
+	}
+	sc, chans, reqs, err := ssh.NewClientConn(c, addr,
+		&ssh.ClientConfig{User: user, Auth: auth, HostKeyCallback: known})
+	if err != nil {
+		c.Close()
+		return nil, err
+	}
+	return ssh.NewClient(sc, chans, reqs), nil
+}
+
+// hopOf reads a jump host written as a host, a host and port, or a user with
+// either — falling back to the tunnel's own user and to 22, which is what
+// every other SSH client does with the same text.
+func hopOf(jump, user string) (string, string) {
+	if at := strings.LastIndex(jump, "@"); at >= 0 {
+		user, jump = jump[:at], jump[at+1:]
+	}
+	if _, _, err := net.SplitHostPort(jump); err != nil {
+		jump = net.JoinHostPort(jump, "22")
+	}
+	return user, jump
 }
 
 // Addr is the local address to dial instead of the target.
@@ -120,8 +183,12 @@ func (t *Tunnel) Addr() string { return t.listener.Addr().String() }
 func (t *Tunnel) Close() error {
 	t.once.Do(func() {
 		t.err = t.listener.Close()
-		if err := t.client.Close(); t.err == nil {
-			t.err = err
+		// In reverse: a hop is reached through the one before it, so the far
+		// end goes first and the near end last.
+		for i := len(t.hops) - 1; i >= 0; i-- {
+			if err := t.hops[i].Close(); t.err == nil {
+				t.err = err
+			}
 		}
 	})
 	return t.err
@@ -141,7 +208,7 @@ func (t *Tunnel) serve() {
 // carry joins one local connection to one through the server.
 func (t *Tunnel) carry(local net.Conn) {
 	defer local.Close()
-	remote, err := t.client.Dial("tcp", t.target)
+	remote, err := t.server().Dial("tcp", t.target)
 	if err != nil {
 		return
 	}
@@ -156,7 +223,9 @@ func (t *Tunnel) carry(local net.Conn) {
 }
 
 // authOf is how this proves who it is to the server.
-func authOf(cfg source.SSHConfig, secret func(string) (string, error)) ([]ssh.AuthMethod, error) {
+// The closer it gives back is the connection to an agent, where one is being
+// asked, and is held until every hop has signed in.
+func authOf(cfg source.SSHConfig, secret func(string) (string, error)) ([]ssh.AuthMethod, io.Closer, error) {
 	if secret == nil {
 		secret = func(string) (string, error) { return "", nil }
 	}
@@ -164,24 +233,31 @@ func authOf(cfg source.SSHConfig, secret func(string) (string, error)) ([]ssh.Au
 	case "password":
 		pw, err := secret("ssh_password")
 		if err != nil {
-			return nil, fmt.Errorf("the tunnel's password could not be read: %w", err)
+			return nil, nil, fmt.Errorf("the tunnel's password could not be read: %w", err)
 		}
 		if pw == "" {
-			return nil, errors.New("this tunnel signs in with a password and none was given")
+			return nil, nil, errors.New("this tunnel signs in with a password and none was given")
 		}
-		return []ssh.AuthMethod{ssh.Password(pw)}, nil
+		return []ssh.AuthMethod{ssh.Password(pw)}, nil, nil
 
 	case "key":
 		signer, err := signerOf(cfg.KeyFile, secret)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
+		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil, nil
 
 	case "agent":
-		return nil, errors.New("signing in through an agent is not written yet")
+		conn, err := agentConn()
+		if err != nil {
+			return nil, nil, err
+		}
+		// Asked when the server wants them rather than now: an agent can be
+		// unlocked between opening this and being asked, and a list taken
+		// too early would be an empty one remembered.
+		return []ssh.AuthMethod{ssh.PublicKeysCallback(agent.NewClient(conn).Signers)}, conn, nil
 	}
-	return nil, fmt.Errorf("a tunnel signs in with a password, a key or an agent, and %q is none of those", cfg.Method)
+	return nil, nil, fmt.Errorf("a tunnel signs in with a password, a key or an agent, and %q is none of those", cfg.Method)
 }
 
 // signerOf reads a private key, asking for its passphrase only if the key
@@ -249,4 +325,21 @@ func knownHosts(path string) (ssh.HostKeyCallback, error) {
 			"from something answering in its place; add it as any SSH client would, "+
 			"by connecting to it once and accepting its key", hostname, path)
 	}, nil
+}
+
+// agentConn reaches the agent this session is running under.
+//
+// SSH_AUTH_SOCK is how every other SSH client finds it, and an agent that is
+// not running is said plainly: the alternative is a connection that fails
+// later for what looks like the wrong reason.
+func agentConn() (net.Conn, error) {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil, errors.New("this tunnel signs in through an agent and there is none running: SSH_AUTH_SOCK names nothing")
+	}
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil, fmt.Errorf("the agent at %s could not be reached: %w", sock, err)
+	}
+	return conn, nil
 }

@@ -23,17 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.86 — an SSH tunnel through an agent and through jump hosts
-           (FR-1.9). Both fit the shape T2.85 left behind: an agent is
-           another way to prove who this is, and a jump host is another hop
-           whose key is checked exactly as the last one's was (ADR-0109).
-           golang.org/x/crypto/ssh/agent is already in the module graph, so
-           it costs nothing to reach for.
-           Note before starting, because no task names it: the connection
-           editor has no SSH section at all, so a tunnel can be configured
-           only by editing the settings file by hand. The driver half of
-           FR-1.9 is done and the way in is not, and that gap outlives
-           T2.86 unless somebody decides where it belongs.
+NEXT TASK: T2.87 — cloud authentication: an AWS IAM/RDS token, Google's
+           application default credentials, Azure AD/Entra (FR-1.14).
+           All three are T2.57's shape: a short-lived token minted from
+           credentials this machine already holds, handed over where a
+           password would go. Whether any of them can be proved live is
+           the open question — T2.57 landed without live proof because
+           MSK IAM answers only to real AWS, and the same is likely to
+           be true of at least the first of these.
+           Still true after T2.86, because no task names it: the
+           connection editor has no SSH section at all, so a tunnel can
+           be configured only by editing the settings file by hand.
+           Everything a driver can see of FR-1.9 is done — password,
+           key, passphrase, agent, jump hosts — and the way in is not.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -86,7 +88,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a connection carried through an SSH tunnel, with
+LAST DONE: 2026-09-22 — a tunnel through an agent and through jump
+           hosts, with every hop's key checked as the first one's was and
+           a jump host nobody knows named in its own refusal (T2.86);
+           before it a connection carried through an SSH tunnel, with
            the server's host key checked against the user's own known_hosts
            and an unknown host refused rather than trusted (T2.85,
            ADR-0109); before it a script that starts the Kafka brokers and
@@ -667,7 +672,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 2.I Auth & tunnelling
 
 - [x] **T2.85** SSH tunnel: password, private key, key+passphrase → FR-1.9 — *a tunnel is a connection to one machine carrying the connection to another, and the question worth care is not how to forward bytes but what is checked before any move. The server's host key is verified against the user's own known_hosts and a host not in it is refused, because everything the database connection carries — the credentials it authenticates with, every row it reads — goes through here, and a tunnel taking whatever key it was offered would hand all of that to whatever answered on that address while looking exactly like a tunnel that worked (ADR-0109). A key that changed is said differently from a host never seen: the first is what an interception looks like, and reading the wrong one of those sends somebody the wrong way. No driver knows any of this exists — the tunnel is opened before the driver sees its configuration and the driver is handed a host and port pointing at the local end, which is what makes this one implementation rather than one per driver, and why it works for a driver written afterwards. The local end listens on loopback and nowhere else. The tunnel lives exactly as long as its connection: Live owns the closer, and wrapping the source to achieve that was rejected because a wrapper embedding source.Source would silently drop every optional interface a driver satisfies — Queryer, StreamProducer, SchemaRegistry and the rest are satisfied by the concrete type, not by the interface, so a wrapper would have quietly unmade half the application. x/crypto/ssh cost no module: x/crypto was already in the graph indirectly and tidying only promoted it. Proved against an SSH server running in process, which x/crypto/ssh itself provides, so none of it needs a container. Named here because no task names it: the connection editor has no SSH section, so a tunnel can be configured only by editing the settings file — the driver half of FR-1.9 is done and the way in is not*
-- [ ] **T2.86** SSH tunnel: `ssh-agent`, jump host → FR-1.9
+- [x] **T2.86** SSH tunnel: `ssh-agent`, jump host → FR-1.9 — *both are the shape T2.85 left behind, and the shape is what changed: a tunnel stopped being one client and became a list of hops, each dialled from the one before it, the last of which dials the target. With that, a jump host is a loop and nothing else. Every hop has its key checked against the same known_hosts as the server, and a jump host nobody knows is refused with its own name in the refusal — because ADR-0109's argument does not weaken for a machine somebody thinks of as a waypoint: a hop nobody verified can read everything passing through it, and it would look exactly like a tunnel that worked. A jump host is read the way every other SSH client reads one, [user@]host[:port], falling back to the tunnel's own user and to 22, so the text somebody already has in their ~/.ssh/config means here what it means there. The agent is asked for its signers when the server wants them rather than when the tunnel opens: an agent can be unlocked between those two moments, and a list taken too early would be an empty one remembered. Its connection is held until every hop has signed in — closing it after the first would leave the rest with nothing to prove who this is — which is why authOf hands back a closer instead of closing its own. An agent that is not running is said plainly, because the alternative is a connection that fails later for what reads like a different reason. Proved against an SSH server running in process as T2.85 was, and against a real agent: x/crypto's own keyring served over a unix socket with SSH_AUTH_SOCK pointed at it, so the path under test is the path that runs. That socket lives under /tmp because a unix socket path is capped near 104 characters and a Go test's temp directory plus a name goes past it. One refusal in T2.85's table had quietly become a lie and was removed rather than repaired: "an agent, which is not written" asserted the absence of a feature that now exists, and on a machine with an agent running it had been passing on a failed hostname lookup instead — the same trap as T2.72, where a test asked only whether something went wrong. 6 mutations, each caught. Still true and still named because no task names it: the connection editor has no SSH section, so a tunnel can be configured only by editing the settings file by hand*
 - [ ] **T2.87** Cloud auth: AWS IAM/RDS token, GCP ADC, Azure AD/Entra → FR-1.14
 - [~] **T2.88** Import connections from DBeaver, DBGate, TablePlus, DataGrip → FR-1.12
 - [ ] **T2.89** Export/import connection set as JSON, secrets excluded → FR-1.13
