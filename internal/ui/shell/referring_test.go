@@ -43,9 +43,11 @@ func TestShowReferringRowsOpensTheOneTableThatRefers(t *testing.T) {
 	parts := tabOn(fx, "parts")
 	pump(t, fx.q, func() bool { return parts.grid != nil && len(parts.referrers) == 1 })
 	parts.grid.Select(grid.CellID{Row: 4, Col: 1}, grid.CellID{Row: 4, Col: 1})
-	if !fx.s.canShowReferring() {
-		t.Fatal("items refer to parts by name")
-	}
+	// Waited for rather than read at once: whether a selection can show
+	// referring rows depends on that row being loaded, and the grid loads
+	// its pages as they are drawn. Under load the answer arrives after the
+	// selection does.
+	pump(t, fx.q, func() bool { return fx.s.canShowReferring() })
 	fx.s.run(cmdShowReferring)
 	if fx.s.activeTab() != tb || len(fx.s.open) != 2 {
 		t.Fatal("the items tab, open, is brought forward")
