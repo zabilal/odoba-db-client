@@ -88,7 +88,7 @@ func ReadDBeaver(path string) ([]Found, error) {
 		// the connections that have only one.
 		conn := store.SavedConnection{
 			Driver: driver, Host: cfg.Host, Database: cfg.Database, User: cfg.User,
-			Port: atoiAny(cfg.Port), Name: c.Name, Folder: c.Folder, ReadOnly: c.ReadOnly,
+			Port: atoiAny(cfg.Port), Name: c.Name, ReadOnly: c.ReadOnly,
 		}
 		note := "its password is in DBeaver's own encrypted store and was not read"
 		if u, ok := readJDBC(cfg.URL); ok {
@@ -122,7 +122,7 @@ func ReadDBeaver(path string) ([]Found, error) {
 			conn.Name = pgpassName(conn)
 		}
 		conn.Environment = dbeaverEnvironments[strings.ToLower(cfg.Type)]
-		out = append(out, Found{Connection: conn, Where: where, Note: note})
+		out = append(out, Found{Connection: conn, Folder: c.Folder, Where: where, Note: note})
 	}
 	return out, nil
 }

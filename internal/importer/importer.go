@@ -30,10 +30,17 @@ import (
 type Found struct {
 	Connection store.SavedConnection
 
-	// Password is set only by the two sources that exist to hold one, and
-	// only for the entry it belongs to. It is handed to the keychain and
-	// never written to the settings file (FR-1.5).
-	Password string
+	// Secrets are the credentials that came with this entry, by the name
+	// the keychain keeps them under. Only a source whose purpose is to hold
+	// credentials ever fills this. They are handed to the keychain and never
+	// written to the settings file (FR-1.5).
+	Secrets map[string]string
+
+	// Folder is the name of the folder this connection was in, where its
+	// source had folders. It is a name and not an ID because the folder it
+	// names may not exist here yet; whatever saves the connection resolves
+	// it, and makes it if it has to.
+	Folder string
 
 	// Where is the file and line this came from, for a person deciding
 	// whether to keep it.

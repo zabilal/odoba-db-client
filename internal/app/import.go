@@ -25,15 +25,15 @@ type ImportResult struct {
 
 // Import saves connections another tool already had (FR-1.12).
 //
-// withPasswords decides whether a password that came with an entry is kept.
-// Only the two sources whose purpose is a password ever carry one, and
-// copying somebody's password into a second store is their decision to make
+// withSecrets decides whether credentials that came with an entry are kept.
+// Only a source whose purpose is to hold them ever carries any, and copying
+// somebody's credentials into a second store is their decision to make
 // rather than a default to discover afterwards.
 //
 // An entry that matches a connection already saved is not saved twice.
 // Importing the same file again is a thing people do, usually because they
 // are not sure whether the first one worked.
-func (c *Connections) Import(found []importer.Found, withPasswords bool) (ImportResult, error) {
+func (c *Connections) Import(found []importer.Found, withSecrets bool) (ImportResult, error) {
 	var result ImportResult
 	existing := c.List()
 
@@ -47,11 +47,26 @@ func (c *Connections) Import(found []importer.Found, withPasswords bool) (Import
 			continue
 		}
 
-		var secretValues map[string]string
-		if withPasswords && f.Password != "" {
-			secretValues = map[string]string{"password": f.Password}
+		conn := f.Connection
+		if f.Folder != "" {
+			// The folder came across as a name, because the source had no
+			// idea what this application calls its folders. A connection
+			// filed under a folder that does not exist here would show as
+			// belonging to nothing.
+			id, err := c.folderNamed(f.Folder)
+			if err != nil {
+				result.Left = append(result.Left, fmt.Sprintf("%s could not be filed under %q: %v",
+					nameOf(f), f.Folder, err))
+				continue
+			}
+			conn.Folder = id
 		}
-		saved, err := c.Create(f.Connection, secretValues)
+
+		var secretValues map[string]string
+		if withSecrets && len(f.Secrets) > 0 {
+			secretValues = f.Secrets
+		}
+		saved, err := c.Create(conn, secretValues)
 		if err != nil {
 			// One connection that will not save must not lose the rest, so
 			// this is reported beside them rather than thrown instead of them.
@@ -93,4 +108,20 @@ func sameConnection(existing []store.SavedConnection, c store.SavedConnection) (
 		}
 	}
 	return "", false
+}
+
+// folderNamed finds the folder with this name, or makes it. Names are
+// compared as people read them, so "Work" and "work" are one folder rather
+// than two that look the same in the tree.
+func (c *Connections) folderNamed(name string) (string, error) {
+	for _, f := range c.Folders() {
+		if strings.EqualFold(f.Name, name) {
+			return f.ID, nil
+		}
+	}
+	f, err := c.CreateFolder(name, "")
+	if err != nil {
+		return "", err
+	}
+	return f.ID, nil
 }

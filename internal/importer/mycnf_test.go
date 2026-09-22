@@ -42,8 +42,8 @@ user = someone-else
 		t.Errorf("it read %+v", c)
 	}
 	// Quotes are the file's, not the password's.
-	if found[0].Password != "s3:cret" {
-		t.Errorf("the password is %q", found[0].Password)
+	if found[0].Secrets["password"] != "s3:cret" {
+		t.Errorf("the password is %q", found[0].Secrets["password"])
 	}
 }
 

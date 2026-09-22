@@ -56,8 +56,10 @@ func ReadMyCnf(path string) ([]Found, error) {
 	}
 	conn.Name = pgpassName(conn)
 
-	found := Found{Connection: conn, Password: opts["password"], Where: path, Note: note}
-	if found.Password == "" && note == "" {
+	found := Found{Connection: conn, Where: path, Note: note}
+	if pw := opts["password"]; pw != "" {
+		found.Secrets = map[string]string{"password": pw}
+	} else if note == "" {
 		found.Note = "this file has no password in it"
 	}
 	return []Found{found}, nil
