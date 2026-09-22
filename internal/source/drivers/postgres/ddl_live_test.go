@@ -355,3 +355,131 @@ func TestDescribingASourceObject(t *testing.T) {
 	}
 	runDDL(t, src, trgStmts)
 }
+
+// What a rename costs (FR-6.6).
+//
+// Every claim this driver makes about PostgreSQL's dependencies is a claim
+// about how a rename behaves, and only the server can settle it. So this
+// test does the rename and then asks what survived.
+
+func TestARenameCarriesWhatItCanAndBreaksWhatItCannot(t *testing.T) {
+	src := openSource(t, false)
+	stamp := time.Now().UnixNano() % 100000
+	table := fmt.Sprintf("dep_t_%d", stamp)
+	designedTable(t, src, &model.Table{
+		Name: table,
+		Columns: []model.Column{
+			{Name: "id", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}},
+		},
+		PrimaryKey: &model.PrimaryKey{Name: table + "_pkey", Columns: []string{"id"}},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	session, err := src.Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	run := func(sql string) {
+		t.Helper()
+		res, err := session.Query(ctx, source.Statement{SQL: sql})
+		if res != nil && res.Rows != nil {
+			res.Rows.Close()
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+
+	view := fmt.Sprintf("dep_v_%d", stamp)
+	child := fmt.Sprintf("dep_c_%d", stamp)
+	body := fmt.Sprintf("dep_f_%d", stamp)
+	run(fmt.Sprintf(`CREATE VIEW "ikigai_it"."%s" AS SELECT id FROM "ikigai_it"."%s"`, view, table))
+	run(fmt.Sprintf(`CREATE TABLE "ikigai_it"."%s" (id integer PRIMARY KEY,
+		parent integer REFERENCES "ikigai_it"."%s"(id))`, child, table))
+	run(fmt.Sprintf(`CREATE FUNCTION "ikigai_it"."%s"() RETURNS bigint LANGUAGE plpgsql
+		AS $$ BEGIN RETURN (SELECT count(*) FROM "ikigai_it"."%s"); END $$`, body, table))
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s, err := src.Session(ctx)
+		if err != nil {
+			return
+		}
+		defer s.Close()
+		for _, sql := range []string{
+			fmt.Sprintf(`DROP VIEW IF EXISTS "ikigai_it"."%s"`, view),
+			fmt.Sprintf(`DROP TABLE IF EXISTS "ikigai_it"."%s"`, child),
+			fmt.Sprintf(`DROP FUNCTION IF EXISTS "ikigai_it"."%s"()`, body),
+			fmt.Sprintf(`DROP TABLE IF EXISTS "ikigai_it"."%s_renamed" CASCADE`, table),
+		} {
+			res, _ := s.Query(ctx, source.Statement{SQL: sql})
+			if res != nil && res.Rows != nil {
+				res.Rows.Close()
+			}
+		}
+	})
+
+	deps, err := src.Dependents(ctx, fixtureRef(table))
+	if err != nil {
+		t.Fatalf("Dependents: %v", err)
+	}
+	found := map[string]model.Dependent{}
+	for _, d := range deps {
+		found[d.Ref.Name()] = d
+	}
+	if d, ok := found[view]; !ok || d.Breaks {
+		t.Errorf("the view came back as %+v; it is carried by the rename", d)
+	}
+	if d, ok := found[child]; !ok || d.Breaks {
+		t.Errorf("the referring table came back as %+v; its key is carried too", d)
+	}
+	fnKey := body + "()"
+	if d, ok := found[fnKey]; !ok || !d.Breaks {
+		t.Errorf("the plpgsql function came back as %+v; its body is text and does break", d)
+	}
+
+	// Now do it, and ask the server which half of that was true.
+	stmts, err := dialect{}.RenameObject(fixtureRef(table), table+"_renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDDL(t, src, stmts)
+
+	// The view still reads, and now says the new name — which is the whole
+	// reason it is not reported as breaking.
+	res, err := session.Query(ctx, source.Statement{
+		SQL: fmt.Sprintf(`SELECT pg_get_viewdef('"ikigai_it"."%s"'::regclass, true)`, view)})
+	if err != nil {
+		t.Fatalf("the view did not survive the rename: %v", err)
+	}
+	defs := drainOne(t, res)
+	if !strings.Contains(defs, table+"_renamed") {
+		t.Errorf("the view still reads %q", defs)
+	}
+
+	// The function does not, and fails exactly where this said it would.
+	res, err = session.Query(ctx, source.Statement{
+		SQL: fmt.Sprintf(`SELECT "ikigai_it"."%s"()`, body)})
+	if res != nil && res.Rows != nil {
+		res.Rows.Close()
+	}
+	if err == nil {
+		t.Error("the plpgsql function still ran, so the warning about it is wrong")
+	}
+}
+
+// drainOne is the first column of the first row, as text.
+func drainOne(t *testing.T, res *source.Result) string {
+	t.Helper()
+	if res == nil || res.Rows == nil {
+		t.Fatal("no rows came back")
+	}
+	defer res.Rows.Close()
+	row, err := res.Rows.Next(context.Background())
+	if err != nil || len(row) == 0 {
+		t.Fatalf("reading one value: %v", err)
+	}
+	return fmt.Sprint(row[0])
+}

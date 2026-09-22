@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -47,13 +48,28 @@ func (p *designPanel) preview() {
 
 // show puts the statements up, and runs exactly those if asked.
 func (p *designPanel) show(stmts []source.Statement) {
-	p.s.previewDDL(p.t, stmts, func() { p.s.reopenDesign(p.t) })
+	p.s.previewDDL(p.t.ddl(), stmts, func() { p.s.reopenDesign(p.t) })
+}
+
+// ddlTarget is where a structural change says what happened, and whose life
+// it runs under. A tab is one. A rename asked for from the tree is another,
+// and has no tab at all — which is why this is not simply a *tab.
+type ddlTarget struct {
+	connID string
+	ctx    context.Context
+	say    func(string)
+}
+
+// ddl is a tab as a place to report a structural change: its own footer,
+// under its own context, so closing the tab stops what it started.
+func (t *tab) ddl() ddlTarget {
+	return ddlTarget{connID: t.connID, ctx: t.ctx, say: t.footer.SetText}
 }
 
 // previewDDL shows what would run, and runs exactly that if asked. after is
 // what to do once it has, which for every caller is to read the object again
 // rather than assume it is now what was asked for.
-func (s *Shell) previewDDL(t *tab, stmts []source.Statement, after func()) {
+func (s *Shell) previewDDL(t ddlTarget, stmts []source.Statement, after func()) {
 	body := widget.NewTextGridFromString(scriptOf(stmts))
 	head := widget.NewLabel(fmt.Sprintf("%s will run, in this order. Nothing has run yet.",
 		nounCount(len(stmts), "statement")))
@@ -71,13 +87,13 @@ func (s *Shell) previewDDL(t *tab, stmts []source.Statement, after func()) {
 }
 
 // runDDL sends the statements that were read, and nothing else.
-func (s *Shell) runDDL(t *tab, stmts []source.Statement, confirmed bool, after func()) {
+func (s *Shell) runDDL(t ddlTarget, stmts []source.Statement, confirmed bool, after func()) {
 	live, ok := s.d.WS.Get(t.connID)
 	if !ok {
-		t.footer.SetText("This connection is not open.")
+		t.say("This connection is not open.")
 		return
 	}
-	t.footer.SetText("Running…")
+	t.say("Running…")
 	ctx := t.ctx
 	go func() {
 		out, err := app.ApplyDDL(ctx, live.Source, stmts, confirmed)
@@ -92,12 +108,12 @@ func (s *Shell) runDDL(t *tab, stmts []source.Statement, confirmed bool, after f
 
 // ranDDL says what happened, and asks again where the connection wants
 // asking.
-func (s *Shell) ranDDL(t *tab, stmts []source.Statement, out app.DDLOutcome, err error, after func()) {
+func (s *Shell) ranDDL(t ddlTarget, stmts []source.Statement, out app.DDLOutcome, err error, after func()) {
 	switch {
 	case err == nil:
 		// Read again from the server rather than assumed: what the object is
 		// now is what the server says it is, not what was asked for.
-		t.footer.SetText(nounCount(out.Ran, "statement") + " ran.")
+		t.say(nounCount(out.Ran, "statement") + " ran.")
 		if after != nil {
 			after()
 		}
@@ -108,15 +124,15 @@ func (s *Shell) ranDDL(t *tab, stmts []source.Statement, out app.DDLOutcome, err
 		s.askToType(t.connID, "Change Structure on Production?",
 			productionBody("changes the structure of", s.connName(t.connID), "Nothing has run yet."),
 			"Run", func() { s.runDDL(t, stmts, true, after) },
-			func() { t.footer.SetText("Not run") })
+			func() { t.say("Not run") })
 
 	case errors.Is(err, source.ErrReadOnly):
-		t.footer.SetText("Not run: this connection is read-only, and these statements change it.")
+		t.say("Not run: this connection is read-only, and these statements change it.")
 
 	default:
 		// Part-way is the truth and is said as such: which statement
 		// stopped it, and how many had already run.
-		t.footer.SetText(fmt.Sprintf("%s ran, then %s failed: %v", nounCount(out.Ran, "statement"),
+		t.say(fmt.Sprintf("%s ran, then %s failed: %v", nounCount(out.Ran, "statement"),
 			firstLineOf(out.Failed), err))
 		s.showError(err)
 	}
