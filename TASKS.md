@@ -23,14 +23,11 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.92 — verify read-only blocks every write path, Kafka
-           produce included (NFR-S4). This is a verification task
-           rather than a building one, and T2.83 already did its
-           shape for stream administration: one test holding every
-           mutating operation to its guard, with the list held to the
-           interfaces by reflection so a new one cannot arrive
-           unguarded. What is new is doing that across every driver
-           and every write path, not one cluster's worth.
+NEXT TASK: 2.K — quality: T2.93 to T2.97, the end-to-end journeys
+           (J2 find a row and fix it, J5 move data, J7 work safely in
+           production, J8 debug a stream) and the NFR-P10 benchmark.
+           J7's pieces all landed in 2.J, so T2.95 has the most
+           standing already. Phase 2's exit criterion is these four.
            T2.88 stays [~]: DBGate and TablePlus are not done and its
            line says what each would need.
            Still true: there is no way in from the window for an SSH
@@ -72,6 +69,16 @@ NEXT TASK: T2.92 — verify read-only blocks every write path, Kafka
            five times out of five alone, and the whole shell package
            passed twice straight after. Same class, same cause: the
            wait, not the work.
+           A sixth on 2026-09-22, and this one changes the diagnosis:
+           TestATopicsRecordsAreFilteredHere failed with the package
+           running alone, not only under the whole suite. Its cause was
+           visible and is fixed: it read the footer the instant the
+           rows arrived, and the footer is also where a background count
+           writes, so it caught whichever got there first. It waits for
+           the footer now. The other five are the same shape — an
+           assertion made immediately after a pump that waited on a
+           different condition — and each is worth the same treatment
+           rather than a larger budget.
            Open beside them: gocql writes its own account of a failed
            connection to stderr, beside the ConnectError this driver makes
            of it; quieting it means handing gocql a logger, which belongs
@@ -96,7 +103,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a DELETE or UPDATE with no WHERE asked about on every connection
+LAST DONE: 2026-09-22 — every write path in every driver held to its guard by one shared
+           check, with the table held to the interfaces so a new
+           one cannot arrive unguarded (T2.92); before it
+           a DELETE or UPDATE with no WHERE asked about on every connection
            and not only a production one, with the table typed
            out rather than the connection (T2.91); before it
            a production write confirmed by typing the connection's name
@@ -711,7 +721,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T2.90** Typed confirmation for writes on `production` connections → FR-4.9 — *the guard has refused production writes since it was written and every driver consults it; what the window did with the refusal was put up a dialog with a Yes button. That is confirm and not typed, and the difference is the point: by the time somebody is running statements they have dismissed a great many dialogs, and a button in a familiar place is pressed by the hand before it is read by the eye. So the confirmation is typed, and what is typed is the connection's name — not a fixed word, which would become as automatic as the button. The name, because the mistake this guards against is almost never the wrong statement but the right statement on the wrong connection, and the name is the only thing that tells one production database from another (ADR-0113). The match is exact after trimming space around it, since a pasted name brings whitespace and that is not the carelessness this is for, while PROD does not confirm prod. A connection that cannot be found asks for the word production: the store refuses to save one with no name, so that case is a connection deleted while an operation was in flight, and without a fallback the confirmation would be given by typing nothing. One dialog serves all seven sites — running a script, committing pending changes, saving a document, a pipeline that writes, changing an index, producing a record, changing a cluster — because six near-identical dialogs is how the click-through survived this long, and one means the guardrail cannot be half-applied. Fyne decided the vehicle: ConfirmDialog keeps its confirm button unexported and cannot be disabled, while FormDialog disables the button whenever an item fails validation, so the confirmation is a form whose entry validates against the name. The cost is that a form exposes no confirm-button importance, so it is no longer danger-red; the typing is the better friction. A second Fyne quirk, worth the note: a Form draws its item labels through RichText rather than Label, so labelTexts cannot see them — the same trap as a Select in T2.74 — and the tests read them through a RichText walk. Eight existing tests had to change because they encoded the click-through; they now type the name, which is what a person does. 11 mutations, each caught*
 - [x] **T2.91** Always confirm `DELETE`/`UPDATE` with no WHERE → FR-4.9 — *the other half of the requirement, and it is not about environments: such a statement is asked about on every connection, because what makes it dangerous is the statement, and a development database somebody spent a week filling is not cheap to refill either. It lives beside the guard rather than in the window, for NFR-S4's reason about read-only mode — a disabled button is a courtesy, not a control — so every path that runs a statement passes through it. The detection is one shared function over the words a dialect's lexer already found, which is what keeps four classifiers from growing four answers; each driver hands over its own words, so a DELETE in a comment or a string is not one. Two traps were worth the care. SELECT … FOR UPDATE takes a lock and changes nothing, and asking about it would teach people to type through the question, so the verb is only counted where it is the statement or where a CTE fronts one. And the table is read from the verb onward rather than from the front: in WITH x AS (SELECT * FROM audit) DELETE FROM orders the first FROM belongs to the SELECT, and a search from the front would ask somebody to type the name of a table the statement never touches while emptying one it does. That was a real defect, caught by the test that expected the wrong thing and made me look. What is typed here is the table, not the connection: on a development database the connection's name is not the thing worth reading twice. Where no table can be read out of the statement the verb is typed instead, which at least cannot be done without reading the word DELETE. On a production connection the connection is still what is asked about, because the mistake that matters most there is the right statement on the wrong one (ADR-0113) — one question, never two, and the single consent carries the statement through. 13 mutations, each caught, two after work. One found a guard reachable only inside a CTE that no test had reached; the other found a list of modifiers — ONLY, LOW_PRIORITY, OR REPLACE — that decided nothing, because taking the last word before a stop already steps over them, and which would have lost a table actually named "only". Removed rather than tested, as in T2.75. Two existing tests ran an unbounded update incidentally while testing notifications and result tabs; their statement is bounded now, so each still tests its own subject*
-- [ ] **T2.92** Verify read-only blocks every write path incl. Kafka produce → NFR-S4
+- [x] **T2.92** Verify read-only blocks every write path incl. Kafka produce → NFR-S4 — *a verification task, and the verification is the thing that had to be built well: a check that would pass whatever the drivers did is worse than no check, because it says the claim has been tested. So guardcheck holds every mutating operation to its guard in two halves — each one run on a read-only connection and on a production one, insisting on the right refusal, and the table of operations held to the interfaces themselves by reflection, so a method added to a mutating interface and not listed fails. T2.83 did this shape for one cluster; this is it across every driver, and Kafka's own test moved onto the shared one. The checker is itself checked against a source that leaves a write path out, because otherwise the only thing proved would be that the test runs. Two things came out of doing it. PostgreSQL's bulk load opened a pool before it asked whether it might write — the guard was consulted, so nothing was ever written, but a connection nobody may write to had a pool opened for a load that could not happen, and alone among this driver's write paths it could not be proved refused without a server. It asks first now. And Plan had to be named as what it is: it renders the SQL a changeset would run and sends nothing, so it is not a write path — Apply is — and showing somebody what would happen on a connection they may not write to is useful rather than dangerous, which is also how the window knows to grey the commit button. That distinction is written down in Planning rather than left implicit, so a method joins it deliberately. What is absent from the list of mutating interfaces is as deliberate as what is on it: a driver that refused Browser or Introspector on a read-only connection would be useless rather than safe. Cassandra gets the completeness check with an empty table, which is the assertion that it writes through statements alone. 10 mutations, each caught, two after retargeting — both of mine pointed at a driver's test where the checker's own was needed, and one of those exposed a real gap: nothing asserted that Check does the completeness half at all, so a driver could have held three of its four write paths and passed*
 
 ## 2.K Quality
 
