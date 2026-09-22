@@ -1,11 +1,13 @@
 package shell
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
 
@@ -71,5 +73,96 @@ func TestAScriptThatCannotBeWrittenIsSaid(t *testing.T) {
 	}
 	if len(fx.s.open) != 0 {
 		t.Error("no tab should open for a script that could not be written")
+	}
+}
+
+// Writing DDL, for one object or a whole schema (FR-6.7).
+
+func TestScriptAsCreateOpensTheDDLAndRunsNothing(t *testing.T) {
+	forgetStatements()
+	fx := newFixture(t)
+	selectItems(t, fx)
+	if fx.s.menuItems[cmdScriptCreate].Disabled {
+		t.Fatal("a table cannot be scripted as CREATE")
+	}
+	fx.s.run(cmdScriptCreate)
+	got := newestQuery(t, fx, 0)
+	if !strings.Contains(got, "CREATE") {
+		t.Errorf("the CREATE script is %q", got)
+	}
+	if n := len(ranStatements()); n != 0 {
+		t.Errorf("%d statements ran; a script is written, never run", n)
+	}
+}
+
+// The kinds that have DDL to write are the ones offered it, and a column,
+// which is part of a table rather than an object of its own, is not.
+func TestWhichObjectsAreOfferedACreateScript(t *testing.T) {
+	for kind, want := range map[model.ObjectKind]bool{
+		model.KindTable:            true,
+		model.KindView:             true,
+		model.KindMaterializedView: true,
+		model.KindRoutine:          true,
+		model.KindTrigger:          true,
+		model.KindSequence:         true,
+		model.KindColumn:           false,
+		model.KindDatabase:         false,
+	} {
+		if got := createKinds[kind]; got != want {
+			t.Errorf("%s has a CREATE to write: %v, want %v", kind, got, want)
+		}
+	}
+	// A whole schema is asked for on the node its objects are listed under,
+	// which on MySQL and SQLite is the database itself.
+	if !holdsAClass[model.KindSchema] || !holdsAClass[model.KindDatabase] {
+		t.Error("a whole schema cannot be asked for where its objects are listed")
+	}
+	if holdsAClass[model.KindTable] {
+		t.Error("a table is offered a whole-schema script")
+	}
+}
+
+// A schema script says why it is in the order it is in, because the order is
+// the only part of it somebody cannot see for themselves.
+func TestAWholeSchemaScriptSaysWhyItIsInThatOrder(t *testing.T) {
+	forgetStatements()
+	fx := newFixture(t)
+	c := selectItems(t, fx)
+	fx.s.writeDDL(c.ID, "public", func(context.Context, source.Source) ([]source.Statement, error) {
+		return []source.Statement{
+			{SQL: "CREATE TABLE people (id integer)"},
+			{SQL: "ALTER TABLE people ADD CONSTRAINT people_who_fkey FOREIGN KEY (id) REFERENCES orders (id)"},
+		}, nil
+	}, schemaHeader("public"))
+
+	got := newestQuery(t, fx, 0)
+	if !strings.HasPrefix(got, "-- public, in an order this can be run in.") {
+		t.Errorf("the script opens %q", got)
+	}
+	if !strings.Contains(got, "refer\n-- to each other") {
+		t.Errorf("it does not say why the keys are last: %q", got)
+	}
+	if at := strings.Index(got, "CREATE TABLE"); at < 0 || at > strings.Index(got, "ADD CONSTRAINT") {
+		t.Errorf("the statements are not in the order they were given: %q", got)
+	}
+	if !strings.Contains(got, "Nothing here has run") {
+		t.Errorf("it does not say that nothing has run: %q", got)
+	}
+	if n := len(ranStatements()); n != 0 {
+		t.Errorf("%d statements ran; a script is written, never run", n)
+	}
+}
+
+// A schema with nothing in it is said, rather than opening an empty tab.
+func TestAnEmptySchemaSaysSoRatherThanOpeningATab(t *testing.T) {
+	fx := newFixture(t)
+	c := selectItems(t, fx)
+	before := len(fx.s.open)
+	fx.s.writeDDL(c.ID, "empty", func(context.Context, source.Source) ([]source.Statement, error) {
+		return nil, nil
+	}, schemaHeader("empty"))
+	pump(t, fx.q, func() bool { return strings.Contains(fx.s.status.Text, "nothing in empty") })
+	if got := len(fx.s.open); got != before {
+		t.Errorf("%d tabs are open, was %d", got, before)
 	}
 }
