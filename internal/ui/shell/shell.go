@@ -300,6 +300,20 @@ func (s *Shell) Window() fyne.Window { return s.win }
 // Commands is the registry behind the menus and the palette.
 func (s *Shell) Commands() *commands.Registry { return s.reg }
 
+// ActiveGrid is the grid of rows in the tab being worked in, or nil where
+// that tab shows none.
+//
+// It is exported for the end-to-end journeys, which drive the same widgets a
+// person does but cannot reach a tab's own fields from outside this package.
+// Explorer is exported for the same reason.
+func (s *Shell) ActiveGrid() *grid.TableGrid {
+	t := s.activeTab()
+	if t == nil {
+		return nil
+	}
+	return t.grid
+}
+
 // ShowNotice tells the user what happened to their settings file at startup,
 // if anything worth telling did.
 func (s *Shell) ShowNotice(n store.OpenNotice) {

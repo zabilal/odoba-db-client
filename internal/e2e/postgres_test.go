@@ -80,3 +80,4 @@ func postgresJourney(t *testing.T) journey {
 // the grid fetching to the end of the data.
 func TestJ1PostgreSQL(t *testing.T) { runJ1(t, postgresJourney(t)) }
 func TestJ3PostgreSQL(t *testing.T) { runJ3(t, postgresJourney(t)) }
+func TestJ2PostgreSQL(t *testing.T) { runJ2(t, postgresJourney(t)) }
