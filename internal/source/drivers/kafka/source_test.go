@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -634,5 +635,63 @@ func TestNoReadEverNamesAConsumerGroup(t *testing.T) {
 	}
 	if !strings.Contains(string(browse), "kgo.ConsumePartitions(") {
 		t.Error("browse.go no longer assigns partitions explicitly, which is what keeps a read out of every group")
+	}
+}
+
+// Every operation that changes anything is guarded (T2.83, FR-13.21).
+
+func TestEveryMutatingOperationIsGuarded(t *testing.T) {
+	ctx := context.Background()
+	ro := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
+	prod := &kafkaSource{cfg: source.ConnectionConfig{Guard: source.Guard{Environment: source.EnvProduction}}}
+
+	acts := map[string]func(*kafkaSource, bool) error{
+		"Produce": func(s *kafkaSource, c bool) error {
+			_, _, err := s.Produce(ctx, source.ProduceRequest{Topic: "t", Partition: -1, Confirmed: c})
+			return err
+		},
+		"CreateTopic": func(s *kafkaSource, c bool) error {
+			return s.CreateTopic(ctx, source.TopicSpec{Name: "t", Partitions: 1, ReplicationFactor: 1, Confirmed: c})
+		},
+		"DeleteTopic":   func(s *kafkaSource, c bool) error { return s.DeleteTopic(ctx, "t", c) },
+		"AddPartitions": func(s *kafkaSource, c bool) error { return s.AddPartitions(ctx, "t", 1, c) },
+		"AlterTopicConfig": func(s *kafkaSource, c bool) error {
+			return s.AlterTopicConfig(ctx, "t", map[string]string{"retention.ms": "1"}, c)
+		},
+		"ResetOffsets": func(s *kafkaSource, c bool) error {
+			return s.ResetOffsets(ctx, source.ResetRequest{GroupID: "g",
+				Seek: source.Seek{Mode: source.SeekBeginning}, Confirmed: c})
+		},
+	}
+
+	// The table is held to the interfaces themselves. A method added to any
+	// of them and not listed here fails this test, so a seventh way to
+	// change a cluster cannot quietly arrive without a guard in front of it.
+	for _, iface := range []reflect.Type{
+		reflect.TypeOf((*source.StreamProducer)(nil)).Elem(),
+		reflect.TypeOf((*source.TopicAdmin)(nil)).Elem(),
+		reflect.TypeOf((*source.OffsetResetter)(nil)).Elem(),
+	} {
+		for i := range iface.NumMethod() {
+			if name := iface.Method(i).Name; acts[name] == nil {
+				t.Errorf("%s changes a cluster and nothing here holds it to the guard", name)
+			}
+		}
+	}
+
+	for name, act := range acts {
+		// Read-only refuses it, and consent cannot buy past that: read-only
+		// is a decision about the connection rather than a question about
+		// this act.
+		if err := act(ro, false); !errors.Is(err, source.ErrReadOnly) {
+			t.Errorf("%s on a read-only connection: %v", name, err)
+		}
+		if err := act(ro, true); !errors.Is(err, source.ErrReadOnly) {
+			t.Errorf("%s confirmed on a read-only connection: %v", name, err)
+		}
+		// And production refuses it until it has been asked.
+		if err := act(prod, false); !errors.Is(err, source.ErrConfirmationRequired) {
+			t.Errorf("%s on a production connection, unasked: %v", name, err)
+		}
 	}
 }
