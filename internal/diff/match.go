@@ -20,7 +20,7 @@ import (
 // What is in both is compared; what is in one is added or removed whole. The
 // result is sorted by name, so the same two schemas always compare to the
 // same tree whatever order the two servers listed them in.
-func match[T any](from, to []T, kind model.ObjectKind, name func(T) string,
+func match[T any](from, to []T, kind func(T) model.ObjectKind, name func(T) string,
 	compare func(a, b T) Node, skip ...func(string) bool) []Node {
 	here := index(from, name)
 	there := index(to, name)
@@ -36,12 +36,22 @@ func match[T any](from, to []T, kind model.ObjectKind, name func(T) string,
 		case inFrom && inTo:
 			out = append(out, compare(a, b))
 		case inTo:
-			out = append(out, Node{Kind: kind, Name: n, Status: Added})
+			out = append(out, Node{Kind: kind(b), Name: n, Status: Added})
 		default:
-			out = append(out, Node{Kind: kind, Name: n, Status: Removed})
+			out = append(out, Node{Kind: kind(a), Name: n, Status: Removed})
 		}
 	}
 	return out
+}
+
+// fixed is the kind of a thing that is only ever one kind, which is
+// everything but a view.
+//
+// A view's kind is a property of the view: a materialized view listed on one
+// side only must still be called one, or the tree calls it a view and
+// everything reading the tree believes it.
+func fixed[T any](k model.ObjectKind) func(T) model.ObjectKind {
+	return func(T) model.ObjectKind { return k }
 }
 
 // leftOut reports a name a rule says not to look at. There is at most one
@@ -63,7 +73,7 @@ func matchOne[T any](from, to *T, kind model.ObjectKind, name func(*T) string, c
 	if to != nil {
 		toList = []*T{to}
 	}
-	return match(fromList, toList, kind, name, compare)
+	return match(fromList, toList, fixed[*T](kind), name, compare)
 }
 
 // index is a list by name. A name appearing twice keeps the first, because a

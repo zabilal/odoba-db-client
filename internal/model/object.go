@@ -24,11 +24,18 @@ const (
 	KindColumn           ObjectKind = "column"
 	KindIndex            ObjectKind = "index"
 	KindConstraint       ObjectKind = "constraint"
-	KindForeignKey       ObjectKind = "foreign_key"
-	KindRoutine          ObjectKind = "routine" // procedure or function
-	KindTrigger          ObjectKind = "trigger"
-	KindSequence         ObjectKind = "sequence"
-	KindUserType         ObjectKind = "user_type"
+	// The three kinds of constraint a table holds under one namespace. They
+	// are told apart because a name free of one is not free of the others,
+	// and two constraints of different kinds sharing a name across two
+	// databases are two different things to decide about (ADR-0126).
+	KindPrimaryKey ObjectKind = "primary_key"
+	KindUnique     ObjectKind = "unique"
+	KindCheck      ObjectKind = "check"
+	KindForeignKey ObjectKind = "foreign_key"
+	KindRoutine    ObjectKind = "routine" // procedure or function
+	KindTrigger    ObjectKind = "trigger"
+	KindSequence   ObjectKind = "sequence"
+	KindUserType   ObjectKind = "user_type"
 
 	// Document
 	KindCollection ObjectKind = "collection"

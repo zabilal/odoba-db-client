@@ -201,3 +201,122 @@ func TestNoRulesChangesNothing(t *testing.T) {
 		t.Errorf("they found %q and %q", changedIn(plain), changedIn(with))
 	}
 }
+
+// A node's kind is the target's, which for a view is the one thing about a
+// comparison that depends on which way round it was made. A sync script
+// creates what the object is wanted as, so that is what it is called.
+func TestAViewIsCalledWhatItIsWantedAs(t *testing.T) {
+	v := func(mat bool) *model.Database {
+		return &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public",
+			Views: []model.View{{Name: "totals", Materialized: mat, Definition: "SELECT 1"}}}}}
+	}
+	plain, mat := v(false), v(true)
+
+	there := find(t, Compare(plain, mat), "public", "totals")
+	if there.Kind != model.KindMaterializedView {
+		t.Errorf("wanted materialized, it is called a %s", there.Kind)
+	}
+	back := find(t, Compare(mat, plain), "public", "totals")
+	if back.Kind != model.KindView {
+		t.Errorf("wanted plain, it is called a %s", back.Kind)
+	}
+	// And it is a change either way, not an object appearing and another
+	// going.
+	if there.Status != Changed || back.Status != Changed {
+		t.Errorf("it compared as %s and %s", there.Status, back.Status)
+	}
+}
+
+// The three defects fuzzing found, written down by hand.
+//
+// A fuzz corpus reproduces a defect only while the generator is unchanged:
+// the bytes are a seed, not a schema, and the same bytes make a different
+// model as soon as the generator does. So what fuzzing finds is kept as a
+// test of its own, and the corpus is kept for the search rather than for the
+// proof.
+
+// A materialized view listed on one side only is still called one. It used
+// to be called a view, because a one-sided object took its kind from the
+// list it was in rather than from itself.
+func TestAOneSidedMaterializedViewIsStillCalledOne(t *testing.T) {
+	empty := &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public"}}}
+	held := &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public",
+		Views: []model.View{{Name: "totals", Materialized: true, Definition: "SELECT 1"}}}}}
+
+	added := find(t, Compare(empty, held), "public", "totals")
+	if added.Status != Added || added.Kind != model.KindMaterializedView {
+		t.Errorf("missing here, it is a %s that is %s", added.Kind, added.Status)
+	}
+	removed := find(t, Compare(held, empty), "public", "totals")
+	if removed.Status != Removed || removed.Kind != model.KindMaterializedView {
+		t.Errorf("only here, it is a %s that is %s", removed.Kind, removed.Status)
+	}
+}
+
+// A unique constraint on one side and a check of the same name on the other
+// are two things to decide about, and have two names in the tree.
+//
+// They used to share one: the three kinds of constraint were all called
+// constraint, so one difference hid the other and a tick meant both.
+func TestAUniqueAndACheckOfOneNameAreTwoThings(t *testing.T) {
+	from := &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public",
+		Tables: []model.Table{{Name: "people", RowsEstimate: -1,
+			Columns: []model.Column{col("id", "integer")},
+			Checks:  []model.CheckConstraint{{Name: "people_ck", Expression: "id > 0"}}}}}}}
+	to := &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public",
+		Tables: []model.Table{{Name: "people", RowsEstimate: -1,
+			Columns: []model.Column{col("id", "integer")},
+			Uniques: []model.UniqueConstraint{{Name: "people_ck", Columns: []string{"id"}}}}}}}}
+
+	got := Compare(from, to)
+	ids := map[string]Node{}
+	got.Walk(func(id string, n Node) { ids[id] = n })
+
+	var check, unique Node
+	for _, n := range find(t, got, "public", "people").Children {
+		switch n.Kind {
+		case model.KindCheck:
+			check = n
+		case model.KindUnique:
+			unique = n
+		}
+	}
+	if check.Status != Removed {
+		t.Errorf("the check compared as %s", check.Status)
+	}
+	if unique.Status != Added {
+		t.Errorf("the unique compared as %s", unique.Status)
+	}
+	// Two nodes, two names: a selection naming one must not name the other.
+	if len(ids) != len(idsOfTree(got)) {
+		t.Errorf("%d nodes share %d names", len(idsOfTree(got)), len(ids))
+	}
+}
+
+// idsOfTree is every node's name in the tree, with duplicates kept, so that
+// two nodes sharing one name can be seen.
+func idsOfTree(n Node) []string {
+	var out []string
+	n.Walk(func(id string, _ Node) { out = append(out, id) })
+	return out
+}
+
+// A comparison of a plain view against a materialized one is one object that
+// differs, and the sort puts it where its name says whatever it is called.
+func TestTheTreeIsSortedWhateverTheModelsSay(t *testing.T) {
+	names := func(order ...string) *model.Database {
+		s := model.Schema{Name: "public"}
+		for _, n := range order {
+			s.Tables = append(s.Tables, model.Table{Name: n, RowsEstimate: -1})
+		}
+		return &model.Database{Name: "sales", Schemas: []model.Schema{s}}
+	}
+	one := Compare(names("z", "a", "m"), names("m", "z", "a"))
+	var got []string
+	for _, n := range one.Children[0].Children {
+		got = append(got, n.Name)
+	}
+	if strings.Join(got, ",") != "a,m,z" {
+		t.Errorf("the tree is in the order %v", got)
+	}
+}
