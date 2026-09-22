@@ -23,14 +23,16 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 3.A is finished: T3.1 to T3.7 are all done and FR-6.1 to
-           FR-6.7 are met on PostgreSQL. Next is 3.B, schema compare,
-           starting at T3.8 — a diff engine over the canonical model
-           in internal/diff. The model types it compares already
-           exist and Describe fills them; what does not exist is
-           Snapshotter on any driver, which FR-7 needs because
-           comparing two schemas through per-object Describe calls is
-           the slow way round.
+NEXT TASK: T3.9 — compare two live databases (FR-7.1). The engine is
+           done and pure (T3.8); what it has no source for is a whole
+           model. source.Snapshotter has been declared since the
+           driver contract was written and no driver implements it,
+           so this is PostgreSQL's Snapshot first — one pass over the
+           catalogue rather than a Describe per object, which is why
+           the interface says it exists — and then app.Compare over
+           two connections with the window to show it (T3.11).
+           3.A is finished: T3.1 to T3.7 are all done and FR-6.1 to
+           FR-6.7 are met on PostgreSQL.
            MySQL, SQLite and Cassandra render no DDL yet, so on them
            the designer previews nothing and the source editors, the
            rename and both DDL scripts are unavailable. No task claims
@@ -127,7 +129,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a whole schema written as DDL in an order it can be
+LAST DONE: 2026-09-22 — a comparison of two schemas that knows it has no
+           history: everything matched by name, and a rename read as
+           a removal and an addition, because two snapshots cannot
+           say which column became which and guessing is the one
+           mistake here that loses data (T3.8, ADR-0119); before it
+           a whole schema written as DDL in an order it can be
            run in, which means the references between tables coming
            out of the tables and going in at the end, because two
            tables referring to each other is ordinary and no order of
@@ -816,7 +823,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.B Schema compare & sync → J6
 
-- [ ] **T3.8** Diff engine over the canonical model → `internal/diff`
+- [x] **T3.8** Diff engine over the canonical model → `internal/diff` — *RISK-8 names this package by hand, because a sync script is generated from what it answers and one that is wrong destroys data. It reads no server and writes no statement: two models in, a tree of differences out, so the comparison is exercised in full without either database being reachable. Everything is matched by name and a rename is a removal plus an addition, which is the decision the package turns on: two snapshots cannot say which column became which, a rename and a drop-with-an-add being identical from here. The designer can tell them apart because it kept each column's origin as somebody edited (ADR-0114); a comparison has no such thing, and guessing would put a RENAME where a DROP and an ADD were meant, or the reverse (ADR-0119). What is unknown is not a difference: RowsEstimate is not compared at all, because a model read from a file has none and comparing a statistic against an absence would report a change in every table. The same rule leaves the databases' own names out — comparing dev against production means two differently-named databases every time — so the root takes the target's name. A column's type is the engine's own word and nothing else, since length, precision, scale and time-zone-ness are the driver's reading of that same word and comparing them too would report one difference twice. Identical things stay in the tree, because FR-7.2 asks for identical and a tree of differences alone cannot be filtered into one that shows them; a parent is changed when anything under it is, or a collapsed tree would look clean; and an object added or removed is one difference with no children, because the script creates it whole and a column of a table that does not exist is not a separate choice. Every difference carries both its values and only what differs, so whatever draws the tree never goes back to the models. Text is compared as text, whitespace and all: normalising here would be this package quietly deciding two strings are the same, and FR-7.5's ignore rules are where that belongs. The tree is sorted by name because two servers list things in whatever order they please, while inside an object order is meaning — a key on (a, b) is not a key on (b, a), and an index turned round answers a different question, so the direction travels with the column. from is what is there and to is what is wanted, tested both as a direction and as a symmetry: turning the comparison round turns every difference round with it and changes nothing else. 30 tests and 21 mutations, each caught first time*
 - [ ] **T3.9** Compare two live databases → FR-7.1
 - [ ] **T3.10** Compare live database against a saved model → FR-7.1
 - [ ] **T3.11** Side-by-side diff tree (added/removed/changed/identical) → FR-7.2
