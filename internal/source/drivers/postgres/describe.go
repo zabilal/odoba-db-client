@@ -58,7 +58,79 @@ func (s *pgSource) describeTable(ctx context.Context, p *pgxpool.Pool, schema, n
 	if t.Indexes, err = describeIndexes(ctx, p, schema, name); err != nil {
 		return nil, err
 	}
+	// A trigger belongs to the table it is on, which is where the canonical
+	// model puts it and where a comparison looks for it. The explorer lists
+	// every schema's triggers together as well, because a trigger's name is
+	// only unique on its table — two views of the same thing.
+	if t.Triggers, err = describeTriggers(ctx, p, schema, name); err != nil {
+		return nil, err
+	}
 	return t, nil
+}
+
+// describeTriggers reads the triggers on one table.
+func describeTriggers(ctx context.Context, p *pgxpool.Pool, schema, rel string) ([]model.Trigger, error) {
+	rows, err := p.Query(ctx, `
+		SELECT tr.tgname, pg_get_triggerdef(tr.oid), tr.tgtype::int,
+		       COALESCE(pg_get_expr(tr.tgqual, tr.tgrelid), '')
+		FROM pg_trigger tr
+		JOIN pg_class c ON c.oid = tr.tgrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2 AND NOT tr.tgisinternal
+		ORDER BY tr.tgname`, schema, rel)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: triggers on %s.%s: %w", schema, rel, err)
+	}
+	defer rows.Close()
+
+	var out []model.Trigger
+	for rows.Next() {
+		var name, def, cond string
+		var kind int32
+		if err := rows.Scan(&name, &def, &kind, &cond); err != nil {
+			return nil, err
+		}
+		out = append(out, triggerOf(name, def, kind, cond))
+	}
+	return out, rows.Err()
+}
+
+// The bits pg_trigger.tgtype is made of. They are PostgreSQL's own and have
+// not changed in a very long time; the alternative is parsing the statement
+// pg_get_triggerdef prints, which is the same information spelt out.
+const (
+	trigRow      = 1 << 0
+	trigBefore   = 1 << 1
+	trigInsert   = 1 << 2
+	trigDelete   = 1 << 3
+	trigUpdate   = 1 << 4
+	trigTruncate = 1 << 5
+	trigInstead  = 1 << 6
+)
+
+// triggerOf reads a trigger's row. It is shared with the snapshot, so that
+// one reading of the catalogue cannot drift from the other.
+func triggerOf(name, def string, kind int32, cond string) model.Trigger {
+	t := model.Trigger{Name: name, Definition: def, Condition: cond,
+		ForEachRow: kind&trigRow != 0, Timing: "AFTER"}
+	switch {
+	case kind&trigInstead != 0:
+		t.Timing = "INSTEAD OF"
+	case kind&trigBefore != 0:
+		t.Timing = "BEFORE"
+	}
+	for _, e := range []struct {
+		bit  int32
+		name string
+	}{
+		{trigInsert, "INSERT"}, {trigDelete, "DELETE"},
+		{trigUpdate, "UPDATE"}, {trigTruncate, "TRUNCATE"},
+	} {
+		if kind&e.bit != 0 {
+			t.Events = append(t.Events, e.name)
+		}
+	}
+	return t
 }
 
 func (s *pgSource) describeView(ctx context.Context, p *pgxpool.Pool, schema, name string, mat bool) (*model.View, error) {
@@ -212,21 +284,52 @@ func describeIndexes(ctx context.Context, p *pgxpool.Pool, schema, rel string) (
 		if err := rows.Scan(&ix.Name, &ix.Unique, &ix.Method, &ix.Predicate, &defs, &desc, &include); err != nil {
 			return nil, err
 		}
-		for k, d := range defs {
-			col := model.IndexColumn{Descending: k < len(desc) && desc[k]}
-			// pg_get_indexdef gives a bare name for a column and the
-			// expression text for an expression index.
-			if strings.ContainsAny(d, "( ") {
-				col.Expression = d
-			} else {
-				col.Name = strings.Trim(d, `"`)
-			}
-			ix.Columns = append(ix.Columns, col)
-		}
-		ix.Include = include
+		ix.Columns = indexColumnsOf(defs, desc)
+		ix.Include = trimNames(include)
 		out = append(out, ix)
 	}
 	return out, rows.Err()
+}
+
+// indexColumnsOf reads what pg_get_indexdef printed for each of an index's
+// key columns.
+//
+// It is shared with the snapshot rather than written twice: two readings of
+// the same catalogue that could drift apart would make a comparison report
+// differences that are this program's and not the databases'.
+func indexColumnsOf(defs []string, desc []bool) []model.IndexColumn {
+	out := make([]model.IndexColumn, 0, len(defs))
+	for k, d := range defs {
+		col := model.IndexColumn{Descending: k < len(desc) && desc[k]}
+		// pg_get_indexdef gives a bare name for a column and the expression
+		// text for an expression index.
+		if strings.ContainsAny(d, "( ") {
+			col.Expression = d
+		} else {
+			col.Name = strings.Trim(d, `"`)
+		}
+		out = append(out, col)
+	}
+	return out
+}
+
+// trimNames takes off the quotes pg_get_indexdef puts round a name that
+// needs them.
+//
+// An included column kept its quotes until this was written, and the DDL
+// generator quotes what it is given — so an index including a column called
+// "Order" rendered INCLUDE ("""Order"""), which is a column nobody has. The
+// key columns were already trimmed; the included ones were not, because
+// nothing had ever compared the two readings.
+func trimNames(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = strings.Trim(n, `"`)
+	}
+	return out
 }
 
 // Objects whose structure is their source (FR-6.5). What comes back is what
@@ -261,18 +364,21 @@ func describeRoutine(ctx context.Context, p *pgxpool.Pool, schema, signature str
 }
 
 func describeTrigger(ctx context.Context, p *pgxpool.Pool, schema, table, name string) (*model.Trigger, error) {
-	t := &model.Trigger{Name: name}
+	var def, cond string
+	var kind int32
 	err := p.QueryRow(ctx, `
-		SELECT pg_get_triggerdef(tr.oid)
+		SELECT pg_get_triggerdef(tr.oid), tr.tgtype::int,
+		       COALESCE(pg_get_expr(tr.tgqual, tr.tgrelid), '')
 		FROM pg_trigger tr
 		JOIN pg_class c ON c.oid = tr.tgrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
 		WHERE n.nspname = $1 AND c.relname = $2 AND tr.tgname = $3 AND NOT tr.tgisinternal`,
-		schema, table, name).Scan(&t.Definition)
+		schema, table, name).Scan(&def, &kind, &cond)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: trigger %s on %s.%s: %w", name, schema, table, err)
 	}
-	return t, nil
+	t := triggerOf(name, def, kind, cond)
+	return &t, nil
 }
 
 // describeSequence reads a sequence's numbers rather than its source,

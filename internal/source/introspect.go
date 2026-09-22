@@ -37,9 +37,13 @@ type Introspector interface {
 // produce a whole schema in one pass.
 //
 // Schema comparison (FR-7) needs the complete structure, and doing that
-// through per-object Describe calls is unacceptably slow. Sources that can
-// bulk-load a schema implement this; internal/diff falls back to Describe when
-// they cannot.
+// through per-object Describe calls is one round trip per object per side.
+// Sources that can bulk-load a schema implement this.
+//
+// A source that cannot is walked object by object instead, by app.Snapshot —
+// not by internal/diff, which compares two models and reads nothing, because
+// a comparison that could reach a server could not be tested without one
+// (ADR-0119).
 type Snapshotter interface {
 	// Snapshot loads a complete database structure for comparison.
 	Snapshot(ctx context.Context, database string) (*model.Database, error)
