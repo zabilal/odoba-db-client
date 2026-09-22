@@ -111,7 +111,7 @@ func CompareWith(from, to *model.Database, opt Options) Node {
 		field("collation", c.collation(from.Collate), c.collation(to.Collate)),
 		field("comment", opt.comment(from.Comment), opt.comment(to.Comment)),
 	)
-	n.Children = match(from.Schemas, to.Schemas, model.KindSchema,
+	n.Children = match(from.Schemas, to.Schemas, fixed[model.Schema](model.KindSchema),
 		func(s model.Schema) string { return s.Name }, c.compareSchema,
 		func(name string) bool { return opt.skipSchema(name) })
 	return settle(n)
@@ -141,11 +141,11 @@ func (c comparer) compareSchema(from, to model.Schema) Node {
 	)
 	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	n.Children = slices.Concat(
-		match(from.Tables, to.Tables, model.KindTable, func(t model.Table) string { return t.Name }, c.compareTable, c.skipObject),
-		match(from.Views, to.Views, model.KindView, func(v model.View) string { return v.Name }, c.compareView, c.skipObject),
-		match(from.Routines, to.Routines, model.KindRoutine, routineName, c.compareRoutine, c.skipObject),
-		match(from.Sequences, to.Sequences, model.KindSequence, func(s model.Sequence) string { return s.Name }, c.compareSequence, c.skipObject),
-		match(from.UserTypes, to.UserTypes, model.KindUserType, func(t model.UserType) string { return t.Name }, c.compareUserType, c.skipObject),
+		match(from.Tables, to.Tables, fixed[model.Table](model.KindTable), func(t model.Table) string { return t.Name }, c.compareTable, c.skipObject),
+		match(from.Views, to.Views, viewKind, func(v model.View) string { return v.Name }, c.compareView, c.skipObject),
+		match(from.Routines, to.Routines, fixed[model.Routine](model.KindRoutine), routineName, c.compareRoutine, c.skipObject),
+		match(from.Sequences, to.Sequences, fixed[model.Sequence](model.KindSequence), func(s model.Sequence) string { return s.Name }, c.compareSequence, c.skipObject),
+		match(from.UserTypes, to.UserTypes, fixed[model.UserType](model.KindUserType), func(t model.UserType) string { return t.Name }, c.compareUserType, c.skipObject),
 	)
 	return settle(n)
 }
@@ -167,13 +167,13 @@ func (c comparer) compareTable(from, to model.Table) Node {
 	n.Detail = fields(field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)))
 	n.Detail = append(n.Detail, attrFields(c.opt.attrs(from.Attrs), c.opt.attrs(to.Attrs))...)
 	n.Children = slices.Concat(
-		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, c.compareColumn),
-		matchOne(from.PrimaryKey, to.PrimaryKey, model.KindConstraint, keyName, c.comparePrimaryKey),
-		match(from.Uniques, to.Uniques, model.KindConstraint, func(u model.UniqueConstraint) string { return u.Name }, c.compareUnique),
-		match(from.ForeignKeys, to.ForeignKeys, model.KindForeignKey, func(f model.ForeignKey) string { return f.Name }, c.compareForeignKey),
-		match(from.Checks, to.Checks, model.KindConstraint, func(c model.CheckConstraint) string { return c.Name }, c.compareCheck),
-		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, c.compareIndex),
-		match(from.Triggers, to.Triggers, model.KindTrigger, func(t model.Trigger) string { return t.Name }, c.compareTrigger),
+		match(from.Columns, to.Columns, fixed[model.Column](model.KindColumn), func(c model.Column) string { return c.Name }, c.compareColumn),
+		matchOne(from.PrimaryKey, to.PrimaryKey, model.KindPrimaryKey, keyName, c.comparePrimaryKey),
+		match(from.Uniques, to.Uniques, fixed[model.UniqueConstraint](model.KindUnique), func(u model.UniqueConstraint) string { return u.Name }, c.compareUnique),
+		match(from.ForeignKeys, to.ForeignKeys, fixed[model.ForeignKey](model.KindForeignKey), func(f model.ForeignKey) string { return f.Name }, c.compareForeignKey),
+		match(from.Checks, to.Checks, fixed[model.CheckConstraint](model.KindCheck), func(c model.CheckConstraint) string { return c.Name }, c.compareCheck),
+		match(from.Indexes, to.Indexes, fixed[model.Index](model.KindIndex), func(i model.Index) string { return i.Name }, c.compareIndex),
+		match(from.Triggers, to.Triggers, fixed[model.Trigger](model.KindTrigger), func(t model.Trigger) string { return t.Name }, c.compareTrigger),
 	)
 	return settle(n)
 }
@@ -214,19 +214,19 @@ func defaultOf(c model.Column) string {
 func keyName(k *model.PrimaryKey) string { return k.Name }
 
 func (c comparer) comparePrimaryKey(from, to *model.PrimaryKey) Node {
-	n := Node{Kind: model.KindConstraint, Name: to.Name}
+	n := Node{Kind: model.KindPrimaryKey, Name: to.Name}
 	n.Detail = fields(field("columns", list(from.Columns), list(to.Columns)))
 	return settle(n)
 }
 
 func (c comparer) compareUnique(from, to model.UniqueConstraint) Node {
-	n := Node{Kind: model.KindConstraint, Name: to.Name}
+	n := Node{Kind: model.KindUnique, Name: to.Name}
 	n.Detail = fields(field("columns", list(from.Columns), list(to.Columns)))
 	return settle(n)
 }
 
 func (c comparer) compareCheck(from, to model.CheckConstraint) Node {
-	n := Node{Kind: model.KindConstraint, Name: to.Name}
+	n := Node{Kind: model.KindCheck, Name: to.Name}
 	n.Detail = fields(field("expression", c.opt.text(from.Expression), c.opt.text(to.Expression)))
 	return settle(n)
 }
@@ -291,12 +291,23 @@ func (c comparer) compareView(from, to model.View) Node {
 		field("comment", c.opt.comment(from.Comment), c.opt.comment(to.Comment)),
 	)
 	n.Children = slices.Concat(
-		match(from.Columns, to.Columns, model.KindColumn, func(c model.Column) string { return c.Name }, c.compareColumn),
-		match(from.Indexes, to.Indexes, model.KindIndex, func(i model.Index) string { return i.Name }, c.compareIndex),
+		match(from.Columns, to.Columns, fixed[model.Column](model.KindColumn), func(c model.Column) string { return c.Name }, c.compareColumn),
+		match(from.Indexes, to.Indexes, fixed[model.Index](model.KindIndex), func(i model.Index) string { return i.Name }, c.compareIndex),
 	)
 	return settle(n)
 }
 
+// viewKind is what a view is, which for a node in a comparison is what the
+// target says it is.
+//
+// A plain view on one side and a materialized one on the other therefore
+// reads as a materialized view that differs, not as a view that does. That
+// is deliberate and it is the same rule the root's name follows: a
+// comparison describes what the object is wanted as, and a sync script has
+// to create that. It does mean a node's kind, and so its name in a
+// selection, depends on which way round the two models were given — which is
+// harmless, because a script is written from the comparison it was chosen
+// in and no comparison is turned round while it is being read.
 func viewKind(v model.View) model.ObjectKind {
 	if v.Materialized {
 		return model.KindMaterializedView

@@ -206,11 +206,21 @@ func TestAKeyRenamedIsDroppedAndMade(t *testing.T) {
 func TestAKeyAddedAndAKeyDropped(t *testing.T) {
 	with := people()
 	with.PrimaryKey = &model.PrimaryKey{Name: "people_pkey", Columns: []string{"id"}}
-	if s := find(t, Compare(db(people()), db(with)), "public", "people", "people_pkey").Status; s != Added {
-		t.Errorf("a key added compared as %s", s)
+	added := find(t, Compare(db(people()), db(with)), "public", "people", "people_pkey")
+	if added.Status != Added {
+		t.Errorf("a key added compared as %s", added.Status)
 	}
-	if s := find(t, Compare(db(with), db(people())), "public", "people", "people_pkey").Status; s != Removed {
-		t.Errorf("a key dropped compared as %s", s)
+	removed := find(t, Compare(db(with), db(people())), "public", "people", "people_pkey")
+	if removed.Status != Removed {
+		t.Errorf("a key dropped compared as %s", removed.Status)
+	}
+	// A primary key is called one. The three kinds of constraint share a
+	// namespace, and calling them all "constraint" gave two different
+	// differences one name between them.
+	for _, n := range []Node{added, removed} {
+		if n.Kind != model.KindPrimaryKey {
+			t.Errorf("a primary key is called a %s", n.Kind)
+		}
 	}
 }
 

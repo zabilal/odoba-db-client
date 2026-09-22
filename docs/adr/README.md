@@ -130,3 +130,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0123](0123-a-script-for-the-parts-somebody-agreed-with.md) | A script for the parts somebody agreed with | Accepted |
 | [0124](0124-what-a-half-finished-change-leaves-on-screen.md) | What a half-finished change leaves on screen | Accepted |
 | [0125](0125-a-rule-about-what-not-to-compare.md) | A rule about what not to compare | Accepted |
+| [0126](0126-what-a-property-finds-that-a-test-does-not.md) | What a property finds that a test does not | Accepted |

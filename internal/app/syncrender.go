@@ -112,8 +112,14 @@ func applyChosen(from, to model.Table, parts []diff.Node) model.Table {
 		case model.KindTrigger:
 			out.Triggers = takeOne(out.Triggers, to.Triggers, p.Name,
 				func(t model.Trigger) string { return t.Name })
-		case model.KindConstraint:
-			out = takeConstraint(out, to, p.Name)
+		case model.KindPrimaryKey:
+			out.PrimaryKey = to.PrimaryKey
+		case model.KindUnique:
+			out.Uniques = takeOne(out.Uniques, to.Uniques, p.Name,
+				func(u model.UniqueConstraint) string { return u.Name })
+		case model.KindCheck:
+			out.Checks = takeOne(out.Checks, to.Checks, p.Name,
+				func(c model.CheckConstraint) string { return c.Name })
 		}
 	}
 	return out
@@ -136,30 +142,6 @@ func takeOne[T any](have, want []T, name string, nameOf func(T) string) []T {
 		return out
 	}
 	return append(out, want[i]) // only there: it comes
-}
-
-// takeConstraint is takeOne for the three kinds of constraint a table holds
-// under one name — a primary key, a unique constraint or a check — which
-// share a namespace and so are told apart by which list holds the name.
-func takeConstraint(out, to model.Table, name string) model.Table {
-	if (out.PrimaryKey != nil && out.PrimaryKey.Name == name) ||
-		(to.PrimaryKey != nil && to.PrimaryKey.Name == name) {
-		out.PrimaryKey = to.PrimaryKey
-		return out
-	}
-	before := len(out.Uniques)
-	out.Uniques = takeOne(out.Uniques, to.Uniques, name,
-		func(u model.UniqueConstraint) string { return u.Name })
-	if len(out.Uniques) != before || heldBy(out.Uniques, name) {
-		return out
-	}
-	out.Checks = takeOne(out.Checks, to.Checks, name,
-		func(c model.CheckConstraint) string { return c.Name })
-	return out
-}
-
-func heldBy(us []model.UniqueConstraint, name string) bool {
-	return slices.ContainsFunc(us, func(u model.UniqueConstraint) bool { return u.Name == name })
 }
 
 // objectIn finds one object in a model.

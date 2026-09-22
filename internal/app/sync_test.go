@@ -223,8 +223,10 @@ func TestASyncScriptOnAConnectionThatRendersNothing(t *testing.T) {
 	}
 }
 
-// A constraint chosen is taken from whichever list holds it, because the
-// three kinds share one namespace.
+// A constraint chosen is taken from the list its kind names. The three share
+// one namespace, so guessing which list held a name was how this worked
+// until fuzzing found two constraints of different kinds sharing a name
+// across two databases and getting one identity between them (ADR-0126).
 func TestAChosenConstraintIsFoundInWhicheverListHoldsIt(t *testing.T) {
 	from := model.Table{Name: "t", Columns: []model.Column{column("id", "integer")},
 		PrimaryKey: &model.PrimaryKey{Name: "t_pkey", Columns: []string{"id"}},
@@ -237,13 +239,14 @@ func TestAChosenConstraintIsFoundInWhicheverListHoldsIt(t *testing.T) {
 
 	for _, c := range []struct {
 		name  string
+		kind  model.ObjectKind
 		check func(model.Table) bool
 	}{
-		{"t_pkey", func(g model.Table) bool { return len(g.PrimaryKey.Columns) == 2 }},
-		{"t_u", func(g model.Table) bool { return g.Uniques[0].Columns[0] == "note" }},
-		{"t_c", func(g model.Table) bool { return g.Checks[0].Expression == "id > 10" }},
+		{"t_pkey", model.KindPrimaryKey, func(g model.Table) bool { return len(g.PrimaryKey.Columns) == 2 }},
+		{"t_u", model.KindUnique, func(g model.Table) bool { return g.Uniques[0].Columns[0] == "note" }},
+		{"t_c", model.KindCheck, func(g model.Table) bool { return g.Checks[0].Expression == "id > 10" }},
 	} {
-		got := applyChosen(from, to, []diff.Node{{Kind: model.KindConstraint, Name: c.name}})
+		got := applyChosen(from, to, []diff.Node{{Kind: c.kind, Name: c.name}})
 		if !c.check(got) {
 			t.Errorf("choosing %s gave %+v", c.name, got)
 		}
