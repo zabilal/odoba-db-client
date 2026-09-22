@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -65,16 +66,7 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 		return nil, errors.New("kafka: reading from the end of a log returns nothing unless the log is being followed")
 	}
 
-	limit := opt.Limit
-	if limit <= 0 {
-		limit = records
-	}
-	if opt.Follow {
-		// A tail is bounded by whoever is reading it — the grid keeps what it
-		// can show and lets the rest go (NFR-P10) — because a log being
-		// written to has no number of records to stop at.
-		limit = 0
-	}
+	limit := boundOf(opt)
 	if opt.Offset > 0 {
 		// A log is read from a position, not by skipping a count: what the
 		// grid means by an offset is a row number, and a record's offset is
@@ -137,6 +129,7 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	// No consumer group is named, which is what makes this a reader rather
 	// than a participant.
 	opts = append(opts, kgo.ConsumePartitions(at))
+	opts = append(opts, readBounds()...)
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, &source.ConnectError{Kind: source.ConnectConfig,
@@ -144,6 +137,50 @@ func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	}
 	return &recordRows{client: client, topic: topic, until: until,
 		left: limit, following: opt.Follow}, nil
+}
+
+// boundOf is how many records a read stops after.
+//
+// Every consume is bounded (FR-13.20), and a caller who names no bound gets
+// this driver's own rather than all of a log: an unbounded read of a topic
+// nobody has aged out is how an inspection becomes an incident.
+//
+// A tail is the exception and is not one really. It has no count to stop at,
+// because a log being written to has no end to reach; it is bounded instead
+// by whoever is reading it — the grid keeps what it can show and lets the
+// rest go (NFR-P10) — and by being cancelled.
+func boundOf(opt source.BrowseOptions) int64 {
+	if opt.Follow {
+		return 0
+	}
+	if opt.Limit <= 0 {
+		return records
+	}
+	return opt.Limit
+}
+
+// How much a read may pull at once (FR-13.20).
+//
+// franz-go's own defaults are far larger, and they are defaults for a service
+// that means to keep up with a topic. This is an application somebody is
+// looking at a topic through: a bound small enough that a tail on a busy log
+// cannot saturate the link or balloon in memory, and large enough that no
+// ordinary record fails to fit. A record bigger than the partition bound
+// still arrives — a broker always returns at least one batch — so this slows
+// a pathological topic rather than breaking it.
+const (
+	fetchBytes          = 16 << 20 // 16 MiB across a fetch
+	fetchPartitionBytes = 4 << 20  // 4 MiB from any one partition
+	fetchWait           = 5 * time.Second
+)
+
+// readBounds are what keeps a read from asking for more than it can use.
+func readBounds() []kgo.Opt {
+	return []kgo.Opt{
+		kgo.FetchMaxBytes(fetchBytes),
+		kgo.FetchMaxPartitionBytes(fetchPartitionBytes),
+		kgo.FetchMaxWait(fetchWait),
+	}
 }
 
 // span is where one partition's read begins, and the offset it stops before.

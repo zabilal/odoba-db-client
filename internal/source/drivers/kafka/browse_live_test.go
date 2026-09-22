@@ -191,3 +191,31 @@ func TestLiveWhatCannotBeAskedOfALog(t *testing.T) {
 		}
 	}
 }
+
+// Every consume is bounded (T2.82, FR-13.20).
+
+func TestLiveAReadWithNoLimitStopsAtTheDriversOwn(t *testing.T) {
+	src := live(t, liveConfig())
+	a := administers(t, src)
+	ctx := context.Background()
+	const topic = "ikigai_it_bounded"
+
+	_ = a.DeleteTopic(ctx, topic, false)
+	if err := a.CreateTopic(ctx, source.TopicSpec{
+		Name: topic, Partitions: 1, ReplicationFactor: 1}); err != nil {
+		t.Fatalf("creating %s: %v", topic, err)
+	}
+	t.Cleanup(func() { _ = a.DeleteTopic(context.Background(), topic, false) })
+	settled(t, src, topic, 1)
+	written(t, src, topic, records+20)
+
+	// Naming no limit gets this driver's own, and not the whole log: that
+	// is what keeps looking at a topic from becoming an incident.
+	if rows := from(t, src, topic, nil, 0); len(rows) != records {
+		t.Errorf("a read with no limit returned %d records, not this driver's %d", len(rows), records)
+	}
+	// And a limit named under it is honoured as it stands.
+	if rows := from(t, src, topic, nil, 10); len(rows) != 10 {
+		t.Errorf("a read of ten returned %d records", len(rows))
+	}
+}

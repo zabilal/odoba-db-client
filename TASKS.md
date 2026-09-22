@@ -23,17 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.82 — every consume bounded and cancellable (FR-13.20): a
-           limit on records, bytes or a time window, and a read that stops
-           when it is given up on. Much of this is already true and already
-           held: a browse takes a limit and stops at each log's end (T2.63),
-           a tail ends when its context is cancelled (T2.65), and there are
-           live tests for both. What to establish rather than assume is
-           whether a read is bounded by bytes or by time as well as by
-           count, and whether a request with no bound at all is refused
-           rather than quietly allowed. Read source.BrowseOptions first: it
-           decides what a caller is able to ask for. T2.83 is already
-           satisfied by T2.77 and T2.80 — confirm rather than rebuild.
+NEXT TASK: T2.83 — producing and offset resets inherit read-only mode and
+           the production guardrail (FR-13.21). This is a confirmation
+           rather than a build: T2.77 and T2.80 both put the guard before
+           the client is touched, and both are held by untagged tests that
+           need no broker — a read-only connection refuses whatever consent
+           is offered, and a production one refuses until it has been asked.
+           Worth doing rather than skipping: a test that enumerates every
+           mutating entry point this driver has and holds each to the guard,
+           so that a fourth one added later cannot quietly arrive without
+           it. Then T2.84, the conformance suite against kafka and
+           schema-registry testcontainers.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -86,7 +86,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — evidence that reading a topic joins no consumer
+LAST DONE: 2026-09-22 — every read bounded by how much it may pull as well
+           as by how many records it wants, the count decision made
+           checkable rather than claimed, and a tail's real bounds written
+           down (T2.82); before it evidence that reading a topic joins no
+           consumer
            group and moves nobody's offsets, held both by a live cluster and
            by a check on the driver's own source, because the promise is
            about what it never does (T2.81); before it a consumer group
@@ -644,7 +648,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Safety — non-negotiable
 - [x] **T2.81** **Browsing never joins a consumer group or commits offsets** — explicit partition assignment only → FR-13.19 — *the driver has read this way since T2.63, so this is a task about evidence rather than about code, and the evidence has to be of two kinds because the requirement is about what the driver never does. A live test reads a topic twice over and shows that the cluster gained no group from it, and that a group already sitting where it had got to is exactly where it was afterwards — which is the whole of what the requirement protects: somebody inspecting a topic must not move anybody's consumers. And an untagged test reads the driver's own source, because a test exercising only today's paths says nothing about tomorrow's: no file outside the tests may name a consumer group to the client, and browse.go must still assign partitions explicitly, so the check fails both if somebody adds the wrong thing and if somebody takes the right thing away. Both mutations are the forbidden defect written into the driver — a read made a member of a group, and explicit assignment swapped for a subscription — and both die to that check. What this does not do is prove the property for code nobody has written yet elsewhere; it holds the driver, which is where reading happens*
-- [ ] **T2.82** Every consume bounded (max messages / bytes / time) and cancellable → FR-13.20
+- [x] **T2.82** Every consume bounded (max messages / bytes / time) and cancellable → FR-13.20 — *most of the count half was already true: a browse takes a limit and stops at each log's end (T2.63), and a tail ends when it is cancelled (T2.65). What was not true was the second sentence of the requirement — a tail must not saturate the network or exhaust memory — because the driver was relying on franz-go's own fetch defaults, which are tens of megabytes and are defaults for a service meaning to keep up with a topic rather than for an application somebody is looking at one through. A read now says how much it may pull: a bound across a fetch, a smaller one from any single partition, and how long a fetch may wait. A record larger than the partition bound still arrives, a broker always returning at least one batch, so this slows a pathological topic rather than breaking it. The count decision came out into a function of its own so that bounded is something a test can check rather than a claim somebody made: a caller naming no limit is given this driver's own rather than all of a log, an unbounded read being how looking at a topic becomes an incident. What a test of the values alone would never notice is whether they reach the reader, so a check reads the driver's own source for that too — the same technique T2.81 needed, for the same reason. Left undone on purpose: a tail still honours no count, because the stream ignores a remaining count while following and changing that means touching the read loop where a Close-versus-Next deadlock was fixed in T2.65; a tail is held instead by the fetch bound, by the window of whoever is reading it, and by cancellation — written down here rather than left to be discovered*
 - [ ] **T2.83** Produce and offset-reset inherit read-only mode + production guardrails → FR-13.21
 - [ ] **T2.84** Conformance green against kafka + schema-registry testcontainers
 
