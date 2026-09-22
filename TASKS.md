@@ -23,15 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: 3.C is finished: T3.16 to T3.20 are done and FR-8.1 to
+NEXT TASK: T3.22 — which columns are the axes, worked out rather than
+           asked for (FR-11.2). chart.Check and chart.Extent say what
+           a kind needs, so this is about reading a result: a time or
+           a number that ascends is an x, a number is a y, a short
+           column of repeated text is a series, and a column of keys
+           is none of them. What it guesses has to be changeable,
+           because it will be wrong sometimes and a chart nobody can
+           correct is a chart nobody trusts. Nothing in the window
+           draws a chart yet — the kinds and the shapes exist and no
+           tab opens one; that belongs with T3.22 or T3.24.
+           3.C is finished: T3.16 to T3.20 are done and FR-8.1 to
            FR-8.5 are met on any connection whose structure can be
-           read. Next is 3.D, charts, starting at T3.21 — the types
-           a result can be drawn as (FR-11.1). W4 in the prototypes
-           settled the hard part (ADR-0004: render into an image, and
-           a hit-test index for tooltips), and internal/ui/chart
-           exists from it, so this is productionising rather than
-           deciding — what is new is choosing which columns are the
-           axes, and what a chart does with a column it cannot plot.
+           read.
            erd supports a subset of tables and the window does not
            ask for one yet: the footer's line about relationships
            leading outside a diagram cannot fire until T3.20's
@@ -140,7 +144,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a diagram narrowed to the tables within a
+LAST DONE: 2026-09-22 — the seven kinds a result can be drawn as, each
+           refusing what it cannot draw honestly and saying what to
+           draw instead — a bar's axis reaching zero where a line's
+           does not, a pie gathering its tail rather than dropping it
+           (T3.21, ADR-0132); before it
+           a diagram narrowed to the tables within a
            relationship or two of the one somebody is looking at,
            redrawn from the schema already read so it is the same
            schema (T3.20, ADR-0131); before it
@@ -910,7 +919,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.D Charts (productionise W4)
 
-- [ ] **T3.21** Chart types: line, bar, stacked bar, area, pie, scatter, histogram → FR-11.1
+- [x] **T3.21** Chart types: line, bar, stacked bar, area, pie, scatter, histogram → FR-11.1 — *the spike settled how marks reach a screen, rasterised into one image rather than drawn as thousands of canvas objects (ADR-0004), and gave scales, ticks, downsampling and a hit index; what it did not give is the shapes. A chart is read as a statement about data, so a mark nobody's row put there is a lie told in a picture and harder to catch than one told in a number — which is what most of these decisions are about (ADR-0132). A kind that cannot honestly draw the data refuses and says what to draw instead: a pie of negative values has no share of a whole, and a stack of +5 and −5 is a bar of nothing standing for two numbers that are not nothing. A bar's axis reaches zero and a line's does not — a bar's length is its value, so an axis starting at 90 draws 91 as ten times 90.1, while a line is about change and cutting the axis is how change is seen. A bar reaches the axis rather than the foot of the chart, so a negative value hangs below it; a stack is as tall as its parts together and each layer stands on what is below it. A histogram's edges are round numbers, bins from 3.7194 to 12.8831 being bins nobody can say anything about, and its bars touch because the values between two edges are one continuous run where gaps would read as categories; a value never falls in a bin that ends at it. A pie gathers its tail rather than dropping it, past a dozen wedges being a colour wheel, and says how many it gathered — dropping them would be a chart that quietly left data out. A mark too small to round to a pixel is still drawn, absent being a different statement from small; and a chart of no rows is an answer rather than a failure. 22 mutations, each caught. Three pieces of code came out while writing them, because no test could tell the absence of any: a spare histogram bin that made the clamp on the largest value unreachable, a guard on an area of one point that the loop already said, and a special case for every-value-the-same that the general path handles better — it gave an interval from a value to the next float after it, where the general path gives two round numbers. This task's gate also caught a data race that is not this task's and is fixed here: a Redis cluster's shards are asked for all at once by ForEachMaster, and the results were appended from several goroutines without a lock — so a cluster of three shards was occasionally reported as having two, and never the same two twice. The race detector says so plainly once it is pointed at the live cluster*
 - [ ] **T3.22** Column-role assignment with auto-detection → FR-11.2
 - [ ] **T3.23** Export PNG / SVG → FR-11.3
 - [ ] **T3.24** Hover tooltips and click-to-filter → FR-11.4

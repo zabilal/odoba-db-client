@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -124,6 +125,12 @@ func (s *redisSource) shardFigures(ctx context.Context) (model.FigureGroup, bool
 	}
 	var group model.FigureGroup
 	group.Title = "Shards"
+
+	// ForEachMaster asks every shard at once, so what comes back is written
+	// from several goroutines. Without the lock an append races another and
+	// one is lost — which is a cluster reported as having fewer shards than
+	// it has, occasionally, and never the same one twice.
+	var mu sync.Mutex
 	var found []model.Figure
 	if err := c.ForEachMaster(ctx, func(ctx context.Context, m *goredis.Client) error {
 		n, err := m.DBSize(ctx).Result()
@@ -134,6 +141,8 @@ func (s *redisSource) shardFigures(ctx context.Context) (model.FigureGroup, bool
 		if text, err := m.Info(ctx, "memory").Result(); err == nil {
 			used = infoFields(text)["used_memory_human"]
 		}
+		mu.Lock()
+		defer mu.Unlock()
 		found = append(found, model.Figure{Name: m.Options().Addr,
 			Value: strings.TrimSpace(fmt.Sprintf("%d keys %s", n, used))})
 		return nil

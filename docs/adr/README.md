@@ -136,3 +136,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0129](0129-a-key-is-marked-and-a-line-has-ends.md) | A key is marked, and a line has ends | Accepted |
 | [0130](0130-a-diagram-said-once-and-drawn-three-ways.md) | A diagram said once, and drawn three ways | Accepted |
 | [0131](0131-a-diagram-narrowed-to-what-is-near.md) | A diagram narrowed to what is near | Accepted |
+| [0132](0132-a-chart-that-will-not-lie.md) | A chart that will not lie | Accepted |
