@@ -39,6 +39,14 @@ bench: ## Run benchmarks (NFR-Q3 budget assertions)
 conformance: ## Run the driver conformance suite against real servers (REQ-DRV-1)
 	go test -tags=conformance -timeout 20m ./internal/source/...
 
+.PHONY: kafka-up
+kafka-up: ## Start the Kafka brokers and schema registry the tagged tests read
+	./scripts/kafka.sh up
+
+.PHONY: kafka-down
+kafka-down: ## Remove those containers and the network they share
+	./scripts/kafka.sh down
+
 .PHONY: package
 package: ## Produce a platform installer via fyne package (NFR-D4)
 	fyne package --release

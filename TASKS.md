@@ -23,17 +23,18 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.84 — the conformance suite green against kafka and
-           schema-registry testcontainers. The suite is already green: the
-           tagged runs go against containers the owner starts and gate.sh
-           requires — ikigai-kafka on 59092, ikigai-kafka-sasl, and
-           ikigai-kafka-sr with ikigai-schema-registry on 58081. What is
-           missing is that the suite brings its own. Decide first whether
-           this project takes a testcontainers dependency at all: it puts a
-           Docker client in the test path, and the alternative is a script
-           that starts what is needed plus the skip the tests already do
-           when it is absent. That choice is the task; the wiring after it
-           is small either way, and it is the owner's call as much as mine.
+NEXT TASK: T2.85 — an SSH tunnel with a password, a private key, and a
+           key with a passphrase (FR-1.9). This opens a new block. Every
+           driver so far dials its server directly, and a tunnel puts a
+           local listener in front of that, so the first question is where
+           it belongs: a connection concern every driver shares rather than
+           anything Kafka or PostgreSQL knows about. source.ConnectionConfig
+           already declares SSH *SSHConfig and the type beside it — read
+           those before designing anything, the way ProduceRequest turned
+           out to have already answered T2.77's open questions.
+           golang.org/x/crypto/ssh would be a new direct dependency: it is
+           the standard one and pure Go, but T2.84 has just shown the owner
+           weighs those, so ask rather than assume.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -86,7 +87,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — one test holding every operation that changes a
+LAST DONE: 2026-09-22 — a script that starts the Kafka brokers and schema
+           registry the tagged tests read, chosen over a testcontainers
+           dependency and proved by rebuilding all three containers from
+           nothing (T2.84); before it one test holding every operation that
+           changes a
            cluster to its guard, with the list of them held to the
            interfaces by reflection so a new one cannot arrive unguarded
            (T2.83); before it every read bounded by how much it may pull as
@@ -654,7 +659,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T2.81** **Browsing never joins a consumer group or commits offsets** — explicit partition assignment only → FR-13.19 — *the driver has read this way since T2.63, so this is a task about evidence rather than about code, and the evidence has to be of two kinds because the requirement is about what the driver never does. A live test reads a topic twice over and shows that the cluster gained no group from it, and that a group already sitting where it had got to is exactly where it was afterwards — which is the whole of what the requirement protects: somebody inspecting a topic must not move anybody's consumers. And an untagged test reads the driver's own source, because a test exercising only today's paths says nothing about tomorrow's: no file outside the tests may name a consumer group to the client, and browse.go must still assign partitions explicitly, so the check fails both if somebody adds the wrong thing and if somebody takes the right thing away. Both mutations are the forbidden defect written into the driver — a read made a member of a group, and explicit assignment swapped for a subscription — and both die to that check. What this does not do is prove the property for code nobody has written yet elsewhere; it holds the driver, which is where reading happens*
 - [x] **T2.82** Every consume bounded (max messages / bytes / time) and cancellable → FR-13.20 — *most of the count half was already true: a browse takes a limit and stops at each log's end (T2.63), and a tail ends when it is cancelled (T2.65). What was not true was the second sentence of the requirement — a tail must not saturate the network or exhaust memory — because the driver was relying on franz-go's own fetch defaults, which are tens of megabytes and are defaults for a service meaning to keep up with a topic rather than for an application somebody is looking at one through. A read now says how much it may pull: a bound across a fetch, a smaller one from any single partition, and how long a fetch may wait. A record larger than the partition bound still arrives, a broker always returning at least one batch, so this slows a pathological topic rather than breaking it. The count decision came out into a function of its own so that bounded is something a test can check rather than a claim somebody made: a caller naming no limit is given this driver's own rather than all of a log, an unbounded read being how looking at a topic becomes an incident. What a test of the values alone would never notice is whether they reach the reader, so a check reads the driver's own source for that too — the same technique T2.81 needed, for the same reason. Left undone on purpose: a tail still honours no count, because the stream ignores a remaining count while following and changing that means touching the read loop where a Close-versus-Next deadlock was fixed in T2.65; a tail is held instead by the fetch bound, by the window of whoever is reading it, and by cancellation — written down here rather than left to be discovered*
 - [x] **T2.83** Produce and offset-reset inherit read-only mode + production guardrails → FR-13.21 — *already true when the task was reached: T2.77 put the guard in front of producing, T2.78 in front of making and unmaking topics, and T2.80 in front of moving a group's offsets — each before the client is touched, so a refusal costs no request and a read-only connection never dials at all. What this task added is the one thing none of those could give on its own: a single test holding every operation that changes anything, with the list of them held to the interfaces themselves by reflection, so that a seventh way to change a cluster cannot quietly arrive without a guard in front of it. Three of the mutations are the guard taken off one family apiece, each already caught by that family's own test when it was written; what they prove here is that the systematic one catches them too, which is what makes it worth having. The fourth is the table falling behind the interfaces, which is the only thing this test can see and the others cannot. The per-family tests stay: when one of those fails it says which family, and when this one fails it says somebody added an operation and forgot*
-- [ ] **T2.84** Conformance green against kafka + schema-registry testcontainers
+- [x] **T2.84** Conformance green against kafka + schema-registry testcontainers — *the suite was already green; what was missing was that it brought its own containers. The owner chose a start script over a testcontainers dependency, and the reasoning is the project's own: testcontainers is a Docker client and forty-odd modules in the test path of an application with seventeen direct dependencies, every one of which it actually needs — and this is the codebase that wrote its own diff rather than take one for a single view. So scripts/kafka.sh starts exactly what the tagged tests read, the plain broker and the registry with the broker of its own it needs, driven by make kafka-up and make kafka-down. The recipes were taken from the containers that were already running rather than invented, so the script reproduces what was known to work. Its readiness check walked into ADR-0101's trap from the other side: asking a broker to list topics from inside its own container makes a client that is then told to reach the broker at the address it advertises to the outside, which inside the container is nothing at all — so readiness is the line the broker logs when it has started, plus the port this machine reads it on. Proved by tearing all three containers down and building them again from the script alone, then running the tagged suite against what it built. No mutations, because nothing in Go changed and a shell script has no Go test to fail; the proof is the rebuild. What it does not start is the SASL and TLS broker, whose certificates are the owner's and live outside this repository — the tests needing it skip without it, as they always have*
 
 ## 2.I Auth & tunnelling
 
