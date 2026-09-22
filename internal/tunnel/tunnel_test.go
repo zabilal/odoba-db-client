@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -377,8 +378,6 @@ func TestWhatATunnelWillNotEvenTry(t *testing.T) {
 			Config{SSH: source.SSHConfig{Host: "h", Method: "password"}}, "nowhere to carry"},
 		"a way of signing in nobody has": {
 			Config{SSH: source.SSHConfig{Host: "h", Method: "semaphore"}, Target: "127.0.0.1:1"}, "none of those"},
-		"an agent, which is not written": {
-			Config{SSH: source.SSHConfig{Host: "h", Method: "agent"}, Target: "127.0.0.1:1"}, "not written yet"},
 		"a password nobody gave": {
 			Config{SSH: source.SSHConfig{Host: "h", Method: "password"}, Target: "127.0.0.1:1"}, "none was given"},
 		"a key nobody named": {
@@ -434,4 +433,181 @@ func split(t *testing.T, addr string) (string, int) {
 		t.Fatal(err)
 	}
 	return host, n
+}
+
+// agentAt runs an SSH agent holding one key and points SSH_AUTH_SOCK at it,
+// which is how every other SSH client would find it.
+//
+// The socket goes under /tmp rather than the test's own directory: a unix
+// socket path has about a hundred characters to play with, and a temporary
+// directory named after a test uses most of them.
+func agentAt(t *testing.T, key ed25519.PrivateKey) ssh.PublicKey {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "ikigai-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	l, err := net.Listen("unix", filepath.Join(dir, "s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+
+	ring := agent.NewKeyring()
+	if err := ring.Add(agent.AddedKey{PrivateKey: key}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); agent.ServeAgent(ring, c) }()
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(dir, "s"))
+
+	signer, err := ssh.NewSignerFromKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signer.PublicKey()
+}
+
+func TestATunnelSignsInThroughAnAgent(t *testing.T) {
+	target := echo(t)
+	_, key, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := agentAt(t, key)
+
+	addr, known := server(t, &ssh.ServerConfig{
+		PublicKeyCallback: func(_ ssh.ConnMetadata, offered ssh.PublicKey) (*ssh.Permissions, error) {
+			if string(offered.Marshal()) == string(public.Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("not a key this agent holds")
+		},
+	})
+	host, port := split(t, addr)
+
+	tn, err := Open(context.Background(), Config{
+		SSH:        source.SSHConfig{Host: host, Port: port, User: "somebody", Method: "agent"},
+		Target:     target,
+		KnownHosts: known,
+	})
+	if err != nil {
+		t.Fatalf("opening the tunnel through an agent: %v", err)
+	}
+	defer tn.Close()
+	if got := reaches(t, tn, "the agent vouched"); got != "the agent vouched" {
+		t.Errorf("what came back was %q", got)
+	}
+}
+
+func TestWithNoAgentRunningItSaysSoRatherThanFailingLater(t *testing.T) {
+	// An agent that is not there is said plainly. The alternative is a
+	// connection that fails at the server for what looks like a rejected
+	// key, which sends somebody looking at their keys.
+	t.Setenv("SSH_AUTH_SOCK", "")
+	_, err := Open(context.Background(), Config{
+		SSH:    source.SSHConfig{Host: "h", Method: "agent"},
+		Target: "127.0.0.1:1",
+	})
+	if err == nil {
+		t.Fatal("a tunnel with no agent was opened")
+	}
+	if !strings.Contains(err.Error(), "none running") {
+		t.Errorf("no agent reads as: %v", err)
+	}
+}
+
+// bothKnown is a known_hosts naming everything these files name.
+func bothKnown(t *testing.T, files ...string) string {
+	t.Helper()
+	var all []byte
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, b...)
+	}
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(path, all, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestATunnelGoesThroughAJumpHost(t *testing.T) {
+	target := echo(t)
+	open := &ssh.ServerConfig{NoClientAuth: true}
+	jumpAddr, jumpKnown := server(t, open)
+	endAddr, endKnown := server(t, &ssh.ServerConfig{NoClientAuth: true})
+	host, port := split(t, endAddr)
+
+	tn, err := Open(context.Background(), Config{
+		SSH: source.SSHConfig{Host: host, Port: port, User: "somebody", Method: "password",
+			JumpHosts: []string{jumpAddr}},
+		Target:     target,
+		Secret:     secrets(map[string]string{"ssh_password": "anything"}),
+		KnownHosts: bothKnown(t, jumpKnown, endKnown),
+	})
+	if err != nil {
+		t.Fatalf("opening the tunnel through a jump host: %v", err)
+	}
+	defer tn.Close()
+	// Two hops: the jump host and the server reached through it.
+	if len(tn.hops) != 2 {
+		t.Errorf("the tunnel goes through %d servers, not two", len(tn.hops))
+	}
+	if got := reaches(t, tn, "two hops away"); got != "two hops away" {
+		t.Errorf("what came back was %q", got)
+	}
+}
+
+func TestAJumpHostNobodyKnowsIsRefusedLikeAnyOther(t *testing.T) {
+	// A hop nobody verified can read everything passing through it, so the
+	// first one is held to exactly what the last one is (ADR-0109).
+	target := echo(t)
+	jumpAddr, _ := server(t, &ssh.ServerConfig{NoClientAuth: true})
+	endAddr, endKnown := server(t, &ssh.ServerConfig{NoClientAuth: true})
+	host, port := split(t, endAddr)
+
+	_, err := Open(context.Background(), Config{
+		SSH: source.SSHConfig{Host: host, Port: port, User: "somebody", Method: "password",
+			JumpHosts: []string{jumpAddr}},
+		Target:     target,
+		Secret:     secrets(map[string]string{"ssh_password": "anything"}),
+		KnownHosts: endKnown, // names the far end, and not the hop to it
+	})
+	if err == nil {
+		t.Fatal("a jump host nobody knows was trusted")
+	}
+	// And it says which hop, because "not a host you know" about an
+	// unnamed machine is no help at all.
+	if !strings.Contains(err.Error(), "jump host") {
+		t.Errorf("an unknown jump host reads as: %v", err)
+	}
+}
+
+func TestAJumpHostIsReadTheWayAnySSHClientReadsOne(t *testing.T) {
+	for _, c := range []struct{ in, user, addr string }{
+		{"host", "me", "host:22"},
+		{"host:2222", "me", "host:2222"},
+		{"other@host", "other", "host:22"},
+		{"other@host:2222", "other", "host:2222"},
+		{"::1", "me", "[::1]:22"},
+		{"[::1]:2222", "me", "[::1]:2222"},
+	} {
+		user, addr := hopOf(c.in, "me")
+		if user != c.user || addr != c.addr {
+			t.Errorf("%q reads as %s at %s, not %s at %s", c.in, user, addr, c.user, c.addr)
+		}
+	}
 }
