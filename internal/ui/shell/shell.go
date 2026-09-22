@@ -213,6 +213,8 @@ type tab struct {
 	compare *comparePanel
 	// diagram is the ER diagram, where this tab is one (erdiagram.go).
 	diagram *diagramPanel
+	// chart is the chart of a result, where this tab is one (chartview.go).
+	chart *chartPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -569,6 +571,9 @@ func (s *Shell) registerCommands() {
 			Run: s.showExport},
 		{ID: cmdImport, Category: "Data", Title: "Import…", Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
 			Enabled: s.canImport, Run: s.showImport},
+		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
+			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
+			Enabled:  s.canChart, Run: s.chartActive},
 		{ID: cmdFind, Category: "Edit", Title: "Find…", Keywords: []string{"search", "look for"},
 			Shortcut: sc("F", commands.ModShortcut), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(false) }) }},
 		{ID: cmdFindReplace, Category: "Edit", Title: "Find and Replace…", Keywords: []string{"substitute", "change"},

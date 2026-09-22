@@ -37,7 +37,7 @@ func Build(cols []model.ColumnDef, rows []model.Row, r Roles) Built {
 	out.Labels = labels
 
 	for _, y := range r.Y {
-		s := Series{Name: nameOf2(cols, y)}
+		s := Series{Name: ColumnName(cols, y)}
 		for i, row := range rows {
 			v, ok := cell(row, y)
 			if !ok {
@@ -142,11 +142,25 @@ func cellLabel(row model.Row, col int) string {
 	return label(row[col])
 }
 
-func nameOf2(cols []model.ColumnDef, i int) string {
+// ColumnName is what a column is called, and nothing for a role no column
+// fills — the row number, or no series at all.
+func ColumnName(cols []model.ColumnDef, i int) string {
 	if i < 0 || i >= len(cols) {
 		return ""
 	}
 	return cols[i].Name
+}
+
+// SeriesTitle is what the upright axis is called.
+//
+// The series' name where there is one series, because then the axis is that
+// column; nothing where there are several, because then the axis is what
+// they have in common and only the key can say what each is.
+func SeriesTitle(series []Series) string {
+	if len(series) == 1 {
+		return series[0].Name
+	}
+	return ""
 }
 
 // Values is one column read as the numbers a histogram counts.

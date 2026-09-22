@@ -138,3 +138,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0131](0131-a-diagram-narrowed-to-what-is-near.md) | A diagram narrowed to what is near | Accepted |
 | [0132](0132-a-chart-that-will-not-lie.md) | A chart that will not lie | Accepted |
 | [0133](0133-which-column-is-the-axis.md) | Which column is the axis | Accepted |
+| [0134](0134-a-chart-on-the-screen-and-taken-away.md) | A chart on the screen, and taken away | Accepted |

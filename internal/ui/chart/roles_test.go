@@ -1,6 +1,7 @@
 package chart
 
 import (
+	"image/color"
 	"math"
 	"slices"
 	"testing"
@@ -304,5 +305,152 @@ func TestARowWithFewerValuesThanColumns(t *testing.T) {
 	got := Build(cols, rows([]any{1}), Roles{X: 0, Y: []int{1}, Series: RowNumber})
 	if got.Skipped != 1 || len(got.Series[0].Points) != 0 {
 		t.Errorf("it read %+v, skipping %d", got.Series, got.Skipped)
+	}
+}
+
+// Naming the kinds, and which one a result suits.
+
+func TestEveryKindHasAName(t *testing.T) {
+	seen := map[string]Kind{}
+	for _, k := range Kinds {
+		name := KindName(k)
+		if name == "" || name == string(k) {
+			t.Errorf("%s is called %q, which is not a name for a window", k, name)
+		}
+		if was, twice := seen[name]; twice {
+			t.Errorf("%s and %s are both called %q", was, k, name)
+		}
+		seen[name] = k
+		if got := KindNamed(name); got != k {
+			t.Errorf("KindNamed(%q) = %s, want %s", name, got, k)
+		}
+	}
+	if got := KindNamed("something nobody offered"); got != Line {
+		t.Errorf("an unknown name gave %s, want a line, which draws anything", got)
+	}
+}
+
+// A moment along the bottom means change over time, which is a line; a
+// column of categories means comparison, which is bars.
+func TestTheKindAResultSuits(t *testing.T) {
+	cases := []struct {
+		name string
+		cols []model.ColumnDef
+		rows []model.Row
+		want Kind
+	}{
+		{"a moment and a number", []model.ColumnDef{col("at", model.TypeTimestamp), col("n", model.TypeInteger)},
+			rows([]any{day(1), 1}, []any{day(2), 2}), Line},
+		{"categories and a number", []model.ColumnDef{col("region", model.TypeString), col("n", model.TypeInteger)},
+			rows([]any{"north", 1}, []any{"south", 2}), Bar},
+		{"one column of numbers", []model.ColumnDef{col("latency", model.TypeFloat)},
+			rows([]any{1.0}, []any{2.0}), Histogram},
+		{"two columns of numbers", []model.ColumnDef{col("a", model.TypeInteger), col("b", model.TypeInteger)},
+			rows([]any{1, 2}, []any{3, 4}), Line},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := Guess(tc.cols, tc.rows)
+			if got := Suits(tc.cols, tc.rows, r); got != tc.want {
+				t.Errorf("Suits = %s, want %s (roles %+v)", got, tc.want, r)
+			}
+		})
+	}
+}
+
+// A numeric X is a scatter: neither a line through unordered rows nor bars
+// at arbitrary positions says anything the data did not.
+func TestANumericAxisSuitsAScatter(t *testing.T) {
+	cols := []model.ColumnDef{col("x", model.TypeFloat), col("y", model.TypeFloat)}
+	if got := Suits(cols, rows([]any{1.0, 2.0}), Roles{X: 0, Y: []int{1}, Series: RowNumber}); got != Scatter {
+		t.Errorf("Suits = %s, want a scatter", got)
+	}
+}
+
+// The axis is named after its column, and after nothing where no column
+// fills the role.
+func TestAnAxisIsNamedAfterItsColumn(t *testing.T) {
+	cols := []model.ColumnDef{col("at", model.TypeTimestamp), col("n", model.TypeInteger)}
+	if got := ColumnName(cols, 1); got != "n" {
+		t.Errorf("ColumnName = %q, want n", got)
+	}
+	for _, i := range []int{RowNumber, -5, 2} {
+		if got := ColumnName(cols, i); got != "" {
+			t.Errorf("ColumnName(%d) = %q, want nothing", i, got)
+		}
+	}
+	if got := SeriesTitle([]Series{{Name: "orders"}}); got != "orders" {
+		t.Errorf("SeriesTitle = %q, want the one series' name", got)
+	}
+	if got := SeriesTitle([]Series{{Name: "a"}, {Name: "b"}}); got != "" {
+		t.Errorf("SeriesTitle = %q; with several, only the key can say which is which", got)
+	}
+}
+
+// A moment is a moment whatever kind of column held it.
+func TestWhatCountsAsAMoment(t *testing.T) {
+	for _, class := range []model.TypeClass{model.TypeDate, model.TypeTime, model.TypeTimestamp} {
+		if !Momentary(col("c", class)) {
+			t.Errorf("%v is not read as a moment", class)
+		}
+	}
+	for _, class := range []model.TypeClass{model.TypeInteger, model.TypeString, model.TypeFloat} {
+		if Momentary(col("c", class)) {
+			t.Errorf("%v is read as a moment", class)
+		}
+	}
+}
+
+// Colour is never the only thing telling two series apart, but where it is
+// used it has to work on both backgrounds.
+func TestTheSeriesColoursDifferAndSuitBothBackgrounds(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		set := SeriesColours(dark)
+		if len(set) < 8 {
+			t.Errorf("dark=%v: %d colours, want enough for a result's worth of series", dark, len(set))
+		}
+		seen := map[color.NRGBA]bool{}
+		for _, c := range set {
+			if seen[c] {
+				t.Errorf("dark=%v: %v is used twice", dark, c)
+			}
+			seen[c] = true
+			if c.A != 0xFF {
+				t.Errorf("dark=%v: %v is part-transparent", dark, c)
+			}
+			l := luminance(c)
+			if dark && l < 0.15 {
+				t.Errorf("%v is too dark to see on a dark window", c)
+			}
+			if !dark && l > 0.75 {
+				t.Errorf("%v is too pale to see on a light window", c)
+			}
+		}
+	}
+}
+
+// luminance is the relative luminance WCAG measures contrast with.
+func luminance(c color.NRGBA) float64 {
+	f := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.03928 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*f(c.R) + 0.7152*f(c.G) + 0.0722*f(c.B)
+}
+
+// Whether the bottom axis is made of moments is what decides how it is
+// written, and is asked of the column rather than of the numbers in it.
+func TestWhetherTheAxisIsMadeOfMoments(t *testing.T) {
+	cols := []model.ColumnDef{col("at", model.TypeTimestamp), col("n", model.TypeInteger)}
+	if !TimesAlong(cols, 0) {
+		t.Error("an axis of timestamps is not read as moments")
+	}
+	for _, x := range []int{1, RowNumber, -3, 2} {
+		if TimesAlong(cols, x) {
+			t.Errorf("column %d is read as moments", x)
+		}
 	}
 }

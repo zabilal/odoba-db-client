@@ -52,9 +52,10 @@ func Plottable(c model.ColumnDef) bool {
 	return false
 }
 
-// orderly reports a column whose values put the rows in an order: a moment
-// in time, or a date. These make an X without anybody saying so.
-func orderly(c model.ColumnDef) bool {
+// Momentary reports a column whose values put the rows in an order: a moment
+// in time, or a date. These make an X without anybody saying so, and an axis
+// of them is written as dates rather than as seconds.
+func Momentary(c model.ColumnDef) bool {
 	switch c.Type.Class {
 	case model.TypeDate, model.TypeTime, model.TypeTimestamp:
 		return true
@@ -72,6 +73,12 @@ func labelled(c model.ColumnDef) bool {
 	return false
 }
 
+// TimesAlong reports whether the axis along the bottom is made of moments,
+// which is what decides whether it is written as dates or as numbers.
+func TimesAlong(cols []model.ColumnDef, x int) bool {
+	return x >= 0 && x < len(cols) && Momentary(cols[x])
+}
+
 // Guess works out what to draw from what the columns are and what is in
 // them.
 //
@@ -85,7 +92,7 @@ func Guess(cols []model.ColumnDef, rows []model.Row) Roles {
 	// A moment in time is the most likely X there is: a result ordered by
 	// one is almost always a result about change.
 	for i, c := range cols {
-		if orderly(c) {
+		if Momentary(c) {
 			r.X = i
 			break
 		}
@@ -220,4 +227,27 @@ func label(v any) string {
 		return strconv.FormatFloat(f, 'g', -1, 64)
 	}
 	return ""
+}
+
+// Suits is the kind a result is drawn as until somebody says otherwise.
+//
+// A moment along the bottom means change over time, which is a line. A
+// column of categories means comparison, which is bars. One column of
+// numbers and nothing to put them against is a distribution, which is a
+// histogram. Anything else is a line, which draws whatever is left without
+// claiming anything about it.
+func Suits(cols []model.ColumnDef, rows []model.Row, r Roles) Kind {
+	if r.X >= 0 && r.X < len(cols) {
+		if Momentary(cols[r.X]) {
+			return Line
+		}
+		if labelled(cols[r.X]) {
+			return Bar
+		}
+		return Scatter
+	}
+	if len(r.Y) == 1 {
+		return Histogram
+	}
+	return Line
 }
