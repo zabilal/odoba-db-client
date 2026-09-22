@@ -234,7 +234,14 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Schema.Diff but does not implement Snapshotter")
 		}
 	}
-	if caps.Stream.ConsumerGroups || caps.Stream.TopicAdmin || caps.Stream.ResetOffsets {
+	// Reading a group and administering one are claimed separately, because
+	// they are separate promises: the first changes nothing (ADR-0107).
+	if caps.Stream.ConsumerGroups {
+		if _, ok := src.(source.GroupInspector); !ok {
+			t.Error("claims Stream.ConsumerGroups but does not implement GroupInspector")
+		}
+	}
+	if caps.Stream.TopicAdmin || caps.Stream.ResetOffsets {
 		if _, ok := src.(source.StreamAdmin); !ok {
 			t.Error("claims stream administration but does not implement StreamAdmin")
 		}

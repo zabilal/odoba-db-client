@@ -23,17 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.76 — per-partition current offset, end offset and lag
-           (FR-13.10). A group is described now (T2.75), with its Offsets
-           left empty on purpose: reading them costs a request for the
-           group's commits and another for the ends of the logs. kadm packs
-           both into Client.Lag, which returns DescribedGroupLags carrying a
-           GroupMemberLag per topic and partition, its Lag -1 where a commit
-           or a list failed — the same -1 model.GroupOffset.Lag already
-           documents. The structure arm gains a second table beneath the
-           members, and the model's warning holds: lag is read at two
-           instants and may briefly read negative, so it is clamped rather
-           than trusted, which TotalLag already does.
+NEXT TASK: T2.77 — producing a message (FR-13.11): key, value, headers, the
+           partition to send it to, and validation against a schema where a
+           registry is named. The first thing this driver writes rather than
+           reads, so it claims Stream.Produce, which the suite holds to
+           source.StreamProducer. kgo.Client.ProduceSync is the call, and
+           the registry half is T2.69's schema lookup used the other way
+           round. Two things to settle before writing, neither of them
+           decided yet: whether producing sits behind the production
+           guardrail — FR-4.9 covers writes and FR-13.11 says nothing either
+           way — and what a topic with no schema does on a connection that
+           names a registry, which must stay producible.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -86,7 +86,13 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — the structure of an object with no rows made
+LAST DONE: 2026-09-22 — how far a consumer group has got, read only when
+           somebody asks for it, with what could not be measured saying so
+           rather than reading as zero and not counted in the total; and the
+           half of stream administration that changes nothing split into an
+           interface of its own, so that reading a group promises nothing
+           about resetting one (T2.76, ADR-0107); before it the structure of
+           an object with no rows made
            reachable at all: a node now says whether it can be described,
            separately from whether it can be read, and the four kinds whose
            description nothing could ask for — Kafka's cluster, its subjects
@@ -607,7 +613,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ### Groups, produce, admin
 - [x] **T2.75** Consumer groups: list, state, members → FR-13.10 — *the tree has listed groups with their state since T2.59 and opening one gave nothing; this describes one. Almost all of it was decided already: the model held ConsumerGroup, GroupMember and GroupOffset before the task started, so what was missing was a case in Describe and a structure arm to draw it, which is the shape T2.74 left behind and following it was the whole of the work. A group stays a leaf — its members are not nodes, the live test from T2.59 saying so in as many words — and describing it says what the group is doing, who is in it, what client each member is and where it runs, and what each was given to read. An assignment is gathered by topic, so a member holding twenty partitions of one topic reads as that rather than as twenty entries; a member given nothing says so, which is what somebody is looking for when a group has members and is not getting through its logs. A group need not be consuming a log at all — Kafka Connect uses the same machinery for its own purposes — so an assignment that is not a consumer's reads as none rather than being unpacked as though it were partitions of a topic, which would invent an assignment nobody made. Lag is left out on purpose: it costs a request for the group's committed offsets and another for the ends of the logs, and the model says as much where it holds them — offsets are populated on demand, never while a group is being listed — so a live test holds describing a group to spending neither until T2.76 asks for them. One mutation was removed rather than excused: the guard it first aimed at, a check that a group has members before drawing a table of them, survived because section already declines to draw a table that is nothing but its own headings, so the check in front of it decided nothing and came out; the mutation now holds section's own check, which is what the arm leans on instead and what the rest of the file has relied on for as long as it has had tables*
-- [ ] **T2.76** Per-partition current offset / end offset / **lag** → FR-13.10
+- [x] **T2.76** Per-partition current offset / end offset / **lag** → FR-13.10 — *the model held GroupOffset and TotalLag before this started and T2.75 left Offsets empty on purpose, so what was missing was the reading and somewhere to see it. The capability was in the way first: Stream.ConsumerGroups promised the whole of StreamAdmin — resetting offsets, creating and deleting topics, altering configuration, adding partitions — so a driver that could show how far a group had got could not say so without also promising six destructive operations it had not written. The flags were already separate and the interface had not caught up; the half that changes nothing is now an interface of its own, StreamAdmin embeds it so anything implementing the whole still satisfies both, and the suite checks each claim against the interface that backs it (ADR-0107). Reading is one call: kadm's Lag describes the group, fetches its commits, lists the ends of the logs and works out the difference, and what it returns maps onto the model's GroupOffset field for field — including every -1, because a partition nothing has committed to, an end nobody could read, and a lag that could not be worked out from either are all -1 in both, and they are passed through rather than smoothed over: "has not committed" and "committed at the beginning" are different facts about a group and the difference is what somebody is looking for. Nothing is spent unless it is asked for — listing groups works out no lag, describing one reads no offsets, and the view offers a button rather than making the request, which is the shape a collection's sampling already had. What is shown never reads as -1: a position nobody could give says none, a lag that could not be measured says unknown, and a partition appearing to be ahead of its own log reads as up to date, the commit and the end of the log being read a moment apart so that is the measurement rather than the group, and the model says to clamp rather than trust the sign. The total counts only what could be measured and says how many it left out, a total quietly omitting the partitions nobody could read being the most misleading number on the page. The structure view's optional actions became a struct along the way: a third of them would have meant a fourth positional argument and a third nil at thirty call sites, the same churn as the struct and nothing better left behind. One collision worth recording: the new helper was called offsetsOf, which a tagged test file already used for something else, so the untagged build could not see it and only the tagged one failed — the pre-run check reported it as a package that does not build, which is the distinction it grew after T2.73, where exactly this looked like three wrong test names*
 - [ ] **T2.77** Produce a message: key, value, headers, partition, schema validation → FR-13.11
 - [ ] **T2.78** Topic admin: create, delete, add partitions → FR-13.12
 - [ ] **T2.79** Topic config view/alter, defaults distinguished from overrides → FR-13.12

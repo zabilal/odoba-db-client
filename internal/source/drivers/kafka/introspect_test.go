@@ -220,3 +220,70 @@ func TestWhatTheTreeCallsTheCluster(t *testing.T) {
 		t.Error("a cluster with nothing at all is called nothing at all")
 	}
 }
+
+// A group's progress as the model holds it (T2.76, FR-13.10).
+
+func TestAGroupsProgressIsCarriedAcrossInOrder(t *testing.T) {
+	lag := kadm.GroupLag{
+		"orders": {
+			2: {Topic: "orders", Partition: 2, Commit: kadm.Offset{At: 90},
+				End: kadm.ListedOffset{Offset: 100}, Lag: 10},
+			0: {Topic: "orders", Partition: 0, Commit: kadm.Offset{At: 50},
+				End: kadm.ListedOffset{Offset: 50}, Lag: 0},
+		},
+		"audit": {
+			1: {Topic: "audit", Partition: 1, Commit: kadm.Offset{At: 7},
+				End: kadm.ListedOffset{Offset: 9}, Lag: 2},
+		},
+	}
+	got := progressOf(lag)
+	if len(got) != 3 {
+		t.Fatalf("a group reading three partitions has %d: %+v", len(got), got)
+	}
+	// By topic and then by partition: a map has no order, and the same group
+	// has to read the same way twice.
+	want := []model.GroupOffset{
+		{Topic: "audit", Partition: 1, Current: 7, End: 9, Lag: 2},
+		{Topic: "orders", Partition: 0, Current: 50, End: 50, Lag: 0},
+		{Topic: "orders", Partition: 2, Current: 90, End: 100, Lag: 10},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("partition %d reads as %+v, not %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestWhatCouldNotBeReadOfAGroupSaysSoRatherThanReadingAsZero(t *testing.T) {
+	// Nothing committed yet, and an end nobody could read: kadm says -1 for
+	// each, the model documents -1 for each, and the difference between "has
+	// not committed" and "committed at the beginning" is exactly what
+	// somebody is looking for.
+	lag := kadm.GroupLag{
+		"orders": {
+			0: {Topic: "orders", Partition: 0, Commit: kadm.Offset{At: -1},
+				End: kadm.ListedOffset{Offset: 100}, Lag: -1},
+			1: {Topic: "orders", Partition: 1, Commit: kadm.Offset{At: 5},
+				End: kadm.ListedOffset{Offset: -1}, Lag: -1},
+		},
+	}
+	got := progressOf(lag)
+	if len(got) != 2 {
+		t.Fatalf("two partitions read as %+v", got)
+	}
+	if got[0].Current != -1 || got[0].End != 100 || got[0].Lag != -1 {
+		t.Errorf("a partition nothing has committed to reads as %+v", got[0])
+	}
+	if got[1].Current != 5 || got[1].End != -1 || got[1].Lag != -1 {
+		t.Errorf("a partition whose end could not be read reads as %+v", got[1])
+	}
+}
+
+func TestAGroupReadingNothingHasNoProgressToShow(t *testing.T) {
+	if got := progressOf(nil); len(got) != 0 {
+		t.Errorf("a group reading nothing has progress %+v", got)
+	}
+	if got := progressOf(kadm.GroupLag{"orders": {}}); len(got) != 0 {
+		t.Errorf("a topic with no partitions read has progress %+v", got)
+	}
+}

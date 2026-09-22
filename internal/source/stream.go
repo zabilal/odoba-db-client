@@ -12,8 +12,14 @@ import (
 // every other paradigm's data path (see browse.go), with Seek and Follow in
 // BrowseOptions. Only operations with no analogue elsewhere live here.
 
-// StreamAdmin inspects and manages consumer groups and topics.
-type StreamAdmin interface {
+// GroupInspector reads consumer groups and how far behind they are.
+//
+// It is the half of stream administration that changes nothing, and it is an
+// interface of its own for that reason: showing how far a group has got is
+// worth offering long before anything here can reset an offset or create a
+// topic, and one interface for both would make offering the first a promise
+// to do the second (ADR-0107).
+type GroupInspector interface {
 	// ConsumerGroups lists groups without computing lag, which would be
 	// prohibitive on a cluster with thousands of them (FR-13.10).
 	ConsumerGroups(ctx context.Context) ([]model.ConsumerGroup, error)
@@ -21,6 +27,11 @@ type StreamAdmin interface {
 	// GroupOffsets loads one group's per-partition progress and lag. Called
 	// only when the user opens a group.
 	GroupOffsets(ctx context.Context, groupID string) ([]model.GroupOffset, error)
+}
+
+// StreamAdmin inspects and manages consumer groups and topics.
+type StreamAdmin interface {
+	GroupInspector
 
 	// ResetOffsets moves a group's committed offsets.
 	//

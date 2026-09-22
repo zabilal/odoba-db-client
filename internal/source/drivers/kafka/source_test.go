@@ -280,21 +280,36 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if caps.Query.Supported || caps.Query.Language != "" {
 		t.Errorf("a query language is claimed: %+v", caps.Query)
 	}
-	// Records can be read now (T2.63). Everything else a stream source might
-	// do waits for the task that writes it.
+	// Records can be read (T2.63), and groups and their lag inspected
+	// (T2.76). Everything else a stream source might do waits for the task
+	// that writes it.
 	if !caps.Stream.Consume {
 		t.Error("records are read and consuming is not claimed")
 	}
-	unwritten := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true}
-	if caps.Stream != unwritten {
+	if !caps.Stream.ConsumerGroups {
+		t.Error("groups and their lag are read and inspecting them is not claimed")
+	}
+	// Claiming that is a promise about the half of stream administration
+	// that changes nothing, and about nothing else. Resetting offsets and
+	// administering topics are separate claims kept by a separate interface,
+	// and this driver must not satisfy it while neither is written: that is
+	// the whole point of the split (ADR-0107).
+	if _, ok := any(&kafkaSource{}).(source.GroupInspector); !ok {
+		t.Error("claims Stream.ConsumerGroups but does not implement GroupInspector")
+	}
+	if _, ok := any(&kafkaSource{}).(source.StreamAdmin); ok {
+		t.Error("implements StreamAdmin, whose resetting and administering are not written")
+	}
+	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true, ConsumerGroups: true}
+	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}
 	if caps.Data.ServerFilter || caps.Data.ServerSort || caps.Data.ExactCount {
 		t.Errorf("the grid is promised something: %+v", caps.Data)
 	}
 	// The cluster, its topics, their partitions and the groups reading them
-	// are all in the tree now (T2.62). Schema-registry subjects are not: they
-	// wait on a registry client to ask (T2.69).
+	// are all in the tree now (T2.62). Subjects are claimed only where a
+	// registry was named (T2.74), and this connection names none.
 	for _, listed := range []model.ObjectKind{
 		model.KindCluster, model.KindTopic, model.KindPartition, model.KindConsumerGroup,
 	} {

@@ -111,3 +111,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0104](0104-a-document-with-five-bytes-in-front.md) | A document with five bytes in front | Accepted |
 | [0105](0105-comparing-two-versions-of-a-schema.md) | Comparing two versions of a schema | Accepted |
 | [0106](0106-a-description-is-not-rows.md) | A description is not rows | Accepted |
+| [0107](0107-inspecting-a-group-is-not-administering-one.md) | Inspecting a group is not administering one | Accepted |

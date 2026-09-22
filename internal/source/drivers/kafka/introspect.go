@@ -341,6 +341,77 @@ func (s *kafkaSource) subjectNodes(ctx context.Context, class model.ObjectRef) (
 	return out, nil
 }
 
+// ConsumerGroups lists the cluster's groups and what each is doing, and does
+// not work out how far behind any of them is: a cluster can hold thousands,
+// and lag is a pair of requests apiece (FR-13.10).
+func (s *kafkaSource) ConsumerGroups(ctx context.Context) (_ []model.ConsumerGroup, err error) {
+	defer panics.Recover(&err, "listing the consumer groups")
+
+	groups, err := s.admin.ListGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.ConsumerGroup, 0, len(groups))
+	for _, g := range groups.Sorted() {
+		out = append(out, model.ConsumerGroup{ID: g.Group, State: g.State})
+	}
+	return out, nil
+}
+
+// GroupOffsets is how far a group has got on every partition it reads, and
+// how far behind that leaves it (FR-13.10).
+//
+// This is the request the rest of the group view will not make on its own. It
+// costs the group's committed offsets and the ends of every log those offsets
+// are in, so it happens when somebody asks for it, and never as a side effect
+// of describing a group (T2.75).
+func (s *kafkaSource) GroupOffsets(ctx context.Context, groupID string) (_ []model.GroupOffset, err error) {
+	defer panics.Recover(&err, "reading a group's progress")
+
+	lags, err := s.admin.Lag(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	l, ok := lags[groupID]
+	if !ok {
+		return nil, fmt.Errorf("kafka: this cluster has no consumer group %q", groupID)
+	}
+	// Describing the group and fetching its commits are two requests, and
+	// either can fail on its own; the lag is worth nothing if either did.
+	if err := l.Error(); err != nil {
+		return nil, err
+	}
+	return progressOf(l.Lag), nil
+}
+
+// progressOf is a group's lag as the model holds it, in topic and partition
+// order so that the same group reads the same way twice.
+//
+// Every -1 that comes through is kept. A partition nothing has committed to,
+// an end nobody could read, and a lag that could not be worked out from
+// either are all -1 here, and the model says so for each of them — because
+// "has not committed" and "committed at the beginning" are different facts
+// about a group, and smoothing them together would hide the one somebody is
+// looking for.
+func progressOf(lag kadm.GroupLag) []model.GroupOffset {
+	var out []model.GroupOffset
+	for _, ps := range lag {
+		for _, l := range ps {
+			out = append(out, model.GroupOffset{
+				Topic: l.Topic, Partition: l.Partition,
+				Current: l.Commit.At, End: l.End.Offset, Lag: l.Lag,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Topic != out[j].Topic {
+			return out[i].Topic < out[j].Topic
+		}
+		return out[i].Partition < out[j].Partition
+	})
+	return out
+}
+
 // logs are a topic's partitions and the metadata they came from, without
 // asking the brokers what any of it occupies.
 func (s *kafkaSource) logs(ctx context.Context, name string) ([]model.Partition, kadm.TopicDetail, error) {

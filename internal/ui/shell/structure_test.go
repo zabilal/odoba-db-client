@@ -114,7 +114,7 @@ func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
 	}, Tables: []model.Table{{Name: "people"}, {Name: "orders"}},
 		Views:     []model.View{{Name: "people_by_score", Materialized: true}},
 		UserTypes: []model.UserType{{Name: "address"}}}
-	got := strings.Join(labelTexts(structureView(schema, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(schema, structureActions{})), "\n")
 	for _, want := range []string{
 		"Replication", "strategy", "NetworkTopologyStrategy", "dc1", "3", "durable writes",
 		"What it holds", "Tables", "2", "Materialized views", "1", "Types",
@@ -130,7 +130,7 @@ func TestStructureShowsHowAKeyspaceIsReplicated(t *testing.T) {
 	}
 	// A keyspace with neither views nor types shows neither.
 	bare := &model.Schema{Name: "shop", Attrs: map[string]string{"strategy": "SimpleStrategy"}}
-	got = strings.Join(labelTexts(structureView(bare, nil, nil)), "\n")
+	got = strings.Join(labelTexts(structureView(bare, structureActions{})), "\n")
 	if strings.Contains(got, "Materialized views") || strings.Contains(got, "Types") {
 		t.Errorf("a keyspace shows what it has not got:\n%s", got)
 	}
@@ -149,7 +149,7 @@ func TestStructureShowsATopicsPartitions(t *testing.T) {
 			{ID: 2, Leader: -1, Replicas: []int32{3}, ISR: []int32{},
 				LowWatermark: 7, HighWatermark: 7},
 		}}
-	got := strings.Join(labelTexts(structureView(topic, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(topic, structureActions{})), "\n")
 	for _, want := range []string{
 		"Partitions", "Leader", "In sync", "Offsets",
 		"1, 2", "0 to 100", // a healthy partition, and where its log runs
@@ -180,13 +180,13 @@ func TestStructureShowsATopicsPartitions(t *testing.T) {
 	// A topic whose copies all keep up says nothing about copies at all.
 	sound := &model.Topic{Name: "audit", ReplicationFactor: 1,
 		Partitions: []model.Partition{{ID: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}}}}
-	if got := strings.Join(labelTexts(structureView(sound, nil, nil)), "\n"); strings.Contains(got, "short of") {
+	if got := strings.Join(labelTexts(structureView(sound, structureActions{})), "\n"); strings.Contains(got, "short of") {
 		t.Errorf("a sound topic is reported as short of a copy:\n%s", got)
 	}
 	// And one partition short reads as one, not as a plural.
 	short := &model.Topic{Name: "audit", ReplicationFactor: 2,
 		Partitions: []model.Partition{{ID: 0, Leader: 1, Replicas: []int32{1, 2}, ISR: []int32{1}}}}
-	if got := strings.Join(labelTexts(structureView(short, nil, nil)), "\n"); !strings.Contains(got, "1 partition is short") {
+	if got := strings.Join(labelTexts(structureView(short, structureActions{})), "\n"); !strings.Contains(got, "1 partition is short") {
 		t.Errorf("one partition short reads as:\n%s", got)
 	}
 }
@@ -198,7 +198,7 @@ func TestStructureShowsHowATopicIsSpread(t *testing.T) {
 			{ID: 1, LowWatermark: 40, HighWatermark: 60},
 		},
 		Attrs: map[string]string{"size on disk": "12 MB across all replicas"}}
-	got := strings.Join(labelTexts(structureView(topic, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(topic, structureActions{})), "\n")
 	for _, want := range []string{
 		"2 partitions", "on 3 brokers", "up to 120 records",
 		"What it says about itself", "size on disk", "12 MB across all replicas",
@@ -215,7 +215,7 @@ func TestStructureShowsHowATopicIsSpread(t *testing.T) {
 	// One partition reads as one, and a topic of Kafka's own says whose it is.
 	own := &model.Topic{Name: "__consumer_offsets", Internal: true, ReplicationFactor: 1,
 		Partitions: []model.Partition{{ID: 0}}}
-	got = strings.Join(labelTexts(structureView(own, nil, nil)), "\n")
+	got = strings.Join(labelTexts(structureView(own, structureActions{})), "\n")
 	for _, want := range []string{"one partition", "on one broker", "Kafka's own"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("an internal topic does not say %q:\n%s", want, got)
@@ -229,7 +229,7 @@ func TestStructureShowsHowATopicIsSpread(t *testing.T) {
 	// Replication that varies by partition is said, not averaged away.
 	varies := &model.Topic{Name: "mixed", ReplicationFactor: -1,
 		Partitions: []model.Partition{{ID: 0}, {ID: 1}}}
-	if got := strings.Join(labelTexts(structureView(varies, nil, nil)), "\n"); !strings.Contains(got, "replicated differently") {
+	if got := strings.Join(labelTexts(structureView(varies, structureActions{})), "\n"); !strings.Contains(got, "replicated differently") {
 		t.Errorf("a topic replicated unevenly says:\n%s", got)
 	}
 }
@@ -243,7 +243,7 @@ func TestStructureShowsWhatAClusterIs(t *testing.T) {
 			{ID: 2, Host: "two", Port: 9093},
 		},
 		Attrs: map[string]string{"version": "v4.1"}}
-	got := strings.Join(labelTexts(structureView(cluster, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(cluster, structureActions{})), "\n")
 	for _, want := range []string{
 		"2 brokers", "abc123", "Brokers", "one:9092", "rack-a", "two:9093",
 		"2 (controller)", "What it says about itself", "version", "v4.1",
@@ -258,12 +258,12 @@ func TestStructureShowsWhatAClusterIs(t *testing.T) {
 	}
 	// A cluster of one reads as one, not as "1 brokers".
 	one := &model.Cluster{ID: "solo", Brokers: []model.Broker{{ID: 1, Host: "h", Port: 9092}}}
-	if got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n"); !strings.Contains(got, "one broker") {
+	if got := strings.Join(labelTexts(structureView(one, structureActions{})), "\n"); !strings.Contains(got, "one broker") {
 		t.Errorf("a cluster of one says:\n%s", got)
 	}
 	// And one that named no brokers says so, rather than showing an empty table.
 	none := &model.Cluster{ID: "empty"}
-	if got := strings.Join(labelTexts(structureView(none, nil, nil)), "\n"); !strings.Contains(got, "named no brokers") {
+	if got := strings.Join(labelTexts(structureView(none, structureActions{})), "\n"); !strings.Contains(got, "named no brokers") {
 		t.Errorf("a cluster with no brokers says:\n%s", got)
 	}
 }
@@ -284,7 +284,7 @@ func TestStructureShowsACollectionsShape(t *testing.T) {
 				{Type: model.DataType{Native: "int"}}, {Type: model.DataType{Native: "string"}}}},
 		}},
 	}
-	got := strings.Join(labelTexts(structureView(coll, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(coll, structureActions{})), "\n")
 	for _, want := range []string{
 		"About 41 documents", "Indexes", "_id_", "name_score", "name, score DESC", "unique, sparse",
 		"seen_ttl", "3600 seconds", "body text",
@@ -298,7 +298,7 @@ func TestStructureShowsACollectionsShape(t *testing.T) {
 	// A view says what it is, and shows nothing it has not got.
 	view := &model.Collection{Name: "high_scores", DocumentsEstimate: -1,
 		Attrs: map[string]string{"type": "view", "readOnly": "true"}}
-	got = strings.Join(labelTexts(structureView(view, nil, nil)), "\n")
+	got = strings.Join(labelTexts(structureView(view, structureActions{})), "\n")
 	for _, want := range []string{"A view", "Read-only"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the view's structure does not say %q:\n%s", want, got)
@@ -324,7 +324,7 @@ func TestStructureShowsASubjectsVersionsAndWhatChanged(t *testing.T) {
 			{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1},
 			{Version: 2, ID: 9, Format: "AVRO", Definition: subjectV2},
 		}}
-	got := strings.Join(labelTexts(structureView(subject, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(subject, structureActions{})), "\n")
 	for _, want := range []string{
 		"2 versions, the newest of them version 2.",
 		"Versions", "Schema id", "AVRO",
@@ -352,7 +352,7 @@ func TestStructureShowsASubjectsVersionsAndWhatChanged(t *testing.T) {
 		t.Errorf("the comparison does not count what changed:\n%s", got)
 	}
 	var arrived []string
-	for _, l := range labelTexts(structureView(subject, nil, nil)) {
+	for _, l := range labelTexts(structureView(subject, structureActions{})) {
 		if strings.HasPrefix(l, "+ ") {
 			arrived = append(arrived, l)
 		}
@@ -365,7 +365,7 @@ func TestStructureShowsASubjectsVersionsAndWhatChanged(t *testing.T) {
 func TestStructureComparesNothingWhereThereIsNothingToCompare(t *testing.T) {
 	one := &model.SchemaSubject{Name: "orders-value",
 		Versions: []model.SchemaVersion{{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1}}}
-	got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(one, structureActions{})), "\n")
 	if !strings.Contains(got, "One version, and nothing has replaced it.") {
 		t.Errorf("a subject with one version says:\n%s", got)
 	}
@@ -378,7 +378,7 @@ func TestStructureComparesNothingWhereThereIsNothingToCompare(t *testing.T) {
 	}
 
 	// A subject with no versions says so rather than drawing an empty table.
-	none := strings.Join(labelTexts(structureView(&model.SchemaSubject{Name: "orders-value"}, nil, nil)), "\n")
+	none := strings.Join(labelTexts(structureView(&model.SchemaSubject{Name: "orders-value"}, structureActions{})), "\n")
 	if !strings.Contains(none, "Nothing has been registered") {
 		t.Errorf("an empty subject says:\n%s", none)
 	}
@@ -396,7 +396,7 @@ func TestStructureSaysWhenTwoVersionsAreTheSameText(t *testing.T) {
 			{Version: 1, ID: 7, Format: "AVRO", Definition: subjectV1},
 			{Version: 2, ID: 7, Format: "AVRO", Definition: subjectV1},
 		}}
-	got := strings.Join(labelTexts(structureView(same, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(same, structureActions{})), "\n")
 	if !strings.Contains(got, "From version 1 to version 2: the same text.") {
 		t.Errorf("two versions of one text read as:\n%s", got)
 	}
@@ -410,7 +410,7 @@ func TestStructureNamesACompatibilityModeItCannotExplain(t *testing.T) {
 	// without explaining it is better than explaining it wrongly.
 	odd := &model.SchemaSubject{Name: "orders-value", Compatibility: "SIDEWAYS",
 		Versions: []model.SchemaVersion{{Version: 1, ID: 1, Format: "AVRO", Definition: subjectV1}}}
-	got := strings.Join(labelTexts(structureView(odd, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(odd, structureActions{})), "\n")
 	if !strings.Contains(got, "Compatibility: SIDEWAYS.") {
 		t.Errorf("an unfamiliar compatibility mode reads as:\n%s", got)
 	}
@@ -426,7 +426,7 @@ func TestStructureComparesTheTwoMostRecentVersions(t *testing.T) {
 			{Version: 2, ID: 2, Format: "AVRO", Definition: subjectV1},
 			{Version: 3, ID: 3, Format: "AVRO", Definition: subjectV2},
 		}}
-	got := strings.Join(labelTexts(structureView(three, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(three, structureActions{})), "\n")
 	// The pickers say which two versions are being compared, and they are
 	// the newest and the one before it.
 	for _, want := range []string{"From version 2 to version 3", "compared with"} {
@@ -463,7 +463,7 @@ func TestStructureShowsWhoIsInAGroupAndWhatTheyRead(t *testing.T) {
 			// looks for when a group is not getting through its logs.
 			{ID: "m-2", ClientID: "ikigai", Host: "/10.0.0.5"},
 		}}
-	got := strings.Join(labelTexts(structureView(group, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(group, structureActions{})), "\n")
 	for _, want := range []string{
 		"Stable, with 2 members.",
 		"Members", "Member", "Client", "Host", "Assigned",
@@ -480,7 +480,7 @@ func TestStructureShowsWhoIsInAGroupAndWhatTheyRead(t *testing.T) {
 
 func TestStructureSaysWhenAGroupHasNobodyInIt(t *testing.T) {
 	empty := &model.ConsumerGroup{ID: "readers", State: "Empty"}
-	got := strings.Join(labelTexts(structureView(empty, nil, nil)), "\n")
+	got := strings.Join(labelTexts(structureView(empty, structureActions{})), "\n")
 	if !strings.Contains(got, "Empty, with nobody in it.") {
 		t.Errorf("a group with no members says:\n%s", got)
 	}
@@ -492,14 +492,14 @@ func TestStructureSaysWhenAGroupHasNobodyInIt(t *testing.T) {
 	// One member reads as one, not as "1 members".
 	one := &model.ConsumerGroup{ID: "readers", State: "Stable",
 		Members: []model.GroupMember{{ID: "m-1"}}}
-	if got := strings.Join(labelTexts(structureView(one, nil, nil)), "\n"); !strings.Contains(got, "with one member.") {
+	if got := strings.Join(labelTexts(structureView(one, structureActions{})), "\n"); !strings.Contains(got, "with one member.") {
 		t.Errorf("a group of one says:\n%s", got)
 	}
 
 	// A state the cluster never gave is said as an absence rather than left
 	// as a blank somebody has to interpret.
 	none := &model.ConsumerGroup{ID: "readers"}
-	if got := strings.Join(labelTexts(structureView(none, nil, nil)), "\n"); !strings.Contains(got, "did not name") {
+	if got := strings.Join(labelTexts(structureView(none, structureActions{})), "\n"); !strings.Contains(got, "did not name") {
 		t.Errorf("a group with no state says:\n%s", got)
 	}
 }
@@ -530,5 +530,111 @@ func TestStructureOpensForAnObjectWithNoRowsToOpen(t *testing.T) {
 	// kind of object it does not know.
 	if showsAll(tb, "cannot be shown yet") {
 		t.Error("the cluster's structure reads as a kind the view cannot show")
+	}
+}
+
+// How far a group has got (T2.76, FR-13.10).
+
+func TestStructureShowsHowFarAGroupHasGot(t *testing.T) {
+	group := &model.ConsumerGroup{ID: "readers", State: "Stable",
+		Members: []model.GroupMember{{ID: "m-1", ClientID: "ikigai", Host: "/10.0.0.4"}},
+		Offsets: []model.GroupOffset{
+			{Topic: "orders", Partition: 0, Current: 90, End: 100, Lag: 10},
+			{Topic: "orders", Partition: 1, Current: 50, End: 50, Lag: 0},
+		}}
+	got := strings.Join(labelTexts(structureView(group, structureActions{})), "\n")
+	for _, want := range []string{
+		"Progress", "Topic", "Partition", "Committed", "End of log", "Behind",
+		"90", "100", "10",
+		"up to date", // a partition whose commit has reached the end of its log
+		"10 records behind, across the partitions that could be measured.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a group's progress does not say %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestStructureSaysWhatCouldNotBeMeasuredOfAGroup(t *testing.T) {
+	// A partition nothing has committed to, and one whose end nobody could
+	// read, cannot be measured. Both arrive as -1, which nobody should have
+	// to read, and neither is counted in the total.
+	group := &model.ConsumerGroup{ID: "readers", State: "Stable",
+		Offsets: []model.GroupOffset{
+			{Topic: "orders", Partition: 0, Current: -1, End: 100, Lag: -1},
+			{Topic: "orders", Partition: 1, Current: 5, End: -1, Lag: -1},
+			{Topic: "orders", Partition: 2, Current: 10, End: 14, Lag: 4},
+		}}
+	got := strings.Join(labelTexts(structureView(group, structureActions{})), "\n")
+	if strings.Contains(got, "-1") {
+		t.Errorf("something reads as -1:\n%s", got)
+	}
+	if n := strings.Count(got, "none"); n < 2 {
+		t.Errorf("what could not be read is named %d times, not twice:\n%s", n, got)
+	}
+	if n := strings.Count(got, "unknown"); n < 2 {
+		t.Errorf("lag that could not be worked out is named %d times, not twice:\n%s", n, got)
+	}
+	if !strings.Contains(got, "4 records behind") {
+		t.Errorf("the total leaves out the partition that could be measured:\n%s", got)
+	}
+	if !strings.Contains(got, "2 could not be, and are not counted.") {
+		t.Errorf("the total does not say what it left out:\n%s", got)
+	}
+}
+
+func TestStructureClampsAGroupThatReadsAsAheadOfItself(t *testing.T) {
+	// The commit and the end of the log are read a moment apart, so a busy
+	// partition can appear to be ahead of its own log. That is the
+	// measurement rather than the group, and it reads as caught up.
+	group := &model.ConsumerGroup{ID: "readers", State: "Stable",
+		Offsets: []model.GroupOffset{{Topic: "orders", Partition: 0, Current: 101, End: 100, Lag: -1}}}
+	got := strings.Join(labelTexts(structureView(group, structureActions{})), "\n")
+	if !strings.Contains(got, "up to date") {
+		t.Errorf("a partition ahead of its own log reads as:\n%s", got)
+	}
+	if strings.Contains(got, "unknown") {
+		t.Errorf("a partition that could be measured reads as one that could not:\n%s", got)
+	}
+}
+
+func TestStructureOffersToReadAGroupsProgressRatherThanReadingIt(t *testing.T) {
+	// Describing a group must not spend the two requests its lag costs, so
+	// the view offers them instead (T2.75, FR-13.10).
+	group := &model.ConsumerGroup{ID: "readers", State: "Stable"}
+	asked := 0
+	act := structureActions{progress: func() { asked++ }}
+
+	view := structureView(group, act)
+	b := findButton(view, "Read how far it has got")
+	if b == nil {
+		t.Fatalf("a group does not offer to read its progress:\n%s", strings.Join(labelTexts(view), "\n"))
+	}
+	if got := strings.Join(labelTexts(view), "\n"); !strings.Contains(got, "read when you ask for it") {
+		t.Errorf("the offer does not say why it is an offer:\n%s", got)
+	}
+	// Drawing the view must not be what reads it.
+	if asked != 0 {
+		t.Errorf("drawing the view read the progress %d times", asked)
+	}
+	b.OnTapped()
+	if asked != 1 {
+		t.Errorf("the offer was taken up %d times, not once", asked)
+	}
+
+	// Once read, the offer stands but stops explaining itself.
+	group.Offsets = []model.GroupOffset{{Topic: "orders", Partition: 0, Current: 1, End: 1}}
+	view = structureView(group, act)
+	if findButton(view, "Read it again") == nil {
+		t.Errorf("a group already read does not offer to read again:\n%s", strings.Join(labelTexts(view), "\n"))
+	}
+	if got := strings.Join(labelTexts(view), "\n"); strings.Contains(got, "read when you ask for it") {
+		t.Errorf("the explanation is repeated after it has been read:\n%s", got)
+	}
+
+	// And a source that cannot read a group's progress offers nothing at all.
+	bare := structureView(group, structureActions{})
+	if findButton(bare, "Read it again") != nil || findButton(bare, "Read how far it has got") != nil {
+		t.Error("a source that cannot read a group's progress offers to")
 	}
 }

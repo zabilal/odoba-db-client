@@ -270,3 +270,73 @@ func TestLiveAGroupIsDescribedByWhoIsInIt(t *testing.T) {
 		t.Errorf("describing a group read its offsets: %+v", g.Offsets)
 	}
 }
+
+func TestLiveAGroupsProgressIsReadOnlyWhenItIsAskedFor(t *testing.T) {
+	src := live(t, liveConfig())
+	seededTopic(t, src, "ikigai_it_orders", 3)
+	written(t, src, "ikigai_it_orders", 5)
+
+	cl := reading(t, "ikigai_it_progress", "ikigai_it_orders")
+	defer cl.Close()
+	ctx := context.Background()
+
+	// The claim is about reading a group and promises nothing about changing
+	// one, which is why it is kept by an interface of its own (ADR-0107).
+	if !src.Capabilities().Stream.ConsumerGroups {
+		t.Fatal("the driver reads consumer groups and does not claim to")
+	}
+	gi, ok := src.(source.GroupInspector)
+	if !ok {
+		t.Fatal("claims Stream.ConsumerGroups but does not implement GroupInspector")
+	}
+
+	groups, err := gi.ConsumerGroups(ctx)
+	if err != nil {
+		t.Fatalf("listing the groups: %v", err)
+	}
+	var listed *model.ConsumerGroup
+	for i, g := range groups {
+		if g.ID == "ikigai_it_progress" {
+			listed = &groups[i]
+		}
+		// Listing must not work out lag: on a cluster holding thousands of
+		// groups that is a pair of requests apiece (FR-13.10).
+		if len(g.Offsets) != 0 {
+			t.Errorf("listing the groups read %s's offsets: %+v", g.ID, g.Offsets)
+		}
+	}
+	if listed == nil {
+		t.Fatalf("the group that is reading is not listed: %+v", groups)
+	}
+	if listed.State == "" {
+		t.Errorf("%s says nothing about what it is doing", listed.ID)
+	}
+
+	// Asked for, it is there.
+	offsets, err := gi.GroupOffsets(ctx, "ikigai_it_progress")
+	if err != nil {
+		t.Fatalf("reading the group's progress: %v", err)
+	}
+	if len(offsets) == 0 {
+		t.Fatal("a group reading a topic of three partitions has no progress at all")
+	}
+	for _, o := range offsets {
+		if o.Topic != "ikigai_it_orders" {
+			t.Errorf("the group's progress mentions %q, which it never read", o.Topic)
+		}
+		if o.Partition < 0 {
+			t.Errorf("the group has progress on partition %d", o.Partition)
+		}
+		// A log that has been written to has an end, and reading a group's
+		// progress is what finds it.
+		if o.End < 0 {
+			t.Errorf("%s/%d says its log has no end", o.Topic, o.Partition)
+		}
+	}
+
+	// A group nobody has heard of is said to be missing rather than answered
+	// with no progress, which would read as a group that is up to date.
+	if _, err := gi.GroupOffsets(ctx, "ikigai_it_no_such_group"); err == nil {
+		t.Error("a group that is not there reported progress")
+	}
+}
