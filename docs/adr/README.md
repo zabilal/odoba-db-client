@@ -124,3 +124,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0117](0117-what-a-rename-actually-costs.md) | What a rename actually costs | Accepted |
 | [0118](0118-a-schema-is-a-graph-not-a-list.md) | A schema is a graph, not a list | Accepted |
 | [0119](0119-a-diff-has-no-history.md) | A diff has no history | Accepted |
+| [0120](0120-reading-a-database-whole.md) | Reading a database whole | Accepted |

@@ -238,8 +238,10 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 		},
 		// DDL because this driver renders a table's structure as statements
 		// (ddl.go). What it does not do is run them: the preview does, once
-		// somebody has read it (FR-6.4).
-		Schema: capability.Schema{ForeignKeys: true, DDL: true},
+		// somebody has read it (FR-6.4). Diff because it reads a whole
+		// database in one pass (snapshot.go), which is what comparing two of
+		// them needs (FR-7.1).
+		Schema: capability.Schema{ForeignKeys: true, DDL: true, Diff: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase:         true,
 			model.KindSchema:           true,

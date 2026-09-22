@@ -23,14 +23,15 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.9 — compare two live databases (FR-7.1). The engine is
-           done and pure (T3.8); what it has no source for is a whole
-           model. source.Snapshotter has been declared since the
-           driver contract was written and no driver implements it,
-           so this is PostgreSQL's Snapshot first — one pass over the
-           catalogue rather than a Describe per object, which is why
-           the interface says it exists — and then app.Compare over
-           two connections with the window to show it (T3.11).
+NEXT TASK: T3.10 — compare a live database against a saved model
+           (FR-7.1, and FR-7.6's file tree behind it). app.Snapshot
+           fills a model.Database from a connection now; this is the
+           same model on disk and read back. The question to settle
+           first is the format: one file per object is what FR-7.6
+           asks for and what makes a diff in version control
+           readable, and JSON is what the model already marshals to.
+           T3.11 is the tree that draws a comparison; nothing in the
+           window compares anything yet.
            3.A is finished: T3.1 to T3.7 are all done and FR-6.1 to
            FR-6.7 are met on PostgreSQL.
            MySQL, SQLite and Cassandra render no DDL yet, so on them
@@ -129,7 +130,12 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a comparison of two schemas that knows it has no
+LAST DONE: 2026-09-22 — a whole database read in one pass, nine queries
+           whatever it holds, proved by reading the fixture schema
+           both ways and comparing the two with the comparison
+           engine — which found two real disagreements the moment it
+           was written (T3.9, ADR-0120); before it
+           a comparison of two schemas that knows it has no
            history: everything matched by name, and a rename read as
            a removal and an addition, because two snapshots cannot
            say which column became which and guessing is the one
@@ -824,7 +830,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 3.B Schema compare & sync → J6
 
 - [x] **T3.8** Diff engine over the canonical model → `internal/diff` — *RISK-8 names this package by hand, because a sync script is generated from what it answers and one that is wrong destroys data. It reads no server and writes no statement: two models in, a tree of differences out, so the comparison is exercised in full without either database being reachable. Everything is matched by name and a rename is a removal plus an addition, which is the decision the package turns on: two snapshots cannot say which column became which, a rename and a drop-with-an-add being identical from here. The designer can tell them apart because it kept each column's origin as somebody edited (ADR-0114); a comparison has no such thing, and guessing would put a RENAME where a DROP and an ADD were meant, or the reverse (ADR-0119). What is unknown is not a difference: RowsEstimate is not compared at all, because a model read from a file has none and comparing a statistic against an absence would report a change in every table. The same rule leaves the databases' own names out — comparing dev against production means two differently-named databases every time — so the root takes the target's name. A column's type is the engine's own word and nothing else, since length, precision, scale and time-zone-ness are the driver's reading of that same word and comparing them too would report one difference twice. Identical things stay in the tree, because FR-7.2 asks for identical and a tree of differences alone cannot be filtered into one that shows them; a parent is changed when anything under it is, or a collapsed tree would look clean; and an object added or removed is one difference with no children, because the script creates it whole and a column of a table that does not exist is not a separate choice. Every difference carries both its values and only what differs, so whatever draws the tree never goes back to the models. Text is compared as text, whitespace and all: normalising here would be this package quietly deciding two strings are the same, and FR-7.5's ignore rules are where that belongs. The tree is sorted by name because two servers list things in whatever order they please, while inside an object order is meaning — a key on (a, b) is not a key on (b, a), and an index turned round answers a different question, so the direction travels with the column. from is what is there and to is what is wanted, tested both as a direction and as a symmetry: turning the comparison round turns every difference round with it and changes nothing else. 30 tests and 21 mutations, each caught first time*
-- [ ] **T3.9** Compare two live databases → FR-7.1
+- [x] **T3.9** Compare two live databases → FR-7.1 — *T3.8's engine takes two models and reads nothing; this is where the models come from. Describe answers one object and asks the catalogue five times to do it, so comparing two databases that way is a round trip per object per side — thousands on a real schema, which is why source.Snapshotter was declared when the driver contract was written and implemented by nobody until now. Nine queries, each reading the whole database at once, stitched together by relation afterwards. They are the per-object queries with the filter taken out and the row readers are shared, because two readings of the same catalogue that could drift apart would make a comparison report differences that are this program's rather than the databases' (ADR-0120). The live test is written as exactly that claim — read the fixture schema both ways and compare the two with the comparison engine — and it found two disagreements the moment it was written, both real: Describe never filled a table's triggers, although the canonical model has held them since it was written and the structure tab has drawn an empty Triggers section for them ever since; and an included column of an index kept the quotes pg_get_indexdef prints round a name that needs them, while the key columns had theirs trimmed, so an index including a column called Order rendered INCLUDE ("""Order""") — a column nobody has. A trigger's timing, events and condition are now read from tgtype and tgqual rather than parsed back out of the statement, and INSTEAD OF sets the BEFORE bit too, so the order those are read in is the difference between a trigger on a view being reported and being called a BEFORE trigger. A driver with no Snapshot is walked object by object by app.Snapshot, reading what the explorer reads through the same calls, so an engine nobody wrote a Snapshot for can still be compared; the difference is how long it takes and nothing else, both filling the same model. The walk lives in app and not in diff, because a comparison that could reach a server could not be tested without one — Snapshotter's own doc comment said diff would do it, which was written before ADR-0119 and is corrected. A trigger and an index are not read from their own folders, arriving with their table instead, or they would be doubled; an object that will not describe fails the read, because a schema quietly missing a table would compare as a table somebody had dropped; the system schemas are left out; and a failure says which of the two sides it was. 24 mutations, each caught: 9 in app, 8 untagged in the driver and 7 against a live server. Two needed a test written first — no fixture had a generated column, and nothing had ever read a trigger's bits — and two were mutations of mine that would not build*
 - [ ] **T3.10** Compare live database against a saved model → FR-7.1
 - [ ] **T3.11** Side-by-side diff tree (added/removed/changed/identical) → FR-7.2
 - [ ] **T3.12** Sync-script generation with per-difference selection → FR-7.3
