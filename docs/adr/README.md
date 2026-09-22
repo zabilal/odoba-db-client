@@ -114,3 +114,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0107](0107-inspecting-a-group-is-not-administering-one.md) | Inspecting a group is not administering one | Accepted |
 | [0108](0108-writing-a-record-and-what-is-checked-first.md) | Writing a record, and what is checked first | Accepted |
 | [0109](0109-what-a-tunnel-proves-before-it-carries-anything.md) | What a tunnel proves before it carries anything | Accepted |
+| [0110](0110-an-identity-nobody-typed.md) | An identity nobody typed | Accepted |

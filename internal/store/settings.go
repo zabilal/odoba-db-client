@@ -84,6 +84,7 @@ type SavedConnection struct {
 	Params      map[string]string `json:"params,omitempty"`
 	TLS         TLS               `json:"tls"`
 	SSH         *SSH              `json:"ssh,omitempty"`
+	Cloud       *Cloud            `json:"cloud,omitempty"`
 	Environment string            `json:"environment,omitempty"`
 	ReadOnly    bool              `json:"read_only,omitempty"`
 	Folder      string            `json:"folder,omitempty"`
@@ -108,6 +109,14 @@ type SSH struct {
 	Method    string   `json:"method,omitempty"`
 	KeyFile   string   `json:"key_file,omitempty"`
 	JumpHosts []string `json:"jump_hosts,omitempty"`
+}
+
+// Cloud says a connection signs in with a cloud identity instead of a
+// password (FR-1.14). Params holds the provider's own settings and nothing
+// secret: this file is written in plain sight.
+type Cloud struct {
+	Provider string            `json:"provider"`
+	Params   map[string]string `json:"params,omitempty"`
 }
 
 func defaultSettings() Settings {
@@ -362,6 +371,15 @@ func (c SavedConnection) ConnectionConfig(lookup func(connectionID, key string) 
 		cfg.SSH = &source.SSHConfig{
 			Host: c.SSH.Host, Port: c.SSH.Port, User: c.SSH.User, Method: c.SSH.Method,
 			KeyFile: c.SSH.KeyFile, JumpHosts: append([]string(nil), c.SSH.JumpHosts...),
+		}
+	}
+	if c.Cloud != nil {
+		cfg.Cloud = &source.CloudConfig{Provider: c.Cloud.Provider}
+		if len(c.Cloud.Params) > 0 {
+			cfg.Cloud.Params = make(map[string]string, len(c.Cloud.Params))
+			for k, v := range c.Cloud.Params {
+				cfg.Cloud.Params[k] = v
+			}
 		}
 	}
 	if lookup != nil {
