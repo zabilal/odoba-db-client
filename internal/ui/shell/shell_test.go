@@ -986,6 +986,23 @@ func (fakeSource) RenameColumn(_ model.ObjectRef, from, to string) ([]source.Sta
 	return []source.Statement{{SQL: "RENAME " + from + " TO " + to}}, nil
 }
 
+// Snapshot reads the whole database in one pass, as a driver that can does.
+// Without it the walk would find nothing: this fake lists its tables under
+// the database directly rather than under a class folder.
+func (fakeSource) Snapshot(_ context.Context, database string) (*model.Database, error) {
+	return &model.Database{Name: database, Schemas: []model.Schema{{Name: database,
+		Tables: []model.Table{{Name: "items", RowsEstimate: -1, Columns: fakeColumns()}}}}}, nil
+}
+
+// fakeColumns are the columns this fake's one table has, the same two its
+// tree lists.
+func fakeColumns() []model.Column {
+	return []model.Column{
+		{Name: "id", Position: 1, Type: model.DataType{Class: model.TypeInteger, Native: "integer", Length: -1}},
+		{Name: "name", Position: 2, Type: model.DataType{Class: model.TypeString, Native: "text", Length: -1}},
+	}
+}
+
 // Dependents answers what names an object, the way PostgreSQL does: a view
 // and a key that the rename carries, and a routine body that it does not.
 func (fakeSource) Dependents(_ context.Context, ref model.ObjectRef) ([]model.Dependent, error) {
