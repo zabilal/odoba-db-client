@@ -45,6 +45,28 @@ type Snapshotter interface {
 	Snapshot(ctx context.Context, database string) (*model.Database, error)
 }
 
+// DependencyReader is an optional Introspector refinement: it says what else
+// in the database names an object, so a rename can warn before it runs
+// (FR-6.6).
+//
+// What it reports is what a rename would do to each one, not a flat list of
+// references. The two are different questions and only the second is useful:
+// on PostgreSQL a view, a foreign key, an index and a trigger are all held
+// by identity and a rename carries them, so listing them as casualties would
+// be a warning about nothing.
+//
+// A source that cannot answer does not implement this, and a rename says so
+// rather than implying there is nothing to worry about.
+type DependencyReader interface {
+	// Dependents lists what names the object at ref.
+	//
+	// Everything it reports that breaks is a guess — text that mentions the
+	// name — because an engine that could resolve the reference would have
+	// carried it. Everything it reports that does not break is a fact read
+	// from the catalogue.
+	Dependents(ctx context.Context, ref model.ObjectRef) ([]model.Dependent, error)
+}
+
 // Searcher is an optional Introspector refinement for full-text search across
 // object definitions (FR-2.7) — finding a column by name, or a string inside a
 // stored procedure body.

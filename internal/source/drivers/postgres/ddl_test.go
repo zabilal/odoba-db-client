@@ -493,3 +493,92 @@ func TestSourceThatIsNotThereIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// Renaming an object (FR-6.6).
+
+func renamedObj(t *testing.T, ref model.ObjectRef, to string) []string {
+	t.Helper()
+	stmts, err := dialect{}.RenameObject(ref, to)
+	return sqlOf(t, stmts, err)
+}
+
+func TestEachKindIsRenamedByItsOwnWord(t *testing.T) {
+	for _, c := range []struct {
+		kind model.ObjectKind
+		path []string
+		want string
+	}{
+		{model.KindTable, []string{"db", "public", "people"}, `ALTER TABLE "public"."people" RENAME TO "folk"`},
+		{model.KindView, []string{"db", "public", "recent"}, `ALTER VIEW "public"."recent" RENAME TO "folk"`},
+		{model.KindMaterializedView, []string{"db", "public", "totals"}, `ALTER MATERIALIZED VIEW "public"."totals" RENAME TO "folk"`},
+		{model.KindSequence, []string{"db", "public", "people_id_seq"}, `ALTER SEQUENCE "public"."people_id_seq" RENAME TO "folk"`},
+		{model.KindIndex, []string{"db", "public", "people_name_ix"}, `ALTER INDEX "public"."people_name_ix" RENAME TO "folk"`},
+	} {
+		got := renamedObj(t, model.NewRef(c.kind, c.path...), "folk")
+		if len(got) != 1 || got[0] != c.want {
+			t.Errorf("%s rendered %q, want [%s]", c.kind, got, c.want)
+		}
+	}
+}
+
+// A routine's name carries its arguments, because that is what tells it from
+// another of the same name — and quoting the lot would ask for a routine
+// actually called "f(a integer)".
+func TestARoutineIsRenamedBySignature(t *testing.T) {
+	ref := model.NewRef(model.KindRoutine, "db", "app", "total(a integer, b text)")
+	got := renamedObj(t, ref, "sum")
+	want := `ALTER ROUTINE "app"."total"(a integer, b text) RENAME TO "sum"`
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("it rendered %q, want [%s]", got, want)
+	}
+	// ROUTINE and not FUNCTION: the ref says a routine is there and not
+	// whether it is a function or a procedure, and ROUTINE renames either.
+	if strings.Contains(got[0], "FUNCTION") || strings.Contains(got[0], "PROCEDURE") {
+		t.Errorf("it guessed which kind of routine: %s", got[0])
+	}
+}
+
+// A trigger's name is only unique on its table, so the statement names the
+// table too.
+func TestATriggerIsRenamedOnItsTable(t *testing.T) {
+	ref := model.NewRef(model.KindTrigger, "db", "public", "people", "audit")
+	got := renamedObj(t, ref, "audit_rows")
+	want := `ALTER TRIGGER "audit" ON "public"."people" RENAME TO "audit_rows"`
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("it rendered %q, want [%s]", got, want)
+	}
+}
+
+func TestATriggerWithNoTableIsRefused(t *testing.T) {
+	ref := model.NewRef(model.KindTrigger, "public", "audit")
+	if _, err := (dialect{}).RenameObject(ref, "audit_rows"); err == nil {
+		t.Fatal("a trigger with no table rendered a rename")
+	}
+}
+
+// A rename keeps the object where it is, so a qualified name is a different
+// request and is refused rather than quietly rendered as half of it.
+func TestARenameWillNotMoveAnObject(t *testing.T) {
+	for _, to := range []string{"other.people", `"people"`, "  "} {
+		if _, err := (dialect{}).RenameObject(peopleRef, to); err == nil {
+			t.Errorf("%q was accepted as a new name", to)
+		}
+	}
+}
+
+func TestRenamingSomethingToWhatItIsCalledIsNoChange(t *testing.T) {
+	stmts, err := dialect{}.RenameObject(peopleRef, "people")
+	if err != nil || len(stmts) != 0 {
+		t.Fatalf("it rendered %v, %v; want nothing at all", stmts, err)
+	}
+}
+
+// A schema is not renameable here: renaming one moves everything in it, and
+// what breaks has a different answer for each thing inside.
+func TestKindsWithNoRenameSayNo(t *testing.T) {
+	for _, k := range []model.ObjectKind{model.KindSchema, model.KindDatabase, model.KindColumn, model.KindTopic} {
+		if _, err := (dialect{}).RenameObject(model.NewRef(k, "db", "public", "thing"), "other"); err == nil {
+			t.Errorf("a %s rendered a rename", k)
+		}
+	}
+}

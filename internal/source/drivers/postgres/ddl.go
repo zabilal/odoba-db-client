@@ -615,3 +615,81 @@ func (d dialect) triggerTable(ref model.ObjectRef) string {
 	}
 	return ""
 }
+
+// Renaming an object (FR-6.6).
+//
+// PostgreSQL renames in place: RENAME TO takes a bare name and the object
+// stays in the schema it was in. A qualified name here would be a request to
+// move it, which is a different act with different consequences, so it is
+// refused rather than quietly obeyed.
+func (d dialect) RenameObject(ref model.ObjectRef, to string) ([]source.Statement, error) {
+	to = strings.TrimSpace(to)
+	if to == "" {
+		return nil, fmt.Errorf("postgres: a rename needs a new name")
+	}
+	if strings.ContainsAny(to, ".\"") {
+		return nil, fmt.Errorf("postgres: %q is not a name this can rename to; a rename keeps the object where it is", to)
+	}
+	if ref.Name() == "" {
+		return nil, fmt.Errorf("postgres: %s does not name anything to rename", ref)
+	}
+	if ref.Name() == to {
+		return nil, nil
+	}
+	verb, ok := renameVerb[ref.Kind]
+	if !ok {
+		return nil, fmt.Errorf("postgres: a %s cannot be renamed", ref.Kind)
+	}
+	target := d.QualifyRef(ref)
+	if target == "" {
+		return nil, fmt.Errorf("postgres: %s does not say where it is", ref)
+	}
+	switch ref.Kind {
+	case model.KindRoutine:
+		// A routine is known by its name and its argument types together, so
+		// the ref's last element is a signature rather than an identifier:
+		// f(a integer). Quoting it whole would ask for a routine called
+		// "f(a integer)", which is not the one meant.
+		name, args, found := strings.Cut(ref.Name(), "(")
+		if !found {
+			return nil, fmt.Errorf("postgres: routine %s does not carry its arguments, so it cannot be told from another of the same name", ref.Name())
+		}
+		target = d.QuoteIdentifier(schemaOf(ref)) + "." + d.QuoteIdentifier(name) + "(" + args
+	case model.KindTrigger:
+		// A trigger's name is only unique on its table, so the statement
+		// names the table too.
+		on := d.triggerTable(ref)
+		if on == "" {
+			return nil, fmt.Errorf("postgres: %s does not say which table its trigger is on", ref)
+		}
+		target = d.QuoteIdentifier(ref.Name()) + " ON " + on
+	}
+	return []source.Statement{{SQL: "ALTER " + verb + " " + target + " RENAME TO " + d.QuoteIdentifier(to)}}, nil
+}
+
+// renameVerb is what PostgreSQL calls each kind in an ALTER.
+//
+// A routine is ALTER ROUTINE rather than ALTER FUNCTION or ALTER PROCEDURE,
+// because the ref says a routine is there and not which of the two it is,
+// and ROUTINE renames either.
+//
+// A schema is not here. Renaming one is not a rename of an object but a move
+// of everything in it, every open tab beneath it included, and FR-6.6's
+// question — what breaks — has a different answer for each thing inside.
+var renameVerb = map[model.ObjectKind]string{
+	model.KindTable:            "TABLE",
+	model.KindView:             "VIEW",
+	model.KindMaterializedView: "MATERIALIZED VIEW",
+	model.KindSequence:         "SEQUENCE",
+	model.KindIndex:            "INDEX",
+	model.KindRoutine:          "ROUTINE",
+	model.KindTrigger:          "TRIGGER",
+}
+
+// schemaOf is the schema a ref sits in: the element before its own name.
+func schemaOf(ref model.ObjectRef) string {
+	if p := ref.Path; len(p) >= 2 {
+		return p[len(p)-2]
+	}
+	return ""
+}

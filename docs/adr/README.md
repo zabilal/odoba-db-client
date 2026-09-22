@@ -121,3 +121,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0114](0114-a-table-changed-on-paper-first.md) | A table changed on paper first | Accepted |
 | [0115](0115-what-is-read-is-what-runs.md) | What is read is what runs | Accepted |
 | [0116](0116-an-object-that-is-its-own-source.md) | An object that is its own source | Accepted |
+| [0117](0117-what-a-rename-actually-costs.md) | What a rename actually costs | Accepted |

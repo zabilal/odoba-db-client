@@ -96,4 +96,10 @@ type DDLGenerator interface {
 
 	// DropObject renders the DDL removing an object.
 	DropObject(ref model.ObjectRef, cascade bool) ([]Statement, error)
+
+	// RenameObject renders renaming an object in place, keeping where it is.
+	//
+	// to is a bare name: RENAME TO takes one, and a qualified name here
+	// would read as a request to move the object, which this is not.
+	RenameObject(ref model.ObjectRef, to string) ([]Statement, error)
 }

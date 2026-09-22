@@ -213,3 +213,19 @@ type UserType struct {
 	BaseType   string
 	Comment    string
 }
+
+// Dependent is something else in a database that names an object, reported
+// before a rename so somebody can see what it costs (FR-6.6).
+//
+// Breaks is the whole point. On PostgreSQL almost nothing breaks: a view, a
+// foreign key, an index and a trigger are all held by identity, so a rename
+// carries them and pg_get_viewdef prints the new name afterwards. What does
+// break is text the engine never re-resolves — a PL/pgSQL body, or a SQL
+// function whose body is a string — and that can only be found by looking
+// for the name in the text, which is a guess and says so in Note.
+type Dependent struct {
+	Ref    ObjectRef
+	Label  string // how to name it to a person
+	Note   string // how it depends, in words
+	Breaks bool   // a rename breaks it, rather than being carried along
+}

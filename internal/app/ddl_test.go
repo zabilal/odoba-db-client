@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -28,6 +29,17 @@ func (r *renderer) Capabilities() capability.Capabilities {
 func (r *renderer) CreateObject(model.ObjectRef, any) ([]source.Statement, error) { return nil, nil }
 
 func (r *renderer) DropObject(model.ObjectRef, bool) ([]source.Statement, error) { return nil, nil }
+
+func (r *renderer) RenameObject(ref model.ObjectRef, to string) ([]source.Statement, error) {
+	if ref.Kind != model.KindTable {
+		return nil, fmt.Errorf("renderer: a %s cannot be renamed", ref.Kind)
+	}
+	if to == ref.Name() {
+		return nil, nil // as the contract says: renaming it to what it is called is no change
+	}
+	r.calls = append(r.calls, "rename object to "+to)
+	return []source.Statement{{SQL: "ALTER TABLE " + ref.Name() + " RENAME TO " + to}}, nil
+}
 
 func (r *renderer) RenameColumn(_ model.ObjectRef, from, to string) ([]source.Statement, error) {
 	r.calls = append(r.calls, "rename "+from+" to "+to)

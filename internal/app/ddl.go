@@ -167,3 +167,60 @@ func SplitStatements(src source.Source, script string) []source.Statement {
 	}
 	return []source.Statement{{SQL: strings.TrimRight(strings.TrimSpace(script), ";")}}
 }
+
+// Renaming an object, and saying first what it costs (FR-6.6).
+
+// ErrNoDependencies is a source that cannot say what names an object. It is
+// not a failure either: whatever asks says so, rather than showing an empty
+// list, which would read as "nothing depends on this" and be a promise
+// nobody made.
+var ErrNoDependencies = errors.New("app: this connection cannot say what depends on an object")
+
+// PlanRename renders renaming an object as the statements that would do it.
+func PlanRename(src source.Source, ref model.ObjectRef, to string) (_ []source.Statement, err error) {
+	defer panics.Recover(&err, "rendering a rename")
+	gen, ok := ddl(src)
+	if !ok {
+		return nil, ErrNoDDL
+	}
+	return gen.RenameObject(ref, to)
+}
+
+// CanRename reports whether an object could be renamed on this connection.
+//
+// It asks by rendering, because the driver is the only thing that knows
+// which kinds it can rename: a second list of kinds here would be a list to
+// get wrong. The name it renders with is thrown away and never sent — it
+// only has to differ from the one the object has, since renaming something
+// to what it is called is no change and renders nothing.
+func CanRename(src source.Source, ref model.ObjectRef) bool {
+	to := "a"
+	if ref.Name() == to {
+		to = "b"
+	}
+	stmts, err := PlanRename(src, ref, to)
+	return err == nil && len(stmts) > 0
+}
+
+// DependentsOf lists what names an object, and what a rename would do to
+// each. A source that cannot say answers ErrNoDependencies.
+func DependentsOf(ctx context.Context, src source.Source, ref model.ObjectRef) (_ []model.Dependent, err error) {
+	defer panics.Recover(&err, "reading what depends on an object")
+	r, ok := src.(source.DependencyReader)
+	if !ok {
+		return nil, ErrNoDependencies
+	}
+	return r.Dependents(ctx, ref)
+}
+
+// Breaking is the dependents a rename would break, which is what somebody
+// renaming an object needs to read first.
+func Breaking(deps []model.Dependent) []model.Dependent {
+	var out []model.Dependent
+	for _, d := range deps {
+		if d.Breaks {
+			out = append(out, d)
+		}
+	}
+	return out
+}

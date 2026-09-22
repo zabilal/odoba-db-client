@@ -176,7 +176,7 @@ func (p *sourcePanel) preview() {
 		p.t.footer.SetText("There is nothing here to run.")
 		return
 	}
-	p.s.previewDDL(p.t, stmts, func() { p.s.reopenSource(p.t) })
+	p.s.previewDDL(p.t.ddl(), stmts, func() { p.s.reopenSource(p.t) })
 }
 
 // edited is what was described, with the source as it now reads.

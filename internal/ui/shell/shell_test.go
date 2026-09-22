@@ -986,6 +986,39 @@ func (fakeSource) RenameColumn(_ model.ObjectRef, from, to string) ([]source.Sta
 	return []source.Statement{{SQL: "RENAME " + from + " TO " + to}}, nil
 }
 
+// Dependents answers what names an object, the way PostgreSQL does: a view
+// and a key that the rename carries, and a routine body that it does not.
+func (fakeSource) Dependents(_ context.Context, ref model.ObjectRef) ([]model.Dependent, error) {
+	if ref.Name() == "nothing" {
+		return nil, nil
+	}
+	return []model.Dependent{
+		{Ref: model.NewRef(model.KindView, "main", "recent"), Label: "recent",
+			Note: "A view that selects from it. PostgreSQL holds it by identity, so the rename carries it."},
+		{Ref: model.NewRef(model.KindRoutine, "main", "total()"), Label: "total()",
+			Note: "Its plpgsql body names it in text, which PostgreSQL never resolved.", Breaks: true},
+	}, nil
+}
+
+// RenameObject renames only what the real driver can: a fake that renamed
+// anything would let a test pass where the window offers a rename that no
+// engine could carry out.
+func (fakeSource) RenameObject(ref model.ObjectRef, to string) ([]source.Statement, error) {
+	switch ref.Kind {
+	case model.KindTable, model.KindView, model.KindMaterializedView,
+		model.KindSequence, model.KindIndex, model.KindRoutine, model.KindTrigger:
+	default:
+		return nil, fmt.Errorf("fakesql: a %s cannot be renamed", ref.Kind)
+	}
+	if to == "" {
+		return nil, fmt.Errorf("fakesql: a rename needs a new name")
+	}
+	if to == ref.Name() {
+		return nil, nil
+	}
+	return []source.Statement{{SQL: "ALTER " + strings.ToUpper(string(ref.Kind)) + " " + ref.Name() + " RENAME TO " + to}}, nil
+}
+
 func (fakeSource) AlterObject(_ model.ObjectRef, from, to any) ([]source.Statement, error) {
 	was, _ := from.(*model.Table)
 	now, _ := to.(*model.Table)
