@@ -20,6 +20,10 @@ func designing(t *testing.T) (*fixture, *tab, *designPanel) {
 	return fx, tb, tb.design
 }
 
+// boxesPerColumn is how many text boxes one column's row draws: its name,
+// its type, its default and its comment.
+const boxesPerColumn = 4
+
 // buttonsNamed is every button under o with this label, which is how a row's
 // own Remove is told from the next one's.
 func buttonsNamed(o fyne.CanvasObject, text string) []*widget.Button {
@@ -142,9 +146,10 @@ func TestAddingAndRemovingColumns(t *testing.T) {
 		t.Errorf("the footer says %q", got)
 	}
 
-	// A new column is drawn like any other, and can be named at once.
-	boxes := entriesIn(tb.body)
-	boxes[len(boxes)-4].SetText("nickname")
+	// A new column is drawn like any other, and can be named at once. Its
+	// boxes are counted from the front: the keys and constraints are drawn
+	// after the columns, so counting from the back lands among them.
+	entriesIn(tb.body)[2*boxesPerColumn].SetText("nickname")
 	if got := p.design.Columns()[2].Name; got != "nickname" {
 		t.Errorf("the new column is called %q", got)
 	}
