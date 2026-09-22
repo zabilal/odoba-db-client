@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -88,6 +89,10 @@ type comparePanel struct {
 	write *widget.Button
 	save  *widget.Button
 	apply *widget.Button
+
+	// ignoring is what this comparison was told to leave out, kept so that
+	// the line saying so can be drawn and the rules changed (FR-7.5).
+	ignoring diff.Options
 }
 
 func compareKey(connID string, ref model.ObjectRef, against string) string {
@@ -189,7 +194,8 @@ func databaseOf(ref model.ObjectRef) string {
 // showComparison draws the tree, the filter and the detail beside it.
 func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	p := &comparePanel{s: s, t: t, root: got.Tree, filter: showDifferences,
-		live: got.Live, wanted: got.Wanted, chosen: app.Selection{}, dir: dir}
+		live: got.Live, wanted: got.Wanted, chosen: app.Selection{}, dir: dir,
+		ignoring: got.Ignoring}
 	t.compare = p
 	p.index()
 
@@ -222,6 +228,7 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	p.write = widget.NewButton("Write the Script…", p.writeScript)
 	p.save = widget.NewButton("Save…", p.saveScript)
 	p.apply = widget.NewButton("Apply…", p.applyScript)
+	rules := widget.NewButton("Leaving Out…", p.askWhatToLeaveOut)
 	p.apply.Importance = widget.HighImportance
 	for _, b := range p.buttons() {
 		b.Disable()
@@ -229,7 +236,7 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(
-			container.NewBorder(nil, nil, widget.NewLabel("Show"),
+			container.NewBorder(nil, nil, container.NewHBox(widget.NewLabel("Show"), rules),
 				container.NewHBox(p.write, p.save, p.apply), filter),
 			nil, nil, nil,
 			container.NewHSplit(
@@ -448,7 +455,16 @@ func (p *comparePanel) applyScript() {
 // of something that is no longer there. It is made again rather than
 // adjusted, because adjusting it would mean this program deciding what the
 // server did, and the server is right there to ask.
-func (s *Shell) reopenComparison(t *tab) {
+func (s *Shell) reopenComparison(t *tab) { s.recompare(t, nil) }
+
+// recompare reads both sides again, with rules of its own where some are
+// given and the model's own where they are not.
+//
+// Whatever ran has moved the database, so what is on screen is a comparison
+// of something that is no longer there. It is made again rather than
+// adjusted, because adjusting it would mean this program deciding what the
+// server did, and the server is right there to ask.
+func (s *Shell) recompare(t *tab, opt *diff.Options) {
 	p := t.compare
 	if p == nil {
 		return
@@ -463,6 +479,13 @@ func (s *Shell) reopenComparison(t *tab) {
 		var got app.Comparison
 		if err == nil {
 			got, err = app.CompareWithSaved(ctx, live.Source, databaseOf(t.ref), dir)
+		}
+		if err == nil && opt != nil {
+			// Rules for this comparison alone, which the model does not
+			// carry: the two models are already read, so they are compared
+			// again rather than the server asked twice.
+			got.Tree = diff.CompareWith(got.Live, got.Wanted, *opt)
+			got.Ignoring = *opt
 		}
 		s.d.Run(func() {
 			if t.ctx.Err() != nil {
@@ -576,14 +599,95 @@ func blankAsNothing(v string) string {
 }
 
 // summarise is the line above the tree: how much there is, before anybody
-// reads the rest.
+// reads the rest — and what was left out of it.
+//
+// The second part is said whether or not anything differs, because a rule
+// can hide a dropped column and "nothing differs" would then be a sentence
+// that is true and misleading at once.
 func (p *comparePanel) summarise(dir string) string {
 	c := p.root.Count()
-	if c[diff.Added]+c[diff.Removed]+c[diff.Changed] == 0 {
-		return fmt.Sprintf("Nothing differs. %s matches %s.", p.t.label, filepath.Base(dir))
-	}
-	return fmt.Sprintf("%s missing here, %s only here, %s changed, %s the same. Against %s.",
+	said := fmt.Sprintf("%s missing here, %s only here, %s changed, %s the same. Against %s.",
 		nounCount(c[diff.Added], "object"), nounCount(c[diff.Removed], "object"),
 		nounCount(c[diff.Changed], "object"), nounCount(c[diff.Same], "object"),
 		filepath.Base(dir))
+	if c[diff.Added]+c[diff.Removed]+c[diff.Changed] == 0 {
+		said = fmt.Sprintf("Nothing differs. %s matches %s.", p.t.label, filepath.Base(dir))
+	}
+	if out := p.ignoring.Describe(); out != "" {
+		said += " " + out
+	}
+	return said
+}
+
+// askWhatToLeaveOut edits the rules and compares again with them (FR-7.5).
+func (p *comparePanel) askWhatToLeaveOut() {
+	schemas := widget.NewEntry()
+	schemas.SetText(strings.Join(p.ignoring.Schemas, ", "))
+	schemas.PlaceHolder = "audit, staging"
+	names := widget.NewEntry()
+	names.SetText(strings.Join(p.ignoring.Names, ", "))
+	names.PlaceHolder = "*_tmp, old_*"
+	names.Validator = func(text string) error {
+		return diff.Options{Names: splitRules(text)}.Check()
+	}
+
+	space := widget.NewCheck("Whitespace in definitions", nil)
+	space.SetChecked(p.ignoring.Whitespace)
+	collation := widget.NewCheck("Charsets and collations", nil)
+	collation.SetChecked(p.ignoring.Collation)
+	comments := widget.NewCheck("Comments", nil)
+	comments.SetChecked(p.ignoring.Comments)
+
+	keep := widget.NewCheck("Keep these with the saved model", nil)
+	note := widget.NewLabel("What is left out is not compared at all: it will not be counted " +
+		"and cannot be chosen for a script.")
+	note.Wrapping = fyne.TextWrapWord
+
+	d := dialog.NewForm("Leaving Out", "Compare Again", "Cancel", []*widget.FormItem{
+		{Text: "Schemas", Widget: schemas},
+		{Text: "Names", Widget: names},
+		{Widget: space}, {Widget: collation}, {Widget: comments},
+		{Widget: keep}, {Widget: note},
+	}, func(ok bool) {
+		if !ok {
+			return
+		}
+		p.leaveOut(diff.Options{
+			Schemas: splitRules(schemas.Text), Names: splitRules(names.Text),
+			Whitespace: space.Checked, Collation: collation.Checked, Comments: comments.Checked,
+		}, keep.Checked)
+	}, p.s.win)
+	d.Resize(fyne.NewSize(520, d.MinSize().Height))
+	d.Show()
+}
+
+// leaveOut compares again with new rules, keeping them with the model where
+// that was asked for.
+func (p *comparePanel) leaveOut(opt diff.Options, keep bool) {
+	if err := opt.Check(); err != nil {
+		p.s.showError(err)
+		return
+	}
+	if keep {
+		if err := app.SetIgnored(p.dir, opt); err != nil {
+			p.s.showError(fmt.Errorf("could not keep the rules with the model: %w", err))
+			return
+		}
+		p.s.reopenComparison(p.t)
+		return
+	}
+	// Not kept: this comparison alone, made again with them.
+	p.s.recompare(p.t, &opt)
+}
+
+// splitRules reads a comma-separated list of rules, leaving out the empty
+// pieces a trailing comma makes.
+func splitRules(text string) []string {
+	var out []string
+	for _, part := range strings.Split(text, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

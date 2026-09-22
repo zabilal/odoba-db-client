@@ -20,12 +20,16 @@ import (
 // What is in both is compared; what is in one is added or removed whole. The
 // result is sorted by name, so the same two schemas always compare to the
 // same tree whatever order the two servers listed them in.
-func match[T any](from, to []T, kind model.ObjectKind, name func(T) string, compare func(a, b T) Node) []Node {
+func match[T any](from, to []T, kind model.ObjectKind, name func(T) string,
+	compare func(a, b T) Node, skip ...func(string) bool) []Node {
 	here := index(from, name)
 	there := index(to, name)
 
 	var out []Node
 	for _, n := range slices.Sorted(maps.Keys(union(here, there))) {
+		if leftOut(n, skip) {
+			continue
+		}
 		a, inFrom := here[n]
 		b, inTo := there[n]
 		switch {
@@ -38,6 +42,14 @@ func match[T any](from, to []T, kind model.ObjectKind, name func(T) string, comp
 		}
 	}
 	return out
+}
+
+// leftOut reports a name a rule says not to look at. There is at most one
+// rule, and none at all for the parts inside an object: a name pattern names
+// objects, not the columns they are made of, or ignoring a table called
+// audit would ignore a column of that name in every table there is.
+func leftOut(name string, skip []func(string) bool) bool {
+	return len(skip) > 0 && skip[0] != nil && skip[0](name)
 }
 
 // matchOne is match for something a table has at most one of, like its

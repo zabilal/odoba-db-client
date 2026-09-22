@@ -587,3 +587,103 @@ func TestAChangeThatRanNothingLeavesTheComparisonAlone(t *testing.T) {
 		t.Error("it read both sides again although nothing had run")
 	}
 }
+
+// What a comparison leaves out, said and changed (FR-7.5).
+
+// A rule can hide a dropped column, so what is left out is said whether or
+// not anything differs.
+func TestWhatIsLeftOutIsAlwaysSaid(t *testing.T) {
+	fx, _, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Comment = "a comment only the model has"
+	})
+	if !p.root.Differs() {
+		t.Fatal("a changed comment compared as no change")
+	}
+	if strings.Contains(p.summary.Text, "Leaving out") {
+		t.Errorf("with no rules it says %q", p.summary.Text)
+	}
+
+	// Left out, and the comparison says so even though it now finds nothing.
+	p.leaveOut(diff.Options{Comments: true}, false)
+	pump(t, fx.q, func() bool {
+		return fx.s.open[0].compare != nil && fx.s.open[0].compare != p
+	})
+	now := fx.s.open[0].compare
+	if now.root.Differs() {
+		t.Errorf("it still compared as %s", now.root.Status)
+	}
+	if !strings.Contains(now.summary.Text, "Nothing differs") {
+		t.Errorf("it says %q", now.summary.Text)
+	}
+	if !strings.Contains(now.summary.Text, "Leaving out comments") {
+		t.Errorf("it does not say what it left out: %q", now.summary.Text)
+	}
+}
+
+// Rules kept with the model are read back the next time anybody compares
+// against it, which is the whole point of them being an agreement.
+func TestRulesKeptWithTheModelAreUsedNextTime(t *testing.T) {
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Comment = "a comment only the model has"
+	})
+	p.leaveOut(diff.Options{Comments: true}, true)
+	pump(t, fx.q, func() bool { return tb.compare != nil && tb.compare != p })
+
+	// A comparison made afresh against the same model reads them.
+	again := fx.s.OpenComparison(tb.connID, model.NewRef(model.KindDatabase, "main"), p.dir)
+	pump(t, fx.q, func() bool { return again.compare != nil })
+	if !again.compare.ignoring.Comments {
+		t.Errorf("it compared with %+v", again.compare.ignoring)
+	}
+	if again.compare.root.Differs() {
+		t.Error("the rule kept with the model was not applied")
+	}
+}
+
+// Rules not kept are for this comparison alone, and the model is untouched.
+func TestRulesNotKeptAreForThisComparisonAlone(t *testing.T) {
+	fx, tb, p := comparing(t, func(db *model.Database) {
+		db.Schemas[0].Tables[0].Comment = "a comment only the model has"
+	})
+	dir := p.dir
+	p.leaveOut(diff.Options{Comments: true}, false)
+	pump(t, fx.q, func() bool { return tb.compare != nil && tb.compare != p })
+
+	if got, err := schemafile.Ignore(dir); err != nil || got.Any() {
+		t.Errorf("the model was changed: %+v, %v", got, err)
+	}
+	if !tb.compare.ignoring.Comments {
+		t.Error("the rule was not applied to this comparison")
+	}
+}
+
+// A pattern that is not one is refused rather than comparing with it.
+func TestARuleThatIsNotOneIsRefused(t *testing.T) {
+	fx, tb, p := comparing(t, nil)
+	p.leaveOut(diff.Options{Names: []string{"[unclosed"}}, false)
+	if fx.s.errors.text == "" {
+		t.Error("a pattern that will not parse was accepted")
+	}
+	if tb.compare != p {
+		t.Error("it compared again with a rule it had refused")
+	}
+}
+
+// A comma-separated list of rules is read as the rules in it, and a trailing
+// comma is not a rule that matches everything.
+func TestReadingAListOfRules(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want []string
+	}{
+		{"audit", []string{"audit"}},
+		{"audit, staging", []string{"audit", "staging"}},
+		{" audit ,, staging , ", []string{"audit", "staging"}},
+		{"", nil},
+		{"  ", nil},
+	} {
+		if got := splitRules(c.in); !slices.Equal(got, c.want) {
+			t.Errorf("%q read as %q, want %q", c.in, got, c.want)
+		}
+	}
+}

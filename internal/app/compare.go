@@ -60,6 +60,11 @@ type Comparison struct {
 	Live   *model.Database
 	Wanted *model.Database
 	Tree   diff.Node
+
+	// Ignoring is what the comparison was told to leave out (FR-7.5).
+	// Whatever draws it has to say so, because a rule can hide a dropped
+	// column.
+	Ignoring diff.Options
 }
 
 // Differs reports whether anything at all differs.
@@ -216,5 +221,19 @@ func CompareWithSaved(ctx context.Context, src source.Source, database, dir stri
 	if err != nil {
 		return Comparison{}, err
 	}
-	return Comparison{Live: live, Wanted: saved, Tree: diff.Compare(live, saved)}, nil
+	// The rules travel with the model, because they are part of the same
+	// agreement it is (ADR-0121).
+	opt, err := schemafile.Ignore(dir)
+	if err != nil {
+		return Comparison{}, err
+	}
+	if err := opt.Check(); err != nil {
+		return Comparison{}, err
+	}
+	return Comparison{Live: live, Wanted: saved, Tree: diff.CompareWith(live, saved, opt),
+		Ignoring: opt}, nil
 }
+
+// SetIgnored writes what a comparison against this model leaves out, so that
+// the rule is agreed once and kept where everybody reads it.
+func SetIgnored(dir string, opt diff.Options) error { return schemafile.SetIgnore(dir, opt) }

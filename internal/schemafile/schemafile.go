@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ikigai-db/ikigai-db/internal/diff"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -58,6 +59,15 @@ type database struct {
 	Collate string   `json:"collate,omitempty"`
 	Comment string   `json:"comment,omitempty"`
 	Schemas []string `json:"schemas"`
+
+	// Ignore is what a comparison against this model leaves out (FR-7.5).
+	//
+	// It lives here because it is part of the same agreement the model is:
+	// a team decides once that the audit schema is nobody's to deploy, and
+	// the decision travels in version control beside the objects it is
+	// about. Keeping it with the connection instead would make a comparison
+	// mean something different on each person's machine.
+	Ignore *diff.Options `json:"ignore,omitempty"`
 }
 
 // schemaOwn is a schema's own properties, without the objects in it: those
@@ -103,7 +113,10 @@ func Write(dir string, db *model.Database) (err error) {
 			os.RemoveAll(staging)
 		}
 	}()
-	if err = writeTree(staging, db); err != nil {
+	// Saving a model again keeps the rules agreed about it: they are an
+	// agreement about what to compare, not a fact about the database, and
+	// reading the database again is no reason to throw them away.
+	if err = writeTree(staging, db, keeping(dir)); err != nil {
 		return err
 	}
 	return swap(dir, staging)
@@ -189,9 +202,9 @@ func swap(dir, staging string) error {
 	return nil
 }
 
-func writeTree(dir string, db *model.Database) error {
+func writeTree(dir string, db *model.Database, keep *diff.Options) error {
 	root := database{Format: Format, Name: db.Name, Charset: db.Charset,
-		Collate: db.Collate, Comment: db.Comment}
+		Collate: db.Collate, Comment: db.Comment, Ignore: keep}
 	for _, s := range db.Schemas {
 		root.Schemas = append(root.Schemas, s.Name)
 	}
@@ -268,6 +281,48 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o600)
+}
+
+// Ignore is what a comparison against the model in dir leaves out.
+//
+// A directory that holds no model, or a model that says nothing about it,
+// answers no rules — which is not an error: most models have none.
+func Ignore(dir string) (diff.Options, error) {
+	var root database
+	if err := readJSON(filepath.Join(dir, dbFile), &root); err != nil {
+		if os.IsNotExist(err) {
+			return diff.Options{}, fmt.Errorf("schemafile: %s: %w", dir, ErrNotAModel)
+		}
+		return diff.Options{}, err
+	}
+	if root.Ignore == nil {
+		return diff.Options{}, nil
+	}
+	return *root.Ignore, nil
+}
+
+// SetIgnore writes what a comparison against this model should leave out,
+// keeping everything else about it exactly as it is.
+//
+// Only the root file is rewritten: the rules are an agreement about the
+// model and not a change to any object in it, so a commit that changes them
+// should touch one file and say so.
+func SetIgnore(dir string, opt diff.Options) error {
+	if err := opt.Check(); err != nil {
+		return err
+	}
+	var root database
+	if err := readJSON(filepath.Join(dir, dbFile), &root); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("schemafile: %s: %w", dir, ErrNotAModel)
+		}
+		return err
+	}
+	root.Ignore = nil
+	if opt.Any() {
+		root.Ignore = &opt
+	}
+	return writeJSON(filepath.Join(dir, dbFile), root)
 }
 
 // Read loads a model saved by Write.
@@ -361,4 +416,14 @@ func readJSON(path string, into any) error {
 		return fmt.Errorf("schemafile: %s: %w", path, err)
 	}
 	return nil
+}
+
+// keeping is the rules a model already carries, or none where there is no
+// model there yet.
+func keeping(dir string) *diff.Options {
+	opt, err := Ignore(dir)
+	if err != nil || !opt.Any() {
+		return nil
+	}
+	return &opt
 }
