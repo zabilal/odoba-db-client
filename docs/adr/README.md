@@ -117,3 +117,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0110](0110-an-identity-nobody-typed.md) | An identity nobody typed | Accepted |
 | [0111](0111-what-an-import-brings-and-what-it-leaves.md) | What an import brings, and what it leaves | Accepted |
 | [0112](0112-a-connection-set-as-a-file-somebody-keeps.md) | A connection set as a file somebody keeps | Accepted |
+| [0113](0113-a-production-write-is-typed-not-clicked.md) | A production write is typed, not clicked | Accepted |

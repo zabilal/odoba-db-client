@@ -132,6 +132,7 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 	// Saying yes does it once, with the consent given for it.
 	fx.s.changeCluster(tb.connID, "delete events", deleting)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Continue")
 	pump(t, fx.q, func() bool { return len(src.changed) == 1 })
 	if src.changed[0] != "delete events" {

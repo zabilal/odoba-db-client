@@ -295,6 +295,15 @@ func TestProductionWriteAsksBeforeAnythingRuns(t *testing.T) {
 	if run == nil {
 		t.Fatal("the confirmation has no Run button")
 	}
+	// Clicking is not enough: the connection's name has to be typed (FR-4.9).
+	if !run.Disabled() {
+		t.Error("a production write could be confirmed with one click")
+	}
+	test.Tap(run)
+	if executed.Load() != before {
+		t.Fatal("the write ran on a click alone")
+	}
+	typeOnTop(t, fx, "db1")
 	test.Tap(run)
 	pump(t, fx.q, func() bool { return !q.executing && executed.Load() == before+1 })
 	if !strings.Contains(q.messages.Text, "3 rows affected") {

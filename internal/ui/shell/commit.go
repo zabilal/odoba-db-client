@@ -118,15 +118,10 @@ func (s *Shell) commit(e *edits, plan *source.WritePlan, cs source.Changeset) {
 		s.apply(e, plan)
 		return
 	}
-	c, _ := s.d.Conns.Get(e.connID)
-	d := dialog.NewConfirm("Change Data on Production?",
-		fmt.Sprintf("These changes write to “%s”, which is marked Production. Nothing has been written yet.", c.Name),
-		func(yes bool) {
-			if !yes {
-				e.say("Not committed")
-				e.show()
-				return
-			}
+	s.askToType(e.connID, "Change Data on Production?",
+		productionBody("changes write to", s.connName(e.connID), "Nothing has been written yet."),
+		"Commit",
+		func() {
 			cs.Confirmed = true
 			confirmed, err := e.writes.Plan(e.ctx, cs)
 			if err != nil {
@@ -135,11 +130,11 @@ func (s *Shell) commit(e *edits, plan *source.WritePlan, cs source.Changeset) {
 				return
 			}
 			s.apply(e, confirmed)
-		}, s.win)
-	d.SetConfirmText("Commit")
-	d.SetDismissText("Cancel")
-	d.SetConfirmImportance(widget.DangerImportance)
-	d.Show()
+		},
+		func() {
+			e.say("Not committed")
+			e.show()
+		})
 }
 
 // apply runs a plan off the UI goroutine.

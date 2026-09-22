@@ -107,20 +107,13 @@ func (s *Shell) writeRecord(connID string, req source.ProduceRequest) {
 // driver refused before it dialled — so asking and then writing is safe, and
 // the consent goes with this record and no other (FR-4.9).
 func (s *Shell) askBeforeWriting(connID string, req source.ProduceRequest) {
-	c, _ := s.d.Conns.Get(connID)
-	d := dialog.NewConfirm("Write to Production?",
-		fmt.Sprintf("This writes a record to “%s”, which is marked Production. Nothing has been sent yet.", c.Name),
-		func(yes bool) {
-			if !yes {
-				return
-			}
+	s.askToType(connID, "Write to Production?",
+		productionBody("writes a record to", s.connName(connID), "Nothing has been sent yet."),
+		"Write",
+		func() {
 			req.Confirmed = true
 			s.writeRecord(connID, req)
-		}, s.win)
-	d.SetConfirmText("Write")
-	d.SetDismissText("Cancel")
-	d.SetConfirmImportance(widget.DangerImportance)
-	d.Show()
+		}, nil)
 }
 
 // produceFrom reads what was typed into the record it describes.

@@ -137,6 +137,7 @@ func TestAPipelineThatWritesOnProductionAsksFirst(t *testing.T) {
 	pump(t, fx.q, func() bool {
 		return strings.Contains(labelText(fx.s.win.Canvas().Overlays().Top()), "marked Production")
 	})
+	typeOnTop(t, fx, "prod")
 	tapOnTop(t, fx, "Run")
 	pump(t, fx.q, func() bool { _, confirmed := lastPipeline(); return confirmed })
 	if text, _ := lastPipeline(); !strings.Contains(text, "$out") {

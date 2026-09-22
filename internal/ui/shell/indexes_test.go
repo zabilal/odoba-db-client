@@ -186,6 +186,7 @@ func TestChangingAnIndexOnProductionAsksAgain(t *testing.T) {
 	if len(indexPlans()) != 0 {
 		t.Fatal("it ran before consent was given")
 	}
+	typeOnTop(t, fx, "prod")
 	tapOnTop(t, fx, "Run")
 	pump(t, fx.q, func() bool { return len(indexPlans()) == 1 })
 	if !indexPlans()[0].Statements[0].Confirmed {

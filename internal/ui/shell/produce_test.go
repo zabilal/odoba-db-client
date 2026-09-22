@@ -170,6 +170,12 @@ func TestWritingToProductionAsksAndSendsNothingUntilItIsAnswered(t *testing.T) {
 	// Saying yes sends exactly one, with the consent that was given for it.
 	fx.s.writeRecord(tb.connID, req)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	// Clicking is not enough on a production connection: the name has to be
+	// typed (FR-4.9).
+	if b := findButton(fx.s.win.Canvas().Overlays().Top(), "Write"); b == nil || !b.Disabled() {
+		t.Error("a production write could be confirmed with one click")
+	}
+	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Write")
 	pump(t, fx.q, func() bool { return len(src.produced) == 1 })
 	if !src.produced[0].Confirmed {

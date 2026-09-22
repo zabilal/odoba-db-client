@@ -2,12 +2,10 @@ package shell
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -157,20 +155,11 @@ func (b *pipelineBar) runWith(confirmed bool) {
 func (b *pipelineBar) failed(err error, text string) {
 	b.t.footer.SetText("")
 	if errors.Is(err, source.ErrConfirmationRequired) {
-		c, _ := b.s.d.Conns.Get(b.t.connID)
-		d := dialog.NewConfirm("Run a Pipeline that Writes?",
-			fmt.Sprintf("This pipeline writes to “%s”, which is marked Production. Nothing has been written yet.", c.Name),
-			func(yes bool) {
-				if yes {
-					b.runWith(true)
-					return
-				}
-				b.say("Not run")
-			}, b.s.win)
-		d.SetConfirmText("Run")
-		d.SetDismissText("Cancel")
-		d.SetConfirmImportance(widget.DangerImportance)
-		d.Show()
+		b.s.askToType(b.t.connID, "Run a Pipeline that Writes?",
+			productionBody("pipeline writes to", b.s.connName(b.t.connID), "Nothing has been written yet."),
+			"Run",
+			func() { b.runWith(true) },
+			func() { b.say("Not run") })
 		return
 	}
 	b.say("Could not run the pipeline: " + err.Error())

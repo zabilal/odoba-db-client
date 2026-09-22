@@ -158,6 +158,7 @@ func TestMovingAGroupOnProductionAsksAndMovesNothingUntilAnswered(t *testing.T) 
 
 	fx.s.changeCluster(tb.connID, "move readers to the beginning of each log", moving)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Continue")
 	pump(t, fx.q, func() bool { return len(src.changed) == 1 })
 	if src.changed[0] != "move readers" {
