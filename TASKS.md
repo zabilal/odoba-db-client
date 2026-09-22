@@ -23,8 +23,13 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 3 — 3.A, the table designer (T3.1 onward), unless
-           the owner decides J8's missing controls come first.
+NEXT TASK: T3.2 — primary key, unique constraints, foreign keys with
+           their ON DELETE/UPDATE, and check constraints (FR-6.2).
+           The design from T3.1 is what they go on: it holds a whole
+           model.Table and compares it, so a key is another thing to
+           edit on it rather than another thing to invent. T3.1's
+           refusal to drop a column the key is made of is written
+           against T3.2 arriving.
            PHASE 2 DOES NOT EXIT YET. Its criterion is J2, J5, J7 and
            J8 complete; the first three are, and J8 is three steps of
            five (T2.96). Everything else in Phase 2 is done.
@@ -114,7 +119,10 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a gate on the tail under NFR-P10: two seconds of records at 10k/s
+LAST DONE: 2026-09-22 — a table's columns edited on paper, where a rename follows the
+           column it renames rather than the position it sat in,
+           and nothing runs (T3.1, ADR-0114); before it
+           a gate on the tail under NFR-P10: two seconds of records at 10k/s
            taken in a fraction of the time they arrive over, and
            two million passed through a thousand-record ring for
            no heap at all (T2.97); before it
@@ -769,7 +777,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.A DDL / table designer
 
-- [ ] **T3.1** Column editor (name, type, length/precision, nullable, default, identity, comment) → FR-6.1
+- [x] **T3.1** Column editor (name, type, length/precision, nullable, default, identity, comment) → FR-6.1 — *a design is two tables, not a list of edits: the table as it was read and the table as somebody has made it, compared when asked what changed. A list of edits would answer differently — somebody who changes a type and changes it back has made no change, and an editor remembering the two steps would offer to run something for nothing (ADR-0114). Each column remembers which column it came from, and that is the decision the whole thing turns on: position cannot answer it, because dropping a column in the middle moves every column after it up one, so matched by position each reads as the column before it renamed. That is how a rename, which carries a column's data, becomes a drop and an add, which does not. The first version was matched by position and its own test caught it at once. The editor runs nothing and says so: until FR-6.4's preview exists there is nothing to run, and what a design holds is visible in the footer in the words of the change — id renamed to identifier, name dropped. A type is a box to type in rather than a list to choose from, because a type is the engine's own word for it and seven engines do not agree; a chooser would have to be wrong somewhere and the box is right everywhere, with the preview to say what a dialect will not accept. A type typed over loses the length read with it, or a column widened from varchar(40) to varchar(80) would still say 40 — a number nobody typed, contradicting the word beside it. A NOT NULL column is refused where the table has rows, saying to add it nullable or give it a default; a table of unknown size counts as having them, because a question somebody can answer beats an error from the server they cannot. Dropping a column the primary key is made of is refused as T3.2's business. 12 mutations, each caught, two after work: changing only a comment was never tested alone, so nothing noticed when comments stopped being compared, and the second of two renames was checked for its count but not its name, so a row that forgot which column it was editing went unnoticed. This task's gate also caught a race in J5 and it is fixed here: the journey ran Import as soon as the table's rows were in, but Import is offered once the table has been described, which is a read of its own landing after them — it won that race everywhere until MariaDB lost it, and waits for the command to be offered now*
 - [ ] **T3.2** PK, unique, FK (ON DELETE/UPDATE), check constraints → FR-6.2
 - [ ] **T3.3** Index editor (columns, order, uniqueness, method, partial, include) → FR-6.3
 - [ ] **T3.4** **DDL preview before execution** → FR-6.4, UX-6

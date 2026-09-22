@@ -299,6 +299,10 @@ func runJ5(t *testing.T, j journey) {
 	if err := os.WriteFile(in, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Import is offered once the table has been described, which is a read
+	// of its own and lands after its rows do. Asking before that is a race
+	// the journey would lose on a slow day and win on every other.
+	waitFor(t, h.q, "Import to be offered", func() bool { return offered(h, "data.import") })
 	if err := h.s.Commands().Run("data.import"); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -420,6 +424,13 @@ func runJ7(t *testing.T, j journey) {
 	if top := h2.w.Canvas().Overlays().Top(); top != nil {
 		t.Errorf("a read-only connection offered a way past: %q", strings.Join(labelsIn(top), " "))
 	}
+}
+
+// offered reports whether a command can be run now. A journey that runs one
+// before the window is ready for it is a race, not a test.
+func offered(h *harness, id string) bool {
+	c, ok := h.s.Commands().Get(id)
+	return ok && (c.Enabled == nil || c.Enabled())
 }
 
 // selected is what every Select under o currently reads, which is how the
