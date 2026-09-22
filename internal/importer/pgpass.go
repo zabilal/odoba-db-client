@@ -74,8 +74,10 @@ func ReadPgpass(path string) ([]Found, error) {
 		}
 		conn.Name = pgpassName(conn)
 
-		found := Found{Connection: conn, Password: password, Where: where}
-		if password == "" {
+		found := Found{Connection: conn, Where: where}
+		if password != "" {
+			found.Secrets = map[string]string{"password": password}
+		} else {
 			found.Note = "this line has no password in it"
 		}
 		out = append(out, found)

@@ -14,8 +14,8 @@ func aFound(name, host string, port int, user, password string) importer.Found {
 			Driver: "fake", Name: name, Host: host, Port: port,
 			Database: "orders", User: user,
 		},
-		Password: password,
-		Where:    "~/.pgpass:1",
+		Secrets: map[string]string{"password": password},
+		Where:   "~/.pgpass:1",
 	}
 }
 
@@ -180,5 +180,52 @@ func TestTheSameConnectionTwiceInOneImportIsSavedOnce(t *testing.T) {
 	}
 	if n := len(f.c.List()); n != 1 {
 		t.Errorf("there are %d connections", n)
+	}
+}
+
+func TestAFolderComesAcrossByNameAndIsMadeOnce(t *testing.T) {
+	f := setup(t)
+	one := aFound("Orders", "db.example.com", 5432, "jane", "")
+	one.Folder = "Work"
+	two := aFound("Shop", "shop.example.com", 5432, "bob", "")
+	two.Folder = "work" // the same folder, spelt as somebody typed it
+
+	got, err := f.c.Import([]importer.Found{one, two}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Saved) != 2 {
+		t.Fatalf("it saved %d of 2: %+v", len(got.Saved), got)
+	}
+	folders := f.c.Folders()
+	if len(folders) != 1 {
+		t.Fatalf("it made %d folders for one name: %+v", len(folders), folders)
+	}
+	// And what is stored is the folder's ID, not its name.
+	for _, saved := range got.Saved {
+		if saved.Folder != folders[0].ID {
+			t.Errorf("%s is filed under %q and the folder is %q", saved.Name, saved.Folder, folders[0].ID)
+		}
+	}
+}
+
+func TestAFolderThatAlreadyExistsIsUsedRatherThanDoubled(t *testing.T) {
+	f := setup(t)
+	existing, err := f.c.CreateFolder("Work", "#ff0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := aFound("Orders", "db.example.com", 5432, "jane", "")
+	entry.Folder = "Work"
+
+	got, err := f.c.Import([]importer.Found{entry}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.c.Folders()) != 1 {
+		t.Errorf("there are now %d folders called Work", len(f.c.Folders()))
+	}
+	if got.Saved[0].Folder != existing.ID {
+		t.Errorf("it was filed under %q, not the folder that was there", got.Saved[0].Folder)
 	}
 }

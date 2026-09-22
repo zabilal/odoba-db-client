@@ -70,7 +70,7 @@ func TestDBeaverConnectionsComeAcrossWithoutTheirPasswords(t *testing.T) {
 	}
 	c := orders.Connection
 	if c.Driver != "postgres" || c.Host != "db.example.com" || c.Port != 5432 ||
-		c.Database != "orders" || c.User != "jane" || c.Folder != "Work" {
+		c.Database != "orders" || c.User != "jane" {
 		t.Errorf("it read %+v", c)
 	}
 	// Both of these change what this program will let somebody do, so they
@@ -81,8 +81,17 @@ func TestDBeaverConnectionsComeAcrossWithoutTheirPasswords(t *testing.T) {
 	if c.Environment != "production" {
 		t.Errorf("a production connection came across as %q", c.Environment)
 	}
-	if orders.Password != "" {
+	if len(orders.Secrets) != 0 {
 		t.Error("a password was invented for a file that holds none")
+	}
+	// The folder travels as a name. SavedConnection.Folder holds an ID, and
+	// a name written there would file the connection under one that does
+	// not exist.
+	if orders.Folder != "Work" {
+		t.Errorf("the folder came across as %q", orders.Folder)
+	}
+	if orders.Connection.Folder != "" {
+		t.Errorf("a folder name was written where an ID belongs: %q", orders.Connection.Folder)
 	}
 	if !strings.Contains(orders.Note, "encrypted store") {
 		t.Errorf("it did not say where the password stayed: %q", orders.Note)
@@ -191,8 +200,8 @@ func TestAPasswordInAURLNeverReachesASavedConnection(t *testing.T) {
 			if !ok || !f.OK() {
 				t.Fatalf("it did not come across at all: %+v", found)
 			}
-			if f.Password != "" {
-				t.Errorf("the password was brought: %q", f.Password)
+			if len(f.Secrets) != 0 {
+				t.Errorf("credentials were brought: %v", f.Secrets)
 			}
 			// Nowhere in what would be written to settings.json.
 			saved, err := json.Marshal(f.Connection)

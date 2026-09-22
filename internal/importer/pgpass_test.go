@@ -33,8 +33,8 @@ func TestAPasswordFileBringsItsPassword(t *testing.T) {
 		f.Connection.Port != 5432 || f.Connection.Database != "orders" || f.Connection.User != "jane" {
 		t.Errorf("it read %+v", f.Connection)
 	}
-	if f.Password != "s3cret" {
-		t.Errorf("the password is %q", f.Password)
+	if f.Secrets["password"] != "s3cret" {
+		t.Errorf("the password is %q", f.Secrets["password"])
 	}
 	if want := "jane@db.example.com/orders"; f.Connection.Name != want {
 		t.Errorf("it is called %q, want %q", f.Connection.Name, want)
@@ -88,8 +88,8 @@ func TestAColonInsideAFieldIsNotASeparator(t *testing.T) {
 	if len(found) != 1 || !found[0].OK() {
 		t.Fatalf("it found %d entries: %+v", len(found), found)
 	}
-	if want := `pa:ss\word`; found[0].Password != want {
-		t.Errorf("the password is %q, want %q", found[0].Password, want)
+	if want := `pa:ss\word`; found[0].Secrets["password"] != want {
+		t.Errorf("the password is %q, want %q", found[0].Secrets["password"], want)
 	}
 }
 
