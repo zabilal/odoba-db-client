@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,10 +80,10 @@ func start(t *testing.T, j journey) *harness {
 	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c}
 }
 
-// runJ1 is journey J1: with a saved connection, find a table in the sidebar,
-// open it, and see its rows.
-func runJ1(t *testing.T, j journey) {
-	h := start(t, j)
+// openTable walks the sidebar to the fixture table and opens its rows, which
+// is J1 and the first step of every journey that works on a table.
+func openTable(t *testing.T, h *harness, j journey) {
+	t.Helper()
 	ids := []string{explorerview.ConnectionID(h.conn.ID)}
 	for _, ref := range j.path {
 		ids = append(ids, explorerview.NodeID(h.conn.ID, ref))
@@ -105,6 +106,108 @@ func runJ1(t *testing.T, j journey) {
 		h.w.Canvas().Capture() // drawing the grid is what fetches its first page
 		return hasLabel(h.tabs.Selected().Content, want)
 	})
+}
+
+// runJ1 is journey J1: with a saved connection, find a table in the sidebar,
+// open it, and see its rows.
+func runJ1(t *testing.T, j journey) {
+	openTable(t, start(t, j), j)
+}
+
+// runJ2 is journey J2: filter by a value, edit a cell, review the SQL that
+// would run, and commit it.
+//
+// The point of the journey is that the review is not decoration. What it
+// shows is what runs: the statement is rendered before anything is sent, and
+// committing runs that and nothing else.
+func runJ2(t *testing.T, j journey) {
+	h := start(t, j)
+	openTable(t, h, j)
+	g := h.s.ActiveGrid()
+	if g == nil {
+		t.Fatal("the table's tab shows no grid")
+	}
+	ctx := context.Background()
+
+	// Filter the name column to one person.
+	const who = "person 7"
+	if !g.Filterable() {
+		t.Fatal("a table's rows have no filter row")
+	}
+	g.SetFilterText(1, who)
+	g.ApplyFilters()
+	waitFor(t, h.q, "the filtered row", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n == 1
+	})
+
+	row, ok := g.Model().Row(ctx, 0)
+	if !ok {
+		t.Fatal("the matching row never loaded")
+	}
+	if got := fmt.Sprint(row[1]); got != who {
+		t.Fatalf("the row shown is %q, want %q", got, who)
+	}
+
+	// Fix it. OnEdit is where a typed edit arrives, whether it was typed
+	// into the cell or set from the form.
+	const fixed = "person 7, corrected"
+	if err := g.OnEdit(row, 1, fixed); err != nil {
+		t.Fatalf("editing the cell: %v", err)
+	}
+
+	// Review what would run, before anything has.
+	if err := h.s.Commands().Run("data.reviewChanges"); err != nil {
+		t.Fatalf("Review Changes: %v", err)
+	}
+	sheet := h.w.Canvas().Overlays().Top()
+	if sheet == nil {
+		t.Fatal("Review Changes showed nothing")
+	}
+	said := strings.Join(labelsIn(sheet), "\n")
+	// The table by its own name, not by the way a query would qualify it:
+	// the statement quotes each part of a qualified name separately.
+	table := j.path[len(j.path)-1].Name()
+	for _, want := range []string{"UPDATE", table, "name"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("the review does not mention %q:\n%s", want, said)
+		}
+	}
+	if strings.Contains(said, "DELETE") || strings.Contains(said, "INSERT") {
+		t.Errorf("the review offers more than the one edit:\n%s", said)
+	}
+
+	// Commit it, and see the value it wrote come back from the server.
+	test.Tap(button(t, sheet, "Commit"))
+	waitFor(t, h.q, "the change to be written", func() bool {
+		h.w.Canvas().Capture()
+		r, ok := g.Model().Row(ctx, 0)
+		return ok && r != nil && fmt.Sprint(r[1]) == fixed
+	})
+
+	// And it is the row it was, not a new one: clearing the filter finds the
+	// table the same size as before.
+	g.SetFilterText(1, "")
+	g.ApplyFilters()
+	waitFor(t, h.q, "every row again", func() bool {
+		h.w.Canvas().Capture()
+		n, final := g.Model().Extent()
+		return final && n == fixtureRows
+	})
+}
+
+// labelsIn is every label's text under o, which is how a dialog's words are
+// read here.
+func labelsIn(o fyne.CanvasObject) []string {
+	var out []string
+	for _, l := range find[*widget.Label](o) {
+		out = append(out, l.Text)
+	}
+	for _, r := range find[*widget.RichText](o) {
+		out = append(out, r.String())
+	}
+	return out
 }
 
 // runJ3 is journey J3: type SQL, run it, inspect the result, refine it, save
