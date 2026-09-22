@@ -351,3 +351,43 @@ func fieldDefs(fs []model.FieldDef) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// Naming a node, so that a selection means the same thing to whatever draws
+// the tree and whatever writes a script from it (FR-7.3).
+//
+// A comparison has no identifiers of its own: it is two models and neither
+// of them has one either. What a node has is its place — the kinds and names
+// down to it — and two things in the same place are the same thing. The kind
+// is in the path because a view and a table can share a name.
+
+// ID is what a node is known by under its parent.
+func ID(parent string, n Node) string {
+	return parent + "/" + string(n.Kind) + ":" + n.Name
+}
+
+// Walk visits every node with the id it is known by, parents before
+// children, so that whatever collects them sees a node before anything
+// under it.
+func (n Node) Walk(fn func(id string, n Node)) {
+	var visit func(Node, string)
+	visit = func(n Node, parent string) {
+		id := ID(parent, n)
+		fn(id, n)
+		for _, c := range n.Children {
+			visit(c, id)
+		}
+	}
+	visit(n, "")
+}
+
+// Find answers the node an id names, and whether there is one.
+func (n Node) Find(id string) (Node, bool) {
+	var found Node
+	ok := false
+	n.Walk(func(at string, node Node) {
+		if at == id {
+			found, ok = node, true
+		}
+	})
+	return found, ok
+}

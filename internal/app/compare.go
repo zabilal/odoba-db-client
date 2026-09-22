@@ -49,20 +49,36 @@ func CanCompare(src source.Source) bool {
 	return src.Capabilities().Paradigm == model.ParadigmRelational
 }
 
+// Comparison is what a comparison answers: the tree of differences, and the
+// two models it was made from.
+//
+// The tree describes differences and deliberately does not carry the objects
+// (ADR-0119). A sync script needs them, so the models come back with it
+// rather than being read a second time — reading again would mean writing a
+// script for a database that had moved since somebody read the comparison.
+type Comparison struct {
+	Live   *model.Database
+	Wanted *model.Database
+	Tree   diff.Node
+}
+
+// Differs reports whether anything at all differs.
+func (c Comparison) Differs() bool { return c.Tree.Differs() }
+
 // Compare reads both databases and says what differs.
 //
 // from is what is there and to is what is wanted, the way the diff engine
 // reads it: Added is what a sync script would create.
-func Compare(ctx context.Context, from source.Source, fromDB string, to source.Source, toDB string) (diff.Node, error) {
+func Compare(ctx context.Context, from source.Source, fromDB string, to source.Source, toDB string) (Comparison, error) {
 	a, err := Snapshot(ctx, from, fromDB)
 	if err != nil {
-		return diff.Node{}, fmt.Errorf("reading %s: %w", naming(fromDB), err)
+		return Comparison{}, fmt.Errorf("reading %s: %w", naming(fromDB), err)
 	}
 	b, err := Snapshot(ctx, to, toDB)
 	if err != nil {
-		return diff.Node{}, fmt.Errorf("reading %s: %w", naming(toDB), err)
+		return Comparison{}, fmt.Errorf("reading %s: %w", naming(toDB), err)
 	}
-	return diff.Compare(a, b), nil
+	return Comparison{Live: a, Wanted: b, Tree: diff.Compare(a, b)}, nil
 }
 
 func naming(db string) string {
@@ -191,14 +207,14 @@ func ReadModel(dir string) (*model.Database, error) { return schemafile.Read(dir
 
 // CompareWithSaved says what a live database is missing against a saved
 // model, or has that the model does not.
-func CompareWithSaved(ctx context.Context, src source.Source, database, dir string) (diff.Node, error) {
+func CompareWithSaved(ctx context.Context, src source.Source, database, dir string) (Comparison, error) {
 	live, err := Snapshot(ctx, src, database)
 	if err != nil {
-		return diff.Node{}, fmt.Errorf("reading %s: %w", naming(database), err)
+		return Comparison{}, fmt.Errorf("reading %s: %w", naming(database), err)
 	}
 	saved, err := schemafile.Read(dir)
 	if err != nil {
-		return diff.Node{}, err
+		return Comparison{}, err
 	}
-	return diff.Compare(live, saved), nil
+	return Comparison{Live: live, Wanted: saved, Tree: diff.Compare(live, saved)}, nil
 }

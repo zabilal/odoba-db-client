@@ -193,7 +193,7 @@ func TestComparingTwoConnections(t *testing.T) {
 		t.Fatal("two different schemas compared as the same")
 	}
 	var table diff.Node
-	for _, s := range got.Children {
+	for _, s := range got.Tree.Children {
 		for _, c := range s.Children {
 			if c.Name == "people" {
 				table = c
@@ -272,7 +272,7 @@ func TestSavingAModelAndComparingAgainstIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Differs() {
-		t.Errorf("a database compared against a model of itself as %s", got.Status)
+		t.Errorf("a database compared against a model of itself as %s", got.Tree.Status)
 	}
 
 	// A database missing what the model has: the saved model is the wanted
@@ -283,7 +283,7 @@ func TestSavingAModelAndComparingAgainstIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var table diff.Node
-	for _, s := range got.Children {
+	for _, s := range got.Tree.Children {
 		for _, c := range s.Children {
 			if c.Name == "people" {
 				table = c
