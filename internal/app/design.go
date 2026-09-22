@@ -127,7 +127,7 @@ func (d *Design) DropColumn(name string) error {
 	if at < 0 {
 		return fmt.Errorf("this table has no column called %q", name)
 	}
-	if what, held := d.keyed(d.to.Columns[at].Name); held {
+	if what, held := d.held(d.to.Columns[at].Name); held {
 		return fmt.Errorf("%s is part of %s, so dropping it would drop that too; change it first",
 			name, what)
 	}
@@ -178,7 +178,7 @@ func (d *Design) RevertAll() {
 // Changed reports whether anything is different from what was read: a
 // column, or a key or constraint on them.
 func (d *Design) Changed() bool {
-	return len(d.Changes()) > 0 || len(d.ConstraintChanges()) > 0
+	return len(d.Changes()) > 0 || len(d.ConstraintChanges()) > 0 || len(d.IndexChanges()) > 0
 }
 
 // ChangeKind says what happened to one column.
@@ -301,6 +301,7 @@ func copyTable(t *model.Table) *model.Table {
 		out.ForeignKeys[i] = f
 	}
 	out.Checks = slices.Clone(t.Checks)
+	out.Indexes = copyIndexes(t.Indexes)
 	return &out
 }
 

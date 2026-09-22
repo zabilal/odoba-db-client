@@ -105,8 +105,10 @@ func TestRemovingAConstraintTheTableWasReadWith(t *testing.T) {
 	pump(t, fx.q, func() bool { return len(p.design.ConstraintChanges()) == 1 })
 
 	// The one that was just added goes away again, leaving nothing behind.
-	removes := buttonsNamed(tb.body, "Remove")
-	test.Tap(removes[len(removes)-1])
+	// The sections are drawn in order — columns, the primary key, uniques,
+	// foreign keys, checks, indexes — so the new unique's Remove is the one
+	// after the key's.
+	test.Tap(buttonsNamed(tb.body, "Remove")[len(p.design.Columns())+1])
 	if got := p.design.ConstraintChanges(); len(got) != 0 {
 		t.Errorf("adding a constraint and removing it reads as %+v", got)
 	}

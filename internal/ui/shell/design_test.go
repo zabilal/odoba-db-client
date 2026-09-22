@@ -165,8 +165,17 @@ func TestAddingAndRemovingColumns(t *testing.T) {
 		t.Errorf("adding a column and removing it says %q", got)
 	}
 
-	// Removing one that was read is a drop.
+	// A column an index names cannot be dropped out from under it.
 	test.Tap(buttonsNamed(tb.body, "Remove")[1]) // the name column's
+	if got := tb.footer.Text; !strings.Contains(got, "part of the index") {
+		t.Errorf("the footer says %q", got)
+	}
+
+	// With the index gone it can go, and that is a drop.
+	if err := p.design.DropIndex("items_name"); err != nil {
+		t.Fatal(err)
+	}
+	test.Tap(buttonsNamed(tb.body, "Remove")[1])
 	if got := tb.footer.Text; !strings.Contains(got, "name dropped") {
 		t.Errorf("the footer says %q", got)
 	}
