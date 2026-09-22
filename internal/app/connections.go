@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,7 +17,40 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
+	"github.com/ikigai-db/ikigai-db/internal/tunnel"
 )
+
+// throughTunnel opens an SSH tunnel where a connection asks to be carried
+// through one, and answers with a configuration pointing at its local end
+// (FR-1.9).
+//
+// No driver knows any of this happened: what it is handed is a host and a
+// port like any other, which is what keeps a tunnel one implementation
+// rather than one per driver (ADR-0109). The closer is nil where there was
+// no tunnel, and must be called when the connection is done with.
+func throughTunnel(ctx context.Context, cfg source.ConnectionConfig) (source.ConnectionConfig, func() error, error) {
+	if cfg.SSH == nil {
+		return cfg, nil, nil
+	}
+	tn, err := tunnel.Open(ctx, tunnel.Config{
+		SSH:    *cfg.SSH,
+		Target: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Secret: cfg.Secret,
+	})
+	if err != nil {
+		return cfg, nil, err
+	}
+	host, port, err := net.SplitHostPort(tn.Addr())
+	if err == nil {
+		var n int
+		if n, err = strconv.Atoi(port); err == nil {
+			cfg.Host, cfg.Port = host, n
+			return cfg, tn.Close, nil
+		}
+	}
+	tn.Close()
+	return cfg, nil, err
+}
 
 // ErrNotFound: no connection or folder with that ID.
 var ErrNotFound = errors.New("app: not found")
@@ -379,6 +414,16 @@ func (c *Connections) Test(ctx context.Context, conn store.SavedConnection, type
 
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
+	// Carried through a tunnel where one is asked for, and within the same
+	// budget: a server nobody can reach through SSH is a failure to report
+	// rather than a wait to sit through.
+	cfg, closeTunnel, err := throughTunnel(ctx, cfg)
+	if err != nil {
+		return testFailure(err, start)
+	}
+	if closeTunnel != nil {
+		defer closeTunnel()
+	}
 	src, err := drv.Open(ctx, cfg)
 	if err != nil {
 		return testFailure(err, start)
@@ -440,11 +485,20 @@ func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (_
 		}
 		return c.vault.Get(id, key)
 	}
-	src, err := drv.Open(ctx, conn.ConnectionConfig(lookup))
+	cfg, closeTunnel, err := throughTunnel(ctx, conn.ConnectionConfig(lookup))
 	if err != nil {
 		return nil, err
 	}
-	return startLive(id, src, mon), nil
+	src, err := drv.Open(ctx, cfg)
+	if err != nil {
+		// The tunnel goes too: a connection that never opened must not leave
+		// one behind it.
+		if closeTunnel != nil {
+			closeTunnel()
+		}
+		return nil, err
+	}
+	return startLive(id, src, mon, closeTunnel), nil
 }
 
 func indexOf(conns []store.SavedConnection, id string) int {

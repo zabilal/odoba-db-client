@@ -93,11 +93,16 @@ type Live struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	closeErr  error
+
+	// closeTunnel drops the SSH tunnel this connection was carried through,
+	// where there was one. A tunnel outliving its connection is a listener on
+	// a local port that nobody remembers opening (ADR-0109).
+	closeTunnel func() error
 }
 
-func startLive(id string, src source.Source, cfg MonitorConfig) *Live {
+func startLive(id string, src source.Source, cfg MonitorConfig, closeTunnel func() error) *Live {
 	l := &Live{
-		ID: id, Source: src, cfg: cfg.withDefaults(),
+		ID: id, Source: src, cfg: cfg.withDefaults(), closeTunnel: closeTunnel,
 		status: Status{State: StateConnected, Since: time.Now()},
 		subs:   map[int]func(Status){},
 		kick:   make(chan struct{}, 1),
@@ -249,6 +254,13 @@ func (l *Live) Close() error {
 		close(l.stop)
 		<-l.done
 		l.closeErr = l.closeSource()
+		// The tunnel goes with it, and goes second: the driver may still have
+		// something to say on the way out, and it says it through the tunnel.
+		if l.closeTunnel != nil {
+			if err := l.closeTunnel(); l.closeErr == nil {
+				l.closeErr = err
+			}
+		}
 		l.mu.Lock()
 		l.status = Status{State: StateClosed, Since: time.Now()}
 		subs := make([]func(Status), 0, len(l.subs))

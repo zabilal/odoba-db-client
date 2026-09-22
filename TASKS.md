@@ -23,18 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T2.85 — an SSH tunnel with a password, a private key, and a
-           key with a passphrase (FR-1.9). This opens a new block. Every
-           driver so far dials its server directly, and a tunnel puts a
-           local listener in front of that, so the first question is where
-           it belongs: a connection concern every driver shares rather than
-           anything Kafka or PostgreSQL knows about. source.ConnectionConfig
-           already declares SSH *SSHConfig and the type beside it — read
-           those before designing anything, the way ProduceRequest turned
-           out to have already answered T2.77's open questions.
-           golang.org/x/crypto/ssh would be a new direct dependency: it is
-           the standard one and pure Go, but T2.84 has just shown the owner
-           weighs those, so ask rather than assume.
+NEXT TASK: T2.86 — an SSH tunnel through an agent and through jump hosts
+           (FR-1.9). Both fit the shape T2.85 left behind: an agent is
+           another way to prove who this is, and a jump host is another hop
+           whose key is checked exactly as the last one's was (ADR-0109).
+           golang.org/x/crypto/ssh/agent is already in the module graph, so
+           it costs nothing to reach for.
+           Note before starting, because no task names it: the connection
+           editor has no SSH section at all, so a tunnel can be configured
+           only by editing the settings file by hand. The driver half of
+           FR-1.9 is done and the way in is not, and that gap outlives
+           T2.86 unless somebody decides where it belongs.
            T2.56 is half done and says so: OAUTHBEARER lands, GSSAPI waits
            for a Kerberos library of this project's own plus a KDC and a
            keytab, franz-go shipping no Kerberos mechanism at all. T2.57
@@ -87,7 +86,11 @@ OWNER:     first look at the real window: `go run ./cmd/ikigai`, which is also
            a pair of their own because both other brokers advertise localhost
            on the default bridge, where a registry container would be told to
            reach the broker at itself.
-LAST DONE: 2026-09-22 — a script that starts the Kafka brokers and schema
+LAST DONE: 2026-09-22 — a connection carried through an SSH tunnel, with
+           the server's host key checked against the user's own known_hosts
+           and an unknown host refused rather than trusted (T2.85,
+           ADR-0109); before it a script that starts the Kafka brokers and
+           schema
            registry the tagged tests read, chosen over a testcontainers
            dependency and proved by rebuilding all three containers from
            nothing (T2.84); before it one test holding every operation that
@@ -663,7 +666,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 2.I Auth & tunnelling
 
-- [ ] **T2.85** SSH tunnel: password, private key, key+passphrase → FR-1.9
+- [x] **T2.85** SSH tunnel: password, private key, key+passphrase → FR-1.9 — *a tunnel is a connection to one machine carrying the connection to another, and the question worth care is not how to forward bytes but what is checked before any move. The server's host key is verified against the user's own known_hosts and a host not in it is refused, because everything the database connection carries — the credentials it authenticates with, every row it reads — goes through here, and a tunnel taking whatever key it was offered would hand all of that to whatever answered on that address while looking exactly like a tunnel that worked (ADR-0109). A key that changed is said differently from a host never seen: the first is what an interception looks like, and reading the wrong one of those sends somebody the wrong way. No driver knows any of this exists — the tunnel is opened before the driver sees its configuration and the driver is handed a host and port pointing at the local end, which is what makes this one implementation rather than one per driver, and why it works for a driver written afterwards. The local end listens on loopback and nowhere else. The tunnel lives exactly as long as its connection: Live owns the closer, and wrapping the source to achieve that was rejected because a wrapper embedding source.Source would silently drop every optional interface a driver satisfies — Queryer, StreamProducer, SchemaRegistry and the rest are satisfied by the concrete type, not by the interface, so a wrapper would have quietly unmade half the application. x/crypto/ssh cost no module: x/crypto was already in the graph indirectly and tidying only promoted it. Proved against an SSH server running in process, which x/crypto/ssh itself provides, so none of it needs a container. Named here because no task names it: the connection editor has no SSH section, so a tunnel can be configured only by editing the settings file — the driver half of FR-1.9 is done and the way in is not*
 - [ ] **T2.86** SSH tunnel: `ssh-agent`, jump host → FR-1.9
 - [ ] **T2.87** Cloud auth: AWS IAM/RDS token, GCP ADC, Azure AD/Entra → FR-1.14
 - [~] **T2.88** Import connections from DBeaver, DBGate, TablePlus, DataGrip → FR-1.12

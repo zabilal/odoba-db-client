@@ -25,7 +25,7 @@ func waitState(t *testing.T, l *Live, want State) Status {
 
 func TestLostConnectionIsVisibleAndRecovers(t *testing.T) {
 	src := &fakeSource{}
-	l := startLive("c1", src, fast)
+	l := startLive("c1", src, fast, nil)
 	defer l.Close()
 
 	var mu sync.Mutex
@@ -64,7 +64,7 @@ func TestLostConnectionIsVisibleAndRecovers(t *testing.T) {
 
 func TestHealthyChecksNotifyNobody(t *testing.T) {
 	src := &fakeSource{}
-	l := startLive("c1", src, fast)
+	l := startLive("c1", src, fast, nil)
 	defer l.Close()
 	calls := 0
 	var mu sync.Mutex
@@ -82,7 +82,7 @@ func TestHealthyChecksNotifyNobody(t *testing.T) {
 
 func TestCheckRunsImmediately(t *testing.T) {
 	src := &fakeSource{}
-	l := startLive("c1", src, MonitorConfig{Interval: time.Hour})
+	l := startLive("c1", src, MonitorConfig{Interval: time.Hour}, nil)
 	defer l.Close()
 	src.failPing(errors.New("gone"))
 	l.Check()
@@ -91,7 +91,7 @@ func TestCheckRunsImmediately(t *testing.T) {
 
 func TestCloseStopsMonitoringAndClosesSource(t *testing.T) {
 	src := &fakeSource{}
-	l := startLive("c1", src, fast)
+	l := startLive("c1", src, fast, nil)
 	var last State
 	var mu sync.Mutex
 	l.Subscribe(func(st Status) { mu.Lock(); last = st.State; mu.Unlock() })
