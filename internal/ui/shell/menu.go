@@ -31,6 +31,8 @@ const (
 	cmdScriptSelect   = "object.script.select"
 	cmdScriptInsert   = "object.script.insert"
 	cmdScriptUpdate   = "object.script.update"
+	cmdScriptCreate   = "object.script.create"
+	cmdScriptSchema   = "object.script.schema"
 	cmdFavorite       = "explorer.favorite"
 	cmdRefresh        = "explorer.refresh"
 	cmdReload         = "tab.reload"
@@ -161,7 +163,7 @@ var menuBar = []struct {
 	}},
 	{"Connection", []menuEntry{
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),
-		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate), separator,
+		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, cmdScriptCreate, cmdScriptSchema), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
 		item(cmdReconnect), item(cmdDisconnect),

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -482,4 +483,143 @@ func drainOne(t *testing.T, res *source.Result) string {
 		t.Fatalf("reading one value: %v", err)
 	}
 	return fmt.Sprint(row[0])
+}
+
+// A whole schema's DDL, in an order it can be run in (FR-6.7).
+//
+// The order is the only claim here, and the only thing that can settle it is
+// a server that either builds the schema or refuses to.
+
+func TestAWholeSchemaIsWrittenInAnOrderThatRuns(t *testing.T) {
+	src := openSource(t, false)
+	stamp := time.Now().UnixNano() % 100000
+	// Two tables that refer to each other, which no order of CREATE TABLE
+	// could satisfy; and two views where the one that must be created first
+	// sorts last by name.
+	a := fmt.Sprintf("sch_a_%d", stamp)
+	b := fmt.Sprintf("sch_b_%d", stamp)
+	base := fmt.Sprintf("sch_zz_%d", stamp)
+	over := fmt.Sprintf("sch_aa_%d", stamp)
+	mine := []string{a, b, base, over}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	session, err := src.Session(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	run := func(sql string) error {
+		res, err := session.Query(ctx, source.Statement{SQL: sql})
+		if res != nil && res.Rows != nil {
+			res.Rows.Close()
+		}
+		return err
+	}
+	must := func(sql string) {
+		t.Helper()
+		if err := run(sql); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	// On a session of its own, every time. This runs from t.Cleanup as well
+	// as from the body, and a cleanup runs after the test's own deferred
+	// Close — so a drop sharing that session would quietly do nothing and
+	// leave these in the fixture schema for the next test to trip over.
+	drop := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s, err := src.Session(ctx)
+		if err != nil {
+			t.Errorf("could not clean up: %v", err)
+			return
+		}
+		defer s.Close()
+		for _, sql := range []string{
+			fmt.Sprintf(`DROP VIEW IF EXISTS "ikigai_it"."%s"`, over),
+			fmt.Sprintf(`DROP VIEW IF EXISTS "ikigai_it"."%s"`, base),
+			fmt.Sprintf(`DROP TABLE IF EXISTS "ikigai_it"."%s" CASCADE`, a),
+			fmt.Sprintf(`DROP TABLE IF EXISTS "ikigai_it"."%s" CASCADE`, b),
+		} {
+			res, err := s.Query(ctx, source.Statement{SQL: sql})
+			if res != nil && res.Rows != nil {
+				res.Rows.Close()
+			}
+			if err != nil {
+				t.Errorf("%s: %v", sql, err)
+			}
+		}
+	}
+	t.Cleanup(drop)
+
+	must(fmt.Sprintf(`CREATE TABLE "ikigai_it"."%s" (id integer PRIMARY KEY, b_id integer)`, a))
+	must(fmt.Sprintf(`CREATE TABLE "ikigai_it"."%s" (id integer PRIMARY KEY, a_id integer)`, b))
+	must(fmt.Sprintf(`ALTER TABLE "ikigai_it"."%s" ADD CONSTRAINT "%s_b_fkey"
+		FOREIGN KEY (b_id) REFERENCES "ikigai_it"."%s"(id)`, a, a, b))
+	must(fmt.Sprintf(`ALTER TABLE "ikigai_it"."%s" ADD CONSTRAINT "%s_a_fkey"
+		FOREIGN KEY (a_id) REFERENCES "ikigai_it"."%s"(id)`, b, b, a))
+	must(fmt.Sprintf(`CREATE VIEW "ikigai_it"."%s" AS SELECT id FROM "ikigai_it"."%s"`, base, a))
+	must(fmt.Sprintf(`CREATE VIEW "ikigai_it"."%s" AS SELECT id FROM "ikigai_it"."%s"`, over, base))
+
+	stmts, err := app.ScriptSchema(ctx, src,
+		model.NewRef(model.KindSchema, env("IKIGAI_PG_DB", "ikigai_test"), "ikigai_it"))
+	if err != nil {
+		t.Fatalf("scripting the schema: %v", err)
+	}
+
+	// The view that must exist first is written first, although it sorts
+	// last by name and the catalogue lists it last.
+	// Matched on the statement that creates each one, not on any mention of
+	// the name: the view over it names it in its own body, so "the first
+	// statement mentioning it" would be satisfied by the wrong order.
+	if i, j := creates(stmts, base), creates(stmts, over); i < 0 || j < 0 || i > j {
+		t.Errorf("%s is created at %d and the view over it at %d", base, i, j)
+	}
+
+	// Now the claim itself: drop the four and run back only the statements
+	// that build them, in the order they came out in.
+	drop()
+	var ran int
+	for _, st := range stmts {
+		if !mentionsAny(st.SQL, mine) {
+			continue
+		}
+		if err := run(st.SQL); err != nil {
+			t.Fatalf("statement %d of the script did not run:\n\t%s\n%v", ran+1, st.SQL, err)
+		}
+		ran++
+	}
+	if ran < 6 {
+		t.Fatalf("only %d statements of the script were for these objects", ran)
+	}
+	// And what it built is what was there: both references are back.
+	res, err := session.Query(ctx, source.Statement{SQL: fmt.Sprintf(`
+		SELECT count(*) FROM pg_constraint WHERE contype = 'f' AND conname IN ('%s_b_fkey', '%s_a_fkey')`, a, b)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := drainOne(t, res); got != "2" {
+		t.Errorf("%s of the two references came back", got)
+	}
+}
+
+// creates is where the statement that builds this view is, which is not the
+// same as where its name first appears.
+func creates(stmts []source.Statement, name string) int {
+	want := `VIEW "ikigai_it"."` + name + `"`
+	for i, s := range stmts {
+		if strings.Contains(s.SQL, want) {
+			return i
+		}
+	}
+	return -1
+}
+
+func mentionsAny(sql string, names []string) bool {
+	for _, n := range names {
+		if strings.Contains(sql, n) {
+			return true
+		}
+	}
+	return false
 }
