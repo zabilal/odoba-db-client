@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -248,6 +249,67 @@ func (*snapPanicker) Snapshot(context.Context, string) (*model.Database, error) 
 func TestADriverThatFallsOverReadingASchemaIsContained(t *testing.T) {
 	_, err := Snapshot(context.Background(), &snapPanicker{}, "sales")
 	if err == nil || !strings.Contains(err.Error(), "reading a schema") {
+		t.Errorf("it said %v", err)
+	}
+}
+
+// Comparing a live database against a model saved to disk (FR-7.1).
+
+func TestSavingAModelAndComparingAgainstIt(t *testing.T) {
+	db := &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public",
+		Tables: []model.Table{{Name: "people", RowsEstimate: -1,
+			Columns: []model.Column{{Name: "id", Position: 1,
+				Type: model.DataType{Native: "integer", Length: -1}}}}}}}}
+	src := &snapper{db: db}
+	dir := filepath.Join(t.TempDir(), "model")
+	if err := SaveModel(context.Background(), src, "sales", dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same database against what was saved from it: nothing differs.
+	got, err := CompareWithSaved(context.Background(), src, "sales", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Differs() {
+		t.Errorf("a database compared against a model of itself as %s", got.Status)
+	}
+
+	// A database missing what the model has: the saved model is the wanted
+	// state, so what it has and the database has not is Added.
+	src.db = &model.Database{Name: "sales", Schemas: []model.Schema{{Name: "public"}}}
+	got, err = CompareWithSaved(context.Background(), src, "sales", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table diff.Node
+	for _, s := range got.Children {
+		for _, c := range s.Children {
+			if c.Name == "people" {
+				table = c
+			}
+		}
+	}
+	if table.Status != diff.Added {
+		t.Errorf("a table the database is missing compared as %s", table.Status)
+	}
+}
+
+func TestReadingAModelThatIsNotThere(t *testing.T) {
+	if _, err := ReadModel(t.TempDir()); err == nil {
+		t.Error("an empty directory read as a model")
+	}
+	src := &snapper{db: &model.Database{Name: "sales"}}
+	if _, err := CompareWithSaved(context.Background(), src, "sales", t.TempDir()); err == nil {
+		t.Error("it compared against a model that is not there")
+	}
+}
+
+// A database that cannot be read says so before the model is even opened.
+func TestComparingWithASavedModelWhenTheDatabaseWillNotRead(t *testing.T) {
+	src := &snapper{err: errors.New("the server hung up")}
+	_, err := CompareWithSaved(context.Background(), src, "sales", t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "reading sales") {
 		t.Errorf("it said %v", err)
 	}
 }
