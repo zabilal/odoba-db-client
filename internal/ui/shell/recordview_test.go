@@ -174,9 +174,10 @@ func TestATopicsRecordsAreFilteredHere(t *testing.T) {
 	}
 
 	// And the footer says what it filtered, which is not the whole topic.
-	if got := tb.footer.Text; !strings.Contains(got, "filtering what has been read") {
-		t.Errorf("the footer says %q", got)
-	}
+	// Waited for rather than read at once: the footer is also where a
+	// background count writes, so reading it the instant the rows arrive
+	// catches whichever of the two got there first.
+	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "filtering what has been read") })
 
 	// Clearing it gives every record back.
 	filterTo(t, fx, tb, 3, "")

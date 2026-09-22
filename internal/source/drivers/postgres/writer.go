@@ -42,6 +42,13 @@ func (s *pgSource) Apply(ctx context.Context, plan *source.WritePlan) (*source.W
 // LoadRows imports rows into a table on its database's pool, a batch a
 // transaction, or emptying it first in one (FR-10.6, ADR-0050).
 func (s *pgSource) LoadRows(ctx context.Context, target model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
+	// Asked before anything is opened. LoadWith asks again, and that is the
+	// check that counts; this one is here so that a connection nobody may
+	// write to does not have a pool opened for a load that cannot happen —
+	// every other write path in this driver refuses before it dials.
+	if err := s.cfg.Guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
+		return 0, err
+	}
 	pool, err := s.poolFor(ctx, target)
 	if err != nil {
 		return 0, err
