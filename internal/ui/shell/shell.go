@@ -73,6 +73,9 @@ type Deps struct {
 	// Params remembers the values given to query parameters. Nil asks with
 	// nothing filled in.
 	Params app.ParamStore
+	// Layouts remembers where somebody put the boxes on a diagram. Nil
+	// draws every diagram laid out afresh, which is right and forgetful.
+	Layouts app.LayoutStore
 	// Decoders remembers which decoder a topic's key and value are read with
 	// (FR-13.7). Nil keeps the choice for as long as the view lives.
 	Decoders app.DecoderStore
@@ -208,6 +211,8 @@ type tab struct {
 	source *sourcePanel
 	// compare is the schema comparison, where this tab is one (compare.go).
 	compare *comparePanel
+	// diagram is the ER diagram, where this tab is one (erdiagram.go).
+	diagram *diagramPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -385,6 +390,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptSchema, Category: "Explorer", Title: "Script Whole Schema",
 			Keywords: []string{"ddl", "create", "schema", "export", "everything"},
 			Enabled:  s.canScriptSchema, Run: s.scriptSelectedSchema},
+		{ID: cmdDiagram, Category: "Explorer", Title: "Show the Diagram",
+			Keywords: []string{"er", "diagram", "relationships", "map", "picture"},
+			Enabled:  s.canDiagram, Run: s.diagramSelected},
 		{ID: cmdCompare, Category: "Explorer", Title: "Compare with a Saved Model…",
 			Keywords: []string{"diff", "compare", "schema", "model", "drift"},
 			Enabled:  s.canCompareSelected, Run: s.compareSelected},

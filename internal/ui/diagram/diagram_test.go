@@ -1,9 +1,12 @@
 package diagram
 
 import (
+	"slices"
+	"strconv"
 	"testing"
 
 	"fyne.io/fyne/v2"
+	fcanvas "fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 	ftheme "fyne.io/fyne/v2/theme"
 
@@ -269,5 +272,128 @@ func TestWhatIsDrawnDependsOnHowCloseItIs(t *testing.T) {
 
 	if !(close > titles && titles > shapes) {
 		t.Errorf("it drew %d objects close, %d at a distance and %d far off", close, titles, shapes)
+	}
+}
+
+// What a node draws (FR-8.3).
+
+// counted is how many objects of each kind a render produced, which is how a
+// test says what was drawn without asserting pixels.
+func counted(w *Widget) map[string]int {
+	out := map[string]int{}
+	for _, o := range test.WidgetRenderer(w).(*renderer).Objects() {
+		switch o.(type) {
+		case *fcanvas.Text:
+			out["text"]++
+		case *fcanvas.Line:
+			out["line"]++
+		case *fcanvas.Circle:
+			out["circle"]++
+		case *fcanvas.Rectangle:
+			out["rect"]++
+		}
+	}
+	return out
+}
+
+func texts(w *Widget) []string {
+	var out []string
+	for _, o := range test.WidgetRenderer(w).(*renderer).Objects() {
+		if t, ok := o.(*fcanvas.Text); ok {
+			out = append(out, t.Text)
+		}
+	}
+	return out
+}
+
+// A column is drawn with its name and its type, and a key column is marked.
+func TestAColumnIsDrawnWithItsTypeAndItsMark(t *testing.T) {
+	w := drawn(t)
+	w.Graph().Nodes[0].Ports[0].Detail = "integer"
+	w.Graph().Nodes[0].Ports[1].Detail = "text"
+	w.Refresh()
+
+	said := texts(w)
+	for _, want := range []string{"people", "id", "name", "integer", "text"} {
+		if !slices.Contains(said, want) {
+			t.Errorf("it drew %q, with no %q in it", said, want)
+		}
+	}
+	// One mark per key column, and the first column of each box is one.
+	if got := counted(w)["circle"]; got != 2 {
+		t.Errorf("it drew %d key marks for two keyed columns", got)
+	}
+}
+
+// A key is marked rather than only emboldened: weight alone is not a
+// difference somebody can see at a glance down a column of names.
+func TestAKeyIsMarkedAndNotOnlyEmboldened(t *testing.T) {
+	w := drawn(t)
+	w.Graph().Nodes[0].Ports[0].Key = false
+	w.Refresh()
+	if got := counted(w)["circle"]; got != 1 {
+		t.Errorf("with one keyed column it drew %d marks", got)
+	}
+}
+
+// A relationship carries a mark at each end: many where the child may have
+// many rows, one where it may not.
+func TestARelationshipIsMarkedAtBothEnds(t *testing.T) {
+	w := drawn(t)
+	many := counted(w)["line"]
+
+	w.Graph().Edges[0].Cardinality = canvas.OneToOne
+	w.Refresh()
+	one := counted(w)["line"]
+
+	// A crow's foot is three lines and a bar is one, so the one-to-one
+	// drawing is two lines lighter.
+	if many-one != 2 {
+		t.Errorf("many drew %d lines and one drew %d", many, one)
+	}
+}
+
+// Too far out, a mark is a smudge, so it is not drawn.
+func TestMarksAreNotDrawnWhereTheyWouldBeSmudges(t *testing.T) {
+	w := drawn(t)
+	w.View().Zoom = 1
+	w.Refresh()
+	near := counted(w)["line"]
+	w.View().Zoom = 0.1
+	w.Refresh()
+	far := counted(w)["line"]
+
+	// Close up: the route, a hairline under each of the two headers, and a
+	// mark at each end — a crow's foot of three lines and a bar of one. Far
+	// off: the route alone. So the difference is the two rules and the four
+	// lines of the two marks, and anything less means a mark was drawn
+	// where it is a smudge.
+	if near-far < 4 {
+		t.Errorf("it drew %d lines close and %d far off, a difference of %d",
+			near, far, near-far)
+	}
+}
+
+// A node with more columns than are worth drawing says how many are left,
+// rather than growing taller than the diagram is wide.
+func TestANodeWithMoreColumnsThanFit(t *testing.T) {
+	g := two()
+	for i := 0; i < canvas.NodeMaxPorts+5; i++ {
+		g.Nodes[0].Ports = append(g.Nodes[0].Ports, canvas.Port{Label: "c" + string(rune('a'+i))})
+	}
+	canvas.MeasureNodes(g)
+	test.NewTempApp(t)
+	w := New(g, theme.New().PaletteFor(ftheme.VariantLight))
+	w.Resize(fyne.NewSize(800, 600))
+	test.WidgetRenderer(w)
+
+	said := texts(w)
+	want := "+" + strconv.Itoa(len(g.Nodes[0].Ports)-canvas.NodeMaxPorts) + " more"
+	if !slices.Contains(said, want) {
+		t.Errorf("it drew %q, with no %q in it", said, want)
+	}
+	// And it drew no more rows than it says it can.
+	if got := len(said); got > canvas.NodeMaxPorts+8 {
+		t.Errorf("it drew %d pieces of text for a node of %d columns", got, len(g.Nodes[0].Ports))
 	}
 }
