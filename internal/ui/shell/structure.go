@@ -381,6 +381,16 @@ func structureView(desc any, acts structureActions) fyne.CanvasObject {
 		if len(v.Attrs) > 0 {
 			add(section("What it says about itself", attrRows(v.Attrs)))
 		}
+		if len(v.Config) > 0 {
+			// What somebody chose, told apart from what the cluster leaves
+			// alone (FR-13.12).
+			add(quietLabel(settingsHold(v.Config)))
+			rows := [][]string{{"Setting", "Value", "Where from"}}
+			for _, c := range v.Config {
+				rows = append(rows, []string{c.Name, settingValue(c), sourceText(c.Source)})
+			}
+			add(section("Settings", rows))
+		}
 	case *model.SchemaSubject:
 		// A subject is one thing that has been revised. What there is to say
 		// is how often, under what rule the next revision will be judged,
@@ -602,6 +612,61 @@ func foreignKeyRows(fks []model.ForeignKey) [][]string {
 
 // section is a heading over a grid whose first row names its columns. A
 // section with no rows below that is nothing, and left out.
+// settingsHold says how many of a topic's settings somebody chose, which is
+// the question worth answering before a table of forty of them.
+func settingsHold(cs []model.ConfigEntry) string {
+	set := 0
+	for _, c := range cs {
+		if c.IsOverride() {
+			set++
+		}
+	}
+	switch set {
+	case 0:
+		return fmt.Sprintf("%d settings, every one of them as the cluster leaves it.", len(cs))
+	case 1:
+		return fmt.Sprintf("%d settings, one of them set rather than inherited.", len(cs))
+	}
+	return fmt.Sprintf("%d settings, %d of them set rather than inherited.", len(cs), set)
+}
+
+// settingValue is what a setting is set to, or says why it is not shown.
+//
+// A sensitive value comes back from the server with nothing in it, and an
+// empty cell would read as a setting with no value rather than one withheld.
+func settingValue(c model.ConfigEntry) string {
+	switch {
+	case c.Sensitive:
+		return "hidden by the server"
+	case c.Value == "":
+		return "empty"
+	}
+	return c.Value
+}
+
+// sourceText says where a setting came from, in words rather than in the
+// broker's shouted constants. One this build has not met is passed through as
+// it arrived, which is more use to somebody than "unknown".
+func sourceText(source string) string {
+	switch source {
+	case "DYNAMIC_TOPIC_CONFIG":
+		return "set on this topic"
+	case "DYNAMIC_BROKER_CONFIG":
+		return "set on the broker"
+	case "DYNAMIC_BROKER_LOGGER_CONFIG":
+		return "set on the broker's logging"
+	case "DYNAMIC_DEFAULT_BROKER_CONFIG":
+		return "the cluster's default for brokers"
+	case "STATIC_BROKER_CONFIG":
+		return "the broker's configuration file"
+	case "DEFAULT_CONFIG":
+		return "Kafka's own default"
+	case "", "UNKNOWN":
+		return "not said"
+	}
+	return source
+}
+
 // offsetText is a position in a log, or says that nobody could give one.
 // Nothing here reads as -1: that is a fact about the protocol rather than
 // about the data, and nobody should have to know how to read one.

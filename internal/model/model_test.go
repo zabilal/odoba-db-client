@@ -110,7 +110,18 @@ func TestConfigEntryIsOverride(t *testing.T) {
 	if !(ConfigEntry{Source: "DYNAMIC_TOPIC_CONFIG"}).IsOverride() {
 		t.Error("topic-level config should be an override")
 	}
-	for _, src := range []string{"DEFAULT_CONFIG", "STATIC_BROKER_CONFIG", ""} {
+	// A setting made on the broker is still somebody's doing rather than a
+	// default, so it counts; where it was made is what Source says.
+	if !(ConfigEntry{Source: "DYNAMIC_BROKER_CONFIG"}).IsOverride() {
+		t.Error("a setting made on the broker should be an override")
+	}
+	for _, src := range []string{
+		"DEFAULT_CONFIG", "STATIC_BROKER_CONFIG", "",
+		// A cluster-wide default for brokers is a default, however
+		// dynamically it was set, and a source nobody recognises is no
+		// evidence that anybody chose anything.
+		"DYNAMIC_DEFAULT_BROKER_CONFIG", "UNKNOWN",
+	} {
 		if (ConfigEntry{Source: src}).IsOverride() {
 			t.Errorf("%q should not be an override", src)
 		}
