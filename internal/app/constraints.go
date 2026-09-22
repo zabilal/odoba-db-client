@@ -383,6 +383,7 @@ func (d *Design) freeName(name string) error {
 	taken := func(n string) bool { return strings.EqualFold(n, name) }
 	switch {
 	case d.to.PrimaryKey != nil && taken(d.to.PrimaryKey.Name),
+		slices.ContainsFunc(d.to.Indexes, func(i model.Index) bool { return taken(i.Name) }),
 		slices.ContainsFunc(d.to.Uniques, func(u model.UniqueConstraint) bool { return taken(u.Name) }),
 		slices.ContainsFunc(d.to.ForeignKeys, func(f model.ForeignKey) bool { return taken(f.Name) }),
 		slices.ContainsFunc(d.to.Checks, func(c model.CheckConstraint) bool { return taken(c.Name) }):
@@ -426,6 +427,13 @@ func sameForeignKey(a, b model.ForeignKey) bool {
 // A check's expression is not read, for the reason AddCheck gives. A check
 // that names a dropped column is the server's to refuse, with its own
 // message about its own expression.
+func (d *Design) held(name string) (string, bool) {
+	if what, ok := d.keyed(name); ok {
+		return what, true
+	}
+	return d.indexed(name)
+}
+
 func (d *Design) keyed(name string) (string, bool) {
 	if d.to.PrimaryKey != nil && slices.ContainsFunc(d.to.PrimaryKey.Columns, eq(name)) {
 		return "this table's primary key", true

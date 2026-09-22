@@ -125,6 +125,7 @@ func (p *designPanel) draw() {
 	}
 	p.rows.Add(widget.NewSeparator())
 	p.rows.Add(p.constraintRows())
+	p.rows.Add(p.indexRows())
 	p.rows.Refresh()
 	p.say()
 }
@@ -231,6 +232,13 @@ func (p *designPanel) say() {
 		}
 	}
 	said = append(said, sayConstraints(p.design.ConstraintChanges())...)
+	for _, c := range p.design.IndexChanges() {
+		if c.Name == "" {
+			said = append(said, fmt.Sprintf("index %s", c.Change))
+			continue
+		}
+		said = append(said, fmt.Sprintf("index %s %s", c.Name, c.Change))
+	}
 	p.t.footer.SetText(fmt.Sprintf("%s: %s", nounCount(len(said), "change"), strings.Join(said, ", ")))
 }
 
