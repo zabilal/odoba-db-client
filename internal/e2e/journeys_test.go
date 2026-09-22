@@ -3,8 +3,10 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,6 +29,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	explorerview "github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
+	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/shell"
 	"github.com/ikigai-db/ikigai-db/internal/ui/tabbar"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -110,12 +113,12 @@ func start(t *testing.T, j journey) *harness {
 	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
 }
 
-// openTable walks the sidebar to the fixture table and opens its rows, which
-// is J1 and the first step of every journey that works on a table.
-func openTable(t *testing.T, h *harness, j journey) {
+// walkTo expands the sidebar down to the last of path and selects it, as
+// opening each node in turn does.
+func walkTo(t *testing.T, h *harness, path []model.ObjectRef) {
 	t.Helper()
 	ids := []string{explorerview.ConnectionID(h.conn.ID)}
-	for _, ref := range j.path {
+	for _, ref := range path {
 		ids = append(ids, explorerview.NodeID(h.conn.ID, ref))
 	}
 	parent := explorer.RootID
@@ -124,6 +127,13 @@ func openTable(t *testing.T, h *harness, j journey) {
 		parent = id
 	}
 	h.s.Explorer.Tree.Select(parent)
+}
+
+// openTable walks the sidebar to the fixture table and opens its rows, which
+// is J1 and the first step of every journey that works on a table.
+func openTable(t *testing.T, h *harness, j journey) {
+	t.Helper()
+	walkTo(t, h, j.path)
 	if err := h.s.Commands().Run("object.open"); err != nil {
 		t.Fatalf("Open Data: %v", err)
 	}
@@ -422,6 +432,13 @@ func selected(o fyne.CanvasObject) []string {
 	return out
 }
 
+// gridCell names a cell, so that the Kafka journey need not import the grid
+// package for one type.
+func gridCell(row, col int) grid.CellID { return grid.CellID{Row: row, Col: col} }
+
+// jsonDecode reads JSON from a reader, which the registry answers in.
+func jsonDecode(r io.Reader, into any) error { return json.NewDecoder(r).Decode(into) }
+
 // first is the opening of a file, for an error message.
 func first(b []byte) string {
 	if len(b) > 40 {
@@ -430,8 +447,9 @@ func first(b []byte) string {
 	return string(b)
 }
 
-// labelsIn is every label's text under o, which is how a dialog's words are
-// read here.
+// labelsIn is every word drawn under o that a person would read: labels,
+// the RichText a Form draws its item names with, and the TextGrid that shows
+// a value decoded as code.
 func labelsIn(o fyne.CanvasObject) []string {
 	var out []string
 	for _, l := range find[*widget.Label](o) {
@@ -439,6 +457,9 @@ func labelsIn(o fyne.CanvasObject) []string {
 	}
 	for _, r := range find[*widget.RichText](o) {
 		out = append(out, r.String())
+	}
+	for _, g := range find[*widget.TextGrid](o) {
+		out = append(out, g.Text())
 	}
 	return out
 }
