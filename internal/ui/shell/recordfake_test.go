@@ -54,7 +54,10 @@ func (*recordSource) Ping(context.Context) error { return nil }
 func (*recordSource) Close() error               { return nil }
 
 func (*recordSource) Root(context.Context) ([]model.Node, error) {
-	return []model.Node{{Ref: model.NewRef(model.KindCluster, "cluster"), Label: "cluster", HasChildren: true}}, nil
+	// Describable and not browsable, as a real cluster is: it has an account
+	// of itself and no rows at all (ADR-0106).
+	return []model.Node{{Ref: model.NewRef(model.KindCluster, "cluster"), Label: "cluster",
+		HasChildren: true, Describable: true}}, nil
 }
 
 func (*recordSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
@@ -71,10 +74,14 @@ func (*recordSource) Badge(context.Context, model.ObjectRef) (model.Badge, bool,
 }
 
 func (*recordSource) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
-	if ref.Kind != model.KindTopic {
-		return nil, errors.New("recordfake: nothing to describe")
+	switch ref.Kind {
+	case model.KindTopic:
+		return &model.Topic{Name: "events"}, nil
+	case model.KindCluster:
+		return &model.Cluster{ID: "cluster", Controller: 1,
+			Brokers: []model.Broker{{ID: 1, Host: "kafka1", Port: 9092}}}, nil
 	}
-	return &model.Topic{Name: "events"}, nil
+	return nil, errors.New("recordfake: nothing to describe")
 }
 
 var recordCols = []model.ColumnDef{

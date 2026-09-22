@@ -10,6 +10,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
 
@@ -499,5 +501,34 @@ func TestStructureSaysWhenAGroupHasNobodyInIt(t *testing.T) {
 	none := &model.ConsumerGroup{ID: "readers"}
 	if got := strings.Join(labelTexts(structureView(none, nil, nil)), "\n"); !strings.Contains(got, "did not name") {
 		t.Errorf("a group with no state says:\n%s", got)
+	}
+}
+
+func TestStructureOpensForAnObjectWithNoRowsToOpen(t *testing.T) {
+	// A cluster has an account of itself and nothing to browse. The action
+	// was offered only for what could be read, so this was unreachable — and
+	// said nothing about being unreachable, the menu item merely sitting
+	// grey as though somebody had decided it (ADR-0106).
+	fx := newFixture(t)
+	c, err := fx.conns.Create(store.SavedConnection{Name: "kafka1", Driver: "recordfake", Host: "kafka1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.s.Explorer.Refresh(explorer.RootID)
+	loaded(t, fx, explorer.RootID)
+	loaded(t, fx, view.ConnectionID(c.ID))
+	fx.s.Explorer.Tree.Select(view.NodeID(c.ID, model.NewRef(model.KindCluster, "cluster")))
+	fx.s.sync()
+
+	if fx.s.menuItems[cmdStructure].Disabled {
+		t.Fatal("a cluster has a description and no rows; Open Structure should be offered")
+	}
+	fx.s.run(cmdStructure)
+	tb := fx.onlyTab(t)
+	pump(t, fx.q, func() bool { return showsAll(tb, "one broker, calling itself cluster.") })
+	// And what it shows is the cluster itself, not the view's apology for a
+	// kind of object it does not know.
+	if showsAll(tb, "cannot be shown yet") {
+		t.Error("the cluster's structure reads as a kind the view cannot show")
 	}
 }

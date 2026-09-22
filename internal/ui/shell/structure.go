@@ -40,7 +40,7 @@ func (s *Shell) openSelectedStructure() {
 // none, it is the object the tab in front is on — which is the only way to
 // reach one that is not in the tree at all, a Redis key among them.
 func (s *Shell) structureTarget() (string, model.Node, bool) {
-	if conn, n, ok := s.Explorer.SelectedNode(); ok && n.Browsable {
+	if conn, n, ok := s.Explorer.SelectedNode(); ok && (n.Browsable || n.Describable) {
 		return conn, n, true
 	}
 	t := s.activeTab()

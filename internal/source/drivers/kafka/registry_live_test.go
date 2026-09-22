@@ -413,6 +413,12 @@ func TestLiveTheClusterHoldsItsSubjects(t *testing.T) {
 	if found.Browsable {
 		t.Error("a subject offers rows, though it has none to read")
 	}
+	// What it does offer is a description — its versions, their schemas and
+	// the rule the next one is checked against — and it has to say so, or
+	// nothing can ask for it (ADR-0106).
+	if !found.Describable {
+		t.Error("a subject offers no description, though its versions are one")
+	}
 }
 
 func TestLiveAClusterWithNoRegistryHoldsNoSubjects(t *testing.T) {

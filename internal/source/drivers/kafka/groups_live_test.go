@@ -141,9 +141,18 @@ func TestLiveTheClusterHoldsItsConsumerGroups(t *testing.T) {
 	if group.Attrs["state"] == "" {
 		t.Errorf("the group says nothing about what it is doing: %v", group.Attrs)
 	}
-	// A group is a leaf here: its members and its lag are T2.75 and T2.76.
+	// A group is a leaf: its members are shown by describing it rather than
+	// hung under it (T2.75), and its lag is read only when asked for (T2.76).
 	if group.HasChildren {
-		t.Error("a group claims children before its members are listed")
+		t.Error("a group claims children, though its members are not nodes")
+	}
+	// So the description is the whole of what it offers, and it has to say
+	// so: it has no rows for the tree to fall back on (ADR-0106).
+	if !group.Describable {
+		t.Error("a group offers no description, though its members are one")
+	}
+	if group.Browsable {
+		t.Error("a group offers rows, which it has not got")
 	}
 }
 
