@@ -975,6 +975,11 @@ func (fakeSource) CreateObject(ref model.ObjectRef, obj any) ([]source.Statement
 	case *model.Sequence:
 		return []source.Statement{{SQL: fmt.Sprintf("ALTER SEQUENCE %s START WITH %d", ref.Name(), v.Start)}}, nil
 	}
+	// A table names itself, so that a script can be read as the objects it
+	// builds rather than as the word CREATE several times over.
+	if t, ok := obj.(*model.Table); ok {
+		return []source.Statement{{SQL: "CREATE TABLE " + ref.Name() + " -- " + t.Name}}, nil
+	}
 	return []source.Statement{{SQL: "CREATE"}}, nil
 }
 

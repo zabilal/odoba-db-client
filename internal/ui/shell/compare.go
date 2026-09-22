@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/diff"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 )
 
@@ -80,7 +82,12 @@ type comparePanel struct {
 	// chosen is the differences ticked, by the names the comparison gives
 	// them, which is what app.SyncScript is written from.
 	chosen app.Selection
-	write  *widget.Button
+	// dir is the saved model this was compared against, kept so the
+	// comparison can be made again after something has run.
+	dir   string
+	write *widget.Button
+	save  *widget.Button
+	apply *widget.Button
 }
 
 func compareKey(connID string, ref model.ObjectRef, against string) string {
@@ -182,7 +189,7 @@ func databaseOf(ref model.ObjectRef) string {
 // showComparison draws the tree, the filter and the detail beside it.
 func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	p := &comparePanel{s: s, t: t, root: got.Tree, filter: showDifferences,
-		live: got.Live, wanted: got.Wanted, chosen: app.Selection{}}
+		live: got.Live, wanted: got.Wanted, chosen: app.Selection{}, dir: dir}
 	t.compare = p
 	p.index()
 
@@ -211,12 +218,19 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	)
 	p.tree.OnSelected = func(id widget.TreeNodeID) { p.showDetail(id) }
 
+	// Three verbs, because they are three acts: read it, keep it, run it.
 	p.write = widget.NewButton("Write the Script…", p.writeScript)
-	p.write.Disable()
+	p.save = widget.NewButton("Save…", p.saveScript)
+	p.apply = widget.NewButton("Apply…", p.applyScript)
+	p.apply.Importance = widget.HighImportance
+	for _, b := range p.buttons() {
+		b.Disable()
+	}
 
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(
-			container.NewBorder(nil, nil, widget.NewLabel("Show"), p.write, filter),
+			container.NewBorder(nil, nil, widget.NewLabel("Show"),
+				container.NewHBox(p.write, p.save, p.apply), filter),
 			nil, nil, nil,
 			container.NewHSplit(
 				container.NewBorder(p.summary, nil, nil, nil, p.tree),
@@ -343,29 +357,130 @@ func (p *comparePanel) choose(id string, on bool) {
 // is anything to write.
 func (p *comparePanel) saySelection() {
 	if len(p.chosen) == 0 {
-		p.write.Disable()
+		for _, b := range p.buttons() {
+			b.Disable()
+		}
 		p.t.footer.SetText("Nothing has run. A comparison reads both sides and changes neither.")
 		return
 	}
-	p.write.Enable()
+	for _, b := range p.buttons() {
+		b.Enable()
+	}
 	p.t.footer.SetText(nounCount(len(p.chosen), "difference") +
 		" chosen. Nothing has run: the script is written for you to read.")
 }
 
-// writeScript renders the chosen differences and opens them as a script.
-func (p *comparePanel) writeScript() {
-	live, ok := p.s.d.WS.Get(p.t.connID)
-	if !ok {
+func (p *comparePanel) buttons() []*widget.Button { return []*widget.Button{p.write, p.save, p.apply} }
+
+// script renders the chosen differences, or says why it cannot.
+func (p *comparePanel) script() ([]source.Statement, bool) {
+	live, open := p.s.d.WS.Get(p.t.connID)
+	if !open {
 		p.t.footer.SetText("This connection is not open.")
-		return
+		return nil, false
 	}
 	stmts, err := app.SyncScript(live.Source, p.live, p.wanted, p.root, p.chosen)
 	if err != nil {
 		p.s.showError(err)
-		return
+		return nil, false
 	}
 	if len(stmts) == 0 {
 		p.t.footer.SetText("What was chosen needs no statements.")
+		return nil, false
+	}
+	return stmts, true
+}
+
+// saveScript keeps the script as a file, for a repository or a colleague
+// or a change window later in the week (FR-7.4).
+func (p *comparePanel) saveScript() {
+	stmts, ok := p.script()
+	if !ok {
+		return
+	}
+	text := syncHeader(len(p.chosen)) + scriptOf(stmts)
+	p.s.d.Files.Save(p.s.win, filedlg.Options{
+		Message:    "Save the sync script",
+		Name:       scriptFileName(p.t.label),
+		Extensions: []string{"sql"},
+		Kind:       "SQL",
+		Accept:     "Save",
+	}, func(path string, err error) {
+		switch {
+		case err != nil:
+			p.s.showError(fmt.Errorf("could not save the script: %w", err))
+		case path == "":
+			// Cancelled.
+		default:
+			if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+				p.s.showError(fmt.Errorf("could not save the script: %w", err))
+				return
+			}
+			p.t.footer.SetText("Saved to " + filepath.Base(path) + ". Nothing has run.")
+		}
+	})
+}
+
+// scriptFileName is what a saved script is called by default.
+func scriptFileName(label string) string {
+	name := strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == ':' {
+			return '-'
+		}
+		return r
+	}, label)
+	return name + "-sync.sql"
+}
+
+// applyScript runs the chosen differences, read first like every other
+// structural change (ADR-0115), and reads both sides again afterwards.
+func (p *comparePanel) applyScript() {
+	stmts, ok := p.script()
+	if !ok {
+		return
+	}
+	p.s.previewDDL(p.t.ddl(), stmts, func() { p.s.reopenComparison(p.t) })
+}
+
+// reopenComparison compares both sides again, after something has run.
+//
+// Whatever ran has moved the database, so what is on screen is a comparison
+// of something that is no longer there. It is made again rather than
+// adjusted, because adjusting it would mean this program deciding what the
+// server did, and the server is right there to ask.
+func (s *Shell) reopenComparison(t *tab) {
+	p := t.compare
+	if p == nil {
+		return
+	}
+	dir := p.dir
+	t.body.Objects = []fyne.CanvasObject{quiet("Reading both sides again…")}
+	t.body.Refresh()
+	go func() {
+		ctx, cancel := context.WithTimeout(t.ctx, compareTimeout)
+		defer cancel()
+		live, err := s.d.WS.Connect(ctx, t.connID)
+		var got app.Comparison
+		if err == nil {
+			got, err = app.CompareWithSaved(ctx, live.Source, databaseOf(t.ref), dir)
+		}
+		s.d.Run(func() {
+			if t.ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				s.tabFailed(t, fmt.Errorf("could not compare again: %w", err))
+				return
+			}
+			s.showComparison(t, got, dir)
+		})
+	}()
+}
+
+// writeScript renders the chosen differences and opens them as a script.
+func (p *comparePanel) writeScript() {
+	stmts, ok := p.script()
+	if !ok {
 		return
 	}
 	p.s.openScript(p.t.connID, syncHeader(len(p.chosen))+scriptOf(stmts))

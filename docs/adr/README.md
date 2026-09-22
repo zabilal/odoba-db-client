@@ -128,3 +128,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0121](0121-a-schema-as-files-somebody-reviews.md) | A schema as files somebody reviews | Accepted |
 | [0122](0122-two-sides-named-from-where-you-stand.md) | Two sides, named from where you stand | Accepted |
 | [0123](0123-a-script-for-the-parts-somebody-agreed-with.md) | A script for the parts somebody agreed with | Accepted |
+| [0124](0124-what-a-half-finished-change-leaves-on-screen.md) | What a half-finished change leaves on screen | Accepted |

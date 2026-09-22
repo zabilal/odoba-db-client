@@ -135,6 +135,13 @@ func (s *Shell) ranDDL(t ddlTarget, stmts []source.Statement, out app.DDLOutcome
 		t.say(fmt.Sprintf("%s ran, then %s failed: %v", nounCount(out.Ran, "statement"),
 			firstLineOf(out.Failed), err))
 		s.showError(err)
+		// And what is on screen is read again anyway, because whatever did
+		// run has moved the database: a designer or a comparison still
+		// showing what was there before a half-finished change is showing
+		// something nobody can act on.
+		if out.Ran > 0 && after != nil {
+			after()
+		}
 	}
 }
 
