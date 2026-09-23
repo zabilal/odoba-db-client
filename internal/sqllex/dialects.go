@@ -140,6 +140,28 @@ var ClickHouse = &Dialect{
 	BackslashEscapes: true,
 }
 
+// Oracle's SQL, and the PL/SQL a script of it carries. A statement there
+// may be a block with statements of its own, and the words that open one
+// are as much of the language as SELECT is.
+var Oracle = &Dialect{
+	Name: "oracle",
+	Keywords: words(commonKeywords + `
+		minus connect prior start rownum dual pivot unpivot
+		package body cursor exception raise pragma synonym sequence
+		tablespace nologging parallel purge replace editionable
+		is loop elsif deterministic authid definer invoker
+	`),
+	Types: words(commonTypes + `
+		varchar2 nvarchar2 nclob bfile long raw rowid urowid
+		binary_float binary_double number xmltype
+	`),
+	Functions: words(commonFunctions + `
+		nvl nvl2 decode to_number sysdate systimestamp listagg
+		regexp_like regexp_substr instr substr trunc dbms_output
+	`),
+	QuoteIdent: '"',
+}
+
 // CQL is Cassandra's query language (FR-12.3, FR-5.1).
 var CQL = &Dialect{
 	Name: "cql",
@@ -223,6 +245,7 @@ var dialects = map[string]*Dialect{
 	"sqlserver":   SQLServer,
 	"mssql":       SQLServer,
 	"clickhouse":  ClickHouse,
+	"oracle":      Oracle,
 	"cql":         CQL,
 	"cassandra":   CQL,
 	"mongosh":     Mongosh,
