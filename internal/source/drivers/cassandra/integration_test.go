@@ -138,12 +138,23 @@ func TestLiveConnectingStopsWhenItIsGivenUp(t *testing.T) {
 }
 
 // TestLiveClaimsNothingItHasNotWritten holds the driver to what it says it
-// is: it runs CQL, and it does not yet read a table's rows or write any.
+// is: every capability it claims has something behind it, and the ones it
+// does not claim it does not have.
 func TestLiveClaimsNothingItHasNotWritten(t *testing.T) {
 	src := live(t, liveConfig(""))
 	caps := src.Capabilities()
-	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
-		t.Errorf("the driver claims writes it has not written: %+v", caps)
+	if !caps.Data.Insert || !caps.Data.Update || !caps.Data.Delete {
+		t.Errorf("rows are written and the window is not told: %+v", caps.Data)
+	}
+	if _, ok := src.(source.Writer); !ok {
+		t.Error("writes are claimed with nothing to write them")
+	}
+	// A changeset is not written all at once: CQL has no transaction.
+	if caps.Data.TransactionalWrite {
+		t.Errorf("a changeset is claimed to be written all at once: %+v", caps.Data)
+	}
+	if caps.Data.BulkLoad {
+		t.Errorf("a bulk load is claimed that nothing performs: %+v", caps.Data)
 	}
 	// A claimed language is a promise the editor holds it to: the lexer must
 	// know it, and a Queryer must be behind it (REQ-DRV-1).
