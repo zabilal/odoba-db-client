@@ -41,6 +41,15 @@ func (d dialect) QualifyRef(ref model.ObjectRef) string {
 
 func (dialect) Placeholder(int) string { return "?" }
 
+// UpdateStatement writes a change to rows the way ClickHouse takes one: as
+// an ALTER, and waited for. A mutation is asynchronous by default, and a
+// grid that said a row had changed before it had would be telling whoever
+// changed it something untrue (sqlscript.UpdateWriter).
+func (dialect) UpdateStatement(table, sets, where string) string {
+	return "ALTER TABLE " + table + " UPDATE " + sets + " WHERE " + where +
+		" SETTINGS mutations_sync = 1"
+}
+
 func (dialect) Classify(statement string) source.Access { return classify(statement) }
 
 // SplitScript divides a script at its semicolons. ClickHouse has no

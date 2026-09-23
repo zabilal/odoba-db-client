@@ -181,6 +181,7 @@ var (
 	_ source.Sessioner      = (*clickhouseSource)(nil)
 	_ source.DistinctLister = (*clickhouseSource)(nil)
 	_ source.Killer         = (*clickhouseSource)(nil)
+	_ source.Writer         = (*clickhouseSource)(nil)
 )
 
 func (s *clickhouseSource) Capabilities() capability.Capabilities {
@@ -189,10 +190,11 @@ func (s *clickhouseSource) Capabilities() capability.Capabilities {
 		Structure: capability.Structure{MultipleDatabases: true},
 		Query: capability.Query{Supported: true, Language: driverID, MultiStatement: true,
 			Parameters: true, Cancel: true},
-		// No Insert, Update or Delete: a row here has no address, so a grid
-		// cannot say which one an edit is for (ADR-0142).
+		// Rows are written back by the key somebody names for them: no row
+		// here has an address of its own, and there is no transaction to
+		// write a changeset in either (ADR-0142).
 		Data: capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true,
-			ApproximateCount: true},
+			ApproximateCount: true, Insert: true, Update: true, Delete: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
 			model.KindTable: true, model.KindView: true, model.KindMaterializedView: true,
