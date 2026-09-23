@@ -31,6 +31,13 @@ NEXT TASK: T3.33 — CockroachDB, which speaks PostgreSQL's wire
            to develop against, which is the one thing only the
            owner can start (`cockroachdb/cockroach start-single-node
            --insecure`).
+           Cassandra's grid now writes too (ADR-0143), which was
+           the other driver reporting an addressable row with
+           nothing to write it: CQL has only upserts, so every
+           statement carries IF EXISTS or IF NOT EXISTS and the
+           cluster says whether it applied. Its unset int still
+           reads back as 0 rather than as nothing, which is gocql's
+           limit and wants a change of its own; no task claims it.
            Oracle is done and conformance-green on 23ai. Its grid
            edits every table, a row there having an address of its
            own. Unclaimed there: bulk loading, EXPLAIN plans,
