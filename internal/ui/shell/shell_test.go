@@ -298,6 +298,7 @@ func (f fakeSource) ColumnStats(ctx context.Context, _ model.ObjectRef, def mode
 	}
 	if source.Numeric(def) {
 		out.Mean, out.HasMean = float64(rows)/2, true
+		out.Sum, out.HasSum = float64(rows)*float64(rows-1)/2, true
 	}
 	return out, nil
 }
