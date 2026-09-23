@@ -1,20 +1,30 @@
 package cassandra
 
 import (
+	"context"
 	"testing"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/guardcheck"
 )
 
-// This driver writes through statements alone: there is no Writer, no bulk
-// load and no index manager on it, so everything it changes goes through the
-// guard in its session (NFR-S4).
-//
-// The check is still worth making. If one of those interfaces is added here
-// later, this fails until the operation is held to the guard like every
-// other.
-func TestThisDriverHasNoWritePathOfItsOwn(t *testing.T) {
-	src := &cassandraSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
-	guardcheck.Complete(t, src, map[string]func(*cassandraSource, bool) error{})
+// Read-only is enforced in the data layer, not in the window (NFR-S4).
+// Every mutating operation this driver has is held to its guard here, and
+// the table is held to the interfaces themselves, so a new write path
+// cannot arrive without one.
+func TestEveryWritePathIsGuarded(t *testing.T) {
+	ctx := context.Background()
+	ro := &cassandraSource{cfg: source.ConnectionConfig{Guard: source.Guard{ReadOnly: true}}}
+	prod := &cassandraSource{cfg: source.ConnectionConfig{Guard: source.Guard{Environment: source.EnvProduction}}}
+
+	guardcheck.Check(t, ro, prod, map[string]func(*cassandraSource, bool) error{
+		"Apply": func(s *cassandraSource, c bool) error {
+			_, err := s.Apply(ctx, &source.WritePlan{
+				Target:     model.ObjectRef{Kind: model.KindTable, Path: []string{"ks", "t"}},
+				Statements: []source.Statement{{SQL: "DELETE FROM ks.t WHERE id = ? IF EXISTS", Confirmed: c}},
+			})
+			return err
+		},
+	})
 }

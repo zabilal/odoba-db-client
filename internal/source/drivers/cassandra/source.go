@@ -372,7 +372,11 @@ func (s *cassandraSource) Capabilities() capability.Capabilities {
 		// its own words. Nothing is counted: counting a table is a read of
 		// every partition on every node, so neither count is claimed and the
 		// grid pages without a scrollbar it cannot draw honestly (FR-2.5).
-		Data: capability.Data{ServerSort: true, ServerFilter: true},
+		// Rows are written back by the key that is what a row here is, and
+		// every write carries a condition, CQL having only upserts. There
+		// is no transaction to write a changeset in (ADR-0143).
+		Data: capability.Data{ServerSort: true, ServerFilter: true,
+			Insert: true, Update: true, Delete: true},
 		// CQL is the language, and a script of it runs a statement at a
 		// time. Every claim here is a promise the conformance suite holds
 		// this driver to, against a real cluster (REQ-DRV-1).
