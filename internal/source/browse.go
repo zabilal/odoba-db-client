@@ -230,11 +230,14 @@ type ColumnStats struct {
 	// or nil where the column has no order or holds nothing.
 	Min, Max any
 
-	// Mean is the average, for a column of numbers. HasMean is false for
-	// every other kind, because the average of a date is a date nobody
-	// asked about and the average of text is nothing at all.
+	// Mean is the average and Sum the total, for a column of numbers.
+	// HasMean is false for every other kind, because the average of a date
+	// is a date nobody asked about and the average of text is nothing at
+	// all; HasSum follows it, a total being the same kind of question.
 	Mean    float64
 	HasMean bool
+	Sum     float64
+	HasSum  bool
 
 	// Duration is how long the server took, which is the other half of
 	// deciding whether to ask again.

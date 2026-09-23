@@ -36,7 +36,7 @@ func TestAColumnOfNumbersIsAskedEverything(t *testing.T) {
 		t.Errorf("a column of numbers: distinct %v, extremes %v, mean %v", q.Distinct, q.Extremes, q.Mean)
 	}
 	sql := q.SQL()
-	for _, want := range []string{`count(DISTINCT "c")`, `min("c")`, `max("c")`, `avg("c")`} {
+	for _, want := range []string{`count(DISTINCT "c")`, `min("c")`, `max("c")`, `avg("c")`, `sum("c")`} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("it asks %q, without %q", sql, want)
 		}
@@ -78,7 +78,7 @@ func TestAColumnOfBytesIsNotCountedByValue(t *testing.T) {
 // A row of answers is read back in the order it was asked for.
 func TestARowOfAnswersIsReadBack(t *testing.T) {
 	q := StatsFor(`"c"`, def(model.TypeInteger))
-	got, err := q.Read(model.Row{int64(100), int64(80), int64(40), int64(1), int64(99), 42.5})
+	got, err := q.Read(model.Row{int64(100), int64(80), int64(40), int64(1), int64(99), 42.5, 3400.0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +94,9 @@ func TestARowOfAnswersIsReadBack(t *testing.T) {
 	if !got.HasMean || got.Mean != 42.5 {
 		t.Errorf("the average is %v (measured: %v)", got.Mean, got.HasMean)
 	}
+	if !got.HasSum || got.Sum != 3400 {
+		t.Errorf("the total is %v (measured: %v)", got.Sum, got.HasSum)
+	}
 }
 
 // A column that was asked less has its answers read from where they are.
@@ -106,7 +109,7 @@ func TestFewerAnswersAreReadFromWhereTheyAre(t *testing.T) {
 	if got.Rows != 10 || got.Nulls != 6 || got.Distinct != 3 {
 		t.Errorf("read %+v", got)
 	}
-	if got.Min != nil || got.Max != nil || got.HasMean {
+	if got.Min != nil || got.Max != nil || got.HasMean || got.HasSum {
 		t.Errorf("a column that was not asked was answered: %+v", got)
 	}
 }
@@ -140,10 +143,10 @@ func TestARowOfTheWrongWidth(t *testing.T) {
 		t.Error("no row at all was read as a column's figures")
 	}
 	// And a count that is not a number is not a count.
-	if _, err := q.Read(model.Row{"many", int64(2), int64(1), 1, 2, 3.0}); err == nil {
+	if _, err := q.Read(model.Row{"many", int64(2), int64(1), 1, 2, 3.0, 4.0}); err == nil {
 		t.Error("a count of \"many\" was read")
 	}
-	if _, err := q.Read(model.Row{int64(1), "some", int64(1), 1, 2, 3.0}); err == nil {
+	if _, err := q.Read(model.Row{int64(1), "some", int64(1), 1, 2, 3.0, 4.0}); err == nil {
 		t.Error("a count of \"some\" was read")
 	}
 }

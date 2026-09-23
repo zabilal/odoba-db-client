@@ -21,7 +21,9 @@ type StatsQuery struct {
 	Select []string
 
 	// Distinct, Extremes and Mean say which of them were asked for, so that
-	// a row of answers can be read without counting columns.
+	// a row of answers can be read without counting columns. Mean covers
+	// the total as well: a column with an average has one, and a column
+	// without has neither.
 	Distinct, Extremes, Mean bool
 }
 
@@ -42,7 +44,7 @@ func StatsFor(quoted string, def model.ColumnDef) StatsQuery {
 		q.Select = append(q.Select, "min("+quoted+")", "max("+quoted+")")
 	}
 	if q.Mean {
-		q.Select = append(q.Select, "avg("+quoted+")")
+		q.Select = append(q.Select, "avg("+quoted+")", "sum("+quoted+")")
 	}
 	return q
 }
@@ -84,6 +86,7 @@ func (q StatsQuery) Read(row model.Row) (*ColumnStats, error) {
 	}
 	if q.Mean {
 		out.Mean, out.HasMean = Float64(row[at])
+		out.Sum, out.HasSum = Float64(row[at+1])
 	}
 	return out, nil
 }

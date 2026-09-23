@@ -220,6 +220,9 @@ type tab struct {
 	// stats is the column figures last asked for (colstats.go), kept so
 	// that a second asking replaces the first rather than stacking on it.
 	stats *statsPanel
+	// agg is the line under the grid that adds up what is selected
+	// (aggbar.go), while it is shown.
+	agg *aggBar
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -596,6 +599,9 @@ func (s *Shell) registerCommands() {
 			Run: s.showExport},
 		{ID: cmdImport, Category: "Data", Title: "Import…", Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
 			Enabled: s.canImport, Run: s.showImport},
+		{ID: cmdAggregates, Category: "Data", Title: "Add Up the Selection",
+			Keywords: []string{"aggregate", "sum", "total", "average", "count", "min", "max", "footer"},
+			Enabled:  s.canAggregate, Run: s.toggleAggregates},
 		{ID: cmdColumnStats, Category: "Data", Title: "Measure This Column",
 			Keywords: []string{"statistics", "stats", "distinct", "nulls", "min", "max", "average",
 				"histogram", "profile", "measure"},
@@ -807,7 +813,13 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	g.OnFilter = func(texts []string) { s.refilter(t, texts) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	// Filter by Values and the cell viewer follow the selected cell.
-	g.OnSelectCell = func() { s.sync(); t.viewerFollow(g) }
+	g.OnSelectCell = func() {
+		s.sync()
+		t.viewerFollow(g)
+		if t.agg != nil {
+			t.agg.follow() // the figures follow the selection (FR-3.15)
+		}
+	}
 	g.OnCopy = func() { s.copyCells(t.ctx, g) }
 	g.OnPaste = func() { s.paste(editsFor(t, g)) }
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
@@ -1166,6 +1178,9 @@ func (s *Shell) checked(id string) bool {
 		return s.panelIs(panelShortcuts)
 	case cmdTasks:
 		return s.panelIs(panelTasks)
+	case cmdAggregates:
+		t := s.activeTab()
+		return t != nil && t.agg != nil
 	case cmdFavorite:
 		f, ok := s.selectedFavorite()
 		return ok && s.isFavorite(f)
