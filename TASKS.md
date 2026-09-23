@@ -23,24 +23,28 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.31 — the ClickHouse driver. The engine is a column
-           store that speaks its own SQL: no transactions, no
-           primary key that addresses a row, MergeTree engines
-           whose ORDER BY is not a key, and a mutation rather than
-           an UPDATE. What it needs is a server to develop against,
-           which is the one thing only the owner can start
-           (`clickhouse/clickhouse-server`).
-           SQL Server is done and conformance-green on 2022. Four
-           things are written around rather than claimed: editable
-           query results (sys.dm_exec_describe_first_result_set
-           answers it, at a round trip per statement), SHOWPLAN_XML
-           plans, explicit transactions, and bulk loading — the
-           shared loader writes SAVEPOINT, which T-SQL spells SAVE
-           TRANSACTION, so its skip policies would fail there.
-           PRINT output and server messages are not shown either:
-           reading them means sqlexp.ReturnMessage, which turns the
-           result loop into a message loop. None is claimed by a
-           task.
+NEXT TASK: T3.32 — the Oracle driver, over sijms/go-ora in thin
+           mode, so there is no Instant Client to install. Oracle
+           is the last of the tier-1 engines whose catalogue is
+           nothing like the others': ALL_TABLES and ALL_TAB_COLUMNS
+           rather than a system database, a ROWID that does address
+           a row, and a NUMBER that is neither an integer nor a
+           float. It needs a server to develop against, which is
+           the one thing only the owner can start
+           (`gvenzl/oracle-free` is the small one).
+           ClickHouse is done and conformance-green on 26.9. It
+           reads and does not write from the grid: no row there has
+           an address, so nothing could say which row an edit is
+           for. Also unclaimed there: bulk loading, EXPLAIN plans,
+           editable query results and transactions, which are
+           experimental in the engine itself. A table with an
+           AggregateFunction column cannot be read at all, which is
+           clickhouse-go's limit and not this driver's. None is
+           claimed by a task.
+           SQL Server is done and conformance-green on 2022, with
+           editable results, SHOWPLAN_XML plans, transactions, bulk
+           loading and PRINT output written around rather than
+           claimed; none is claimed by a task either.
            Nothing measures several columns at once, nothing
            remembers what it measured, and nothing aggregates across
            columns separately. Cassandra and Mongo measure no
@@ -973,7 +977,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 3.F Drivers — Tier 1/2 expansion
 
 - [x] **T3.30** SQL Server (`microsoft/go-mssqldb`) + introspection + dialect — *the last relational engine REQUIREMENTS names, and not like the others in more places than its syntax (ADR-0141). A server holds databases, a database holds schemas, a schema holds tables, and a connection is to one database — so there is a pool per database, a reference three parts deep and a name written two, because a statement already running on a connection to that database would make a cross-database reference of what is not one. The connection string is a URL rather than the keyword form, since a password with a semicolon in it ends a keyword string early and nothing says so; encryption is on and verified unless somebody chose otherwise, which this driver spells in two settings. There is no session setting that makes a SQL Server connection read-only, so unlike every other relational driver here the classification is the whole defence, which is a reason to be stricter rather than cleverer: a word it has not been taught is a write, and whatever EXEC runs is taken for the most it could be unless the name is the catalogue's own. A script is cut twice — at a GO line, which is not SQL and which the server has never heard of, and then at a semicolon, except inside a BEGIN … END body and except in a batch defining a routine, a view or a schema, which the server requires to hold nothing else and which is therefore sent whole. A body opens at the word after BEGIN, because BEGIN TRANSACTION opens nothing and which of the two a BEGIN is cannot be told until the next word is read; an ELSE is glued back to the IF before it, for the same reason in reverse; and the number sqlcmd repeats a batch with is not obeyed, a window that ran a write five times over being hard to forgive. Paging is OFFSET … FETCH, which is part of ORDER BY, so a browse with nothing to sort by orders by (SELECT NULL), and where the NULLs go is written as a CASE because T-SQL has no NULLS FIRST. A table with no key is ordered by its unique index where the index's columns cannot be NULL — one that can holds a single NULL row and tells no others apart — and otherwise by every column ORDER BY may name, there being no row address to fall back on. Stopping a statement costs the connection it ran on: the attention signal does stop it at the server, but what comes back is not usable and database/sql retires it, so the session takes a new one and says that what the old one held is gone. An error's line is counted into a character offset so the editor points at it, and what answered is read from SERVERPROPERTY rather than the @@VERSION banner, which also names Azure's services as themselves. 202 mutations, each caught — 137 without a server and 65 against it. Fourteen caught nothing at first and each was a test asking less than it meant: a folder counted across a database that had all its tables in one schema; a key of one column that could not show an order; an index over a column nobody had made nullable; a reference one part short that failed for a different reason than the one claimed; and the two that only a second database or a second result could show. Five pieces of code came out as unprovable: two ORDER BY terms nothing depended on, a guard on an empty split, a guard on a line before the first, and a bound on a batch that ends the script. Not yet claimed, because a capability with nothing behind it is worse than none: editable query results, SHOWPLAN_XML plans, explicit transactions, bulk loading (the shared loader writes SAVEPOINT, which T-SQL spells SAVE TRANSACTION) and PRINT output*
-- [ ] **T3.31** ClickHouse (`clickhouse-go/v2`)
+- [x] **T3.31** ClickHouse (`clickhouse-go/v2`) — *the first column store this application speaks to, and the places it differs from the row stores are not only in its syntax (ADR-0142). No row here has an address: a MergeTree's ORDER BY is the order its parts are written in and nothing enforces that it is unique, and the virtual columns saying where a row sits on disk move when parts merge. So a browse reports that its rows are known by nothing, the grid reads and does not edit, and inserting, updating and deleting are not claimed. Paging orders by the sorting key, which is the order the data is already in and so the cheap one; two rows equal on it may change places between one page and the next, which is what a store without a row address can offer, and ordering by every column instead would be a sort of the whole table rather than a page of rows. Only the key's plain column names are written into the statement, an expression over a column not being a name this program may write; a table with no key at all is ordered by everything, those engines being for small tables by what they are for. Which statements answer with rows is decided before they are sent, because asking this driver for rows a statement does not have ends the connection and not just the statement — a tab would lose its temporary tables to a SET. Stopping one costs the connection anyway, so the session takes a new one and keeps its name, which is what anything stopping it knows it by; every statement is named after its session and numbered within it, since a statement somebody has stopped is still running for a moment and ClickHouse refuses a name a running statement already has. A session's name is readable while its statement runs, which is the only moment anything wants it — the same fix went into the SQL Server driver, where the name changes when a connection does. A type here is a small language rather than a word: Nullable says the column may hold nothing and LowCardinality says how it is stored, and what it holds is inside either. An exact number is padded back to its column's places, the driver's decimal dropping the zeros at the end of one. The lexer learned ClickHouse, and with it a second way of writing a name, without which a semicolon inside a double-quoted one would end a statement that has not ended. 189 mutations, each caught — 136 without a server and 53 against it. Nineteen caught nothing at first: some were tests asking less than they meant — a tuple with no space inside its own type, a member name nobody quoted, a folder counted where every table was in one database, a dictionary nobody had made — and some were claims nothing could make, since the conformance suite cannot see a capability that is never reached. Three pieces of code came out as unprovable: a guard refusing a typed condition that would write, which on this engine cannot happen; a guard on counting a view, which the catalogue already answers by counting neither a view nor a dictionary; and a filter on which columns may be ordered by, since the only type ClickHouse will not sort is one the driver cannot read at all. Two defects were found and fixed against the live server: a decimal came back as text rather than as an exact number, and an Array(UInt8) was read as a string, both because what the driver hands over says less than the column does. Not claimed: writing from the grid, bulk loading, EXPLAIN plans, editable results and transactions, which are experimental in the engine itself*
 - [ ] **T3.32** Oracle (`sijms/go-ora/v2`, thin mode)
 - [ ] **T3.33** CockroachDB (pgx, distinct catalog)
 - [ ] **T3.34** DuckDB (`marcboeker/go-duckdb`)

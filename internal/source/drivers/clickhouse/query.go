@@ -1,4 +1,4 @@
-package sqlserver
+package clickhouse
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	ch "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
+
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -18,46 +21,52 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
 
-// Running what somebody typed (FR-5.1 … FR-5.4).
+// Running what somebody typed (FR-5.1 … FR-5.5).
 //
-// A statement runs on a pinned connection so that what it leaves behind —
-// a SET, a temporary table, a variable, an open transaction — is still
-// there for the next one. That is what a query tab means by a session.
+// A statement runs on a pinned connection, so that what it leaves behind —
+// a SET, a temporary table — is still there for the next one. That is what
+// a query tab means by a session.
 //
-// Stopping a statement costs the session. TDS has an attention signal, and
-// the driver sends it when the statement's context ends, which stops the
-// statement at the server — but the connection it was running on does not
-// come back usable, and database/sql retires it. A tab whose stop button
-// left it unable to run anything again would be worse than one that lost a
-// temporary table, so the session takes a new connection and says nothing
-// it is not entitled to say: what the old one held is gone.
+// Every statement a session runs is named after the session and numbered
+// within it, so there is a name to stop it by from another connection
+// (source.Killer). Numbered rather than named once: a statement somebody
+// stopped is still running at the server for a moment afterwards, and
+// ClickHouse refuses a name that a running statement already has.
+//
+// Stopping a statement costs the connection it was running on: the driver
+// tells the server to cancel and then has nothing usable left, and
+// database/sql retires it. A tab whose stop button left it unable to run
+// anything again would be worse than one that lost a temporary table, so
+// the session takes a new connection — keeping its name, which is what
+// anything stopping it knows it by.
 
 // multiResultCap bounds a non-final result of a script, which must be read
 // into memory before the next statement can use the connection (NFR-P11).
 const multiResultCap = 10000
 
-var errClosed = errors.New("sqlserver: session is closed")
+var errClosed = errors.New("clickhouse: session is closed")
 
 // session is one pinned connection, a query tab's.
 type session struct {
-	src  *sqlServerSource
+	src  *clickhouseSource
 	conn *sql.Conn
-	// spid is the server's name for the connection, which changes when a
-	// stopped statement costs it one. Held apart from mu because what wants
-	// the name is whatever is about to stop the statement that mu is held
-	// for, and it cannot wait for that statement to end.
-	spid atomic.Int64
+	id   string
 
 	mu     sync.Mutex
 	open   *rowStream
 	closed bool
+	seq    int
 
-	// stopped records that a statement was stopped on this connection, which
-	// is the end of it. The next statement takes a new one.
+	// stopped records that a statement was stopped on this connection,
+	// which is the end of it. The next statement takes a new one.
 	stopped atomic.Bool
 }
 
-func (ss *session) Handle() string { return strconv.FormatInt(ss.spid.Load(), 10) }
+// Handle is the session's name, read without waiting on the statement that
+// is running: what wants the name is whatever is about to stop that
+// statement, and it cannot wait for it to end. The name is given once and
+// never changes, so there is nothing to wait for.
+func (ss *session) Handle() string { return ss.id }
 
 // renew replaces the connection a stopped statement took with it. It is
 // called with ss.mu held.
@@ -68,22 +77,12 @@ func (ss *session) Handle() string { return strconv.FormatInt(ss.spid.Load(), 10
 func (ss *session) renew() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	db, err := ss.src.open(ctx, ss.src.primary)
+	c, err := ss.src.db.Conn(ctx)
 	if err != nil {
-		return
-	}
-	c, err := db.Conn(ctx)
-	if err != nil {
-		return
-	}
-	var spid int64
-	if err := c.QueryRowContext(ctx, `SELECT @@SPID`).Scan(&spid); err != nil {
-		c.Close()
 		return
 	}
 	old := ss.conn
 	ss.conn = c
-	ss.spid.Store(spid)
 	old.Close()
 }
 
@@ -97,9 +96,8 @@ func (ss *session) Close() error {
 	if ss.open != nil {
 		ss.open.Close()
 	}
-	conn := ss.conn
 	ss.mu.Unlock()
-	if err := conn.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
+	if err := ss.conn.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
 		return err
 	}
 	return nil
@@ -130,34 +128,39 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	}
 
 	start := time.Now()
-	rows, err := ss.conn.QueryContext(ctx, text, args...)
-	if err != nil {
-		if ctx.Err() != nil {
-			ss.stopped.Store(true)
-		}
-		return nil, statementError(err, ctx, text)
-	}
-	cols, _ := rows.Columns()
-	if len(cols) == 0 {
-		err := rows.Err()
-		rows.Close()
+	if !returnsRows(text) {
+		// A statement with no result set has to be sent as one: asking this
+		// driver for rows a statement does not have ends the connection,
+		// not just the statement.
+		res, err := ss.conn.ExecContext(ss.named(ctx), text, args...)
 		if err != nil {
-			return nil, statementError(err, ctx, text)
+			if ctx.Err() != nil {
+				ss.stopped.Store(true)
+			}
+			return nil, statementError(err, ctx)
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, err // stopped: what it changed is not a count to report as done
 		}
+		// ClickHouse reports what a statement wrote as progress rather than
+		// as a count of rows changed, and an INSERT … SELECT writes rows
+		// nobody counted. Saying nothing is better than saying zero.
 		affected := int64(-1)
-		if access == source.AccessWrite {
-			// database/sql hides the count for a statement run as a query.
-			// @@ROWCOUNT on the same connection still holds the last one's.
-			ss.conn.QueryRowContext(ctx, `SELECT @@ROWCOUNT`).Scan(&affected)
+		if n, err := res.RowsAffected(); err == nil && n > 0 {
+			affected = n
 		}
 		return &source.Result{Affected: affected, Duration: time.Since(start)}, nil
 	}
-	stream, err := newRowStream(rows, model.ObjectRef{}, model.RowIdentity{Kind: model.IdentityNone})
+	rows, err := ss.conn.QueryContext(ss.named(ctx), text, args...)
 	if err != nil {
-		return nil, statementError(err, ctx, text)
+		if ctx.Err() != nil {
+			ss.stopped.Store(true)
+		}
+		return nil, statementError(err, ctx)
+	}
+	stream, err := newRowStream(rows, model.ObjectRef{})
+	if err != nil {
+		return nil, statementError(err, ctx)
 	}
 	stream.ctx = ctx
 	// A result read to its end leaves the connection as it was; one cut
@@ -171,18 +174,44 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	return &source.Result{Rows: stream, Affected: -1, Duration: time.Since(start)}, nil
 }
 
-// bindNamed rewrites :name parameters to @p1, @p2 (FR-5.7). SQL Server binds
-// by name, so a name used twice is one parameter given once.
+// rowStatements are the words a statement that answers with rows begins
+// with. Everything else is sent as a statement with no result.
+//
+// Which it is has to be decided before it is sent: clickhouse-go answers a
+// request for rows that a statement does not have by ending the connection.
+// Being wrong the other way costs a result nobody sees, which is the milder
+// of the two, so only the words that certainly answer are listed.
+var rowStatements = map[string]bool{
+	"select": true, "with": true, "show": true, "describe": true, "desc": true,
+	"explain": true, "exists": true, "check": true, "values": true,
+}
+
+// returnsRows reports whether a statement answers with a result set.
+func returnsRows(sql string) bool {
+	w := words(sql)
+	return len(w) > 0 && rowStatements[w[0]]
+}
+
+// named gives the statement a name beginning with the session's, so that
+// KillQuery has something to stop. Called with ss.mu held.
+func (ss *session) named(ctx context.Context) context.Context {
+	ss.seq++
+	return ch.Context(ctx, ch.WithQueryID(ss.id+"-"+strconv.Itoa(ss.seq)))
+}
+
+// bindNamed rewrites :name parameters to ? (FR-5.7). ClickHouse's own
+// placeholders are positional here, so a name used twice is bound twice.
 func bindNamed(stmt source.Statement) (string, []any, error) {
 	if len(stmt.Named) == 0 {
 		return stmt.SQL, stmt.Args, nil
 	}
 	if len(stmt.Args) > 0 {
-		return "", nil, errors.New("sqlserver: a statement cannot mix positional and named parameters")
+		return "", nil, errors.New("clickhouse: a statement cannot mix positional and named parameters")
 	}
-	text, args, err := sqlscript.BindNamed(sqllex.SQLServer, stmt.SQL, stmt.Named, dialect{}.Placeholder, true)
+	text, args, err := sqlscript.BindNamed(sqllex.ClickHouse, stmt.SQL, stmt.Named,
+		func(int) string { return "?" }, false)
 	if err != nil {
-		return "", nil, fmt.Errorf("sqlserver: %w", err)
+		return "", nil, fmt.Errorf("clickhouse: %w", err)
 	}
 	return text, args, nil
 }
@@ -234,29 +263,18 @@ func (ss *session) QueryMulti(ctx context.Context, script string, opts source.Sc
 	return out, nil
 }
 
-// Session pins a connection and asks the server what it is called.
-func (s *sqlServerSource) Session(ctx context.Context) (source.Session, error) {
-	db, err := s.open(ctx, s.primary)
+// Session pins a connection and gives it a name of its own.
+func (s *clickhouseSource) Session(ctx context.Context) (source.Session, error) {
+	c, err := s.db.Conn(ctx)
 	if err != nil {
-		return nil, err
+		return nil, statementError(err, ctx)
 	}
-	c, err := db.Conn(ctx)
-	if err != nil {
-		return nil, statementError(err, ctx, "")
-	}
-	var spid int64
-	if err := c.QueryRowContext(ctx, `SELECT @@SPID`).Scan(&spid); err != nil {
-		c.Close()
-		return nil, statementError(err, ctx, "")
-	}
-	ss := &session{src: s, conn: c}
-	ss.spid.Store(spid)
-	return ss, nil
+	return &session{src: s, conn: c, id: "ikigai-" + uuid.NewString()}, nil
 }
 
 // Query runs one statement on a session of its own, released when the
 // result is closed.
-func (s *sqlServerSource) Query(ctx context.Context, stmt source.Statement) (*source.Result, error) {
+func (s *clickhouseSource) Query(ctx context.Context, stmt source.Statement) (*source.Result, error) {
 	ss, err := s.Session(ctx)
 	if err != nil {
 		return nil, err
@@ -272,7 +290,7 @@ func (s *sqlServerSource) Query(ctx context.Context, stmt source.Statement) (*so
 
 // QueryMulti runs a script on a session of its own, released when the
 // script ends or, if its last result is still streaming, when that closes.
-func (s *sqlServerSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
+func (s *clickhouseSource) QueryMulti(ctx context.Context, script string, opts source.ScriptOptions) (<-chan source.ScriptResult, error) {
 	ss, err := s.Session(ctx)
 	if err != nil {
 		return nil, err
@@ -351,24 +369,20 @@ func buffer(ctx context.Context, rs model.RowStream, n int) (model.RowStream, bo
 }
 
 // Distinct lists a column's values among the rows the filters select, most
-// frequent first (source.DistinctLister, FR-3.5).
-func (s *sqlServerSource) Distinct(ctx context.Context, ref model.ObjectRef, column string, opt source.BrowseOptions, limit int) ([]source.DistinctValue, error) {
+// frequent first (source.DistinctLister, FR-3.4).
+func (s *clickhouseSource) Distinct(ctx context.Context, ref model.ObjectRef, column string, opt source.BrowseOptions, limit int) ([]source.DistinctValue, error) {
 	stmt, err := s.buildDistinct(ref, column, opt, limit)
 	if err != nil {
 		return nil, err
 	}
-	db, err := s.pool(ctx, ref)
+	rows, err := s.db.QueryContext(ctx, stmt.SQL, stmt.Args...)
 	if err != nil {
-		return nil, err
-	}
-	rows, err := db.QueryContext(ctx, stmt.SQL, stmt.Args...)
-	if err != nil {
-		return nil, statementError(err, ctx, stmt.SQL)
+		return nil, statementError(err, ctx)
 	}
 	defer rows.Close()
-	st, err := newRowStream(rows, ref, model.RowIdentity{Kind: model.IdentityNone})
+	st, err := newRowStream(rows, ref)
 	if err != nil {
-		return nil, statementError(err, ctx, stmt.SQL)
+		return nil, statementError(err, ctx)
 	}
 	var out []source.DistinctValue
 	for {
