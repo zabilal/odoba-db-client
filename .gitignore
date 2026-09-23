@@ -32,5 +32,32 @@ Thumbs.db
 
 # Editors
 .idea/
+*.swp
+config.bat
+node_modules
+# restored after the 2026-09-28 incident
+/ikigai
+/dist/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+/fyne-cross/
+*.app/
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.AppImage
+*.test
+*.out
+*.prof
+/coverage.*
+/scratch/
+*.local.*
+.DS_Store
+Thumbs.db
+.idea/
 .vscode/
 *.swp
