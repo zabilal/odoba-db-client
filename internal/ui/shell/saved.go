@@ -131,6 +131,10 @@ func (s *Shell) retitle(t *tab) {
 	if q.dirty {
 		text += " •"
 	}
+	// A transaction open in a tab somebody is not looking at is the one
+	// worth marking, so the mark goes on the name rather than only in the
+	// footer (FR-5.14).
+	text += txMark(t)
 	if t.item.Text != text {
 		t.item.Text = text
 		if p := s.paneOf(t.item); p != nil {
@@ -157,7 +161,11 @@ func (s *Shell) requestClose(it *container.TabItem) {
 	dirty := t.query != nil && t.query.dirty && strings.TrimSpace(t.query.editor.Document().Text()) != ""
 	run, pending := s.runningTasks(t), pendingIn(t)
 	if !dirty && len(run) == 0 && pending == 0 {
-		s.closeTab(it)
+		// A transaction open in it is its own question, and the only one
+		// where closing undoes work that has already been done.
+		if s.askAboutTransaction(t, func() { s.closeTab(it) }) {
+			s.closeTab(it)
+		}
 		return
 	}
 	title, why := "Close Without Saving?", ""

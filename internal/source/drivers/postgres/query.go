@@ -42,6 +42,13 @@ var (
 	_ source.Session   = (*pgSession)(nil)
 )
 
+// querier is whatever a statement is sent through: a pooled connection, a
+// transaction somebody opened, or the read-only one wrapped round a single
+// statement.
+type querier interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
 // pgSession pins one pooled connection.
 type pgSession struct {
 	src  *pgSource
@@ -51,6 +58,9 @@ type pgSession struct {
 	mu     sync.Mutex
 	open   *rowStream
 	closed bool
+	// tx is the explicit transaction somebody opened, while one is open
+	// (transaction.go). Every statement runs inside it until it ends.
+	tx pgx.Tx
 }
 
 // Session opens a pinned connection on the primary database.
@@ -86,6 +96,15 @@ func (ss *pgSession) Close() error {
 	if ss.open != nil {
 		ss.open.Close()
 	}
+	if ss.tx != nil {
+		// A connection going back to the pool with a transaction open on it
+		// holds its locks until something else notices. Rolling back is the
+		// safe end: a transaction nobody committed was not meant to commit.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = ss.tx.Rollback(ctx)
+		ss.tx = nil
+	}
 	ss.src.notices.Delete(ss.conn.Conn().PgConn())
 	ss.conn.Release()
 	return nil
@@ -113,12 +132,11 @@ func (ss *pgSession) Query(ctx context.Context, stmt source.Statement) (*source.
 	}
 	ss.sink.drain()
 
-	type querier interface {
-		Query(context.Context, string, ...any) (pgx.Rows, error)
-	}
-	var q querier = ss.conn
+	// Inside an explicit transaction where one is open, which is where the
+	// statement was meant to run and which is not this statement's to end.
+	q := ss.where()
 	var tx pgx.Tx
-	if ss.src.cfg.Guard.ReadOnly {
+	if ss.tx == nil && ss.src.cfg.Guard.ReadOnly {
 		if tx, err = ss.conn.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly}); err != nil {
 			return nil, err
 		}

@@ -33,6 +33,9 @@ type session struct {
 	mu     sync.Mutex
 	open   *rowStream
 	closed bool
+	// tx is the explicit transaction somebody opened, while one is open
+	// (transaction.go). Every statement runs inside it until it ends.
+	tx *sql.Tx
 }
 
 func (ss *session) Handle() string { return strconv.FormatInt(ss.connID, 10) }
@@ -44,6 +47,13 @@ func (ss *session) Close() error {
 		return nil
 	}
 	ss.closed = true
+	if ss.tx != nil {
+		// A connection going back to the pool with a transaction open on it
+		// holds its locks until something else notices. Rolling back is the
+		// safe end: a transaction nobody committed was not meant to commit.
+		_ = ss.tx.Rollback()
+		ss.tx = nil
+	}
 	if ss.open != nil {
 		ss.open.Close()
 	}
@@ -98,7 +108,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	stop := ss.watch(ctx)
 	run := context.WithoutCancel(ctx)
 	start := time.Now()
-	rows, err := ss.conn.QueryContext(run, text, args...)
+	rows, err := ss.where().QueryContext(run, text, args...)
 	if err != nil {
 		stop()
 		return nil, statementError(err, ctx)
@@ -128,7 +138,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		if access == source.AccessWrite {
 			// database/sql hides the count for a statement run as a query;
 			// ROW_COUNT() on the same connection has it.
-			ss.conn.QueryRowContext(run, `SELECT ROW_COUNT()`).Scan(&affected)
+			ss.where().QueryRowContext(run, `SELECT ROW_COUNT()`).Scan(&affected)
 		}
 		return &source.Result{Affected: affected, Duration: time.Since(start)}, nil
 	}

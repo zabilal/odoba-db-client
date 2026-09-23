@@ -141,3 +141,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0134](0134-a-chart-on-the-screen-and-taken-away.md) | A chart on the screen, and taken away | Accepted |
 | [0135](0135-pointing-at-a-chart.md) | Pointing at a chart | Accepted |
 | [0136](0136-how-a-statement-would-run-and-how-it-did.md) | How a statement would run, and how it did | Accepted |
+| [0137](0137-a-transaction-open-and-saying-so.md) | A transaction open, and saying so | Accepted |
