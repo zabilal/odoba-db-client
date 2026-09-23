@@ -180,3 +180,60 @@ func TestARemovedFieldIsRefused(t *testing.T) {
 		t.Errorf("error %q, want it to say where a field can be removed", err)
 	}
 }
+
+// An engine that changes a row otherwise than with UPDATE … SET says so,
+// and the planner writes what it says (UpdateWriter, T3.31).
+
+// alterLike changes rows the way ClickHouse does.
+type alterLike struct{ pgLike }
+
+func (alterLike) UpdateStatement(table, sets, where string) string {
+	return "ALTER TABLE " + table + " UPDATE " + sets + " WHERE " + where
+}
+
+func TestAnEngineMayWriteAChangeItsOwnWay(t *testing.T) {
+	cs := source.Changeset{Target: peopleRef, Identity: byID,
+		Changes: []source.RowChange{{Kind: source.ChangeUpdate, Key: []any{int64(1)},
+			Values: map[string]any{"name": "uno"}}}}
+	plain, err := PlanWrites(pgLike{}, source.Guard{}, cs, "DEFAULT VALUES")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plain.Statements[0].SQL; !strings.HasPrefix(got, "UPDATE ") {
+		t.Errorf("a dialect that says nothing writes %q", got)
+	}
+	own, err := PlanWrites(alterLike{}, source.Guard{}, cs, "DEFAULT VALUES")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := own.Statements[0].SQL,
+		`ALTER TABLE "s"."people" UPDATE "name" = $1 WHERE "id" = $2`; got != want {
+		t.Errorf("a dialect that writes its own way writes\n%s\nwant\n%s", got, want)
+	}
+	// The same assignments and the same condition either way: only the
+	// shape around them is the engine's.
+	for _, sql := range []string{plain.Statements[0].SQL, own.Statements[0].SQL} {
+		if !strings.Contains(sql, `"name" = $1`) || !strings.Contains(sql, `"id" = $2`) {
+			t.Errorf("it writes %q", sql)
+		}
+	}
+	// Only a change to a row is written the engine's way: deleting and
+	// adding are the same statements either way.
+	for _, c := range []source.RowChange{
+		{Kind: source.ChangeDelete, Key: []any{int64(1)}},
+		{Kind: source.ChangeInsert, Values: map[string]any{"name": "new"}},
+	} {
+		one := source.Changeset{Target: peopleRef, Identity: byID, Changes: []source.RowChange{c}}
+		a, err := PlanWrites(pgLike{}, source.Guard{}, one, "DEFAULT VALUES")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := PlanWrites(alterLike{}, source.Guard{}, one, "DEFAULT VALUES")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Statements[0].SQL != b.Statements[0].SQL {
+			t.Errorf("%v is written %q one way and %q the other", c.Kind, a.Statements[0].SQL, b.Statements[0].SQL)
+		}
+	}
+}

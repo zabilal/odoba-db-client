@@ -110,6 +110,36 @@ var SQLServer = &Dialect{
 	BracketIdent: true,
 }
 
+// ClickHouse's SQL. A column store's dialect: what a statement says about
+// where the data lives — the engine, the sorting key, the partition — is as
+// much of it as the query itself.
+//
+// Names are written either way, `like this` or "like this", so both open
+// one. A backslash escapes a quote inside a string, as it does in MySQL.
+var ClickHouse = &Dialect{
+	Name: "clickhouse",
+	Keywords: words(commonKeywords + `
+		engine settings prewhere final sample totals fill interpolate
+		materialized populate cluster dictionary codec ttl
+		attach detach optimize deduplicate system format global
+		array anti asof semi paste
+	`),
+	Types: words(commonTypes + `
+		uint8 uint16 uint32 uint64 uint128 uint256
+		int128 int256 float32 float64 fixedstring date32 datetime64
+		enum8 enum16 lowcardinality nullable ipv4 ipv6 nested
+		aggregatefunction simpleaggregatefunction variant dynamic
+	`),
+	Functions: words(commonFunctions + `
+		today yesterday tostring todate todatetime touint32 toint64 tofloat64
+		arrayjoin grouparray uniq uniqexact quantile multiif ifnull
+		splitbychar jsonextract formatdatetime todaymonday
+	`),
+	QuoteIdent:       '`',
+	AltQuoteIdent:    '"',
+	BackslashEscapes: true,
+}
+
 // CQL is Cassandra's query language (FR-12.3, FR-5.1).
 var CQL = &Dialect{
 	Name: "cql",
@@ -192,6 +222,7 @@ var dialects = map[string]*Dialect{
 	"sqlite":      SQLite,
 	"sqlserver":   SQLServer,
 	"mssql":       SQLServer,
+	"clickhouse":  ClickHouse,
 	"cql":         CQL,
 	"cassandra":   CQL,
 	"mongosh":     Mongosh,
