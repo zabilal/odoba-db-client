@@ -28,6 +28,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mysql"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/oracle"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlite"
