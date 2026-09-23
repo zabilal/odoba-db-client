@@ -25,6 +25,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/conformance"
+	"github.com/ikigai-db/ikigai-db/internal/source/sqlscript"
 )
 
 func env(k, def string) string {
@@ -151,6 +152,14 @@ func build(t *testing.T) {
 func open(t *testing.T, guard source.Guard) *clickhouseSource {
 	t.Helper()
 	build(t)
+	return opened(t, guard)
+}
+
+// opened is a connection on the fixture as it stands, without making it
+// again: a test that writes needs its other connections to see the rows it
+// has already written.
+func opened(t *testing.T, guard source.Guard) *clickhouseSource {
+	t.Helper()
 	src, err := Driver{}.Open(context.Background(), config("ikigai_it", guard))
 	if err != nil {
 		t.Fatal(err)
@@ -1051,5 +1060,203 @@ func TestLiveAFinishedStatementKeepsTheConnection(t *testing.T) {
 	one(t, ss, `INSERT INTO stays VALUES (1)`)
 	if rows := one(t, ss, `SELECT a FROM stays`); len(rows) != 1 {
 		t.Errorf("the temporary table holds %v", rows)
+	}
+}
+
+// Rows written back from the grid (FR-4.4, FR-4.7).
+//
+// No row here has an address of its own, so what addresses one is the key
+// somebody named for it. These are the checks the conformance suite's
+// writer makes of an engine whose rows have a key, asked of one whose rows
+// have only the key a person chose.
+
+var writes = model.NewRef(model.KindTable, "ikigai_it", "writes")
+
+// byID is the key somebody chose for the rows of the writes table.
+func byID() model.RowIdentity {
+	return model.RowIdentity{Kind: model.IdentityChosen, Columns: []string{"id"}, Target: writes}
+}
+
+func apply(t *testing.T, src *clickhouseSource, id model.RowIdentity, changes ...source.RowChange) *source.WriteOutcome {
+	t.Helper()
+	ctx := context.Background()
+	plan, err := src.Plan(ctx, source.Changeset{Target: writes, Identity: id, Changes: changes, Confirmed: true})
+	if err != nil {
+		t.Fatalf("planning: %v", err)
+	}
+	out, err := src.Apply(ctx, plan)
+	if err != nil {
+		t.Fatalf("applying: %v", err)
+	}
+	return out
+}
+
+func rowsNow(t *testing.T, src *clickhouseSource) string {
+	t.Helper()
+	rs, err := src.Browse(context.Background(), writes, source.BrowseOptions{Limit: 50,
+		Sorts: []source.Sort{{Column: "id"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, row := range drain(t, rs) {
+		out = append(out, fmt.Sprint(row[:3]))
+	}
+	return strings.Join(out, " ")
+}
+
+func insert(id int64, name string, n any) source.RowChange {
+	v := map[string]any{"id": id, "name": name}
+	if n != nil {
+		v["n"] = n
+	}
+	return source.RowChange{Kind: source.ChangeInsert, Values: v}
+}
+
+// A row is added, changed and deleted by the key it was named by.
+func TestLiveRowsAreWrittenByTheKeyChosen(t *testing.T) {
+	src := open(t, source.Guard{})
+	out := apply(t, src, byID(), insert(1, "one", int64(1)), insert(2, "two", int64(2)), insert(3, "three", nil))
+	if out.Err != nil || out.Applied != 3 || out.Affected != 3 || out.FailedAt != -1 {
+		t.Fatalf("inserts: %+v", out)
+	}
+	if got := rowsNow(t, src); got != "[1 one 1] [2 two 2] [3 three <nil>]" {
+		t.Fatalf("after the inserts: %s", got)
+	}
+
+	out = apply(t, src, byID(),
+		source.RowChange{Kind: source.ChangeUpdate, Key: []any{int64(1)}, Values: map[string]any{"name": "uno"}},
+		source.RowChange{Kind: source.ChangeDelete, Key: []any{int64(2)}},
+		insert(4, "four", nil))
+	if out.Err != nil || out.Applied != 3 {
+		t.Fatalf("an update, a delete and an insert: %+v", out)
+	}
+	if got := rowsNow(t, src); got != "[1 uno 1] [3 three <nil>] [4 four <nil>]" {
+		t.Errorf("after them: %s", got)
+	}
+
+	// A value set to what it already is still matches its row: the count
+	// asked for is of the rows the key reaches, not of the rows that alter.
+	if out := apply(t, src, byID(), source.RowChange{Kind: source.ChangeUpdate,
+		Key: []any{int64(3)}, Values: map[string]any{"name": "three"}}); out.Err != nil {
+		t.Errorf("a value set to what it is: %+v", out)
+	}
+}
+
+// A change meant for a row that is not there is refused, and so is one
+// meant for a row the key does not tell from another (ADR-0034).
+func TestLiveAChangeIsForOneRowOrForNone(t *testing.T) {
+	src := open(t, source.Guard{})
+	apply(t, src, byID(), insert(1, "one", int64(1)), insert(2, "twin", nil), insert(3, "twin", nil))
+
+	out := apply(t, src, byID(), source.RowChange{Kind: source.ChangeUpdate,
+		Key: []any{int64(99)}, Values: map[string]any{"name": "gone"}})
+	if out.Err == nil || !errors.Is(out.Err, sqlscript.ErrNoRow) || out.FailedAt != 0 {
+		t.Errorf("a change to a row that is not there: %+v", out)
+	}
+
+	// The same key over two rows: neither is written.
+	byName := model.RowIdentity{Kind: model.IdentityChosen, Columns: []string{"name"}, Target: writes}
+	out = apply(t, src, byName, source.RowChange{Kind: source.ChangeUpdate,
+		Key: []any{"twin"}, Values: map[string]any{"n": int64(2)}})
+	if out.Err == nil || !errors.Is(out.Err, sqlscript.ErrManyRows) {
+		t.Errorf("a change matching two rows: %+v", out)
+	}
+	if got := rowsNow(t, src); got != "[1 one 1] [2 twin <nil>] [3 twin <nil>]" {
+		t.Errorf("both rows are as they were: %s", got)
+	}
+	// And a delete for two rows deletes neither.
+	out = apply(t, src, byName, source.RowChange{Kind: source.ChangeDelete, Key: []any{"twin"}})
+	if out.Err == nil || !errors.Is(out.Err, sqlscript.ErrManyRows) {
+		t.Errorf("a delete matching two rows: %+v", out)
+	}
+	if got := rowsNow(t, src); got != "[1 one 1] [2 twin <nil>] [3 twin <nil>]" {
+		t.Errorf("both rows are still there: %s", got)
+	}
+}
+
+// A plan that fails half way leaves the half that ran: there is no
+// transaction here to undo it in, and the outcome says so rather than
+// claiming otherwise (FR-4.5).
+func TestLiveAFailedPlanIsNotUndone(t *testing.T) {
+	src := open(t, source.Guard{})
+	apply(t, src, byID(), insert(1, "one", nil))
+
+	out := apply(t, src, byID(),
+		source.RowChange{Kind: source.ChangeUpdate, Key: []any{int64(1)}, Values: map[string]any{"name": "changed"}},
+		source.RowChange{Kind: source.ChangeUpdate, Key: []any{int64(99)}, Values: map[string]any{"name": "gone"}})
+	if out.Err == nil || out.FailedAt != 1 || out.Applied != 1 {
+		t.Fatalf("a plan whose second change fails: %+v", out)
+	}
+	if out.RolledBack {
+		t.Error("the outcome says it was undone, and there is nothing here to undo it in")
+	}
+	if got := rowsNow(t, src); got != "[1 changed <nil>]" {
+		t.Errorf("the change that ran is still there: %s", got)
+	}
+}
+
+// A row of nothing but defaults is refused: ClickHouse has no form for one,
+// and a column has to be named before a default can be asked for in it.
+func TestLiveARowOfNothingIsRefused(t *testing.T) {
+	src := open(t, source.Guard{})
+	_, err := src.Plan(context.Background(), source.Changeset{Target: writes, Identity: byID(),
+		Changes: []source.RowChange{{Kind: source.ChangeInsert}}, Confirmed: true})
+	if err == nil {
+		t.Error("a row of nothing was planned")
+	}
+}
+
+// A read-only connection writes nothing, and a production one asks first
+// (FR-1.8, FR-4.9).
+func TestLiveWritingIsGuarded(t *testing.T) {
+	src := open(t, source.Guard{})
+	apply(t, src, byID(), insert(1, "one", nil))
+
+	ro := opened(t, source.Guard{ReadOnly: true})
+	plan, err := ro.Plan(context.Background(), source.Changeset{Target: writes, Identity: byID(),
+		Changes: []source.RowChange{insert(2, "two", nil)}, Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ro.Apply(context.Background(), plan); !errors.Is(err, source.ErrReadOnly) {
+		t.Errorf("a read-only connection wrote: %v", err)
+	}
+
+	prod := opened(t, source.Guard{Environment: source.EnvProduction})
+	plan, err = prod.Plan(context.Background(), source.Changeset{Target: writes, Identity: byID(),
+		Changes: []source.RowChange{{Kind: source.ChangeDelete, Key: []any{int64(1)}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Guarded {
+		t.Error("a production plan is guarded")
+	}
+	if _, err := prod.Apply(context.Background(), plan); !errors.Is(err, source.ErrConfirmationRequired) {
+		t.Errorf("production without consent: %v", err)
+	}
+	if got := rowsNow(t, src); got != "[1 one <nil>]" {
+		t.Errorf("the row nobody was allowed to write is as it was: %s", got)
+	}
+}
+
+// A changeset is not atomic here, and the window is told so rather than
+// finding out (capability.Data.TransactionalWrite).
+func TestLiveAChangesetIsNotAtomic(t *testing.T) {
+	src := open(t, source.Guard{})
+	caps := src.Capabilities()
+	if !caps.Data.Insert || !caps.Data.Update || !caps.Data.Delete {
+		t.Errorf("the window is not told rows can be written: %+v", caps.Data)
+	}
+	if caps.Data.TransactionalWrite {
+		t.Error("a changeset was said to be written all at once, and there is no transaction here")
+	}
+	plan, err := src.Plan(context.Background(), source.Changeset{Target: writes, Identity: byID(),
+		Changes: []source.RowChange{insert(1, "one", nil)}, Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Atomic {
+		t.Error("the plan says it is applied all at once")
 	}
 }

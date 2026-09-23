@@ -24,6 +24,24 @@ var ErrNoRow = errors.New("no row matched: it was changed or deleted since it wa
 // not tell the rows apart, as a key someone chose may not (ADR-0034).
 var ErrManyRows = errors.New("the key does not tell the rows apart")
 
+// UpdateWriter is an optional Dialect refinement for an engine that changes
+// a row otherwise than with UPDATE … SET … WHERE. ClickHouse does it with
+// ALTER TABLE … UPDATE, which wears a definition's clothes and is a write
+// all the same.
+type UpdateWriter interface {
+	// UpdateStatement writes the change, given the table, the assignments
+	// already joined by commas, and the condition addressing the row.
+	UpdateStatement(table, sets, where string) string
+}
+
+// updateStatement is how this dialect writes a change to a row.
+func updateStatement(d source.Dialect, table, sets, where string) string {
+	if u, ok := d.(UpdateWriter); ok {
+		return u.UpdateStatement(table, sets, where)
+	}
+	return "UPDATE " + table + " SET " + sets + " WHERE " + where
+}
+
 // PlanWrites renders a changeset as statements, in its own order. A row
 // changed is matched by the key it had and given only the columns changed; a
 // row deleted is matched by its key; a new row names only the columns given,
@@ -101,7 +119,7 @@ func write(d source.Dialect, table string, keys []string, c source.RowChange, de
 		if err != nil {
 			return st, "", err
 		}
-		st.SQL = "UPDATE " + table + " SET " + strings.Join(sets, ", ") + " WHERE " + cond
+		st.SQL = updateStatement(d, table, strings.Join(sets, ", "), cond)
 		return st, "Update " + strings.Join(names, ", ") + " where " + said, nil
 	case source.ChangeDelete:
 		cond, said, err := where()
