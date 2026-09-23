@@ -65,6 +65,9 @@ const (
 	cmdChart          = "data.chart"
 	cmdExplain        = "query.explain"
 	cmdExplainMeasure = "query.explainMeasure"
+	cmdTxBegin        = "query.begin"
+	cmdTxCommit       = "query.commit"
+	cmdTxRollback     = "query.rollback"
 	cmdFilterValues   = "data.filterValues"
 	cmdWhere          = "data.where"
 	cmdCopyCells      = "grid.copy"
@@ -175,6 +178,7 @@ var menuBar = []struct {
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
 		item(cmdExplain), item(cmdExplainMeasure), separator,
+		item(cmdTxBegin), item(cmdTxCommit), item(cmdTxRollback), separator,
 		item(cmdQueryComplete), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,

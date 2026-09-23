@@ -83,7 +83,8 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
 	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys",
-		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse", guard: cfg.Guard}, nil
+		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse",
+		noTx: cfg.Host == "notx", txPoisons: cfg.Host == "txpoisons", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -107,6 +108,8 @@ type fakeSource struct {
 	fkeys     bool // its items refer to parts by name
 	labels    bool // its items refer to owners by id, and to parts by name
 	noAnalyse bool // it will plan a statement but not run one to measure it
+	noTx      bool // it holds no explicit transactions
+	txPoisons bool // a statement that fails in a transaction ends what it could do
 	guard     source.Guard
 }
 
@@ -164,7 +167,7 @@ func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node
 func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
 		Query: capability.Query{Supported: true, Language: "postgresql", MultiStatement: true,
-			Explain: true, ExplainAnalyze: !f.noAnalyse},
+			Explain: true, ExplainAnalyze: !f.noAnalyse, Transactions: !f.noTx},
 		Data:   capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true},
 		Schema: capability.Schema{DDL: true}}
 }

@@ -189,11 +189,53 @@ type PlanNode struct {
 // Transactor is an optional Queryer refinement for explicit transaction
 // control (FR-5.14). The UI shows a persistent indicator whenever a
 // transaction is open, because an unnoticed open transaction holds locks.
+//
+// It belongs to a Session rather than to a Source: a transaction lives on
+// one server connection, and a pooled connection that is not the same one
+// twice cannot hold one.
 type Transactor interface {
+	// Begin opens a transaction. Beginning one changes nothing by itself,
+	// so it is a read; what runs inside it is guarded as it always is. On a
+	// read-only connection the transaction is itself read-only.
 	Begin(ctx context.Context) error
+
+	// Commit ends the transaction, keeping what it did. Rollback ends it,
+	// undoing what it did. Both answer an error where no transaction is
+	// open, because ending one that never began is a mistake worth saying.
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 
-	// InTransaction reports whether a transaction is currently open.
-	InTransaction() bool
+	// Transaction reports whether one is open, and whether it can still be
+	// committed.
+	Transaction() TxState
+}
+
+// TxState is whether a transaction is open, and what can still be done with
+// it.
+type TxState uint8
+
+const (
+	// TxNone is no transaction open.
+	TxNone TxState = iota
+
+	// TxOpen is a transaction that can still be committed.
+	TxOpen
+
+	// TxFailed is a transaction a statement failed inside, which on
+	// PostgreSQL can no longer be committed: every statement in it answers
+	// "current transaction is aborted" until it is rolled back. Engines
+	// where a failed statement does not poison the transaction never report
+	// it, because for them it is not true.
+	TxFailed
+)
+
+// String names a state for a window to show.
+func (s TxState) String() string {
+	switch s {
+	case TxOpen:
+		return "open"
+	case TxFailed:
+		return "failed"
+	}
+	return "none"
 }

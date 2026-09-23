@@ -84,7 +84,7 @@ func (fakeSource) SplitScript(script string) []source.ScriptStatement {
 }
 
 func (f fakeSource) Session(context.Context) (source.Session, error) {
-	fs := &fakeSession{guard: f.guard}
+	fs := &fakeSession{guard: f.guard, txFails: f.txPoisons}
 	fakeSessions.Lock()
 	fakeSessions.list = append(fakeSessions.list, fs)
 	fakeSessions.Unlock()
@@ -95,7 +95,64 @@ type fakeSession struct {
 	guard  source.Guard
 	closed atomic.Bool
 	named  atomic.Pointer[map[string]any] // the values the last script was run with
+
+	// tx is the explicit transaction, where one is open, and txFails makes
+	// the next failing statement poison it, as PostgreSQL's does.
+	txMu    sync.Mutex
+	tx      source.TxState
+	txFails bool
 }
+
+// Begin, Commit, Rollback and Transaction: explicit transactions (FR-5.14).
+//
+// The fake keeps a state rather than a connection, because what the window
+// does with a transaction is all that is being tested here; what one does to
+// data is settled against the servers themselves.
+func (fs *fakeSession) Begin(context.Context) error {
+	fs.txMu.Lock()
+	defer fs.txMu.Unlock()
+	if fs.tx != source.TxNone {
+		return fmt.Errorf("fakesql: a transaction is already open")
+	}
+	if txFailsToBegin.Load() {
+		return fmt.Errorf("fakesql: could not begin")
+	}
+	fs.tx = source.TxOpen
+	return nil
+}
+
+func (fs *fakeSession) Commit(context.Context) error { return fs.endTx("commit") }
+
+func (fs *fakeSession) Rollback(context.Context) error { return fs.endTx("roll back") }
+
+func (fs *fakeSession) endTx(what string) error {
+	fs.txMu.Lock()
+	defer fs.txMu.Unlock()
+	if fs.tx == source.TxNone {
+		return fmt.Errorf("fakesql: there is no transaction to %s", what)
+	}
+	fs.tx = source.TxNone
+	return nil
+}
+
+func (fs *fakeSession) Transaction() source.TxState {
+	fs.txMu.Lock()
+	defer fs.txMu.Unlock()
+	return fs.tx
+}
+
+// fail poisons an open transaction, as a failed statement does on
+// PostgreSQL.
+func (fs *fakeSession) failTx() {
+	fs.txMu.Lock()
+	defer fs.txMu.Unlock()
+	if fs.tx == source.TxOpen {
+		fs.tx = source.TxFailed
+	}
+}
+
+// txFailsToBegin makes Begin refuse, for the path where it goes wrong.
+var txFailsToBegin atomic.Bool
 
 func (fs *fakeSession) Handle() string { return "1" }
 func (fs *fakeSession) Close() error {
@@ -189,6 +246,9 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts sourc
 				return
 			}
 			if r.Err != nil {
+				if fs.txFails {
+					fs.failTx()
+				}
 				return
 			}
 		}

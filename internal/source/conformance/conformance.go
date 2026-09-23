@@ -198,6 +198,24 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims Query.Explain but does not implement Explainer")
 		}
 	}
+	if caps.Query.Transactions {
+		// A transaction lives on one connection, so it is the session that
+		// holds one. A source that claimed transactions without sessions
+		// would offer a Begin whose Commit landed somewhere else.
+		s, ok := src.(source.Sessioner)
+		if !ok {
+			t.Fatal("claims Query.Transactions but does not implement Sessioner; " +
+				"a transaction lives on one connection")
+		}
+		sess, err := s.Session(ctx)
+		if err != nil {
+			t.Fatalf("opening a session to check transactions: %v", err)
+		}
+		defer sess.Close()
+		if _, ok := sess.(source.Transactor); !ok {
+			t.Error("claims Query.Transactions but its session does not implement Transactor")
+		}
+	}
 	if caps.Structure.InferredShape {
 		if _, ok := src.(source.ShapeInferrer); !ok {
 			t.Error("claims Structure.InferredShape but does not implement ShapeInferrer")

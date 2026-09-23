@@ -195,7 +195,7 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 		Paradigm:  model.ParadigmRelational,
 		Structure: capability.Structure{MultipleDatabases: true, CreateDatabase: true},
 		Query: capability.Query{Supported: true, Language: lang, MultiStatement: true,
-			Cancel: true, Parameters: true, Explain: true,
+			Cancel: true, Parameters: true, Explain: true, Transactions: true,
 			// Only MariaDB measures a statement into the same document it
 			// plans one into; MySQL's EXPLAIN ANALYZE answers text in a
 			// shape of its own.

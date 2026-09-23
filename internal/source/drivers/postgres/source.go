@@ -229,6 +229,7 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			Parameters:      true,
 			Explain:         true,
 			ExplainAnalyze:  true,
+			Transactions:    true,
 			EditableResults: true,
 		},
 		Data: capability.Data{

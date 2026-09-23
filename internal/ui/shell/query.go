@@ -347,7 +347,15 @@ func (s *Shell) execute(t *tab, script string, base int, opts source.ScriptOptio
 			}
 			if t.ctx.Err() == nil {
 				summary := runSummary(n, elapsed, stopped, failed)
+				if said := txSummary(t); said != "" {
+					// A transaction open over the run is the thing worth
+					// saying about it: what ran is not committed, and a
+					// statement that failed may have ended what could be
+					// (FR-5.14).
+					summary += " " + said
+				}
 				t.footer.SetText(summary)
+				s.retitle(t)
 				if !stopped && elapsed >= notifyAfter {
 					s.notify(t.item.Text, summary) // a long run, ended in the background
 				}
