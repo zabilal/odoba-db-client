@@ -42,7 +42,11 @@ var errClosed = errors.New("sqlserver: session is closed")
 type session struct {
 	src  *sqlServerSource
 	conn *sql.Conn
-	spid int64
+	// spid is the server's name for the connection, which changes when a
+	// stopped statement costs it one. Held apart from mu because what wants
+	// the name is whatever is about to stop the statement that mu is held
+	// for, and it cannot wait for that statement to end.
+	spid atomic.Int64
 
 	mu     sync.Mutex
 	open   *rowStream
@@ -53,11 +57,7 @@ type session struct {
 	stopped atomic.Bool
 }
 
-func (ss *session) Handle() string {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	return strconv.FormatInt(ss.spid, 10)
-}
+func (ss *session) Handle() string { return strconv.FormatInt(ss.spid.Load(), 10) }
 
 // renew replaces the connection a stopped statement took with it. It is
 // called with ss.mu held.
@@ -82,7 +82,8 @@ func (ss *session) renew() {
 		return
 	}
 	old := ss.conn
-	ss.conn, ss.spid = c, spid
+	ss.conn = c
+	ss.spid.Store(spid)
 	old.Close()
 }
 
@@ -248,7 +249,9 @@ func (s *sqlServerSource) Session(ctx context.Context) (source.Session, error) {
 		c.Close()
 		return nil, statementError(err, ctx, "")
 	}
-	return &session{src: s, conn: c, spid: spid}, nil
+	ss := &session{src: s, conn: c}
+	ss.spid.Store(spid)
+	return ss, nil
 }
 
 // Query runs one statement on a session of its own, released when the

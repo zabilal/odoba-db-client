@@ -396,3 +396,35 @@ func TestRedisIsItsOwnLanguage(t *testing.T) {
 		t.Errorf("SET is one of the language's own words: %s", render(line, toks))
 	}
 }
+
+// ClickHouse reads a name written either way, `like this` or "like this",
+// so a semicolon inside one is part of the name (T3.31).
+func TestClickHouseReadsANameWrittenEitherWay(t *testing.T) {
+	got, _ := lex(t, ClickHouse, "SELECT `a;b` FROM t", State{})
+	if len(got) < 2 || got[1] != "qident:`a;b`" {
+		t.Errorf("a backquoted name gave %v", got)
+	}
+	got, _ = lex(t, ClickHouse, `SELECT "a;b" FROM t`, State{})
+	if len(got) < 2 || got[1] != `qident:"a;b"` {
+		t.Errorf("a double-quoted name gave %v", got)
+	}
+	// A backslash escapes a quote inside a string, as it does in MySQL, so
+	// the string does not end there.
+	got, st := lex(t, ClickHouse, `SELECT 'it\'s' AS a`, State{})
+	if !st.Equal(State{}) {
+		t.Errorf("the line ended inside %v: %v", st, got)
+	}
+	if len(got) < 2 || got[1] != `str:'it\'s'` {
+		t.Errorf("an escaped quote gave %v", got)
+	}
+}
+
+// A dialect that takes one way of writing a name does not take another's.
+func TestOnlyClickHouseTakesBothQuotes(t *testing.T) {
+	got, _ := lex(t, MySQL, `SELECT "a" FROM t`, State{})
+	for _, g := range got {
+		if strings.HasPrefix(g, "qident:") {
+			t.Errorf("MySQL read a double-quoted name: %v", got)
+		}
+	}
+}
