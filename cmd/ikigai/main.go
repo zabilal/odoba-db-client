@@ -30,6 +30,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlite"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlserver"
 )
 
 // version is set at build time via -ldflags.

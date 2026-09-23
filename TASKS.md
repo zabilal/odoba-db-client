@@ -23,13 +23,24 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.30 — the SQL Server driver, which is the last
-           relational engine REQUIREMENTS names and the first new
-           driver since Phase 2. The lexer already knows its
-           bracketed identifiers and the contracts are settled by
-           eight drivers before it; what it needs is a server to
-           develop against, which is the one thing only the owner
-           can start.
+NEXT TASK: T3.31 — the ClickHouse driver. The engine is a column
+           store that speaks its own SQL: no transactions, no
+           primary key that addresses a row, MergeTree engines
+           whose ORDER BY is not a key, and a mutation rather than
+           an UPDATE. What it needs is a server to develop against,
+           which is the one thing only the owner can start
+           (`clickhouse/clickhouse-server`).
+           SQL Server is done and conformance-green on 2022. Four
+           things are written around rather than claimed: editable
+           query results (sys.dm_exec_describe_first_result_set
+           answers it, at a round trip per statement), SHOWPLAN_XML
+           plans, explicit transactions, and bulk loading — the
+           shared loader writes SAVEPOINT, which T-SQL spells SAVE
+           TRANSACTION, so its skip policies would fail there.
+           PRINT output and server messages are not shown either:
+           reading them means sqlexp.ReturnMessage, which turns the
+           result loop into a message loop. None is claimed by a
+           task.
            Nothing measures several columns at once, nothing
            remembers what it measured, and nothing aggregates across
            columns separately. Cassandra and Mongo measure no
@@ -961,7 +972,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.F Drivers — Tier 1/2 expansion
 
-- [ ] **T3.30** SQL Server (`microsoft/go-mssqldb`) + introspection + dialect
+- [x] **T3.30** SQL Server (`microsoft/go-mssqldb`) + introspection + dialect — *the last relational engine REQUIREMENTS names, and not like the others in more places than its syntax (ADR-0141). A server holds databases, a database holds schemas, a schema holds tables, and a connection is to one database — so there is a pool per database, a reference three parts deep and a name written two, because a statement already running on a connection to that database would make a cross-database reference of what is not one. The connection string is a URL rather than the keyword form, since a password with a semicolon in it ends a keyword string early and nothing says so; encryption is on and verified unless somebody chose otherwise, which this driver spells in two settings. There is no session setting that makes a SQL Server connection read-only, so unlike every other relational driver here the classification is the whole defence, which is a reason to be stricter rather than cleverer: a word it has not been taught is a write, and whatever EXEC runs is taken for the most it could be unless the name is the catalogue's own. A script is cut twice — at a GO line, which is not SQL and which the server has never heard of, and then at a semicolon, except inside a BEGIN … END body and except in a batch defining a routine, a view or a schema, which the server requires to hold nothing else and which is therefore sent whole. A body opens at the word after BEGIN, because BEGIN TRANSACTION opens nothing and which of the two a BEGIN is cannot be told until the next word is read; an ELSE is glued back to the IF before it, for the same reason in reverse; and the number sqlcmd repeats a batch with is not obeyed, a window that ran a write five times over being hard to forgive. Paging is OFFSET … FETCH, which is part of ORDER BY, so a browse with nothing to sort by orders by (SELECT NULL), and where the NULLs go is written as a CASE because T-SQL has no NULLS FIRST. A table with no key is ordered by its unique index where the index's columns cannot be NULL — one that can holds a single NULL row and tells no others apart — and otherwise by every column ORDER BY may name, there being no row address to fall back on. Stopping a statement costs the connection it ran on: the attention signal does stop it at the server, but what comes back is not usable and database/sql retires it, so the session takes a new one and says that what the old one held is gone. An error's line is counted into a character offset so the editor points at it, and what answered is read from SERVERPROPERTY rather than the @@VERSION banner, which also names Azure's services as themselves. 202 mutations, each caught — 137 without a server and 65 against it. Fourteen caught nothing at first and each was a test asking less than it meant: a folder counted across a database that had all its tables in one schema; a key of one column that could not show an order; an index over a column nobody had made nullable; a reference one part short that failed for a different reason than the one claimed; and the two that only a second database or a second result could show. Five pieces of code came out as unprovable: two ORDER BY terms nothing depended on, a guard on an empty split, a guard on a line before the first, and a bound on a batch that ends the script. Not yet claimed, because a capability with nothing behind it is worse than none: editable query results, SHOWPLAN_XML plans, explicit transactions, bulk loading (the shared loader writes SAVEPOINT, which T-SQL spells SAVE TRANSACTION) and PRINT output*
 - [ ] **T3.31** ClickHouse (`clickhouse-go/v2`)
 - [ ] **T3.32** Oracle (`sijms/go-ora/v2`, thin mode)
 - [ ] **T3.33** CockroachDB (pgx, distinct catalog)
