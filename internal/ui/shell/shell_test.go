@@ -84,7 +84,8 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 	}
 	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys",
 		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse",
-		noTx: cfg.Host == "notx", txPoisons: cfg.Host == "txpoisons", guard: cfg.Guard}, nil
+		noTx: cfg.Host == "notx", txPoisons: cfg.Host == "txpoisons",
+		noStats: cfg.Host == "nostats", guard: cfg.Guard}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -109,6 +110,7 @@ type fakeSource struct {
 	labels    bool // its items refer to owners by id, and to parts by name
 	noAnalyse bool // it will plan a statement but not run one to measure it
 	noTx      bool // it holds no explicit transactions
+	noStats   bool // it will not measure a column
 	txPoisons bool // a statement that fails in a transaction ends what it could do
 	guard     source.Guard
 }
@@ -168,7 +170,8 @@ func (f fakeSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{Paradigm: model.ParadigmRelational,
 		Query: capability.Query{Supported: true, Language: "postgresql", MultiStatement: true,
 			Explain: true, ExplainAnalyze: !f.noAnalyse, Transactions: !f.noTx},
-		Data:   capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true, DistinctValues: true},
+		Data: capability.Data{ExactCount: !f.uncounted, ServerSort: true, ServerFilter: true,
+			DistinctValues: true, ColumnStats: !f.noStats},
 		Schema: capability.Schema{DDL: true}}
 }
 func (fakeSource) Info(context.Context) (source.ServerInfo, error) {
@@ -263,6 +266,49 @@ func (fakeSource) Distinct(ctx context.Context, _ model.ObjectRef, _ string, _ s
 		{Value: nil, Count: 2}, {Value: "a,b", Count: 1}}
 	return vals[:min(limit, len(vals))], nil
 }
+
+// ColumnStats measures a column: what the fake's one table holds, said
+// plainly, and whatever was asked about the column's own kind (FR-3.14).
+func (f fakeSource) ColumnStats(ctx context.Context, _ model.ObjectRef, def model.ColumnDef,
+	opt source.BrowseOptions) (*source.ColumnStats, error) {
+	if statsFails.Load() {
+		return nil, fmt.Errorf("fakesql: the column could not be measured")
+	}
+	statsAsked.Add(1)
+	// Only the unnarrowed reading waits, so that a test can have a later
+	// one answer first and watch which of the two lands.
+	if g := statsGate; g != nil && len(opt.Filters) == 0 && opt.Where == "" {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-g:
+		}
+	}
+	rows := int64(fakeRows)
+	if len(opt.Filters) > 0 || opt.Where != "" {
+		rows = 10 // narrowed, so the figures are about what is left
+	}
+	out := &source.ColumnStats{Rows: rows, Nulls: rows / 5, Distinct: -1,
+		Duration: time.Millisecond}
+	if source.ManyValued(def) {
+		out.Distinct = rows / 2
+	}
+	if source.Ordered(def) {
+		out.Min, out.Max = int64(0), rows-1
+	}
+	if source.Numeric(def) {
+		out.Mean, out.HasMean = float64(rows)/2, true
+	}
+	return out, nil
+}
+
+// statsFails makes measuring fail, and statsGate holds it until a test lets
+// it go.
+var (
+	statsFails atomic.Bool
+	statsGate  chan struct{}
+	statsAsked atomic.Int64
+)
 
 // InsertRows writes each row as a statement naming what it was given.
 func (fakeSource) InsertRows(_ model.ObjectRef, cols []model.ColumnDef, rows []model.Row) (string, error) {

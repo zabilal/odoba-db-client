@@ -112,6 +112,11 @@ type Data struct {
 	ServerSort   bool
 	ServerFilter bool
 
+	// ColumnStats reports that a column can be measured: how many rows,
+	// how many nulls, how many different values, the smallest and the
+	// largest (FR-3.14).
+	ColumnStats bool
+
 	// Insert, Update and Delete report write support for browsed rows.
 	Insert bool
 	Update bool

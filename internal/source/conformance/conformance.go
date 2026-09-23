@@ -250,6 +250,11 @@ func checkCapabilities(t *testing.T, target Target) {
 			t.Error("claims DistinctValues but does not implement DistinctLister")
 		}
 	}
+	if caps.Data.ColumnStats {
+		if _, ok := src.(source.Statistician); !ok {
+			t.Error("claims Data.ColumnStats but does not implement Statistician")
+		}
+	}
 	if caps.Schema.Diff {
 		if _, ok := src.(source.Snapshotter); !ok {
 			t.Error("claims Schema.Diff but does not implement Snapshotter")

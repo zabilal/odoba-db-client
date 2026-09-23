@@ -201,7 +201,7 @@ func (s *mysqlSource) Capabilities() capability.Capabilities {
 			// shape of its own.
 			ExplainAnalyze: s.fl.mariadb},
 		// InnoDB counts by scanning; the table statistics' estimate is cheap.
-		Data: capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ApproximateCount: true,
+		Data: capability.Data{ServerSort: true, ServerFilter: true, DistinctValues: true, ColumnStats: true, ApproximateCount: true,
 			Insert: true, Update: true, Delete: true, TransactionalWrite: true, BulkLoad: true},
 		Schema: capability.Schema{ForeignKeys: true},
 		Objects: map[model.ObjectKind]bool{
