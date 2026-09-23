@@ -195,6 +195,52 @@ type DistinctLister interface {
 	Distinct(ctx context.Context, ref model.ObjectRef, column string, opt BrowseOptions, limit int) ([]DistinctValue, error)
 }
 
+// Statistician is an optional Browser refinement that measures a column
+// (FR-3.14).
+//
+// What a column holds, asked of the server rather than of the page of rows
+// on the screen: the page is what somebody can already see, and the
+// question a statistics panel answers is about the rest.
+type Statistician interface {
+	// ColumnStats measures one column over the rows opt's Filters and Where
+	// select; its projection, sorting and paging do not apply.
+	//
+	// def says what the column is, because what can be measured depends on
+	// it: the average of a column of text is not a number, and the smallest
+	// and largest of a JSON document are not an order anybody meant.
+	ColumnStats(ctx context.Context, ref model.ObjectRef, def model.ColumnDef, opt BrowseOptions) (*ColumnStats, error)
+}
+
+// ColumnStats is what a column holds.
+//
+// A figure that was not measured is -1, or false alongside the value it
+// would have qualified. Nothing here is estimated: a number somebody reads
+// as "how many" and gets wrong by a factor of ten is worse than a gap.
+type ColumnStats struct {
+	// Rows is how many rows were measured, and Nulls how many of them had
+	// nothing in this column.
+	Rows, Nulls int64
+
+	// Distinct is how many different values there are, or -1 where it was
+	// not measured: on a column an engine cannot put in order, and on one
+	// where counting them would cost more than the answer is worth.
+	Distinct int64
+
+	// Min and Max are the smallest and largest, as the source types them,
+	// or nil where the column has no order or holds nothing.
+	Min, Max any
+
+	// Mean is the average, for a column of numbers. HasMean is false for
+	// every other kind, because the average of a date is a date nobody
+	// asked about and the average of text is nothing at all.
+	Mean    float64
+	HasMean bool
+
+	// Duration is how long the server took, which is the other half of
+	// deciding whether to ask again.
+	Duration time.Duration
+}
+
 // DistinctValue is one entry of a filter picklist.
 type DistinctValue struct {
 	Value any

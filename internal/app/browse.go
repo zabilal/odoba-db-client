@@ -80,6 +80,20 @@ func (b *BrowseSource) CanListValues() bool {
 	return ok && b.src.Capabilities().Data.DistinctValues
 }
 
+// CanMeasure reports whether the source will measure a column (FR-3.14).
+func (b *BrowseSource) CanMeasure() bool { return CanMeasure(b.src) }
+
+// Measure asks what a column holds, among the rows this browse selects.
+func (b *BrowseSource) Measure(ctx context.Context, def model.ColumnDef) (*source.ColumnStats, error) {
+	return MeasureColumn(ctx, b.src, b.ref, def, b.opt)
+}
+
+// Sample reads a sample of one column's values, for drawing how they are
+// spread.
+func (b *BrowseSource) Sample(ctx context.Context, def model.ColumnDef, limit int64) ([]model.Row, error) {
+	return SampleColumn(ctx, b.src, b.ref, def, b.opt, limit)
+}
+
 // Distinct lists up to limit of a column's values for the filter picklist
 // (FR-3.4), among the rows the other columns' filters and the typed WHERE
 // select. The column's own filter is left out: with it, the list could only

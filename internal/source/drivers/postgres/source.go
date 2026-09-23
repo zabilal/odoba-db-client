@@ -236,6 +236,7 @@ func (s *pgSource) Capabilities() capability.Capabilities {
 			ServerSort:       true,
 			ServerFilter:     true,
 			DistinctValues:   true,
+			ColumnStats:      true,
 			ApproximateCount: true,
 			Insert:           true, Update: true, Delete: true, TransactionalWrite: true, BulkLoad: true,
 		},

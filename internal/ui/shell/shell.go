@@ -217,6 +217,9 @@ type tab struct {
 	chart *chartPanel
 	// plan is a query plan, where this tab is one (explain.go).
 	plan *planPanel
+	// stats is the column figures last asked for (colstats.go), kept so
+	// that a second asking replaces the first rather than stacking on it.
+	stats *statsPanel
 	// structure marks a structure tab (structure.go), and label is its
 	// object's name.
 	structure bool
@@ -593,6 +596,10 @@ func (s *Shell) registerCommands() {
 			Run: s.showExport},
 		{ID: cmdImport, Category: "Data", Title: "Import…", Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
 			Enabled: s.canImport, Run: s.showImport},
+		{ID: cmdColumnStats, Category: "Data", Title: "Measure This Column",
+			Keywords: []string{"statistics", "stats", "distinct", "nulls", "min", "max", "average",
+				"histogram", "profile", "measure"},
+			Enabled: s.canMeasureColumn, Run: s.measureSelectedColumn},
 		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
 			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
 			Enabled:  s.canChart, Run: s.chartActive},

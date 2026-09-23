@@ -69,6 +69,7 @@ const (
 	cmdTxCommit       = "query.commit"
 	cmdTxRollback     = "query.rollback"
 	cmdFormatSQL      = "query.format"
+	cmdColumnStats    = "data.columnStats"
 	cmdFilterValues   = "data.filterValues"
 	cmdWhere          = "data.where"
 	cmdCopyCells      = "grid.copy"
@@ -165,7 +166,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),
