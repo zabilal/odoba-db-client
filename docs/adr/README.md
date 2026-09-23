@@ -147,3 +147,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0140](0140-what-is-selected-added-up.md) | What is selected, added up | Accepted |
 | [0141](0141-speaking-t-sql.md) | Speaking T-SQL | Accepted |
 | [0142](0142-a-store-with-no-row-to-point-at.md) | A store with no row to point at | Accepted |
+| [0144](0144-a-row-that-knows-where-it-is.md) | A row that knows where it is | Accepted |
