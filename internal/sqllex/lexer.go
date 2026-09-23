@@ -105,6 +105,11 @@ type Dialect struct {
 	// PostgreSQL, '`' for MySQL.
 	QuoteIdent byte
 
+	// AltQuoteIdent is a second character that opens one, for an engine
+	// that takes either: ClickHouse reads both `name` and "name" as names.
+	// Zero where there is only one way to write one.
+	AltQuoteIdent byte
+
 	// BracketIdent enables [bracketed] identifiers (SQL Server).
 	BracketIdent bool
 
@@ -209,6 +214,9 @@ func (l *Lexer) LexLine(line string, in State) ([]Token, State) {
 
 		case c == l.d.QuoteIdent:
 			i = l.lexQuotedIdent(line, i, l.d.QuoteIdent)
+
+		case l.d.AltQuoteIdent != 0 && c == l.d.AltQuoteIdent:
+			i = l.lexQuotedIdent(line, i, l.d.AltQuoteIdent)
 
 		case l.d.BracketIdent && c == '[':
 			i = l.lexBracketIdent(line, i)
