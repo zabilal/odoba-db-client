@@ -1271,3 +1271,33 @@ func TestLiveStoppingHalfWayThroughAResult(t *testing.T) {
 		t.Errorf("the session is still %s, and cutting a result short ends one", got)
 	}
 }
+
+// A session's name can be read while a statement is running on it, which is
+// the only moment anything wants it: what asks is whatever is about to stop
+// that statement.
+func TestLiveTheSessionsNameIsReadableWhileItIsBusy(t *testing.T) {
+	src := open(t, source.Guard{})
+	ss := pinned(t, src)
+	name := ss.Handle()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ss.Query(ctx, source.Statement{SQL: `WAITFOR DELAY '00:00:10'`})
+	}()
+	// Long enough for the statement to be under way, and far short of the
+	// ten seconds it waits.
+	time.Sleep(300 * time.Millisecond)
+	asked := make(chan string, 1)
+	go func() { asked <- ss.Handle() }()
+	select {
+	case got := <-asked:
+		if got != name {
+			t.Errorf("the session is called %q while it is busy and %q while it is not", got, name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("the session's name could not be read while a statement was running on it")
+	}
+	<-done
+}
