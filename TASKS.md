@@ -1079,7 +1079,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 4.F Final verification
 
-- [ ] **T4.30** All §6.1 budgets green in CI → DoD-2
+- [~] **T4.30** All §6.1 budgets green in CI → DoD-2 — *eleven of twelve are gated and green: P1 cold start, P2 the thousand-object tree, P3 first rows, P4 frame cost, P5 keystroke-to-glyph, P6 idle heap, P7 a million rows to CSV (new here: 8.7M rows/s with a heap that does not move), P9 cancellation (new here, in two halves — a read let go of in 57µs, and the window's Stop, which does not wait for the source to notice, in under a microsecond), P10 the live tail, P11 and P13 by benchmark. **P8, the binary, does not meet its budget and is the owner's decision.** A stripped macOS build is 68.9 MB against 60 MB, and one dependency is most of the gap: go-ora is 14.8 MB of it, and without it the same build is 57.4 MB — the other ten drivers together are under 20 MB and none is over 7.5. The three ways out are all product decisions: put Oracle behind a build tag as DuckDB already is, raise the budget, or ship a core build and a full one. Until one is chosen CI measures the binary on all three platforms and fails only if it grows past a ceiling, so the gap cannot widen unnoticed*
 - [ ] **T4.31** Conformance passes for every Tier-1/Tier-2 source against real servers → DoD-4
 - [ ] **T4.32** J1–J8 pass on macOS, Windows, Linux → DoD-3
 - [ ] **T4.33** **Security review covering NFR-S1…S6** → DoD-6
