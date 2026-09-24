@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -236,6 +237,32 @@ func runJ8(t *testing.T, j journey, group string) {
 	waitFor(t, h.q, "the record to be decoded", func() bool {
 		said := strings.Join(labelsIn(h.tabs.Selected().Content), " ")
 		return strings.Contains(said, "order-0") && strings.Contains(said, "0.5")
+	})
+
+	// And the window exports as it reads it: the file holds what the
+	// schema says the records are, not the bytes they arrived as
+	// (FR-10.8, FR-13.16). The grid is what is exported, so the record
+	// view goes away first, the way somebody closes it.
+	test.Tap(button(t, view, "Show Grid"))
+	if err := h.s.Commands().Run("data.export"); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	sheet := h.w.Canvas().Overlays().Top()
+	if sheet == nil {
+		t.Fatal("the export form did not open")
+	}
+	for _, sel := range find[*widget.Select](sheet) {
+		if slices.Contains(sel.Options, "NDJSON") {
+			sel.SetSelected("NDJSON")
+		}
+	}
+	test.Tap(button(t, sheet, "Choose File…"))
+	path := filepath.Join(t.TempDir(), "records.ndjson")
+	h.files.picks(t, h.q, path)
+	waitFor(t, h.q, "the exported records", func() bool {
+		b, err := os.ReadFile(path)
+		return err == nil && strings.Contains(string(b), `"order-0"`) &&
+			!strings.Contains(string(b), `"value":"`) // not base64, and not hex
 	})
 
 	// And a consumer group says how far behind it is.
