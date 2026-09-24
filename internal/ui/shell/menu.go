@@ -48,6 +48,7 @@ const (
 	cmdMoveTabRight   = "tab.moveRight"
 	cmdPinTab         = "tab.pin"
 	cmdTasks          = "window.tasks"
+	cmdNewWindow      = "window.new"
 	cmdSplitRight     = "window.splitRight"
 	cmdSplitDown      = "window.splitDown"
 	cmdMoveToPane     = "window.moveToOtherPane"
@@ -189,7 +190,7 @@ var menuBar = []struct {
 		item(cmdFormatSQL), item(cmdQueryComplete), separator, item(cmdHistory)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
-		item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
+		item(cmdNewWindow), separator, item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
 	{"Help", []menuEntry{item(cmdShortcuts)}},
 }
 

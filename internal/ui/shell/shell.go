@@ -89,6 +89,10 @@ type Shell struct {
 	d   Deps
 	app fyne.App
 	win fyne.Window
+	// master is the first window, which keeps the session and whose
+	// closing quits. A second window is over the same connections and
+	// closes alone.
+	master bool
 	// away is whether the app is in the background, where long work that
 	// ends is told by a notification (notify.go).
 	away bool
@@ -237,7 +241,29 @@ type tab struct {
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
-func New(a fyne.App, d Deps) *Shell {
+// New opens the first window: the one that keeps the session and whose
+// closing quits the application.
+func New(a fyne.App, d Deps) *Shell { return newShell(a, d, true) }
+
+// NewWindow opens another window over the same connections, saved queries
+// and history (FR-15.8).
+//
+// One window keeps the session, and it is the first. What a session
+// restores is a window, and restoring the same tabs into a second one
+// would be two windows showing the same work rather than one showing more
+// of it — so this one opens empty and saves nothing about itself.
+//
+// Closing it closes it alone. The connections it was reading are the other
+// window's too, and belong to the application rather than to either.
+func (s *Shell) NewWindow() *Shell {
+	d := s.d
+	d.Session = nil
+	w := newShell(s.app, d, false)
+	w.win.Show()
+	return w
+}
+
+func newShell(a fyne.App, d Deps, master bool) *Shell {
 	if d.Run == nil {
 		d.Run, d.Delay = uithread.Fyne, uithread.FrameDelay
 	}
@@ -259,7 +285,7 @@ func New(a fyne.App, d Deps) *Shell {
 	}
 	a.Settings().SetTheme(d.Theme)
 
-	s := &Shell{d: d, app: a, reg: commands.NewRegistry(), menuItems: map[string]*fyne.MenuItem{}}
+	s := &Shell{d: d, app: a, master: master, reg: commands.NewRegistry(), menuItems: map[string]*fyne.MenuItem{}}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.registerCommands()
 	a.Lifecycle().SetOnExitedForeground(func() { s.away = true })
@@ -267,7 +293,11 @@ func New(a fyne.App, d Deps) *Shell {
 
 	s.win = a.NewWindow("Ikigai DB")
 	s.win.Resize(fyne.NewSize(1280, 800))
-	s.win.SetMaster()
+	if master {
+		// Only the first window is the master: closing a second one
+		// closes a window, and closing the first quits.
+		s.win.SetMaster()
+	}
 
 	s.Explorer = view.New(&view.Loader{Conns: d.Conns, WS: d.WS}, d.Run, d.Delay)
 	s.Explorer.OnOpen = s.OpenObject
@@ -313,7 +343,9 @@ func New(a fyne.App, d Deps) *Shell {
 	if d.Scratch != nil || d.Session != nil {
 		s.writer = newWriter(func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
 	}
-	s.restore()
+	if master {
+		s.restore()
+	}
 	s.sync()
 	return s
 }
@@ -555,6 +587,10 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.moveToOtherPane},
 		{ID: cmdJoinPanes, Category: "Window", Title: "Join Panes", Keywords: []string{"unsplit", "close split", "merge", "one pane"},
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.joinPanes},
+		{ID: cmdNewWindow, Category: "Window", Title: "New Window",
+			Keywords: []string{"window", "new", "another", "second"},
+			Shortcut: sc("N", commands.ModShortcut|commands.ModShift),
+			Run:      func() { s.NewWindow() }},
 		{ID: cmdTasks, Category: "Window", Title: "Tasks", Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
 			Run: func() { s.togglePanel(panelTasks, func() { s.showTasks() }) }},
 		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
@@ -1252,6 +1288,11 @@ func (s *Shell) shutdown() {
 	// not close while any are out: closing connections first hung quitting
 	// whenever a query tab was open (found by the J3 journey test).
 	s.closeSessions(func(*tab) bool { return true })
+	if !s.master {
+		// The connections belong to the application rather than to this
+		// window, and the other window is still reading them.
+		return
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
