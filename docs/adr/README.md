@@ -150,3 +150,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0143](0143-a-store-that-only-upserts.md) | A store that only upserts | Accepted |
 | [0144](0144-a-row-that-knows-where-it-is.md) | A row that knows where it is | Accepted |
 | [0145](0145-one-connection-a-whole-cluster.md) | One connection, a whole cluster | Accepted |
+| [0146](0146-an-engine-that-is-not-a-server.md) | An engine that is not a server | Accepted |
