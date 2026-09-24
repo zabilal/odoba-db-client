@@ -28,6 +28,8 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cassandra"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cockroach"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/kafka"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/libsql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mysql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/oracle"

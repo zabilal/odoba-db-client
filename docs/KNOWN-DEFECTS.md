@@ -35,7 +35,7 @@ because a register with no history in it is a register nobody has used:
 | What | Kind | Why not `M` data-loss or credential |
 |---|---|---|
 | A screen reader announces almost nothing | accessibility | Documented in `docs/ACCESSIBILITY.md`. A toolkit limitation, not a defect of ours, and nothing is lost. |
-| The binary is 68.9 MB against a 60 MB budget | performance | Measured on every build; the decision is the owner's (T4.30). Nothing is lost. |
+| The binary is 80.2 MB against a 60 MB budget | performance | Measured on every build; the decision is the owner's (T4.30). Two drivers are most of it — Oracle 14.8 MB, Kafka 10.4 MB. Nothing is lost. |
 | Cassandra reads an unset `int` back as `0` rather than as nothing | display | gocql gives no way to tell one from the other. Nothing is written wrongly: the grid shows `0`, and an edit writes what somebody typed. |
 | A ClickHouse table with an `AggregateFunction` column cannot be read at all | driver limit | clickhouse-go's limit. The table refuses to open, which is a visible failure rather than a quiet wrong answer. |
 | SQLite draws no ER diagram | missing feature | Its tree has nothing above its class folders, so there is no node to draw one from. Unclaimed by any task. |
@@ -44,6 +44,7 @@ because a register with no history in it is a register nobody has used:
 | Where in a statement an Oracle error was is not reported | diagnostics | go-ora keeps the offset to itself. The error is still shown. |
 | Replaying a file into a Kafka topic is not possible | missing feature | The other half of FR-10.8; the import writes through a bulk loader and the Kafka driver has none. Unclaimed. |
 | Comparing two live databases has no way in from the window | missing feature | The comparison itself works against a saved model, and saving one has a way in. |
+| The result of a query is not editable over libSQL or Turso | driver limit | Editing a query's rows needs to know which table each column came from; the libSQL wire protocol does not carry it, so the capability is not claimed and the grid is not editable there. Browsing a table and editing it works as everywhere else. |
 | MySQL, SQLite and Cassandra render no DDL | missing feature | So the designer previews nothing and the source editors are unavailable on them. Each says so rather than failing. |
 | Three Avro advisories with no fix | dependency | Denial of service by unbounded allocation while decoding. Accepted by name in `security/accepted-vulnerabilities.md`. Nothing is written and no credential is involved. |
 
