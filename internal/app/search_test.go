@@ -327,3 +327,13 @@ func TestWhatCountsAsAWholeWord(t *testing.T) {
 		}
 	}
 }
+
+// A search is of the objects in a place, not of the places they are in: a
+// schema's name is not a match, and neither is a class folder's label.
+func TestSearchDoesNotMatchWhereObjectsLive(t *testing.T) {
+	for _, text := range []string{"public", "sales"} {
+		if got := all(t, &searchable{}, Query{Text: text}); len(got) != 0 {
+			t.Errorf("searching %q found %+v", text, got)
+		}
+	}
+}
