@@ -109,6 +109,8 @@ const (
 	cmdShowReferring  = "data.showReferring"
 	cmdDetail         = "data.detail"
 	cmdSaveView       = "data.saveView"
+	cmdWorkspaceSave  = "file.saveWorkspace"
+	cmdWorkspaces     = "file.workspaces"
 	cmdViews          = "data.views"
 	cmdHideColumn     = "grid.hideColumn"
 	cmdShowColumns    = "grid.showColumns"
@@ -156,6 +158,7 @@ var menuBar = []struct {
 }{
 	{"File", []menuEntry{
 		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
+		submenu("Workspace", cmdWorkspaceSave, cmdWorkspaces), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
 		item(cmdExport), item(cmdImport), separator,
 		item(cmdTabClose),

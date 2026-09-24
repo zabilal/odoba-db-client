@@ -21,6 +21,9 @@ type Session struct {
 	SplitOffset float64 `json:",omitempty"`
 	// Expanded is the explorer's open branches, by tree ID.
 	Expanded []string `json:",omitempty"`
+	// Workspace is the workspace the window was left in, by ID, and empty
+	// for none (FR-15.9).
+	Workspace string `json:",omitempty"`
 }
 
 // Kinds of session tab.
