@@ -53,3 +53,4 @@ func TestJ5SQLite(t *testing.T) { runJ5(t, sqliteJourney(t)) }
 func TestJ7SQLite(t *testing.T) { runJ7(t, sqliteJourney(t)) }
 func TestJ3SQLite(t *testing.T) { runJ3(t, sqliteJourney(t)) }
 func TestJ4SQLite(t *testing.T) { runJ4(t, sqliteJourney(t)) }
+func TestJ6SQLite(t *testing.T) { runJ6(t, sqliteJourney(t)) }
