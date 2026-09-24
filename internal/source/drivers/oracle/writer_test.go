@@ -59,10 +59,30 @@ func TestARowWithNoKeyIsWrittenByItsAddress(t *testing.T) {
 }
 
 // A row of nothing but defaults is refused: Oracle has no form for one.
-func TestARowOfNothingIsRefused(t *testing.T) {
+// A row of nothing but defaults is written by naming one column and
+// asking for its default, every column not named taking its own anyway.
+// Oracle has no DEFAULT VALUES clause, so a column has to be named, and
+// the one a row is certain to have is its key.
+func TestARowOfNothingTakesEveryDefault(t *testing.T) {
 	s := &oracleSource{}
-	_, err := s.Plan(context.Background(), source.Changeset{Target: tbl, Identity: byKey(),
+	plan, err := s.Plan(context.Background(), source.Changeset{Target: tbl, Identity: byKey(),
 		Changes: []source.RowChange{{Kind: source.ChangeInsert}}})
+	if err != nil {
+		t.Fatalf("a row of nothing but defaults: %v", err)
+	}
+	if got := plan.Statements[0].SQL; !strings.Contains(got, `("ID") VALUES (DEFAULT)`) {
+		t.Errorf("it reads %s", got)
+	}
+}
+
+// A table addressed by where its rows are has no such column: its address
+// is not something in the row, so there is nothing to name and a row of
+// nothing at all is refused.
+func TestARowOfNothingIsRefusedWithoutAKey(t *testing.T) {
+	s := &oracleSource{}
+	_, err := s.Plan(context.Background(), source.Changeset{Target: tbl,
+		Identity: model.RowIdentity{Kind: model.IdentityRowID, Columns: []string{rowIDName}, Target: tbl},
+		Changes:  []source.RowChange{{Kind: source.ChangeInsert}}})
 	if err == nil || !strings.Contains(err.Error(), "at least one column") {
 		t.Errorf("a row of nothing was planned: %v", err)
 	}
