@@ -46,6 +46,13 @@ type journey struct {
 	secrets map[string]string
 	path    []model.ObjectRef // the sidebar walk from the connection to the table
 	table   string            // how a query names the table
+
+	// J4 is about understanding a schema, which takes more than one
+	// table: orders refers to people, and the journey walks the key
+	// between them in both directions. An engine that has not been given
+	// these does not run J4.
+	child   []model.ObjectRef // the sidebar walk to the table that refers
+	childFK string            // the column in it that holds the reference
 }
 
 // harness is the application over one engine, as a person would have it.
@@ -152,6 +159,164 @@ func openTable(t *testing.T, h *harness, j journey) {
 // open it, and see its rows.
 func runJ1(t *testing.T, j journey) {
 	openTable(t, start(t, j), j)
+}
+
+// runJ4 is journey J4: understand an unfamiliar schema — follow a foreign
+// key to the row it names, see what refers back, and draw the shape of it
+// — without reading any DDL.
+//
+// What the journey is really about is that none of these steps needs the
+// person to know the schema. They open a table they have never seen, and
+// the application tells them what it is joined to, both ways round, and
+// then draws it.
+func runJ4(t *testing.T, j journey) {
+	if len(j.child) == 0 {
+		t.Skip("this engine's journey has no second table to understand")
+	}
+	h := start(t, j)
+	ctx := context.Background()
+
+	// Open the table that refers: orders, which somebody landing here
+	// knows nothing about.
+	walkTo(t, h, j.child)
+	if err := h.s.Commands().Run("object.open"); err != nil {
+		t.Fatalf("Open Data: %v", err)
+	}
+	child := j.child[len(j.child)-1].Name()
+	waitFor(t, h.q, "the referring table's rows", func() bool {
+		h.w.Canvas().Capture()
+		return h.tabs.Selected() != nil && h.tabs.Selected().Text == child &&
+			h.s.ActiveGrid() != nil
+	})
+
+	// The key is read from the table itself, so the command is offered
+	// only once the application knows there is one. That is the first
+	// thing the journey shows: the schema is told, not looked up.
+	g := h.s.ActiveGrid()
+	cols := g.Model().Columns()
+	fk := slices.IndexFunc(cols, func(c model.ColumnDef) bool { return c.Name == j.childFK })
+	if fk < 0 {
+		t.Fatalf("the referring table has no %q: %v", j.childFK, columnNames(cols))
+	}
+	// Where the key's column is shown, which is not where it is in the
+	// data once anybody has moved or hidden one.
+	at := slices.Index(g.Shown(), fk)
+	if at < 0 {
+		t.Fatalf("the key's column is not shown")
+	}
+	h.q.Run(func() { g.GoTo(gridCell(0, at)) })
+	waitFor(t, h.q, "the foreign key to be known", func() bool {
+		h.w.Canvas().Capture()
+		return offered(h, "data.goToReferenced")
+	})
+
+	// Follow it. The row it names is opened, filtered to that one row.
+	if err := h.s.Commands().Run("data.goToReferenced"); err != nil {
+		t.Fatalf("Go to Referenced Row: %v", err)
+	}
+	parent := j.path[len(j.path)-1].Name()
+	waitFor(t, h.q, "the referenced row", func() bool {
+		h.w.Canvas().Capture()
+		return h.tabs.Selected() != nil && h.tabs.Selected().Text == parent &&
+			h.s.ActiveGrid() != nil && rowsIn(h.s.ActiveGrid()) == 1
+	})
+	// And it is the row the key named, not just any row.
+	pg := h.s.ActiveGrid()
+	prow, _ := pg.Model().Row(ctx, 0)
+	if prow == nil {
+		t.Fatal("the referenced row did not load")
+	}
+	if got := fmt.Sprint(prow[0]); got != "7" {
+		t.Errorf("the key named person 7 and the tab shows %s", got)
+	}
+
+	// Now the other way: what refers to this row. That is the question
+	// somebody asks next, and it is a different question from the one
+	// the key answers — and it is asked of a row, so the row is the one
+	// they are looking at.
+	h.q.Run(func() { pg.GoTo(gridCell(0, 0)) })
+	// The keys of other tables are read from the connection too, so this
+	// is offered once the application has been told there are any.
+	waitFor(t, h.q, "the keys that point here", func() bool {
+		h.w.Canvas().Capture()
+		return offered(h, "data.showReferring")
+	})
+	if err := h.s.Commands().Run("data.showReferring"); err != nil {
+		t.Fatalf("Show Referring Rows: %v", err)
+	}
+	waitFor(t, h.q, "the rows that refer", func() bool {
+		h.w.Canvas().Capture()
+		return h.tabs.Selected() != nil && h.tabs.Selected().Text == child &&
+			h.s.ActiveGrid() != nil && rowsIn(h.s.ActiveGrid()) == 2
+	})
+
+	// Master and detail: the same relationship read without leaving the
+	// row it is about.
+	h.q.Run(func() { selectTabText(h, parent) })
+	waitFor(t, h.q, "the referenced table again", func() bool {
+		h.w.Canvas().Capture()
+		return h.tabs.Selected() != nil && h.tabs.Selected().Text == parent
+	})
+	if !offered(h, "data.detail") {
+		t.Fatal("nothing offers the rows belonging to this one")
+	}
+
+	// And the shape of it, drawn. A diagram is the answer to the question
+	// the whole journey asks, and it names both tables and the key
+	// between them (FR-8.3).
+	//
+	// It is drawn of whatever holds a class of objects — a schema, or a
+	// database — which is whatever the walk to the table passed through
+	// above its folder. An engine whose tree has nothing above the
+	// folder has nothing to draw from, and SQLite is one: its
+	// connection's children are the class folders themselves. That is a
+	// gap in the journey for that engine rather than in this test, and
+	// no task claims it.
+	above := j.path[:max(len(j.path)-2, 0)]
+	if len(above) == 0 {
+		return
+	}
+	walkTo(t, h, above)
+	if !offered(h, "schema.diagram") {
+		t.Fatal("nothing offers to draw the schema")
+	}
+	if err := h.s.Commands().Run("schema.diagram"); err != nil {
+		t.Fatalf("Diagram: %v", err)
+	}
+	// What it drew is said under it: the tables it found and the
+	// relationships between them. That is the whole of what somebody
+	// came to this journey for, and neither number was given to it.
+	waitFor(t, h.q, "the diagram", func() bool {
+		h.w.Canvas().Capture()
+		sel := h.tabs.Selected()
+		return sel != nil && strings.HasPrefix(sel.Text, "Diagram:") &&
+			hasLabel(sel.Content, "2 tables, 1 relationship.")
+	})
+}
+
+// rowsIn is how many rows a grid holds, as far as it has read.
+func rowsIn(g *grid.TableGrid) int64 {
+	n, _ := g.Model().Extent()
+	return n
+}
+
+// selectTabText brings the tab with that title forward, as clicking it
+// would.
+func selectTabText(h *harness, text string) {
+	for _, it := range h.tabs.Items {
+		if it.Text == text {
+			h.tabs.Select(it)
+			return
+		}
+	}
+}
+
+func columnNames(cols []model.ColumnDef) []string {
+	out := make([]string, len(cols))
+	for i, c := range cols {
+		out[i] = c.Name
+	}
+	return out
 }
 
 // runJ2 is journey J2: filter by a value, edit a cell, review the SQL that
