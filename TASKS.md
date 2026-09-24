@@ -1083,7 +1083,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T4.31** Conformance passes for every Tier-1/Tier-2 source against real servers → DoD-4
 - [ ] **T4.32** J1–J8 pass on macOS, Windows, Linux → DoD-3
 - [ ] **T4.33** **Security review covering NFR-S1…S6** → DoD-6
-- [ ] **T4.34** Verify offline operation → NFR-D6
+- [x] **T4.34** Verify offline operation → NFR-D6 — *held by two rules rather than remembered. What is kept, what is read and written, and what text is made of cannot reach net/http, net/smtp or net/rpc at all, checked through the import graph with a control pointed at internal/cloud so that a rule looking for the wrong thing fails rather than passing everywhere; and no file of this application outside internal/cloud's four token fetchers imports net/http, so a new one has to be added to the list on purpose and say why. The packages that draw are deliberately not in the first rule and cannot be: fyne.io/fyne/v2 reaches net/http itself for its own URI handling, so the graph says nothing about anything that draws — the file rule is what covers those, and it is the stronger statement. The network is used in three places, each of them something a person asked for: a driver connecting to a server they configured, an SSH tunnel they configured, and a cloud IAM token a connection asked for. There is no telemetry, no update check, nothing fetched on start, and nothing that contacts a host belonging to this project*
 - [ ] **T4.35** Zero open `M`-severity data-loss or credential defects → DoD-7
 - [ ] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5
 - [ ] **T4.37** User documentation + known-gaps page → DoD-8
