@@ -219,7 +219,7 @@ func ConnectionOf(id string) (string, bool) {
 
 // Explorer is the tree widget.
 type Explorer struct {
-	Tree  *widget.Tree
+	Tree  *focusTree
 	Model *explorer.Model
 
 	// OnOpen is called when a browsable node — a table, view or collection —
@@ -267,6 +267,54 @@ type Explorer struct {
 	body    *fyne.Container   // the tree, or found in its place
 	view    fyne.CanvasObject
 	search  func()
+	// ring is drawn around the tree while it has the focus.
+	ring *canvas.Rectangle
+}
+
+// The focus ring around the sidebar's tree.
+const (
+	focusRingWidth  = 2
+	focusRingRadius = 4
+)
+
+// focusTree is the sidebar's tree, which says when the keyboard is in it.
+// widget.Tree draws a selected row and nothing about the focus, so this
+// adds the one thing missing and leaves the rest of the tree alone.
+type focusTree struct {
+	widget.Tree
+	e *Explorer
+}
+
+func newFocusTree(e *Explorer) *focusTree {
+	t := &focusTree{e: e}
+	t.ExtendBaseWidget(t)
+	return t
+}
+
+func (t *focusTree) FocusGained() {
+	t.Tree.FocusGained()
+	t.e.showRing(true)
+}
+
+func (t *focusTree) FocusLost() {
+	t.Tree.FocusLost()
+	t.e.showRing(false)
+}
+
+// showRing draws the ring, or takes it away.
+func (e *Explorer) showRing(on bool) {
+	if e.ring == nil {
+		return
+	}
+	if !on {
+		e.ring.Hide()
+		e.ring.Refresh()
+		return
+	}
+	th, v := fyne.CurrentApp().Settings().Theme(), fyne.CurrentApp().Settings().ThemeVariant()
+	e.ring.StrokeColor = th.Color(fynetheme.ColorNameFocus, v)
+	e.ring.Show()
+	e.ring.Refresh()
 }
 
 // searchLimit is how many matches the filter lists.
@@ -280,12 +328,11 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 		badges: map[string]fetched{}, waiting: map[string]*fetch{}, slots: make(chan struct{}, badgeWorkers)}
 	e.badger, _ = l.(badger)
 	e.stater, _ = l.(stater)
-	e.Tree = widget.NewTree(
-		func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) },
-		func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) },
-		func(bool) fyne.CanvasObject { return newNodeRow() },
-		func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { e.update(id, o.(*nodeRow)) },
-	)
+	e.Tree = newFocusTree(e)
+	e.Tree.ChildUIDs = func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) }
+	e.Tree.IsBranch = func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) }
+	e.Tree.CreateNode = func(bool) fyne.CanvasObject { return newNodeRow() }
+	e.Tree.UpdateNode = func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { e.update(id, o.(*nodeRow)) }
 	e.open = map[string]bool{}
 	e.Tree.OnBranchOpened = func(id widget.TreeNodeID) { e.expanded(id, true) }
 	e.Tree.OnBranchClosed = func(id widget.TreeNodeID) { e.expanded(id, false) }
@@ -335,7 +382,15 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 	}
 	e.found = container.NewBorder(nil, e.note, nil, nil, e.results)
 	e.body = container.NewStack(e.Tree)
-	e.view = container.NewBorder(e.Filter, nil, nil, nil, e.body)
+	// A ring around the tree while the keyboard is in it. A tree says
+	// which row is selected and nothing about whether it is listening, so
+	// somebody who tabbed into the sidebar had no way to see they were
+	// there (NFR-A1).
+	e.ring = canvas.NewRectangle(color.Transparent)
+	e.ring.StrokeWidth = focusRingWidth
+	e.ring.CornerRadius = focusRingRadius
+	e.ring.Hide()
+	e.view = container.NewBorder(e.Filter, nil, nil, nil, container.NewStack(e.body, e.ring))
 	e.search = uithread.Coalesce(run, delay, e.runSearch)
 	e.Filter.OnChanged = func(string) { e.search() }
 	e.Filter.OnSubmitted = func(string) {
