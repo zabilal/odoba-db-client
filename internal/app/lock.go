@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 
@@ -58,8 +59,14 @@ const (
 
 // A Lock is the passphrase gate over a vault. The zero value is no lock,
 // which is what a vault has until somebody puts one on.
+//
+// Deriving a key takes a moment on purpose, so it is done off whatever
+// goroutine asked; the key is read from the one the window runs on. The
+// mutex is for that, and covers the key alone: the setting is fixed when
+// the lock is made.
 type Lock struct {
 	set store.VaultLock
+	mu  sync.RWMutex
 	key []byte // derived from the passphrase; nil while locked
 }
 
@@ -78,7 +85,14 @@ func (l *Lock) On() bool { return l != nil && len(l.set.Salt) > 0 }
 
 // Open reports whether the lock has been opened this session. A vault with
 // no lock is open.
-func (l *Lock) Open() bool { return l == nil || !l.On() || l.key != nil }
+func (l *Lock) Open() bool {
+	if l == nil || !l.On() {
+		return true
+	}
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.key != nil
+}
 
 // Unlock derives the key from a passphrase and checks it against the
 // verifier. A wrong passphrase leaves the lock as it was.
@@ -90,13 +104,29 @@ func (l *Lock) Unlock(pass string) error {
 	if subtle.ConstantTimeCompare(verifierOf(key), l.set.Verifier) != 1 {
 		return ErrPassphrase
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.key = key
 	return nil
 }
 
 // Close forgets the key, leaving the lock shut until a passphrase opens it
 // again.
-func (l *Lock) Close() { l.key = nil }
+func (l *Lock) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.key = nil
+}
+
+// held is the key, or nil while the lock is shut.
+func (l *Lock) held() []byte {
+	if l == nil {
+		return nil
+	}
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.key
+}
 
 // deriveKey is the key a passphrase and salt make.
 func deriveKey(pass string, salt []byte) []byte {
@@ -127,10 +157,11 @@ func (l *Lock) Seal(plain string) (string, error) {
 	if !l.On() {
 		return plain, nil
 	}
-	if l.key == nil {
+	key := l.held()
+	if key == nil {
 		return "", ErrLocked
 	}
-	gcm, err := gcmFor(l.key)
+	gcm, err := gcmFor(key)
 	if err != nil {
 		return "", err
 	}
@@ -149,14 +180,15 @@ func (l *Lock) Unseal(stored string) (string, error) {
 	if !sealed {
 		return stored, nil
 	}
-	if l == nil || l.key == nil {
+	key := l.held()
+	if key == nil {
 		return "", ErrLocked
 	}
 	raw, err := base64.StdEncoding.DecodeString(rest)
 	if err != nil {
 		return "", errors.New("app: this secret is not stored as it says it is")
 	}
-	gcm, err := gcmFor(l.key)
+	gcm, err := gcmFor(key)
 	if err != nil {
 		return "", err
 	}

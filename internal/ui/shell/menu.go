@@ -49,6 +49,8 @@ const (
 	cmdMarksDrop       = "explorer.scriptMarkedDrop"
 	cmdMarksExport     = "explorer.exportMarked"
 	cmdCopyRows        = "explorer.copyRows"
+	cmdBackUp          = "file.backUp"
+	cmdRestore         = "file.restore"
 	cmdVaultLock       = "vault.lock"
 	cmdVaultClose      = "vault.close"
 	cmdVaultRemove     = "vault.remove"
@@ -172,6 +174,7 @@ var menuBar = []struct {
 		submenu("Workspace", cmdWorkspaceSave, cmdWorkspaces), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
 		item(cmdExport), item(cmdImport), separator,
+		item(cmdBackUp), item(cmdRestore), separator,
 		item(cmdTabClose),
 	}},
 	{"Edit", []menuEntry{
