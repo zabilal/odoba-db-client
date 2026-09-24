@@ -289,14 +289,17 @@ func TestGoingToAWorkspaceOpensItsTabsAlone(t *testing.T) {
 	test.Type(other.query.editor.Focusable(), "rows 1;")
 	pump(t, fx.q, func() bool { return len(scratches(fx)) == 2 })
 
+	// Wait for the workspace's own tab, not for any one tab: the tab open
+	// now is one too, and waiting for a count would be waiting for what is
+	// already true.
 	fx.q.Run(func() { fx.s.switchWorkspace(saved[0]) })
-	pump(t, fx.q, func() bool { return len(fx.s.open) == 1 })
+	pump(t, fx.q, func() bool {
+		return len(fx.s.open) == 1 && fx.s.open[0].query != nil &&
+			fx.s.open[0].query.editor.Document().Text() == "rows 3;"
+	})
 	fx.q.Flush()
 	if n := len(fx.s.open); n != 1 {
 		t.Fatalf("%d tabs opened for a workspace left with one", n)
-	}
-	if got := fx.s.open[0].query.editor.Document().Text(); got != "rows 3;" {
-		t.Errorf("the tab that opened holds %q", got)
 	}
 }
 
