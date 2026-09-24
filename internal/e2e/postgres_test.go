@@ -50,7 +50,10 @@ func postgresJourney(t *testing.T) journey {
 	if _, err := conn.Exec(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %[1]s CASCADE;
 		CREATE SCHEMA %[1]s;
 		CREATE TABLE %[1]s.people (id int PRIMARY KEY, name text NOT NULL);
-		INSERT INTO %[1]s.people SELECT g, 'person ' || g FROM generate_series(1, %[2]d) g;`,
+		INSERT INTO %[1]s.people SELECT g, 'person ' || g FROM generate_series(1, %[2]d) g;
+		CREATE TABLE %[1]s.orders (id int PRIMARY KEY,
+		  person_id int NOT NULL REFERENCES %[1]s.people (id), total int NOT NULL);
+		INSERT INTO %[1]s.orders VALUES (1, 7, 10), (2, 7, 20), (3, 9, 30);`,
 		pgSchema, fixtureRows)); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +76,26 @@ func postgresJourney(t *testing.T) journey {
 			model.NewRef(model.KindTable, db, pgSchema, "people"),
 		},
 		table: pgSchema + ".people",
+		child: []model.ObjectRef{
+			model.NewRef(model.KindDatabase, db),
+			model.NewRef(model.KindSchema, db, pgSchema),
+			model.ClassRef(model.NewRef(model.KindSchema, db, pgSchema), model.KindTable),
+			model.NewRef(model.KindTable, db, pgSchema, "orders"),
+		},
+		childFK: "person_id",
+		ddl: func(t *testing.T, stmt string) {
+			t.Helper()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			c, err := pgx.Connect(ctx, dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close(ctx)
+			if _, err := c.Exec(ctx, "SET search_path = "+pgSchema+"; "+stmt); err != nil {
+				t.Fatalf("%.60q: %v", stmt, err)
+			}
+		},
 	}
 }
 
@@ -83,3 +106,5 @@ func TestJ3PostgreSQL(t *testing.T) { runJ3(t, postgresJourney(t)) }
 func TestJ2PostgreSQL(t *testing.T) { runJ2(t, postgresJourney(t)) }
 func TestJ5PostgreSQL(t *testing.T) { runJ5(t, postgresJourney(t)) }
 func TestJ7PostgreSQL(t *testing.T) { runJ7(t, postgresJourney(t)) }
+func TestJ4PostgreSQL(t *testing.T) { runJ4(t, postgresJourney(t)) }
+func TestJ6PostgreSQL(t *testing.T) { runJ6(t, postgresJourney(t)) }

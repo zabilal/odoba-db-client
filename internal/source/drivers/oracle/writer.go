@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/sqlscript"
 )
@@ -20,14 +21,33 @@ var _ source.Writer = (*oracleSource)(nil)
 // Plan renders a changeset as the statements that would write it, each
 // value bound.
 func (s *oracleSource) Plan(_ context.Context, cs source.Changeset) (*source.WritePlan, error) {
-	for _, c := range cs.Changes {
-		if c.Kind == source.ChangeInsert && len(c.Values) == 0 {
-			// Oracle has no DEFAULT VALUES clause: a column has to be named
-			// before a default can be asked for in it.
-			return nil, errors.New("oracle: a new row needs a value in at least one column")
+	row := defaultRow(s.dialect, cs.Identity)
+	if row == "" {
+		for _, c := range cs.Changes {
+			if c.Kind == source.ChangeInsert && len(c.Values) == 0 {
+				return nil, errors.New("oracle: a new row needs a value in at least one column")
+			}
 		}
 	}
-	return sqlscript.PlanWrites(s, s.cfg.Guard, cs, "")
+	return sqlscript.PlanWrites(s, s.cfg.Guard, cs, row)
+}
+
+// defaultRow writes a row of nothing but defaults, or nothing if this
+// table has no way to ask for one.
+//
+// Oracle has no DEFAULT VALUES clause: a column has to be named before a
+// default can be asked for in it. Naming one is enough, every column not
+// named taking its own default anyway, so the row's key is named — that
+// being the one column such a row is certain to have.
+//
+// A table addressed by ROWID has no such column: its address is where the
+// row is rather than something in it, and there is nothing to name. A row
+// of nothing at all is refused there, as it was everywhere here before.
+func defaultRow(d dialect, id model.RowIdentity) string {
+	if id.Kind != model.IdentityPrimaryKey || len(id.Columns) == 0 {
+		return ""
+	}
+	return "(" + d.QuoteIdentifier(id.Columns[0]) + ") VALUES (DEFAULT)"
 }
 
 // Apply runs a plan in one transaction: all of it, or on the first failure
