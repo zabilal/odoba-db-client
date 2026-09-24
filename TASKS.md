@@ -1035,7 +1035,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 4.C Remaining features
 
-- [ ] **T4.10** Saved named views per table → FR-3.16
+- [x] **T4.10** Saved named views per table → FR-3.16 — *a view is a session tab's arrangement with a name on it, and deliberately so: what a session restores when the application starts and what a view restores when somebody picks it are the same thing, so they are the same thing here — one shape to keep in step, and the two functions that put a tab back do both. It keeps what the rows are rather than what they were: the filters, the WHERE clause, the sort, the columns shown and how wide they are, which are hidden and how many are frozen. Before it is saved the dialog says what it would keep, because a view of rows nobody has arranged is the one somebody would not have meant to save — and rows that are as they opened say so rather than showing an empty list. A view belongs to its own table: two tables sharing a name in different schemas do not share views, and neither do two connections. Forgetting one takes it off the list and leaves the rows where they are, forgetting how to get back somewhere not being going anywhere. Its store is its own rather than a corner of the saved queries, a view being of an object where a query is of nothing. One thing came out of writing the tests: a grid opens with its key column frozen, which is an arrangement like any other and is kept like one — so "these rows are as they first opened" is only true of a grid with nothing frozen, and the tests say both*
 - [ ] **T4.11** Multiple windows → FR-15.8
 - [ ] **T4.12** Workspaces/projects → FR-15.9
 - [ ] **T4.13** Full-text search across object definitions → FR-2.7

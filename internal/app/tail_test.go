@@ -118,20 +118,24 @@ func TestATailKeepsTheLastFewAndCountsWhatItDropped(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		f.rows <- model.Row{int64(i)}
 	}
-	held := waitFor(t, tail, 3)
 
-	// The window holds the newest three, oldest first: a tail is about what
-	// is happening now.
-	if len(held) != 3 || held[0][0] != int64(2) || held[2][0] != int64(4) {
-		t.Fatalf("the window holds %v", held)
-	}
-	// And what fell out is counted rather than lost quietly.
+	// Wait for what fell out rather than for what is held. A window of
+	// three holds three from the moment the third arrives, so waiting for
+	// a count of three can read the window before the last two records
+	// have been put in it — and then the newest three are not yet the
+	// three it holds.
 	deadline := time.Now().Add(5 * time.Second)
 	for tail.Dropped() < 2 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	if got := tail.Dropped(); got != 2 {
-		t.Errorf("%d records were dropped, and five were written into a window of three", got)
+		t.Fatalf("%d records were dropped, and five were written into a window of three", got)
+	}
+
+	// The window holds the newest three, oldest first: a tail is about what
+	// is happening now.
+	if held := tail.Rows(); len(held) != 3 || held[0][0] != int64(2) || held[2][0] != int64(4) {
+		t.Fatalf("the window holds %v", held)
 	}
 }
 

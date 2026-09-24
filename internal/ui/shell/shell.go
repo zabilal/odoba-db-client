@@ -59,6 +59,9 @@ type Deps struct {
 	// Session keeps the window as it was left, for the next start. Nil
 	// starts with an empty window every time.
 	Session app.SessionStore
+	// Views keeps a table's rows as somebody arranged them, under a name.
+	// Nil turns saved views off.
+	Views app.ViewStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -460,6 +463,12 @@ func (s *Shell) registerCommands() {
 			Enabled:  s.canOpenRowObject, Run: s.openRowObject},
 		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
 			Enabled: s.canShowReferring, Run: s.showReferring},
+		{ID: cmdSaveView, Category: "View", Title: "Save This View…",
+			Keywords: []string{"view", "save", "named", "filter", "sort", "columns", "arrangement"},
+			Enabled:  s.canSaveView, Run: s.saveView},
+		{ID: cmdViews, Category: "View", Title: "Saved Views…",
+			Keywords: []string{"view", "saved", "named", "filter", "sort", "columns", "arrangement"},
+			Enabled:  s.canShowViews, Run: s.showViews},
 		{ID: cmdDetail, Category: "View", Title: "Detail Rows", Keywords: []string{"master", "detail", "children", "child rows", "nested", "related"},
 			Enabled: s.canShowDetail, Run: s.toggleDetail},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
