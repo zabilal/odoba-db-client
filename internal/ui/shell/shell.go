@@ -126,8 +126,10 @@ type Shell struct {
 	tasks      []*task
 	taskView   *tasksPanel
 	pal        *palette.Palette
-	// savedView is the Saved Queries panel, current while it is open.
-	savedView *savedPanel
+	// savedView is the Saved Queries panel, and searchView the structure
+	// search; each is current while its panel is open.
+	savedView  *savedPanel
+	searchView *searchPanel
 	// work is the tabs, or the empty state, and right holds work alone or
 	// beside the open side panel (panel.go).
 	work, right *fyne.Container
@@ -582,6 +584,9 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canChooseKey, Run: s.chooseKey},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
+		{ID: cmdSearchStructure, Category: "View", Title: "Search Structure…",
+			Keywords: []string{"find", "search", "definition", "column", "body", "procedure", "view", "grep"},
+			Enabled:  s.canSearchStructure, Run: s.searchStructure},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),

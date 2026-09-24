@@ -152,3 +152,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0145](0145-one-connection-a-whole-cluster.md) | One connection, a whole cluster | Accepted |
 | [0146](0146-an-engine-that-is-not-a-server.md) | An engine that is not a server | Accepted |
 | [0147](0147-a-workspace-that-holds-nothing.md) | A workspace that holds nothing | Accepted |
+| [0148](0148-searching-by-walking.md) | Searching by walking | Accepted |
