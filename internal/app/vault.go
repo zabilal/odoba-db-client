@@ -14,6 +14,9 @@ type Vault struct {
 	os         secrets.Keychain
 	session    *secrets.Memory
 	persistent bool
+	// lock is the app-level lock over what is persisted (NFR-S7). Nil is
+	// no lock, which is what a vault has until somebody puts one on.
+	lock *Lock
 }
 
 // NewVault builds a vault. availability is the result of secrets.Available().
@@ -25,21 +28,50 @@ func NewVault(os secrets.Keychain, availability error) *Vault {
 // Persistent reports whether secrets survive a restart.
 func (v *Vault) Persistent() bool { return v.persistent }
 
+// SetLock puts an app-level lock over what this vault persists, or takes
+// one off with nil (NFR-S7).
+func (v *Vault) SetLock(l *Lock) { v.lock = l }
+
+// Lock is the lock over this vault, which may be no lock at all.
+func (v *Vault) Lock() *Lock { return v.lock }
+
+// Locked reports whether the vault is holding its secrets back for want of
+// a passphrase.
+func (v *Vault) Locked() bool { return v.lock.On() && !v.lock.Open() }
+
 func (v *Vault) Get(id, key string) (string, error) {
+	// A secret typed in for this session is not sealed and not held back:
+	// it is in this process because somebody just typed it here.
 	if s, err := v.session.Get(id, key); err == nil {
 		return s, nil
 	}
 	if !v.persistent {
 		return "", secrets.ErrNotFound
 	}
-	return v.os.Get(id, key)
+	// Said here rather than left to the unsealing: a secret stored before
+	// the lock went on is not sealed, and a locked vault that handed that
+	// one over would be a locked vault handing a secret over.
+	if v.Locked() {
+		return "", ErrLocked
+	}
+	stored, err := v.os.Get(id, key)
+	if err != nil {
+		return "", err
+	}
+	return v.lock.Unseal(stored)
 }
 
 func (v *Vault) Set(id, key, value string) error {
-	if v.persistent {
-		return v.os.Set(id, key, value)
+	if !v.persistent {
+		return v.session.Set(id, key, value)
 	}
-	return v.session.Set(id, key, value)
+	// Nothing says "locked" here: sealing with no key refuses, which is
+	// the same answer for the same reason, and one place to give it.
+	sealed, err := v.lock.Seal(value)
+	if err != nil {
+		return err
+	}
+	return v.os.Set(id, key, sealed)
 }
 
 // SetSession holds a secret for this session only, never persisting it.

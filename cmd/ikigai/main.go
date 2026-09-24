@@ -115,6 +115,10 @@ func run() error {
 	}
 
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
+	// The app-level lock over the vault, where one was put on (NFR-S7).
+	// What is saved recognises a passphrase; the window asks for it before
+	// anything reads a secret.
+	vault.SetLock(app.NewLock(settings.Get().Vault))
 	conns := app.NewConnections(settings, vault, log)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 

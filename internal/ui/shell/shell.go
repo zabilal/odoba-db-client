@@ -361,7 +361,7 @@ func newShell(a fyne.App, d Deps, master bool) *Shell {
 		s.writer = newWriter(func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
 	}
 	if master {
-		s.restore()
+		s.askToUnlock(s.restore)
 	}
 	s.sync()
 	return s
@@ -449,6 +449,15 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
+		{ID: cmdVaultLock, Category: "Connection", Title: "Lock the Vault…",
+			Keywords: []string{"vault", "lock", "passphrase", "password", "secret", "seal", "encrypt"},
+			Enabled:  s.canLockVault, Run: s.lockVault},
+		{ID: cmdVaultClose, Category: "Connection", Title: "Shut the Vault Now",
+			Keywords: []string{"vault", "lock", "shut", "close", "away", "leave"},
+			Enabled:  s.canCloseVault, Run: s.closeVault},
+		{ID: cmdVaultRemove, Category: "Connection", Title: "Remove the Vault Lock…",
+			Keywords: []string{"vault", "lock", "remove", "off", "passphrase"},
+			Enabled:  s.canRemoveVaultLock, Run: s.removeVaultLock},
 		{ID: cmdCopyRows, Category: "Explorer", Title: "Copy Rows To…",
 			Keywords: []string{"copy", "rows", "table", "transfer", "move", "another", "connection", "load"},
 			Enabled:  s.canCopyRows, Run: func() { s.copyRowsFrom() }},

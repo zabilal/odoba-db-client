@@ -49,6 +49,9 @@ const (
 	cmdMarksDrop       = "explorer.scriptMarkedDrop"
 	cmdMarksExport     = "explorer.exportMarked"
 	cmdCopyRows        = "explorer.copyRows"
+	cmdVaultLock       = "vault.lock"
+	cmdVaultClose      = "vault.close"
+	cmdVaultRemove     = "vault.remove"
 	cmdTabClose        = "tab.close"
 	cmdTabNext         = "tab.next"
 	cmdTabPrev         = "tab.previous"
@@ -195,7 +198,8 @@ var menuBar = []struct {
 		item(cmdCopyRows), separator,
 		submenu("Batch", cmdMark, cmdMarksClear, cmdMarksSelect, cmdMarksCreate, cmdMarksDrop, cmdMarksExport), separator,
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
-		item(cmdReconnect), item(cmdDisconnect),
+		item(cmdReconnect), item(cmdDisconnect), separator,
+		submenu("Vault", cmdVaultLock, cmdVaultClose, cmdVaultRemove),
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
 		item(cmdExplain), item(cmdExplainMeasure), separator,

@@ -588,6 +588,9 @@ type fixture struct {
 	deps         Deps
 	files        *fakeFiles
 	app          *notedApp
+	// vaultKeys is the keychain behind the vault, so that a test can see
+	// what is stored rather than what is handed back.
+	vaultKeys *secrets.Memory
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -614,7 +617,8 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
+	keys := secrets.NewMemory()
+	conns := app.NewConnections(sf, app.NewVault(keys, nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
 	files := &fakeFiles{}
@@ -625,7 +629,7 @@ func newFixture(t *testing.T) *fixture {
 	s := New(a, d)
 	t.Cleanup(s.shutdown)
 	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist, deps: d,
-		files: files, app: a}
+		files: files, app: a, vaultKeys: keys}
 }
 
 func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {
