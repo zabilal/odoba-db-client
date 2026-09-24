@@ -62,6 +62,9 @@ type Deps struct {
 	// Views keeps a table's rows as somebody arranged them, under a name.
 	// Nil turns saved views off.
 	Views app.ViewStore
+	// Workspaces keeps the named groupings of connections, tabs and saved
+	// queries (FR-15.9). Nil turns workspaces off.
+	Workspaces app.WorkspaceStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -83,6 +86,9 @@ type Deps struct {
 	// (FR-13.7). Nil keeps the choice for as long as the view lives.
 	Decoders app.DecoderStore
 }
+
+// windowTitle is the application's name, which a workspace's name joins.
+const windowTitle = "Ikigai DB"
 
 // Shell is one main window.
 type Shell struct {
@@ -120,6 +126,8 @@ type Shell struct {
 	tasks      []*task
 	taskView   *tasksPanel
 	pal        *palette.Palette
+	// savedView is the Saved Queries panel, current while it is open.
+	savedView *savedPanel
 	// work is the tabs, or the empty state, and right holds work alone or
 	// beside the open side panel (panel.go).
 	work, right *fyne.Container
@@ -142,6 +150,12 @@ type Shell struct {
 	restoring      bool
 	sessionPending bool
 	lastSession    []byte
+
+	// workspace is the named piece of work this window is in, zero for
+	// none: every connection and every saved query (workspaces.go).
+	// loader is the explorer's, whose Shows the workspace narrows.
+	workspace localdb.Workspace
+	loader    *view.Loader
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -291,7 +305,7 @@ func newShell(a fyne.App, d Deps, master bool) *Shell {
 	a.Lifecycle().SetOnExitedForeground(func() { s.away = true })
 	a.Lifecycle().SetOnEnteredForeground(func() { s.away = false })
 
-	s.win = a.NewWindow("Ikigai DB")
+	s.win = a.NewWindow(windowTitle)
 	s.win.Resize(fyne.NewSize(1280, 800))
 	if master {
 		// Only the first window is the master: closing a second one
@@ -299,7 +313,8 @@ func newShell(a fyne.App, d Deps, master bool) *Shell {
 		s.win.SetMaster()
 	}
 
-	s.Explorer = view.New(&view.Loader{Conns: d.Conns, WS: d.WS}, d.Run, d.Delay)
+	s.loader = &view.Loader{Conns: d.Conns, WS: d.WS}
+	s.Explorer = view.New(s.loader, d.Run, d.Delay)
 	s.Explorer.OnOpen = s.OpenObject
 	s.Explorer.OnMenu = s.showExplorerMenu
 	s.Explorer.OnSelect = func(string) { s.sync() }
@@ -498,6 +513,12 @@ func (s *Shell) registerCommands() {
 		{ID: cmdSaveView, Category: "View", Title: "Save This View…",
 			Keywords: []string{"view", "save", "named", "filter", "sort", "columns", "arrangement"},
 			Enabled:  s.canSaveView, Run: s.saveView},
+		{ID: cmdWorkspaceSave, Category: "File", Title: "Save Workspace…",
+			Keywords: []string{"workspace", "project", "group", "save", "connections", "tabs"},
+			Enabled:  s.canUseWorkspaces, Run: s.saveWorkspace},
+		{ID: cmdWorkspaces, Category: "File", Title: "Workspaces…",
+			Keywords: []string{"workspace", "project", "group", "switch", "open", "connections", "tabs"},
+			Enabled:  s.canUseWorkspaces, Run: s.showWorkspaces},
 		{ID: cmdViews, Category: "View", Title: "Saved Views…",
 			Keywords: []string{"view", "saved", "named", "filter", "sort", "columns", "arrangement"},
 			Enabled:  s.canShowViews, Run: s.showViews},
@@ -1184,6 +1205,9 @@ func (s *Shell) release(id string, keep bool) {
 // settings, and quietly keeping it would show data from the wrong place.
 func (s *Shell) connectionSaved(id string, edited bool) {
 	defer s.refreshFavorites() // a renamed connection renames its favourites' rows
+	if !edited {
+		s.joinWorkspace(id) // made in a workspace, and so part of it
+	}
 	if _, open := s.d.WS.Get(id); edited && open {
 		s.disconnect(id)
 	}
@@ -1270,7 +1294,9 @@ const shutdownWait = 3 * time.Second
 
 func (s *Shell) shutdown() {
 	// The session and unsaved query text first, while the tabs still hold
-	// them. Both come back at the next start (NFR-R3).
+	// them. Both come back at the next start (NFR-R3), and so does the
+	// workspace they are in (FR-15.9).
+	s.rememberWorkspace()
 	s.saveSession()
 	for _, t := range s.open {
 		s.keep(t)

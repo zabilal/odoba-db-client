@@ -583,3 +583,70 @@ func TestABadgeThatPanicsIsNoBadge(t *testing.T) {
 		t.Errorf("a driver that panicked drew %q", got)
 	}
 }
+
+// A workspace narrows the tree to the connections it is over (FR-15.9).
+func TestAWorkspaceNarrowsTheTree(t *testing.T) {
+	l, saved := setup(t, "primary", "reporting")
+	l.Shows = func(id string) bool { return id == saved[0].ID }
+	roots := load(t, l, explorer.Item{})
+	if len(roots) != 1 || roots[0].Label != "primary" {
+		t.Fatalf("the tree shows %+v", labelsOf(roots))
+	}
+	// And with no workspace, both are there again.
+	l.Shows = nil
+	if roots := load(t, l, explorer.Item{}); len(roots) != 2 {
+		t.Errorf("without a workspace the tree shows %+v", labelsOf(roots))
+	}
+}
+
+// It narrows what a folder holds, and drops a folder it has emptied: an
+// empty folder would open onto nothing.
+func TestAWorkspaceNarrowsFoldersToo(t *testing.T) {
+	l, saved := setup(t, "primary", "reporting", "archive")
+	billing, err := l.Conns.CreateFolder("Billing", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reports, err := l.Conns.CreateFolder("Reports", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two in one folder, so that narrowing has something to narrow, and a
+	// third in another, so that emptying has something to empty.
+	for _, in := range []struct{ conn, folder string }{
+		{saved[0].ID, billing.ID}, {saved[1].ID, billing.ID}, {saved[2].ID, reports.ID},
+	} {
+		if err := l.Conns.SetFolder(in.conn, in.folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l.Shows = func(id string) bool { return id == saved[0].ID }
+	roots := load(t, l, explorer.Item{})
+	if len(roots) != 1 || roots[0].Label != "Billing" {
+		t.Fatalf("the tree shows %+v", labelsOf(roots))
+	}
+	if in := load(t, l, roots[0]); len(in) != 1 || in[0].Label != "primary" {
+		t.Errorf("the folder holds %+v", labelsOf(in))
+	}
+}
+
+// A folder nobody has filled yet stays in a tree with no workspace: it is
+// a shelf somebody just made.
+func TestAnEmptyFolderStaysWithoutAWorkspace(t *testing.T) {
+	l, _ := setup(t)
+	if _, err := l.Conns.CreateFolder("Billing", ""); err != nil {
+		t.Fatal(err)
+	}
+	roots := load(t, l, explorer.Item{})
+	if len(roots) != 1 || roots[0].Label != "Billing" || roots[0].HasChildren {
+		t.Fatalf("the tree shows %+v", roots)
+	}
+}
+
+func labelsOf(items []explorer.Item) []string {
+	var out []string
+	for _, it := range items {
+		out = append(out, it.Label)
+	}
+	return out
+}

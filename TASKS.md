@@ -23,7 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: Phase 3 is out: J4 and J6 both run end to end, and
+NEXT TASK: T4.13, full-text search across object definitions.
+           T4.8 to T4.12 are done: the query pipeline, the chart,
+           saved views, a second window and workspaces (ADR-0147).
+           Phase 3 is out: J4 and J6 both run end to end, and
            every task from T3.30 to T3.37 is done. What is left in
            this file is Phase 4 and the partial tasks that have
            been carried since earlier phases.
@@ -105,9 +108,8 @@ NEXT TASK: Phase 3 is out: J4 and J6 both run end to end, and
            3.B is finished: T3.8 to T3.15 are done and FR-7.1 to
            FR-7.5 are met on PostgreSQL.
            Comparing two live databases has no way in from the window
-           (T3.11 compares against a saved model); nothing saves a
-           model either (T4.8 is [~]: the format, reader and writer
-           are done and the way in is not).
+           (T3.11 compares against a saved model). Saving one has a
+           way in now (T4.8, T4.9).
            3.A is finished: T3.1 to T3.7 are all done and FR-6.1 to
            FR-6.7 are met on PostgreSQL.
            MySQL, SQLite and Cassandra render no DDL yet, so on them
@@ -1037,7 +1039,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T4.10** Saved named views per table → FR-3.16 — *a view is a session tab's arrangement with a name on it, and deliberately so: what a session restores when the application starts and what a view restores when somebody picks it are the same thing, so they are the same thing here — one shape to keep in step, and the two functions that put a tab back do both. It keeps what the rows are rather than what they were: the filters, the WHERE clause, the sort, the columns shown and how wide they are, which are hidden and how many are frozen. Before it is saved the dialog says what it would keep, because a view of rows nobody has arranged is the one somebody would not have meant to save — and rows that are as they opened say so rather than showing an empty list. A view belongs to its own table: two tables sharing a name in different schemas do not share views, and neither do two connections. Forgetting one takes it off the list and leaves the rows where they are, forgetting how to get back somewhere not being going anywhere. Its store is its own rather than a corner of the saved queries, a view being of an object where a query is of nothing. One thing came out of writing the tests: a grid opens with its key column frozen, which is an arrangement like any other and is kept like one — so "these rows are as they first opened" is only true of a grid with nothing frozen, and the tests say both*
 - [x] **T4.11** Multiple windows → FR-15.8 — *another window over the same connections, saved queries and history, which belong to the person rather than to a window. One window keeps the session, and it is the first: what a session restores is a window, and restoring the same tabs into a second would be two windows showing the same work rather than one showing more of it — so a second opens empty and saves nothing about itself, and closing it leaves the session as the first left it. Only the first is the master, so closing a second closes a window and closing the first quits. And a second window shutting down stops its own tasks and closes its own query sessions but not the connections: those are the application's, and the other window is still reading them — which is the one thing that would have been silently wrong if the shutdown had simply been shared*
-- [ ] **T4.12** Workspaces/projects → FR-15.9
+- [x] **T4.12** Workspaces/projects → FR-15.9 — *a named piece of work: the connections it is over, the tabs it was left at and the saved queries in it, grouped by naming them and not by copying them (ADR-0147). A workspace holds no connection, no query and no query text, so forgetting one loses nothing and there is nothing to keep in step. The explorer narrows through one function on its loader, and a folder the workspace has emptied is left out while a folder nobody has filled yet stays. Leaving a workspace closes its tabs the way the application closes a tab and not the way a user does, so unsaved text is kept; going back opens the tabs it names and not every buffer a crash left lying about. The window remembers which workspace it was in, read before any tab opens. Two doubled guards came out along the way: a workspace over no connection in particular already holds every connection, so neither `len(Connections) == 0` nor `ID == ""` needed saying beside `Holds`*
 - [ ] **T4.13** Full-text search across object definitions → FR-2.7
 - [ ] **T4.14** Multi-select batch operations in explorer → FR-2.8
 - [ ] **T4.15** Table-to-table copy across sources → FR-10.9

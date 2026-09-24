@@ -64,6 +64,16 @@ func connectionItem(c store.SavedConnection) explorer.Item {
 type Loader struct {
 	Conns *app.Connections
 	WS    *app.Workspace
+	// Shows reports whether a connection belongs in the tree. It is how a
+	// workspace narrows the explorer to the connections it is over
+	// (FR-15.9). Nil shows every connection, which is what a window in no
+	// workspace in particular shows.
+	Shows func(connID string) bool
+}
+
+// shows applies Shows, if there is one.
+func (l *Loader) shows(c store.SavedConnection) bool {
+	return l.Shows == nil || l.Shows(c.ID)
 }
 
 var _ explorer.Loader = (*Loader)(nil)
@@ -117,15 +127,24 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 		// The store refuses a connection in a folder that is not there.
 		in := map[string]int{}
 		for _, c := range l.Conns.List() {
-			in[c.Folder]++
+			if l.shows(c) {
+				in[c.Folder]++
+			}
 		}
 		var out []explorer.Item
 		for _, f := range l.Conns.Folders() {
+			// A folder a workspace has emptied is left out rather than
+			// shown opening onto nothing. One that is empty because
+			// nobody has filled it yet stays: it is a shelf somebody just
+			// made, and something is about to go in it.
+			if in[f.ID] == 0 && l.Shows != nil {
+				continue
+			}
 			out = append(out, explorer.Item{ID: FolderID(f.ID), Label: f.Name, HasChildren: in[f.ID] > 0, Eager: true,
 				Data: folderItem{ID: f.ID, Color: f.Color}})
 		}
 		for _, c := range l.Conns.List() {
-			if c.Folder == "" {
+			if c.Folder == "" && l.shows(c) {
 				out = append(out, connectionItem(c))
 			}
 		}
@@ -133,7 +152,7 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 	case folderItem:
 		var out []explorer.Item
 		for _, c := range l.Conns.List() {
-			if c.Folder == d.ID {
+			if c.Folder == d.ID && l.shows(c) {
 				out = append(out, connectionItem(c))
 			}
 		}
