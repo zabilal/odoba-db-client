@@ -238,6 +238,7 @@ var dialects = map[string]*Dialect{
 	"postgresql":  PostgreSQL,
 	"postgres":    PostgreSQL,
 	"cockroachdb": PostgreSQL,
+	"duckdb":      PostgreSQL,
 	"redshift":    PostgreSQL,
 	"mysql":       MySQL,
 	"mariadb":     MySQL,
