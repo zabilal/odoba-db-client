@@ -541,7 +541,7 @@ func newFixture(t *testing.T) *fixture {
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
 	files := &fakeFiles{}
-	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Params: hist,
+	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Views: hist, Params: hist,
 		Decoders: hist,
 		Layouts:  hist,
 		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin", Files: files}

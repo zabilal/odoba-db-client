@@ -107,6 +107,8 @@ const (
 	cmdOpenRowObject  = "data.openRowObject"
 	cmdShowReferring  = "data.showReferring"
 	cmdDetail         = "data.detail"
+	cmdSaveView       = "data.saveView"
+	cmdViews          = "data.views"
 	cmdHideColumn     = "grid.hideColumn"
 	cmdShowColumns    = "grid.showColumns"
 	cmdMoveLeft       = "grid.moveLeft"
@@ -168,7 +170,8 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart),
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), separator,
+		item(cmdSaveView), item(cmdViews),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),
