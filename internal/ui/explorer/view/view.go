@@ -239,6 +239,14 @@ type Explorer struct {
 	open     map[string]bool // the branches open
 	refresh  func()
 
+	// marks are the nodes picked out for something to be done to all of
+	// them (FR-2.8). The tree selects one row at a time, so this is the
+	// explorer's own: the IDs in the order they were marked, drawn with a
+	// tick, and kept as branches open and close.
+	marks []string
+	// OnMark is called on the UI goroutine when the marks change.
+	OnMark func()
+
 	// Badges are fetched as their rows are drawn, badgeWorkers at a time,
 	// and remembered, "none" included (FR-2.5). badges and waiting are the
 	// UI goroutine's.
@@ -443,6 +451,73 @@ func (e *Explorer) expanded(id string, open bool) {
 // Expanded is the branches open, in order.
 func (e *Explorer) Expanded() []string { return slices.Sorted(maps.Keys(e.open)) }
 
+// markGlyph goes in front of a marked row's label. It is a character
+// rather than a colour because a colour alone is not a sign somebody can
+// see or have read out (NFR-A2).
+const markGlyph = "✓ "
+
+// Marked reports whether a node is marked.
+func (e *Explorer) Marked(id string) bool { return slices.Contains(e.marks, id) }
+
+// Marks are the marked nodes, in the order they were marked.
+func (e *Explorer) Marks() []string { return slices.Clone(e.marks) }
+
+// ToggleMark marks a node or unmarks it, and reports whether it is now
+// marked. A placeholder row — loading, or an error — cannot be marked:
+// there is no object there to do anything to.
+func (e *Explorer) ToggleMark(id string) bool {
+	if explorer.IsPlaceholder(id) || id == "" {
+		return false
+	}
+	if i := slices.Index(e.marks, id); i >= 0 {
+		e.marks = slices.Delete(e.marks, i, i+1)
+		e.marked()
+		return false
+	}
+	e.marks = append(e.marks, id)
+	e.marked()
+	return true
+}
+
+// ClearMarks unmarks everything.
+func (e *Explorer) ClearMarks() {
+	if len(e.marks) == 0 {
+		return
+	}
+	e.marks = nil
+	e.marked()
+}
+
+// MarkedNodes are the marked objects and the connections they are on.
+// A mark on something that is not an object — a folder, a connection, a
+// row that has gone since it was marked — is left out: what is done in
+// batch is done to objects.
+func (e *Explorer) MarkedNodes() []MarkedNode {
+	out := make([]MarkedNode, 0, len(e.marks))
+	for _, id := range e.marks {
+		it, _, _ := e.Model.Item(id)
+		if d, ok := it.Data.(objItem); ok {
+			out = append(out, MarkedNode{ID: id, ConnID: d.ConnID, Node: d.Node})
+		}
+	}
+	return out
+}
+
+// MarkedNode is one marked object.
+type MarkedNode struct {
+	ID     string
+	ConnID string
+	Node   model.Node
+}
+
+// marked redraws the tree and says the marks changed.
+func (e *Explorer) marked() {
+	e.Tree.Refresh()
+	if e.OnMark != nil {
+		e.OnMark()
+	}
+}
+
 // Selected returns the selected node's ID.
 func (e *Explorer) Selected() string { return e.selected }
 
@@ -471,6 +546,7 @@ func (e *Explorer) activate(id string) {
 func (e *Explorer) update(id string, r *nodeRow) {
 	r.onDouble = func() { e.activate(id) }
 	r.onSecondary = func(at fyne.Position) { e.menu(id, at) }
+	r.marked = e.Marked(id) // rows are reused, so this is set every time
 	it, st, _ := e.Model.Item(id)
 	if explorer.IsPlaceholder(id) {
 		r.placeholder(it.Label, st == explorer.Failed)
@@ -681,6 +757,8 @@ type nodeRow struct {
 	onDouble func()
 	// onSecondary is a right-click, with where it was on the canvas.
 	onSecondary func(at fyne.Position)
+	// marked draws the row as one of the marked (FR-2.8).
+	marked bool
 }
 
 func newNodeRow() *nodeRow {
@@ -740,6 +818,9 @@ func (r *nodeRow) show(icon fyne.ThemeIconName, label string, b badgeText) {
 		r.icon.SetResource(nil)
 	}
 	r.label.Text, r.label.Color, r.label.TextStyle = label, fg, fyne.TextStyle{}
+	if r.marked {
+		r.label.Text, r.label.TextStyle = markGlyph+label, fyne.TextStyle{Bold: true}
+	}
 	r.badge.Text, r.badge.Color = b.text, secondary
 	r.badge.TextStyle = fyne.TextStyle{}
 	if b.emphatic {

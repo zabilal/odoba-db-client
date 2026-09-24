@@ -42,6 +42,12 @@ const (
 	cmdSidebar         = "view.sidebar"
 	cmdFilterObjects   = "explorer.filter"
 	cmdSearchStructure = "explorer.searchStructure"
+	cmdMark            = "explorer.mark"
+	cmdMarksClear      = "explorer.clearMarks"
+	cmdMarksSelect     = "explorer.scriptMarkedSelect"
+	cmdMarksCreate     = "explorer.scriptMarkedCreate"
+	cmdMarksDrop       = "explorer.scriptMarkedDrop"
+	cmdMarksExport     = "explorer.exportMarked"
 	cmdTabClose        = "tab.close"
 	cmdTabNext         = "tab.next"
 	cmdTabPrev         = "tab.previous"
@@ -185,6 +191,7 @@ var menuBar = []struct {
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),
 		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, cmdScriptCreate, cmdScriptSchema), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
+		submenu("Batch", cmdMark, cmdMarksClear, cmdMarksSelect, cmdMarksCreate, cmdMarksDrop, cmdMarksExport), separator,
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
 		item(cmdReconnect), item(cmdDisconnect),
 	}},

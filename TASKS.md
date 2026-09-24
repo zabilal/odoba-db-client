@@ -23,10 +23,11 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T4.14, multi-select for batch operations.
-           T4.8 to T4.13 are done: the query pipeline, the chart,
-           saved views, a second window, workspaces (ADR-0147)
-           and searching a database's structure (ADR-0148).
+NEXT TASK: T4.15, table-to-table copy across sources.
+           T4.8 to T4.14 are done: the query pipeline, the chart,
+           saved views, a second window, workspaces (ADR-0147),
+           searching a database's structure (ADR-0148) and batch
+           operations on marked objects (ADR-0149).
            Phase 3 is out: J4 and J6 both run end to end, and
            every task from T3.30 to T3.37 is done. What is left in
            this file is Phase 4 and the partial tasks that have
@@ -1042,7 +1043,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T4.11** Multiple windows → FR-15.8 — *another window over the same connections, saved queries and history, which belong to the person rather than to a window. One window keeps the session, and it is the first: what a session restores is a window, and restoring the same tabs into a second would be two windows showing the same work rather than one showing more of it — so a second opens empty and saves nothing about itself, and closing it leaves the session as the first left it. Only the first is the master, so closing a second closes a window and closing the first quits. And a second window shutting down stops its own tasks and closes its own query sessions but not the connections: those are the application's, and the other window is still reading them — which is the one thing that would have been silently wrong if the shutdown had simply been shared*
 - [x] **T4.12** Workspaces/projects → FR-15.9 — *a named piece of work: the connections it is over, the tabs it was left at and the saved queries in it, grouped by naming them and not by copying them (ADR-0147). A workspace holds no connection, no query and no query text, so forgetting one loses nothing and there is nothing to keep in step. The explorer narrows through one function on its loader, and a folder the workspace has emptied is left out while a folder nobody has filled yet stays. Leaving a workspace closes its tabs the way the application closes a tab and not the way a user does, so unsaved text is kept; going back opens the tabs it names and not every buffer a crash left lying about. The window remembers which workspace it was in, read before any tab opens. Two doubled guards came out along the way: a workspace over no connection in particular already holds every connection, so neither `len(Connections) == 0` nor `ID == ""` needed saying beside `Holds`*
 - [x] **T4.13** Full-text search across object definitions → FR-2.7 — *it walks the tree and describes each object, through the calls the explorer already makes, so it works on every engine that can be browsed with nothing written for any of them (ADR-0148). The scope is the node picked in the tree; the matches arrive as they are found and each says where it is — column, default, comment, index predicate, check, foreign key, trigger condition, view definition, routine body — and the line it is on rather than the whole body. It is a task, so it says how it is getting on and can be stopped, and everything that ends it cancels it: a second search, closing the panel, closing the window. Five hundred matches is where it stops looking. A hit carries the tree's own node, so opening one is what the explorer would have done with it. Counting learned the English plural on the way: "2 matches", not "2 matchs"*
-- [ ] **T4.14** Multi-select batch operations in explorer → FR-2.8
+- [x] **T4.14** Multi-select batch operations in explorer → FR-2.8 — *a batch is a set of marks rather than a selection, because Fyne's tree selects one row at a time and because a batch built by marking is built on purpose (ADR-0149). A marked row carries a tick and is bold, the status line says how many are marked for as long as they are, and a batch is on one connection — marks over two are two batches, and the commands say so by being offered rather than by doing half of it. Script Marked as SELECT, as CREATE and as DROP each write one script into a query tab, unsaved and unrun, naming in a comment anything the connection cannot write that statement for. Export Marked writes one file per object into the directory chosen. Along the way an export learned to belong to no tab, which is what a batch needs and what a saved model already did*
 - [ ] **T4.15** Table-to-table copy across sources → FR-10.9
 - [ ] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16
 - [ ] **T4.17** Optional app-level vault lock → NFR-S7

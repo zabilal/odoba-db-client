@@ -236,7 +236,7 @@ func (s *Shell) exportTo(t *tab, src *exportSrc, opt export.Options, path string
 	case err != nil:
 		s.showError(err)
 		return nil
-	case path == "" || t.ctx.Err() != nil:
+	case path == "" || s.exportCtx(t).Err() != nil:
 		return nil // the dialog was cancelled, or the tab has gone
 	}
 	f, err := os.Create(path)
@@ -290,7 +290,7 @@ type exportJob struct {
 // the tab cancels it too. On failure or cancellation, discard removes what
 // was written: a truncated file left behind looks like a complete export.
 func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.WriteCloser, dest string, discard func()) *exportJob {
-	ctx, cancel := context.WithCancel(t.ctx)
+	ctx, cancel := context.WithCancel(s.exportCtx(t))
 	j := &exportJob{cancel: cancel}
 	j.task = s.startTask(t, "Export to "+dest, cancel)
 
@@ -336,6 +336,15 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 		})
 	}()
 	return j
+}
+
+// exportCtx is what an export runs under: the tab's, so that closing the
+// tab cancels it, or the window's for an export that belongs to no tab.
+func (s *Shell) exportCtx(t *tab) context.Context {
+	if t == nil {
+		return s.ctx
+	}
+	return t.ctx
 }
 
 // exportStatus words an export's progress: how many rows, how fast, and, when

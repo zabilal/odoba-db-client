@@ -33,6 +33,21 @@ func ScriptCreate(ctx context.Context, src source.Source, ref model.ObjectRef) (
 	return gen.CreateObject(ref, obj)
 }
 
+// ScriptDrop writes the DDL that would remove an object, for a person to
+// read, keep or run (FR-2.8). Nothing is run here: what this returns is
+// text, and a DROP somebody has not read is the one they did not mean.
+//
+// cascade is false, because a DROP that takes what depends on it with it
+// is a choice to make with the list in front of you rather than a default.
+func ScriptDrop(src source.Source, ref model.ObjectRef) (_ []source.Statement, err error) {
+	defer panics.Recover(&err, "writing an object's DROP")
+	gen, ok := ddl(src)
+	if !ok {
+		return nil, ErrNoDDL
+	}
+	return gen.DropObject(ref, false)
+}
+
 // buildOrder is the order a schema's classes can be built in.
 //
 // Sequences first, because a column's default may call one. Then tables,
