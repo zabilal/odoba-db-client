@@ -92,12 +92,21 @@ func Search(ctx context.Context, src source.Source, root model.ObjectRef, q Quer
 	if q.Empty() {
 		return nil
 	}
-	_, err = searchUnder(ctx, src, root, q, emit)
+	_, err = walkUnder(ctx, src, root, func(n model.Node) (bool, error) {
+		return searchObject(ctx, src, n, q, emit)
+	})
 	return err
 }
 
-// searchUnder searches one node's children, and reports whether to go on.
-func searchUnder(ctx context.Context, src source.Source, ref model.ObjectRef, q Query, emit func(Hit) bool) (bool, error) {
+// walkUnder walks the objects under a node, calling visit for each, and
+// reports whether to go on. A zero ref is the source's own root.
+//
+// It descends into the places objects live and not into the objects
+// themselves, because what an object holds arrives with it. Both the
+// structure search and the list of tables a copy can be made into are this
+// walk with a different visitor.
+func walkUnder(ctx context.Context, src source.Source, ref model.ObjectRef,
+	visit func(model.Node) (bool, error)) (bool, error) {
 	var (
 		kids []model.Node
 		err  error
@@ -115,13 +124,13 @@ func searchUnder(ctx context.Context, src source.Source, ref model.ObjectRef, q 
 			return false, err
 		}
 		if HoldsObjects(n.Ref) {
-			on, err := searchUnder(ctx, src, n.Ref, q, emit)
+			on, err := walkUnder(ctx, src, n.Ref, visit)
 			if err != nil || !on {
 				return on, err
 			}
 			continue
 		}
-		on, err := searchObject(ctx, src, n, q, emit)
+		on, err := visit(n)
 		if err != nil || !on {
 			return on, err
 		}
