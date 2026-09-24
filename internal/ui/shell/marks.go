@@ -272,7 +272,14 @@ func (s *Shell) exportObjectTo(connID string, n model.Node, f export.Format, hea
 				s.showError(formError("The export could not create its file: " + err.Error()))
 				return
 			}
-			s.runExport(nil, &exportSrc{name: n.Label, rows: b.Rows, total: -1}, opt, file,
+			rows := b.Rows
+			if n.Ref.Kind == model.KindTopic {
+				// A topic's records are exported as the window reads
+				// them here too (FR-13.16).
+				topic := n.Ref.Name()
+				rows = func() model.RowStream { return s.decodedRecords(connID, topic, b.Rows()) }
+			}
+			s.runExport(nil, &exportSrc{name: n.Label, rows: rows, total: -1}, opt, file,
 				filepath.Base(path), func() { _ = os.Remove(path) })
 		})
 	}()

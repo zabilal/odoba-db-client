@@ -23,12 +23,17 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T4.16, Kafka export to NDJSON and CSV.
-           T4.8 to T4.15 are done: the query pipeline, the chart,
+NEXT TASK: T4.17, an optional app-level vault lock.
+           Unclaimed by any task: replaying a file into a topic
+           (the other half of FR-10.8), which needs a producer on
+           the load path — the import writes through a source's
+           bulk loader and the Kafka driver has none.
+           T4.8 to T4.16 are done: the query pipeline, the chart,
            saved views, a second window, workspaces (ADR-0147),
            searching a database's structure (ADR-0148), batch
            operations on marked objects (ADR-0149) and
-           table-to-table copy (ADR-0150).
+           table-to-table copy (ADR-0150) and exporting a topic's
+           window as it reads (ADR-0151).
            Phase 3 is out: J4 and J6 both run end to end, and
            every task from T3.30 to T3.37 is done. What is left in
            this file is Phase 4 and the partial tasks that have
@@ -1046,7 +1051,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T4.13** Full-text search across object definitions → FR-2.7 — *it walks the tree and describes each object, through the calls the explorer already makes, so it works on every engine that can be browsed with nothing written for any of them (ADR-0148). The scope is the node picked in the tree; the matches arrive as they are found and each says where it is — column, default, comment, index predicate, check, foreign key, trigger condition, view definition, routine body — and the line it is on rather than the whole body. It is a task, so it says how it is getting on and can be stopped, and everything that ends it cancels it: a second search, closing the panel, closing the window. Five hundred matches is where it stops looking. A hit carries the tree's own node, so opening one is what the explorer would have done with it. Counting learned the English plural on the way: "2 matches", not "2 matchs"*
 - [x] **T4.14** Multi-select batch operations in explorer → FR-2.8 — *a batch is a set of marks rather than a selection, because Fyne's tree selects one row at a time and because a batch built by marking is built on purpose (ADR-0149). A marked row carries a tick and is bold, the status line says how many are marked for as long as they are, and a batch is on one connection — marks over two are two batches, and the commands say so by being offered rather than by doing half of it. Script Marked as SELECT, as CREATE and as DROP each write one script into a query tab, unsaved and unrun, naming in a comment anything the connection cannot write that statement for. Export Marked writes one file per object into the directory chosen. Along the way an export learned to belong to no tab, which is what a batch needs and what a saved model already did*
 - [x] **T4.15** Table-to-table copy across sources → FR-10.9 — *a copy is the import with a table where the file was (ADR-0150): a table's rows are a row stream like a file's, so everything about types, batches, replacing and refusing is the import's, already written and already proved. The columns are paired by name and what the destination has nowhere to put is said before anything is copied, which is the one thing a copy can do that an import cannot — both ends are known in advance. A copy with no column in common is refused rather than run. The destination is picked from the connection's tables, walked with the structure search's own walk and stopped at two thousand; production and replacing ask first, in the import's words. Nothing in it knows what either end is, which is what makes "across different sources" true without a line of code about it*
-- [ ] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16
+- [x] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16 — *an export of a window writes what the window shows (ADR-0151). A topic's records already reached the export, and what came out was hex and base64, because a record's key and value are bytes; they are now wrapped so that both arrive decoded — by the decoder somebody chose for that topic's field, or, where they chose none, the most decoded form the bytes admit with the registry's tried first, which is the rule the record view already follows. Bytes nothing will read are written as bytes, and a decoder that refuses is passed over: a schema says what most of a topic is, not what every record is. The wrapper copies each row, a bug a second test over the same fixture found: decoding a caller's rows in place leaves them decoded for the next reader. J8 proves it end to end against a live registry, and it applies to a topic exported from a batch too. FR-10.8's other half, replaying a file into a topic, is not met: the import writes through a bulk loader and the Kafka driver has none. No task claims it*
 - [ ] **T4.17** Optional app-level vault lock → NFR-S7
 - [ ] **T4.18** Backup/restore app data as one archive → FR-17.5
 - [~] **T4.19** Portable mode → FR-17.6
