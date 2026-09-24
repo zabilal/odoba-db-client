@@ -51,6 +51,7 @@ const (
 	cmdMarksExport     = "explorer.exportMarked"
 	cmdCopyRows        = "explorer.copyRows"
 	cmdBackUp          = "file.backUp"
+	cmdCheckUpdates    = "help.checkUpdates"
 	cmdRestore         = "file.restore"
 	cmdVaultLock       = "vault.lock"
 	cmdVaultClose      = "vault.close"
@@ -213,7 +214,7 @@ var menuBar = []struct {
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
 		item(cmdNewWindow), separator, item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
-	{"Help", []menuEntry{item(cmdShortcuts)}},
+	{"Help", []menuEntry{item(cmdShortcuts), separator, item(cmdCheckUpdates)}},
 }
 
 func (s *Shell) buildMenu() *fyne.MainMenu {

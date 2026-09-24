@@ -40,6 +40,11 @@ import (
 // version is set at build time via -ldflags.
 var version = "dev"
 
+// updateFeed is where this build asks about newer versions, set at build
+// time via -ldflags. Empty — which is what a build made from source is —
+// means it never asks (FR-15.10, NFR-D6).
+var updateFeed = ""
+
 // appID keys Fyne's per-application storage. Like the module path it is a
 // placeholder until the project's home is settled (OQ-1).
 const appID = "io.github.ikigai-db"
@@ -133,7 +138,7 @@ func run() error {
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 
 	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
-		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Views: views, Workspaces: spaces, Backup: backup, Params: params, Decoders: decoders, Layouts: layouts, Theme: uitheme.New(), Log: log,
+		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Views: views, Workspaces: spaces, Backup: backup, Params: params, Decoders: decoders, Layouts: layouts, Theme: uitheme.New(), Log: log, Version: version, UpdateFeed: updateFeed,
 	})
 	s.ShowNotice(notice)
 	w := s.Window()

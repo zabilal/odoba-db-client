@@ -88,6 +88,12 @@ type Deps struct {
 	// Backup writes everything the application keeps into one archive and
 	// puts it back (FR-17.5). Nil turns both off.
 	Backup *app.Backup
+	// Version is this build, for saying what is running and for comparing
+	// against a release. UpdateFeed is where to ask about newer versions,
+	// and empty — which is the default — means never asking (FR-15.10,
+	// NFR-D6).
+	Version    string
+	UpdateFeed string
 }
 
 // windowTitle is the application's name, which a workspace's name joins.
@@ -453,6 +459,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
+		{ID: cmdCheckUpdates, Category: "Help", Title: "Check for Updates…",
+			Keywords: []string{"update", "version", "newer", "release", "upgrade"},
+			Enabled:  s.canCheckForUpdates, Run: s.checkForUpdates},
 		{ID: cmdBackUp, Category: "File", Title: "Back Up Everything…",
 			Keywords: []string{"backup", "archive", "zip", "save", "copy", "export", "migrate"},
 			Enabled:  s.canBackUp, Run: s.backUp},

@@ -88,6 +88,10 @@ func TestOnlyTheseFilesSpeakHTTP(t *testing.T) {
 		filepath.Join("internal", "cloud", "azure.go"),
 		filepath.Join("internal", "cloud", "cloud.go"),
 		filepath.Join("internal", "cloud", "gcp.go"),
+		// The release feed, asked only when somebody asks and only by a
+		// build that was given a feed to ask — which one made from source
+		// is not (FR-15.10).
+		filepath.Join("internal", "update", "update.go"),
 	}
 	root := moduleRoot(t)
 	out, err := exec.Command("grep", "-rl", "net/http",
