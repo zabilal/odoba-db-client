@@ -1075,7 +1075,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [ ] **T4.26** Linux: `.deb`, `.rpm`, AppImage → NFR-D4
 - [ ] **T4.27** In-app update check with release notes, user-controlled install → FR-15.10
 - [ ] **T4.28** Homebrew cask, winget, Scoop, AUR → NFR-D5
-- [ ] **T4.29** Dependency SBOM + CI vulnerability scanning → NFR-S9
+- [x] **T4.29** Dependency SBOM + CI vulnerability scanning → NFR-S9 — *govulncheck on every push, failing the build on anything reachable from this code, with a CycloneDX bill of materials kept as an artifact beside it (71 components). Running it the first time found nine reachable advisories: x/crypto and x/image had fixes and were upgraded, and three in hamba/avro have none at all. Those three are accepted by name in security/accepted-vulnerabilities.md, each with what the exposure is — a broker or registry serving a malformed Avro payload to somebody who chose to connect to it can make the process allocate until it is killed; nothing is written and no credential is involved — and what would take it off the list, which is a fixed release. An advisory with no fix and no written exposure would be a scanner somebody turns off. The distinction the job makes is between a finding this code can reach and one merely in a module it requires: the first fails, the second does not*
 
 ## 4.F Final verification
 
