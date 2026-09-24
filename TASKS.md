@@ -1030,8 +1030,8 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 4.B Models on disk
 
-- [~] **T4.8** Save model as a VCS-friendly file tree, one file per object → FR-7.6 — *the format, the reader and the writer landed in T3.10, because comparing against a saved model needs something to have written one (internal/schemafile, ADR-0121). What is left is the way in: nothing in the window saves a model or picks a directory to save it to, and the CLI that would deploy one is T5.9's*
-- [ ] **T4.9** Load model from disk for comparison → FR-7.1
+- [x] **T4.8** Save model as a VCS-friendly file tree, one file per object → FR-7.6 — *the format, the reader and the writer landed in T3.10, because comparing against a saved model needs something to have written one (internal/schemafile, ADR-0121). What was left was the way in, and this is it: Save as a Model…, offered on exactly what a comparison is offered on, because a model is what a comparison reads back — that is one question, asked once, rather than two that could drift apart. A model is a tree of files rather than one, so what is chosen is where its database.json goes and the rest is written beside it, which is the same bargain a comparison strikes reading one: a file dialog chooses files, and a directory is a file's own. It is a task rather than a wait, reading a whole schema being as long as the schema is, and what it wrote is said when it ends rather than guessed at. Saying no is an answer: nothing is written and nothing is reported as having gone wrong. The CLI that would deploy one is still T5.9's*
+- [x] **T4.9** Load model from disk for comparison → FR-7.1 — *done when the comparison was, and proved end to end by J6 (T3.37): a saved model is chosen from disk, read back with the rules that travel with it, and compared against what a connection really holds. The file dialog picks the model's own file and the directory is taken from it, one side of the same bargain T4.8 is the other side of. Nothing new was needed here; what this task was waiting for was something to have written a model, which T4.8 now does from the window*
 
 ## 4.C Remaining features
 
