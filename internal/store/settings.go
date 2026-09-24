@@ -40,6 +40,18 @@ type Settings struct {
 	// Bindings are the shortcuts a person changed, by command ID, in the
 	// form commands.Shortcut.String writes; "" is no shortcut (T1.8).
 	Bindings map[string]string `json:"bindings,omitempty"`
+	// Vault is the app-level lock over the credential vault, or nil where
+	// there is none (NFR-S7). It holds what recognises a passphrase and
+	// nothing that could be used to work one out.
+	Vault *VaultLock `json:"vault,omitempty"`
+}
+
+// VaultLock is what is kept of an app-level lock: the salt the key is
+// derived with, and a verifier that says whether a passphrase is the right
+// one. Neither the passphrase nor the key it makes is stored anywhere.
+type VaultLock struct {
+	Salt     []byte `json:"salt"`
+	Verifier []byte `json:"verifier"`
 }
 
 // EditorSettings are query-editor preferences.

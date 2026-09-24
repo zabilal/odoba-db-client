@@ -156,3 +156,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0149](0149-a-mark-not-a-selection.md) | A mark, not a selection | Accepted |
 | [0150](0150-a-table-where-the-file-was.md) | A table where the file was | Accepted |
 | [0151](0151-exporting-what-the-window-shows.md) | Exporting what the window shows | Accepted |
+| [0152](0152-a-lock-that-seals.md) | A lock that seals | Accepted |
