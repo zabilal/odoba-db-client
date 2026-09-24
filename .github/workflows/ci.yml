@@ -103,3 +103,73 @@ jobs:
       - name: Benchmarks
         shell: bash
         run: go test -run '^$' -bench . -benchmem ./... | tee bench.txt
+
+  # NFR-S9: every dependency is scanned on every push, and the build fails on
+  # anything reachable from this application's code. An advisory with no fixed
+  # version is accepted by name in security/accepted-vulnerabilities.md, with
+  # its exposure written down — a scanner nobody can satisfy is a scanner
+  # somebody turns off.
+  vulnerabilities:
+    name: Vulnerabilities (NFR-S9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+      - name: Scan
+        shell: bash
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest -format json ./... > vulns.json
+          # A finding with a function in its trace is one this code can reach.
+          # Module-level findings are reported too, and are not what fails a
+          # build: nothing here calls them.
+          jq -r 'select(.finding != null and (.finding.trace[0].function != null)) | .finding.osv' \
+            vulns.json | sort -u > reachable.txt
+          grep -oE '^GO-[0-9]+-[0-9]+' security/accepted-vulnerabilities.md | sort -u > accepted.txt
+          echo "reachable:"; cat reachable.txt
+          echo "accepted:";  cat accepted.txt
+          # Anything reachable and not accepted fails. An accepted advisory
+          # that is no longer reachable is not a failure: it is one to take
+          # off the list at the next review.
+          if comm -23 reachable.txt accepted.txt | grep .; then
+            echo "::error::a reachable vulnerability is not in security/accepted-vulnerabilities.md"
+            exit 1
+          fi
+      - name: Keep the scan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: govulncheck
+          path: vulns.json
+
+  # NFR-S9: a bill of materials for every build, so that somebody asking "is
+  # that library in there" has an answer that is not a guess. CycloneDX
+  # because it is what most scanners read.
+  sbom:
+    name: SBOM (NFR-S9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install Linux graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+      - name: Write the SBOM
+        run: |
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0 \
+            app -json -licenses -output sbom.cdx.json -main cmd/ikigai .
+      - name: Keep the SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
