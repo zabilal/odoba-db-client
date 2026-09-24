@@ -504,7 +504,9 @@ than being forced into the relational model (see REQ-DB-3).
 - **NFR-A1 (S)** Keyboard-operable end to end; visible focus rings; no mouse-only actions.
 - **NFR-A2 (S)** WCAG 2.1 AA contrast in both themes; respects OS text-scaling.
 - **NFR-A3 (C)** Screen-reader support. *Downgraded in v0.2:* Fyne's accessibility story is
-  immature, so this cannot be promised for v1.0. Treated as a known gap, tracked openly.
+  immature, so this cannot be promised for v1.0. Treated as a known gap, tracked openly and
+  written down for users in [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md), which says what
+  works, what does not, and why.
 - **NFR-Q1 (M)** Driver conformance suite run against real servers in Docker via testcontainers —
   including a Kafka + Schema Registry stack.
 - **NFR-Q2 (M)** ≥ 70 % coverage on the core (`internal/source`, `internal/sqlgen`, `internal/model`).
@@ -620,7 +622,10 @@ FR-5.2 (autocomplete) is the requirement most likely to slip, and slipping it do
     or `fyne-cross` Docker images (NFR-D3).
 - **Canvas-based text rendering.** Fyne draws its own text rather than using platform text stacks.
   Dense, text-heavy views are the workload most exposed to this — hence NFR-P13 and the W1 spike.
-- **Accessibility is a known gap** (NFR-A3, downgraded to `C`).
+- **Accessibility is a known gap** (NFR-A3, downgraded to `C`), documented in
+  [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md): keyboard, focus, contrast and text size are
+  done and tested; screen readers are not, because in Fyne v2.8.1 only Button, Hyperlink and
+  Label describe themselves and the bridge is behind a build tag.
 - **The stock theme is not shippable** for this product's intended feel — see UX principle 12.
 - **Rejected earlier alternatives**, recorded for the decision log: **Wails/webview** (rejected by
   owner direction: not pure Go, requires a Node toolchain); **Qt bindings** (thin, inconsistently
