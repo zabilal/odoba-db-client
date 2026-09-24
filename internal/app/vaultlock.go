@@ -81,6 +81,12 @@ func (c *Connections) RemoveVaultLock(pass string) error {
 	if !c.vault.Lock().On() {
 		return nil
 	}
+	if c.vault.Portable() {
+		// There is nowhere for them to go. A portable install keeps its
+		// passwords in a file beside the application, and a file beside
+		// the application is only ever written sealed (ADR-0154).
+		return errors.New("app: a portable install keeps its passwords sealed, so its lock cannot be taken off")
+	}
 	if err := c.vault.Lock().Unlock(pass); err != nil {
 		return err
 	}

@@ -1,13 +1,16 @@
 package shell
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 )
 
 // The app-level lock over the credential vault, in the window (NFR-S7).
@@ -192,5 +195,64 @@ func TestTakingTheLockOffFromTheWindow(t *testing.T) {
 	pump(t, fx.q, func() bool { return !fx.conns.VaultLocked() })
 	if got, _ := fx.vaultKeys.Get(c.ID, "password"); got != "hunter2" {
 		t.Errorf("the keychain holds %q", got)
+	}
+}
+
+// portableFixture is a window over a portable copy: its secrets are in a
+// file beside it, and it keeps none until there is a passphrase.
+func portableFixture(t *testing.T) *fixture {
+	t.Helper()
+	fx := newFixture(t)
+	file := secrets.NewFile(filepath.Join(t.TempDir(), "secrets.json"))
+	v := app.NewPortableVault(file)
+	conns := app.NewConnections(fx.settings, v, nil)
+	d := fx.deps
+	d.Conns = conns
+	d.WS = app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
+	t.Cleanup(func() { d.WS.CloseAll() })
+	s := New(fx.s.app, d)
+	t.Cleanup(s.shutdown)
+	fx.s, fx.conns, fx.deps = s, conns, d
+	return fx
+}
+
+// A portable copy is told what it is: until there is a passphrase, each
+// password is asked for once a session, and the form says so.
+func TestAPortableCopySaysWhyItWantsAPassphrase(t *testing.T) {
+	fx := portableFixture(t)
+	fx.s.sync()
+	if fx.s.menuItems[cmdVaultLock].Disabled {
+		t.Fatal("a portable copy is not offered a lock")
+	}
+	fx.s.run(cmdVaultLock)
+	top := fx.s.win.Canvas().Overlays().Top()
+	said := strings.Join(drawnSkipping(top, nil), " ")
+	for _, want := range []string{"beside itself", "once a session"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("it does not say %q: %s", want, said)
+		}
+	}
+}
+
+// A portable copy's lock is not offered a way off, because there is none.
+func TestAPortableLockIsNotOfferedAWayOff(t *testing.T) {
+	fx := portableFixture(t)
+	fx.create(t, "db1", map[string]string{"password": "hunter2"})
+	if err := fx.conns.LockVault("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	fx.s.sync()
+	if !fx.s.menuItems[cmdVaultRemove].Disabled {
+		t.Error("a portable copy was offered its lock off")
+	}
+	// The one on a machine's keychain is, which is the difference.
+	other := newFixture(t)
+	other.create(t, "db1", map[string]string{"password": "hunter2"})
+	if err := other.conns.LockVault("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	other.s.sync()
+	if other.s.menuItems[cmdVaultRemove].Disabled {
+		t.Error("a vault on the keychain was not offered its lock off")
 	}
 }

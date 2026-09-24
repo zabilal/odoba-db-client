@@ -23,18 +23,19 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T4.19, portable mode, carried since Phase 1.
+NEXT TASK: T4.20, the accessibility pass.
            Unclaimed by any task: replaying a file into a topic
            (the other half of FR-10.8), which needs a producer on
            the load path — the import writes through a source's
            bulk loader and the Kafka driver has none.
-           T4.8 to T4.18 are done: the query pipeline, the chart,
+           T4.8 to T4.19 are done: the query pipeline, the chart,
            saved views, a second window, workspaces (ADR-0147),
            searching a database's structure (ADR-0148), batch
            operations on marked objects (ADR-0149) and
            table-to-table copy (ADR-0150), exporting a topic's
            window as it reads (ADR-0151), the vault lock
-           (ADR-0152) and backup and restore (ADR-0153).
+           (ADR-0152), backup and restore (ADR-0153) and a
+           portable copy that carries its own keys (ADR-0154).
            Phase 3 is out: J4 and J6 both run end to end, and
            every task from T3.30 to T3.37 is done. What is left in
            this file is Phase 4 and the partial tasks that have
@@ -1055,7 +1056,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T4.16** Kafka export to NDJSON/CSV → FR-10.8, FR-13.16 — *an export of a window writes what the window shows (ADR-0151). A topic's records already reached the export, and what came out was hex and base64, because a record's key and value are bytes; they are now wrapped so that both arrive decoded — by the decoder somebody chose for that topic's field, or, where they chose none, the most decoded form the bytes admit with the registry's tried first, which is the rule the record view already follows. Bytes nothing will read are written as bytes, and a decoder that refuses is passed over: a schema says what most of a topic is, not what every record is. The wrapper copies each row, a bug a second test over the same fixture found: decoding a caller's rows in place leaves them decoded for the next reader. J8 proves it end to end against a live registry, and it applies to a topic exported from a batch too. FR-10.8's other half, replaying a file into a topic, is not met: the import writes through a bulk loader and the Kafka driver has none. No task claims it*
 - [x] **T4.17** Optional app-level vault lock → NFR-S7 — *the lock seals rather than gates (ADR-0152): with it on, what the keychain holds is the secret encrypted with a key derived from a passphrase through Argon2id, so the keychain entry on its own is no longer the secret and neither is this application without the passphrase. What is saved is a salt and a verifier — enough to recognise a passphrase, nothing that could produce one. Each secret says for itself whether it is sealed, so a resealing that stops half way leaves a vault that still reads, and the setting is written before the sealing and cleared after the unsealing for the same reason. A locked vault refuses before reading rather than after, because a secret stored before the lock went on is not sealed and handing that one over would be a locked vault handing a secret over. The window asks before it puts the last session back, and offers going on without it. Biometric is not offered: Touch ID is Objective-C and this is Go and nothing else. There is no idle re-lock; shutting the vault is a command, and it shuts itself at every start*
 - [x] **T4.18** Backup/restore app data as one archive → FR-17.5 — *the settings and the local database in one zip, with a manifest that says what wrote it, when, and — in words somebody reading the archive will find — that no passwords are in it (ADR-0153). They are in the keychain, and an archive that carried them would be the plaintext password file a keychain exists to avoid. The database is copied through SQLite's VACUUM INTO rather than read off the disk, so a running application can be backed up and what is written is whole. A restore stages both files beside their targets and moves them in afterwards, keeping what was there as .before-restore, so a failure part way leaves what was there and a restore nobody meant can be undone; it then ends the session, because everything the window is holding is about a database that has just been replaced, with the background writer stopped first so that nothing is written into the one that has gone*
-- [~] **T4.19** Portable mode → FR-17.6
+- [x] **T4.19** Portable mode → FR-17.6 — *the paths have resolved beside the executable since Phase 1; what was left was the secrets, which went to the machine's keychain and so stayed on every machine the copy was carried to and travelled with it nowhere. A portable copy now keeps them beside itself and only sealed, with the vault lock's key, derived from a passphrase that is on no disk (ADR-0154) — the secrets package's rule that a file fallback is plaintext with extra steps stands, because the key is never in the file. Until there is a passphrase it keeps nothing and says so, which is the same path as a machine with no keychain and has had its own words in the window since the beginning; putting a lock on promotes what the session is holding into the file. A portable lock cannot be taken off, there being nowhere for the passwords to go, and changing it is offered instead. The marker beside the executable is what selects all this, which nothing had tested until now*
 
 ## 4.D Accessibility
 

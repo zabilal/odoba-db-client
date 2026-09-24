@@ -158,3 +158,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0151](0151-exporting-what-the-window-shows.md) | Exporting what the window shows | Accepted |
 | [0152](0152-a-lock-that-seals.md) | A lock that seals | Accepted |
 | [0153](0153-a-backup-without-the-passwords.md) | A backup without the passwords | Accepted |
+| [0154](0154-a-copy-that-carries-its-own-keys.md) | A copy that carries its own keys | Accepted |
