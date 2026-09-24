@@ -34,6 +34,7 @@ const (
 	cmdScriptCreate   = "object.script.create"
 	cmdScriptSchema   = "object.script.schema"
 	cmdCompare        = "schema.compare"
+	cmdSaveModel      = "schema.saveModel"
 	cmdDiagram        = "schema.diagram"
 	cmdFavorite       = "explorer.favorite"
 	cmdRefresh        = "explorer.refresh"
@@ -161,7 +162,7 @@ var menuBar = []struct {
 		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
 		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), item(cmdSetValue), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
-		item(cmdDesign), item(cmdEditSource), item(cmdRename), item(cmdCompare), item(cmdDiagram), separator,
+		item(cmdDesign), item(cmdEditSource), item(cmdRename), item(cmdSaveModel), item(cmdCompare), item(cmdDiagram), separator,
 		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,
 		item(cmdChooseKey),
 	}},
