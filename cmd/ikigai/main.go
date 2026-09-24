@@ -26,6 +26,7 @@ import (
 	// application is a blank import here, and nothing else.
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cassandra"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cockroach"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mysql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
