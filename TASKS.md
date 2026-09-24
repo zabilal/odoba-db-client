@@ -1001,7 +1001,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 3.G Quality
 
-- [ ] **T3.36** E2E: **J4** (understand an unfamiliar schema)
+- [x] **T3.36** E2E: **J4** (understand an unfamiliar schema) — *the journey walks what J4 asks for and nothing else: understanding a schema without reading any DDL. A table nobody has seen is opened, and the command that follows its foreign key appears only once the application has read what that key is — the schema is told rather than looked up. Following it opens the table the key names, filtered to the one row it names, and the journey checks it is that row and not merely one row. From there the opposite question, which is the one somebody asks next and a different question from the one the key answers: what refers to this. Then the same relationship without leaving the row, which is master and detail. Then the shape of it, drawn, and what the diagram says it found — two tables and one relationship, neither number given to it. The fixtures grew a second table and the key between them, there being no schema to understand in one table. Two things came out of writing it. A diagram is drawn of whatever holds a class of objects, a schema or a database, and SQLite's tree has neither: its connection's children are the class folders themselves, so there is no node to select and the command stays disabled — an engine whose users cannot draw their own schema, which no task claims. And the tables in a diagram are not labels, so what the journey asserts is the footer under it, which is the honest thing the application says about what it drew*
 - [ ] **T3.37** E2E: **J6** (promote a schema change)
 
 ### ✅ Phase 3 exit: J4 and J6 complete
