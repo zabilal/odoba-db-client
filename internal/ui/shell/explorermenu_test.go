@@ -31,7 +31,8 @@ func TestTheExplorerMenuIsTheNodesCommands(t *testing.T) {
 
 	m := fx.s.explorerMenu(items)
 	want := []string{titleOf(fx, cmdOpen), titleOf(fx, cmdStructure), titleOf(fx, cmdFavorite), "",
-		titleOf(fx, cmdScriptSelect), titleOf(fx, cmdScriptInsert), titleOf(fx, cmdScriptUpdate), "", titleOf(fx, cmdRefresh)}
+		titleOf(fx, cmdScriptSelect), titleOf(fx, cmdScriptInsert), titleOf(fx, cmdScriptUpdate), "",
+		titleOf(fx, cmdMark), titleOf(fx, cmdMarksClear), "", titleOf(fx, cmdRefresh)}
 	if got := labels(m); !slices.Equal(got, want) {
 		t.Fatalf("a table's menu is %q, want %q", got, want)
 	}

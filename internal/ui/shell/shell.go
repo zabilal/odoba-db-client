@@ -449,6 +449,24 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
+		{ID: cmdMark, Category: "Explorer", Title: "Mark for Batch",
+			Keywords: []string{"mark", "batch", "multi", "select", "several", "tick"},
+			Enabled:  s.canMark, Run: s.markSelected},
+		{ID: cmdMarksClear, Category: "Explorer", Title: "Clear Marks",
+			Keywords: []string{"mark", "batch", "clear", "none", "unmark"},
+			Enabled:  s.canClearMarks, Run: s.clearMarks},
+		{ID: cmdMarksSelect, Category: "Explorer", Title: "Script Marked as SELECT",
+			Keywords: []string{"mark", "batch", "script", "select", "several"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedSelect},
+		{ID: cmdMarksCreate, Category: "Explorer", Title: "Script Marked as CREATE",
+			Keywords: []string{"mark", "batch", "script", "create", "ddl", "several"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedCreate},
+		{ID: cmdMarksDrop, Category: "Explorer", Title: "Script Marked as DROP",
+			Keywords: []string{"mark", "batch", "script", "drop", "delete", "remove", "ddl"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedDrop},
+		{ID: cmdMarksExport, Category: "Explorer", Title: "Export Marked Objects…",
+			Keywords: []string{"mark", "batch", "export", "csv", "json", "several", "files"},
+			Enabled:  s.canExportMarked, Run: s.exportMarked},
 		{ID: cmdScriptSchema, Category: "Explorer", Title: "Script Whole Schema",
 			Keywords: []string{"ddl", "create", "schema", "export", "everything"},
 			Enabled:  s.canScriptSchema, Run: s.scriptSelectedSchema},
@@ -745,7 +763,18 @@ func (s *Shell) sync() {
 	s.sessionChanged()
 }
 
+// statusText is the status line: what is marked for a batch, if anything,
+// and then the connection the selection is on. The marks go first because
+// building a batch takes several actions, and how many are in it so far is
+// the thing somebody is keeping count of (FR-2.8).
 func (s *Shell) statusText() string {
+	if n := len(s.Explorer.Marks()); n > 0 {
+		return nounCount(n, "object") + " marked · " + s.connectionText()
+	}
+	return s.connectionText()
+}
+
+func (s *Shell) connectionText() string {
 	id, ok := s.selectedConn()
 	if !ok {
 		switch n := len(s.d.WS.OpenIDs()); n {
@@ -984,6 +1013,13 @@ func (s *Shell) showCount(t *tab) {
 // beside the row count, which pages loading behind it would otherwise wipe;
 // a query tab has no count to lose it to.
 func (s *Shell) say(t *tab, text string) {
+	if t == nil {
+		// Something with no tab to say it in — a batch of objects picked
+		// out in the explorer — says it where the window says everything
+		// that belongs to no tab.
+		s.status.SetText(text)
+		return
+	}
 	if t.model == nil {
 		t.footer.SetText(text)
 		return
