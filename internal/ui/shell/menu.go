@@ -194,6 +194,7 @@ var menuBar = []struct {
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),
+		submenu("Text Size", textSizeIDs()...),
 	}},
 	{"Connection", []menuEntry{
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),

@@ -301,6 +301,7 @@ func newShell(a fyne.App, d Deps, master bool) *Shell {
 	if d.Settings != nil {
 		d.Theme.Appearance = appearanceNamed(d.Settings.Get().Appearance)
 		d.Theme.Accent = uitheme.AccentNamed(d.Settings.Get().Accent)
+		d.Theme.Text = textSizeNamed(d.Settings.Get().TextSize)
 	}
 	a.Settings().SetTheme(d.Theme)
 
@@ -739,7 +740,7 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
 		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
-	}, append(append(s.accentCommands(), s.folderCommands()...), s.lostCommands()...)...) {
+	}, append(append(append(s.accentCommands(), s.textSizeCommands()...), s.folderCommands()...), s.lostCommands()...)...) {
 		s.reg.MustRegister(c)
 	}
 }
@@ -1304,6 +1305,12 @@ func (s *Shell) checked(id string) bool {
 		return s.d.Theme.Appearance == uitheme.AppearanceLight
 	case cmdAppearDark:
 		return s.d.Theme.Appearance == uitheme.AppearanceDark
+	case textSizeID(uitheme.TextDefault):
+		return s.d.Theme.Text == uitheme.TextDefault
+	case textSizeID(uitheme.TextLarge):
+		return s.d.Theme.Text == uitheme.TextLarge
+	case textSizeID(uitheme.TextLarger):
+		return s.d.Theme.Text == uitheme.TextLarger
 	case cmdPinTab:
 		t := s.activeTab()
 		return t != nil && t.pinned

@@ -23,7 +23,7 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T4.22, contrast and text scaling.
+NEXT TASK: T4.23, documenting the screen-reader gap.
            Unclaimed by any task: replaying a file into a topic
            (the other half of FR-10.8), which needs a producer on
            the load path — the import writes through a source's
@@ -1062,7 +1062,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 - [x] **T4.20** Full keyboard operability audit; no mouse-only actions → NFR-A1 — *the audit found one thing a mouse could do and a keyboard could not: ask an object what it offers. Three menus open on a right-click — a node's in the explorer, a column's on the grid's header, and a tab's — and everything in them was already a command, on the menu bar and in the palette, so nothing was unreachable; what was unreachable was the question. ⇧F10 now opens the menu for whatever the window is on: the explorer's selection while the tree has the focus, then the column the grid's cursor is in, then the tab in front — the focus first and the tabs last, because a tab is always there and taking it first would mean the explorer's own menu could never be asked for by key. It opens beside what it is about rather than over it. Working out whether to offer the command asks the same questions and builds nothing: making a node's menu selects the node and brings the window up to date, which recursed into itself the first time through sync*
 - [x] **T4.21** Visible focus rings throughout → NFR-A1 — *audited by drawing: the window is captured, each focusable thing in it is focused in turn, and anything that changes nothing on the screen is a failure. Everything Fyne draws itself passed; one thing did not, and it was the sidebar's tree — the main way around this application. A tree says which row is selected and nothing about whether it is listening, so somebody who tabbed into it had no way to see they were there. It now draws a ring in the theme's focus colour while the keyboard is in it, from a tree that says when it gains and loses the focus and leaves everything else about a tree alone. The audit stays as the test, so the next widget that draws nothing when focused fails it*
-- [ ] **T4.22** WCAG AA contrast re-verified; OS text-scaling respected → NFR-A2
+- [x] **T4.22** WCAG AA contrast re-verified; OS text-scaling respected → NFR-A2 — *contrast was already held by tests that enumerate every pair the window draws and refuse a colour role that is in neither a pair nor an exemption with a stated reason; they still pass, which is what re-verifying means here. Text scaling was the half that was missing: Fyne scales the whole canvas for the display, which is the right size for a screen and not the same question as needing larger text on a screen whose size is already right. So the theme takes a text size — default, large, larger — chosen from the View menu beside the appearance and the accent, kept in the settings and back at the next start. Only the type scales: spacing, icons and radii are the window's proportions, and a window whose padding grew with its text would lose the rows the text was made larger to read. A test holds that the window still fits 1024x768 at the largest size, with its filter and status line still drawn*
 - [ ] **T4.23** **Document the screen-reader gap publicly** → NFR-A3, DoD-8
 
 ## 4.E Packaging & release
