@@ -23,9 +23,10 @@
 PHASE:     1 — Walking skeleton (J1 + J3)
 STATUS:    Phase 1's exit criterion is met: J1 and J3 run end to end on PostgreSQL,
            MySQL, MariaDB and SQLite (internal/e2e). Partial Phase 1 tasks remain.
-NEXT TASK: T3.37 — J6 end to end: diff one schema against
-           another, review the script, and apply or save it. That
-           is Phase 3's exit, J4 being done.
+NEXT TASK: Phase 3 is out: J4 and J6 both run end to end, and
+           every task from T3.30 to T3.37 is done. What is left in
+           this file is Phase 4 and the partial tasks that have
+           been carried since earlier phases.
            Unclaimed by any task: a writer check for a store that
            writes without transactions, which is why ClickHouse
            skips the suite's; and an ER diagram on an engine whose
@@ -1009,7 +1010,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ## 3.G Quality
 
 - [x] **T3.36** E2E: **J4** (understand an unfamiliar schema) — *the journey walks what J4 asks for and nothing else: understanding a schema without reading any DDL. A table nobody has seen is opened, and the command that follows its foreign key appears only once the application has read what that key is — the schema is told rather than looked up. Following it opens the table the key names, filtered to the one row it names, and the journey checks it is that row and not merely one row. From there the opposite question, which is the one somebody asks next and a different question from the one the key answers: what refers to this. Then the same relationship without leaving the row, which is master and detail. Then the shape of it, drawn, and what the diagram says it found — two tables and one relationship, neither number given to it. The fixtures grew a second table and the key between them, there being no schema to understand in one table. Two things came out of writing it. A diagram is drawn of whatever holds a class of objects, a schema or a database, and SQLite's tree has neither: its connection's children are the class folders themselves, so there is no node to select and the command stays disabled — an engine whose users cannot draw their own schema, which no task claims. And the tables in a diagram are not labels, so what the journey asserts is the footer under it, which is the honest thing the application says about what it drew*
-- [ ] **T3.37** E2E: **J6** (promote a schema change)
+- [x] **T3.37** E2E: **J6** (promote a schema change) — *the journey is about the order of the steps rather than about any one of them. What was agreed is written down, the way version control holds it; somebody's deployment then moves the database on; and the application is asked what the one has that the other does not. It finds the drift and says plainly that it has changed nothing, a comparison reading both sides and changing neither. Then review, which here is choosing: the script is for what somebody ticked, and until they tick something there is nothing to write — the journey checks that the Save button will not work before a choice is made. Then the script is saved, and what makes the whole thing worth having is the last claim: the script settles the difference by dropping what the model does not have, so the table still being there afterwards is what "nothing has run" has to mean. That is asserted rather than assumed. The same gap as J4's diagram applies here for the same reason: a comparison is offered on whatever holds a class of objects, and SQLite's tree has nothing above its class folders, so the journey skips there*
 
 ### ✅ Phase 3 exit: J4 and J6 complete
 

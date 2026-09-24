@@ -83,6 +83,19 @@ func postgresJourney(t *testing.T) journey {
 			model.NewRef(model.KindTable, db, pgSchema, "orders"),
 		},
 		childFK: "person_id",
+		ddl: func(t *testing.T, stmt string) {
+			t.Helper()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			c, err := pgx.Connect(ctx, dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close(ctx)
+			if _, err := c.Exec(ctx, "SET search_path = "+pgSchema+"; "+stmt); err != nil {
+				t.Fatalf("%.60q: %v", stmt, err)
+			}
+		},
 	}
 }
 
@@ -94,3 +107,4 @@ func TestJ2PostgreSQL(t *testing.T) { runJ2(t, postgresJourney(t)) }
 func TestJ5PostgreSQL(t *testing.T) { runJ5(t, postgresJourney(t)) }
 func TestJ7PostgreSQL(t *testing.T) { runJ7(t, postgresJourney(t)) }
 func TestJ4PostgreSQL(t *testing.T) { runJ4(t, postgresJourney(t)) }
+func TestJ6PostgreSQL(t *testing.T) { runJ6(t, postgresJourney(t)) }

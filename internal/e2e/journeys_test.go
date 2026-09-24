@@ -53,10 +53,16 @@ type journey struct {
 	// these does not run J4.
 	child   []model.ObjectRef // the sidebar walk to the table that refers
 	childFK string            // the column in it that holds the reference
+
+	// J6 promotes a schema change, so it needs to make one: ddl runs a
+	// statement against the database behind the application, which is
+	// what somebody else's deployment would have done.
+	ddl func(t *testing.T, stmt string)
 }
 
 // harness is the application over one engine, as a person would have it.
 type harness struct {
+	ws    *app.Workspace
 	s     *shell.Shell
 	q     *uithread.Queue
 	w     fyne.Window
@@ -117,7 +123,7 @@ func start(t *testing.T, j journey) *harness {
 	w := s.Window()
 	t.Cleanup(w.Close) // quit as a person does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
-	return &harness{s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
+	return &harness{ws: ws, s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
 }
 
 // walkTo expands the sidebar down to the last of path and selects it, as
@@ -309,6 +315,125 @@ func selectTabText(h *harness, text string) {
 			return
 		}
 	}
+}
+
+// runJ6 is journey J6: promote a schema change — see what one database
+// has that the agreed model does not, read the script that would settle
+// it, and save it without running anything.
+//
+// What the journey is about is the order of those steps. The script is
+// written before anything is applied, and saving it says so: nothing has
+// run. That is the whole of promoting a change safely.
+func runJ6(t *testing.T, j journey) {
+	above := j.path[:max(len(j.path)-2, 0)]
+	if len(above) == 0 || j.ddl == nil {
+		t.Skip("this engine's tree has nothing that holds a class to compare")
+	}
+	h := start(t, j)
+
+	// What was agreed, written down: the schema as it stands, saved the
+	// way version control would hold it.
+	agreed := filepath.Join(t.TempDir(), "model")
+	ctx := context.Background()
+	live, err := h.ws.Connect(ctx, h.conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := j.path[len(j.path)-3]
+	if err := app.SaveModel(ctx, live.Source, schema.Path[0], agreed); err != nil {
+		t.Fatalf("saving the model: %v", err)
+	}
+
+	// And then somebody's deployment moves the database on.
+	j.ddl(t, "CREATE TABLE promoted (id INTEGER NOT NULL)")
+
+	// Compare what is there against what was agreed.
+	walkTo(t, h, above)
+	if !offered(h, "schema.compare") {
+		t.Fatal("nothing offers to compare this against a model")
+	}
+	if err := h.s.Commands().Run("schema.compare"); err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	// The model is a tree of files and the chooser picks one of them.
+	h.files.picks(t, h.q, filepath.Join(agreed, "database.json"))
+
+	waitFor(t, h.q, "the comparison", func() bool {
+		h.w.Canvas().Capture()
+		sel := h.tabs.Selected()
+		return sel != nil && strings.HasPrefix(sel.Text, "Compare:") &&
+			!slices.Contains(labelsIn(sel.Content), "Reading both sides…")
+	})
+	// It found the drift, and it says plainly that it has changed
+	// nothing: a comparison reads both sides.
+	tab := h.tabs.Selected()
+	if !slices.ContainsFunc(labelsIn(tab.Content), func(l string) bool {
+		return strings.HasPrefix(l, "promoted —")
+	}) {
+		t.Fatalf("the comparison shows %q", labelsIn(tab.Content))
+	}
+	if !hasLabel(tab.Content, "Nothing has run. A comparison reads both sides and changes neither.") {
+		t.Errorf("the comparison does not say it changed nothing: %q", labelsIn(tab.Content))
+	}
+
+	// Review is choosing: the script is for what somebody ticked, and
+	// until they tick something there is nothing to write.
+	if !button(t, tab.Content, "Save…").Disabled() {
+		t.Error("a script could be saved before anything was chosen")
+	}
+	tick(t, h, "promoted —")
+
+	// Review before anything runs: the script is written out, and saving
+	// it says in so many words that nothing has.
+	save := button(t, tab.Content, "Save…")
+	waitFor(t, h.q, "the script to be ready to save", func() bool {
+		h.w.Canvas().Capture()
+		return !save.Disabled()
+	})
+	h.q.Run(save.OnTapped)
+	to := filepath.Join(t.TempDir(), "sync.sql")
+	h.files.picks(t, h.q, to)
+
+	waitFor(t, h.q, "the script to be saved", func() bool {
+		h.w.Canvas().Capture()
+		return hasLabel(tab.Content, "Saved to sync.sql. Nothing has run.")
+	})
+	body, err := os.ReadFile(to)
+	if err != nil {
+		t.Fatalf("the script was not written: %v", err)
+	}
+	if !strings.Contains(string(body), "promoted") {
+		t.Errorf("the script says nothing about the table that differs:\n%s", body)
+	}
+	// And nothing ran. The script settles the difference by dropping what
+	// the model does not have, so the table still being there is what
+	// "nothing has run" has to mean.
+	if !strings.Contains(string(body), "DROP TABLE") {
+		t.Errorf("the script does not settle the difference:\n%s", body)
+	}
+	j.ddl(t, "SELECT 1 FROM promoted")
+}
+
+// tick checks the box on the comparison row whose label starts with that
+// text, as somebody choosing what to promote does. A row is a check, an
+// icon and a label side by side.
+func tick(t *testing.T, h *harness, prefix string) {
+	t.Helper()
+	h.w.Canvas().Capture()
+	for _, box := range find[*fyne.Container](h.tabs.Selected().Content) {
+		if len(box.Objects) != 3 {
+			continue
+		}
+		label, ok := box.Objects[2].(*widget.Label)
+		if !ok || !strings.HasPrefix(label.Text, prefix) {
+			continue
+		}
+		if check, ok := box.Objects[0].(*widget.Check); ok {
+			h.q.Run(func() { check.SetChecked(true) })
+			return
+		}
+	}
+	t.Fatalf("no row to choose starting %q; saw %q", prefix, labelsIn(h.tabs.Selected().Content))
 }
 
 func columnNames(cols []model.ColumnDef) []string {
