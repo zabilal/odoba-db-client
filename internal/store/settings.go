@@ -30,9 +30,12 @@ var ErrSettingsFrozen = errors.New("store: the settings file will not be overwri
 // predictably and diffs cleanly under version control. Keys are snake_case
 // because people edit this file by hand.
 type Settings struct {
-	Version     int               `json:"version"`
-	Appearance  string            `json:"appearance,omitempty"` // system, light, dark
-	Accent      string            `json:"accent,omitempty"`     // blue unless set: see theme.Accents
+	Version    int    `json:"version"`
+	Appearance string `json:"appearance,omitempty"` // system, light, dark
+	Accent     string `json:"accent,omitempty"`     // blue unless set: see theme.Accents
+	// TextSize is how large text is drawn: default, large or larger
+	// (NFR-A2). Empty is the default.
+	TextSize    string            `json:"text_size,omitempty"`
 	Editor      EditorSettings    `json:"editor"`
 	Folders     []Folder          `json:"folders,omitempty"`
 	Connections []SavedConnection `json:"connections"`

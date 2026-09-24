@@ -20,6 +20,43 @@ type Theme struct {
 	Appearance Appearance
 	// Accent is the colour controls and the selection take. Zero is blue.
 	Accent Accent
+	// Text is how large text is drawn, for somebody who needs it larger
+	// than the display's own scale gives (NFR-A2). Zero is the HIG's own
+	// sizes, which is what most people want.
+	Text TextSize
+}
+
+// TextSize scales the type scale, and nothing else: spacing, icons and
+// radii are the window's proportions, and text is what somebody who needs
+// larger text needs larger.
+type TextSize uint8
+
+const (
+	TextDefault TextSize = iota
+	TextLarge
+	TextLarger
+)
+
+// scale is what a text size multiplies the type scale by.
+func (t TextSize) scale() float32 {
+	switch t {
+	case TextLarge:
+		return 1.25
+	case TextLarger:
+		return 1.5
+	}
+	return 1
+}
+
+// TextSizes are the sizes to choose between, in order, with the name each
+// goes by.
+var TextSizes = []struct {
+	Size TextSize
+	Name string
+}{
+	{TextDefault, "Default"},
+	{TextLarge, "Large"},
+	{TextLarger, "Larger"},
 }
 
 // Appearance selects light or dark, or defers to the operating system.
@@ -146,15 +183,17 @@ func onStatusText(p Palette) color.NRGBA {
 // Size maps a Fyne size name onto the metric scale.
 func (t *Theme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
-	// Type scale, from HIG's macOS text styles.
+	// Type scale, from HIG's macOS text styles, times whatever somebody
+	// asked for. Fyne scales the whole canvas for the display; this is
+	// the other thing, for eyes rather than for pixels.
 	case ftheme.SizeNameText:
-		return TextBody
+		return t.Text.scale() * TextBody
 	case ftheme.SizeNameCaptionText:
-		return TextFootnote
+		return t.Text.scale() * TextFootnote
 	case ftheme.SizeNameSubHeadingText:
-		return TextTitle3
+		return t.Text.scale() * TextTitle3
 	case ftheme.SizeNameHeadingText:
-		return TextTitle2
+		return t.Text.scale() * TextTitle2
 
 	// Spacing. macOS runs tighter than Material, and a data tool tighter
 	// again — density here is the difference between seeing 20 rows and 30.

@@ -203,3 +203,46 @@ func TestOnStatusTextPicksAReadableLabel(t *testing.T) {
 		}
 	}
 }
+
+// Only the type scales with the text size (NFR-A2). Spacing, icons and
+// radii are the window's proportions, and a window whose padding grew with
+// its text would lose the rows the text was made larger to read.
+func TestOnlyTheTypeScales(t *testing.T) {
+	plain, large := New(), New()
+	large.Text = TextLarger
+	for _, name := range []fyne.ThemeSizeName{
+		ftheme.SizeNameText, ftheme.SizeNameCaptionText,
+		ftheme.SizeNameSubHeadingText, ftheme.SizeNameHeadingText,
+	} {
+		if large.Size(name) <= plain.Size(name) {
+			t.Errorf("%s is %v, and was %v", name, large.Size(name), plain.Size(name))
+		}
+	}
+	for _, name := range []fyne.ThemeSizeName{
+		ftheme.SizeNamePadding, ftheme.SizeNameInlineIcon,
+		ftheme.SizeNameScrollBar, ftheme.SizeNameSeparatorThickness,
+		ftheme.SizeNameButtonRadius,
+	} {
+		if large.Size(name) != plain.Size(name) {
+			t.Errorf("%s is %v, and was %v", name, large.Size(name), plain.Size(name))
+		}
+	}
+}
+
+// Each size is larger than the one before it, and the default is the type
+// scale as the HIG sets it.
+func TestTheTextSizesAreInOrder(t *testing.T) {
+	was := float32(0)
+	for _, s := range TextSizes {
+		th := New()
+		th.Text = s.Size
+		got := th.Size(ftheme.SizeNameText)
+		if got <= was {
+			t.Errorf("%s draws text at %v, and the size before it at %v", s.Name, got, was)
+		}
+		was = got
+	}
+	if got := New().Size(ftheme.SizeNameText); got != TextBody {
+		t.Errorf("the default draws body text at %v, and the type scale says %v", got, TextBody)
+	}
+}
