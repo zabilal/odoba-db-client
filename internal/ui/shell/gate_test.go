@@ -101,3 +101,33 @@ func TestGateP6IdleHeap(t *testing.T) {
 		t.Errorf("P6: five connections with a table each add %d MB of heap, over %d MB", added>>20, budget>>20)
 	}
 }
+
+// NFR-P9: stopping takes effect in under 200ms, whatever the server is
+// doing.
+//
+// This is the window's half of the budget, and it is the half the person
+// waiting can see: Stop cancels and lets go, rather than waiting for the
+// source to notice. A window that waited would be a Stop button that does
+// nothing for as long as the thing it is stopping.
+const p9Budget = 200 * time.Millisecond
+
+func TestGateP9StoppingAQueryIsPrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("gate skipped in -short")
+	}
+	race.SkipTimingGate(t)
+
+	fx := newFixture(t)
+	_, q := openQuery(t, fx, "")
+	q.editor.Document().SetText("slow 1000000;")
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return len(q.sets) == 1 })
+
+	start := time.Now()
+	fx.s.run(cmdQueryStop)
+	took := time.Since(start)
+	if took > p9Budget {
+		t.Errorf("stopping took %v; NFR-P9 asks for %v", took, p9Budget)
+	}
+	t.Logf("stopped in %v", took)
+}

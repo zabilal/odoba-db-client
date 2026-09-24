@@ -173,3 +173,53 @@ jobs:
         with:
           name: sbom
           path: sbom.cdx.json
+
+  # NFR-P8: the binary is measured on every platform, on every push.
+  #
+  # It does not meet its budget. A stripped macOS build is 68.9 MB against
+  # 60 MB, and one dependency is most of the gap: go-ora, the Oracle driver,
+  # is 14.8 MB of it — without it the same build is 57.4 MB. The other ten
+  # drivers together are under 20 MB, and no single one of them is over 7.5.
+  # What to do about that is a product decision, not a build one: put Oracle
+  # behind a build tag as DuckDB already is, raise the budget, or ship a core
+  # build and a full one. TASKS.md T4.30 records it as the owner's call.
+  #
+  # Until then this job is a ratchet rather than a gate: it prints the size
+  # against the budget and fails only if the binary grows past the ceiling
+  # below, so that the gap cannot widen unnoticed while the decision is open.
+  # The ceiling is one number for three platforms because only macOS has been
+  # measured; the print is what tells us the others.
+  binary-size:
+    name: Binary size (NFR-P8)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+      - name: Build and measure
+        shell: bash
+        run: |
+          go build -ldflags="-s -w" -trimpath -o ikigai-release ./cmd/ikigai
+          size=$(wc -c < ikigai-release | tr -d " ")
+          budget=$((60 * 1024 * 1024))
+          ceiling=$((80 * 1024 * 1024))
+          printf "binary: %s bytes (%.1f MB)\n" "$size" "$(echo "$size / 1048576" | bc -l)"
+          printf "budget (NFR-P8): %s bytes; ceiling while the decision is open: %s\n" "$budget" "$ceiling"
+          if [ "$size" -gt "$ceiling" ]; then
+            echo "::error::the binary has grown past the ceiling; see NFR-P8 in TASKS.md T4.30"
+            exit 1
+          fi
+          if [ "$size" -gt "$budget" ]; then
+            echo "::warning::the binary is over its NFR-P8 budget by $((size - budget)) bytes"
+          fi

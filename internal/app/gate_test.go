@@ -175,3 +175,75 @@ func tookAndHeld(t *testing.T, n int) uint64 {
 	}
 	return after - before
 }
+
+// NFR-P9: cancelling a read or a consume takes effect in under 200ms.
+//
+// The budget is about what the person waiting experiences, and two layers
+// answer for it. The window's half is that stopping does not wait for the
+// source to notice — TestGateP9StoppingAQueryIsPrompt, in the shell. This
+// half is the read itself: a source that watches its context, which every
+// driver here does and its live tests prove, is let go of within the budget
+// rather than after some poll interval of this layer's own.
+const p9Budget = 200 * time.Millisecond
+
+// listening is a source whose reads never end and which watches its
+// context, as every driver here does.
+type listening struct {
+	source.Source
+	reading chan struct{} // closed once a read is under way
+	once    bool
+}
+
+func (d *listening) Browse(context.Context, model.ObjectRef, source.BrowseOptions) (model.RowStream, error) {
+	return &listeningRows{d: d}, nil
+}
+
+type listeningRows struct{ d *listening }
+
+func (*listeningRows) Columns() []model.ColumnDef {
+	return []model.ColumnDef{{Name: "id", Type: model.DataType{Class: model.TypeInteger}}}
+}
+
+func (r *listeningRows) Next(ctx context.Context) (model.Row, error) {
+	if !r.d.once {
+		r.d.once = true
+		close(r.d.reading)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (*listeningRows) Close() error { return nil }
+
+func TestGateP9CancellingAReadIsPrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("gate skipped in -short")
+	}
+	race.SkipTimingGate(t)
+
+	src := &listening{reading: make(chan struct{})}
+	ref := model.NewRef(model.KindTable, "db", "orders")
+	b, err := NewBrowseSource(context.Background(), src, ref, source.BrowseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan time.Duration, 1)
+	go func() {
+		start := time.Now()
+		_, _ = b.Fetch(ctx, 0, 100)
+		done <- time.Since(start)
+	}()
+	<-src.reading // the read is in the source, waiting
+
+	cancel()
+	select {
+	case took := <-done:
+		if took > p9Budget {
+			t.Errorf("the read answered %v after it was cancelled; NFR-P9 asks for %v", took, p9Budget)
+		}
+		t.Logf("cancelled in %v", took)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the read never answered after it was cancelled")
+	}
+}
