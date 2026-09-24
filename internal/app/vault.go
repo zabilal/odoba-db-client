@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 )
@@ -15,7 +16,10 @@ type Vault struct {
 	session    *secrets.Memory
 	persistent bool
 	// lock is the app-level lock over what is persisted (NFR-S7). Nil is
-	// no lock, which is what a vault has until somebody puts one on.
+	// no lock, which is what a vault has until somebody puts one on. It is
+	// changed off the goroutine the window runs on — putting a lock on
+	// takes a moment — and read on it, so it is behind a mutex.
+	mu   sync.RWMutex
 	lock *Lock
 }
 
@@ -30,14 +34,25 @@ func (v *Vault) Persistent() bool { return v.persistent }
 
 // SetLock puts an app-level lock over what this vault persists, or takes
 // one off with nil (NFR-S7).
-func (v *Vault) SetLock(l *Lock) { v.lock = l }
+func (v *Vault) SetLock(l *Lock) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.lock = l
+}
 
 // Lock is the lock over this vault, which may be no lock at all.
-func (v *Vault) Lock() *Lock { return v.lock }
+func (v *Vault) Lock() *Lock {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.lock
+}
 
 // Locked reports whether the vault is holding its secrets back for want of
 // a passphrase.
-func (v *Vault) Locked() bool { return v.lock.On() && !v.lock.Open() }
+func (v *Vault) Locked() bool {
+	l := v.Lock()
+	return l.On() && !l.Open()
+}
 
 func (v *Vault) Get(id, key string) (string, error) {
 	// A secret typed in for this session is not sealed and not held back:
@@ -58,7 +73,7 @@ func (v *Vault) Get(id, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return v.lock.Unseal(stored)
+	return v.Lock().Unseal(stored)
 }
 
 func (v *Vault) Set(id, key, value string) error {
@@ -67,7 +82,7 @@ func (v *Vault) Set(id, key, value string) error {
 	}
 	// Nothing says "locked" here: sealing with no key refuses, which is
 	// the same answer for the same reason, and one place to give it.
-	sealed, err := v.lock.Seal(value)
+	sealed, err := v.Lock().Seal(value)
 	if err != nil {
 		return err
 	}

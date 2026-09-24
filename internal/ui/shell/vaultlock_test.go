@@ -44,10 +44,15 @@ func TestLockingTheVaultFromTheWindow(t *testing.T) {
 		t.Fatal("two passphrases that match were not offered a lock")
 	}
 	test.Tap(findButton(top, "Lock"))
-	pump(t, fx.q, func() bool { return fx.conns.VaultLocked() })
-
-	stored, _ := fx.vaultKeys.Get(c.ID, "password")
-	if !app.Sealed(stored) || strings.Contains(stored, "hunter2") {
+	// Waiting for the sealing rather than for the setting: the setting is
+	// saved first on purpose, so that a run stopped half way leaves a lock
+	// that opens what it has already sealed.
+	var stored string
+	pump(t, fx.q, func() bool {
+		stored, _ = fx.vaultKeys.Get(c.ID, "password")
+		return app.Sealed(stored)
+	})
+	if strings.Contains(stored, "hunter2") {
 		t.Errorf("the keychain holds %q", stored)
 	}
 	fx.s.sync()

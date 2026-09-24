@@ -85,6 +85,9 @@ type Deps struct {
 	// Decoders remembers which decoder a topic's key and value are read with
 	// (FR-13.7). Nil keeps the choice for as long as the view lives.
 	Decoders app.DecoderStore
+	// Backup writes everything the application keeps into one archive and
+	// puts it back (FR-17.5). Nil turns both off.
+	Backup *app.Backup
 }
 
 // windowTitle is the application's name, which a workspace's name joins.
@@ -449,6 +452,12 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
+		{ID: cmdBackUp, Category: "File", Title: "Back Up Everything…",
+			Keywords: []string{"backup", "archive", "zip", "save", "copy", "export", "migrate"},
+			Enabled:  s.canBackUp, Run: s.backUp},
+		{ID: cmdRestore, Category: "File", Title: "Restore from a Backup…",
+			Keywords: []string{"restore", "backup", "archive", "zip", "import", "migrate"},
+			Enabled:  s.canRestore, Run: s.restoreBackup},
 		{ID: cmdVaultLock, Category: "Connection", Title: "Lock the Vault…",
 			Keywords: []string{"vault", "lock", "passphrase", "password", "secret", "seal", "encrypt"},
 			Enabled:  s.canLockVault, Run: s.lockVault},
@@ -1348,7 +1357,9 @@ const shutdownWait = 3 * time.Second
 func (s *Shell) shutdown() {
 	// The session and unsaved query text first, while the tabs still hold
 	// them. Both come back at the next start (NFR-R3), and so does the
-	// workspace they are in (FR-15.9).
+	// workspace they are in (FR-15.9). After a restore neither writes
+	// anything: the writer was stopped before the database they were
+	// being kept in was replaced (FR-17.5).
 	s.rememberWorkspace()
 	s.saveSession()
 	for _, t := range s.open {
