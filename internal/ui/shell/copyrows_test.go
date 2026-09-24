@@ -46,6 +46,11 @@ func TestWhatIsOfferedACopy(t *testing.T) {
 // it is made again here rather than assumed.
 func copyFormOn(t *testing.T, fx *fixture, c store.SavedConnection) *copyForm {
 	t.Helper()
+	// The tree down to the table again: refreshing the root for another
+	// connection drops what was loaded under this one, and a node that is
+	// not there cannot be selected.
+	loaded(t, fx, view.ConnectionID(c.ID))
+	loaded(t, fx, view.NodeID(c.ID, model.NewRef(model.KindDatabase, "main")))
 	fx.s.Explorer.Tree.Select(view.NodeID(c.ID, itemsNode.Ref))
 	fx.s.sync()
 	f := fx.s.copyRowsFrom()

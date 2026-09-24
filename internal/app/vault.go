@@ -21,6 +21,11 @@ type Vault struct {
 	// takes a moment — and read on it, so it is behind a mutex.
 	mu   sync.RWMutex
 	lock *Lock
+	// besideTheBinary is a portable install, where what is persisted is a
+	// file next to the application rather than the machine's keychain
+	// (FR-17.6). Such a file is written only sealed, so this vault holds
+	// nothing beyond the session until a lock is put on it.
+	besideTheBinary bool
 }
 
 // NewVault builds a vault. availability is the result of secrets.Available().
@@ -29,8 +34,30 @@ func NewVault(os secrets.Keychain, availability error) *Vault {
 	return &Vault{os: os, session: secrets.NewMemory(), persistent: os != nil && availability == nil}
 }
 
-// Persistent reports whether secrets survive a restart.
-func (v *Vault) Persistent() bool { return v.persistent }
+// NewPortableVault keeps secrets beside the application rather than in the
+// machine's keychain (FR-17.6, ADR-0154).
+//
+// It persists nothing until a lock is put on it: a secret in a file next
+// to the application is plaintext with extra steps, which is exactly what
+// this application has always refused to write.
+func NewPortableVault(k secrets.Keychain) *Vault {
+	v := NewVault(k, nil)
+	v.besideTheBinary = true
+	return v
+}
+
+// Persistent reports whether secrets survive a restart. A portable vault
+// does once it has a lock, and not before.
+func (v *Vault) Persistent() bool {
+	if v.besideTheBinary {
+		return v.persistent && v.Lock().On()
+	}
+	return v.persistent
+}
+
+// Portable reports whether this vault keeps its secrets beside the
+// application.
+func (v *Vault) Portable() bool { return v.besideTheBinary }
 
 // SetLock puts an app-level lock over what this vault persists, or takes
 // one off with nil (NFR-S7).
@@ -60,7 +87,7 @@ func (v *Vault) Get(id, key string) (string, error) {
 	if s, err := v.session.Get(id, key); err == nil {
 		return s, nil
 	}
-	if !v.persistent {
+	if !v.Persistent() {
 		return "", secrets.ErrNotFound
 	}
 	// Said here rather than left to the unsealing: a secret stored before
@@ -77,7 +104,10 @@ func (v *Vault) Get(id, key string) (string, error) {
 }
 
 func (v *Vault) Set(id, key, value string) error {
-	if !v.persistent {
+	if !v.Persistent() {
+		// Held for this session and no longer: a portable install with no
+		// passphrase has nowhere to put a password that would still be
+		// safe in the morning.
 		return v.session.Set(id, key, value)
 	}
 	// Nothing says "locked" here: sealing with no key refuses, which is
@@ -94,7 +124,7 @@ func (v *Vault) SetSession(id, key, value string) error { return v.session.Set(i
 
 func (v *Vault) Delete(id, key string) error {
 	v.session.Delete(id, key)
-	if v.persistent {
+	if v.Persistent() {
 		return v.os.Delete(id, key)
 	}
 	return nil

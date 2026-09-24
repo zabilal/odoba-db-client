@@ -26,8 +26,12 @@ func (s *Shell) canLockVault() bool { return s.d.Conns.VaultOpen() }
 // canCloseVault reports whether there is an open lock to shut.
 func (s *Shell) canCloseVault() bool { return s.d.Conns.VaultLocked() && s.d.Conns.VaultOpen() }
 
-// canRemoveVaultLock reports whether there is a lock to take off.
-func (s *Shell) canRemoveVaultLock() bool { return s.d.Conns.VaultLocked() }
+// canRemoveVaultLock reports whether there is a lock to take off. A
+// portable install's cannot come off: its passwords live in a file beside
+// the application, which is only ever written sealed (ADR-0154).
+func (s *Shell) canRemoveVaultLock() bool {
+	return s.d.Conns.VaultLocked() && !s.d.Conns.Vault().Portable()
+}
 
 // lockVault asks for a passphrase, twice, and seals the vault with it.
 func (s *Shell) lockVault() {
@@ -40,6 +44,10 @@ func (s *Shell) lockVault() {
 	if s.d.Conns.VaultLocked() {
 		title, act = "Change the Vault Passphrase", "Change"
 		said = "Every saved password is sealed again with the new passphrase. The old one stops working."
+	} else if s.d.Conns.Vault().Portable() {
+		said = "This copy keeps everything beside itself, and a password beside the application is only worth keeping sealed. " +
+			"Until there is a passphrase, each password is asked for once a session and kept no longer. " +
+			"Nothing keeps the passphrase for you: one nobody remembers is passwords nobody can read."
 	}
 	pass, again := newSecretEntry(), newSecretEntry()
 	pass.Validator = func(text string) error {

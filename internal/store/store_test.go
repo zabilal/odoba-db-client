@@ -362,3 +362,40 @@ func TestNewIDIsUniqueAndOpaque(t *testing.T) {
 		seen[id] = true
 	}
 }
+
+// A marker beside the executable is what makes a copy portable (FR-17.6).
+func TestTheMarkerBesideTheExecutableMakesItPortable(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Skipf("no executable path on this platform: %v", err)
+	}
+	beside := filepath.Join(filepath.Dir(exe), portableMarker)
+	if _, err := os.Stat(beside); err == nil {
+		t.Skip("something already put the marker there")
+	}
+	// Without it, the platform's own directories.
+	p, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Portable {
+		t.Fatalf("portable without the marker: %+v", p)
+	}
+	if err := os.WriteFile(beside, nil, 0o600); err != nil {
+		t.Skipf("the executable's directory cannot be written to: %v", err)
+	}
+	defer os.Remove(beside)
+
+	p, err = Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Portable {
+		t.Fatalf("the marker was ignored: %+v", p)
+	}
+	for _, d := range []string{p.Config, p.Data, p.Logs, p.Cache} {
+		if !strings.HasPrefix(d, filepath.Dir(exe)) {
+			t.Errorf("%s is not beside the executable", d)
+		}
+	}
+}

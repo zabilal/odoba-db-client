@@ -2,10 +2,12 @@ package app
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
 )
 
 // Putting the app-level lock on and taking it off (NFR-S7).
@@ -209,5 +211,102 @@ func TestALockComesBackFromTheSettings(t *testing.T) {
 	}
 	if got, err := v.Get(conn.ID, "password"); err != nil || got != "hunter2" {
 		t.Errorf("it read %q, %v", got, err)
+	}
+}
+
+// A portable copy keeps nothing beyond the session until there is a
+// passphrase: a password in a file beside the application is plaintext
+// with extra steps.
+func TestAPortableVaultKeepsNothingUntilItIsLocked(t *testing.T) {
+	dir := t.TempDir()
+	sf, _, err := store.OpenSettings(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := secrets.NewFile(filepath.Join(dir, "secrets.json"))
+	v := NewPortableVault(file)
+	c := NewConnections(sf, v, nil)
+	if !v.Portable() || v.Persistent() {
+		t.Fatalf("a portable vault with no lock says portable %v, persistent %v", v.Portable(), v.Persistent())
+	}
+	conn, err := c.Create(draft("Orders"), map[string]string{"password": "hunter2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This session has it, and the file does not.
+	if got, err := v.Get(conn.ID, "password"); err != nil || got != "hunter2" {
+		t.Errorf("this session read %q, %v", got, err)
+	}
+	if _, err := file.Get(conn.ID, "password"); !errors.Is(err, secrets.ErrNotFound) {
+		t.Errorf("the file holds it: %v", err)
+	}
+
+	// A passphrase makes it a vault that keeps things, and what this
+	// session was holding goes into it, sealed.
+	if err := c.LockVault("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	if !v.Persistent() {
+		t.Error("a portable vault with a lock does not keep anything")
+	}
+	stored, err := file.Get(conn.ID, "password")
+	if err != nil {
+		t.Fatalf("the file holds nothing: %v", err)
+	}
+	if !Sealed(stored) || strings.Contains(stored, "hunter2") {
+		t.Errorf("the file holds %q", stored)
+	}
+}
+
+// A portable copy with no lock keeps nothing, and reads nothing: what a
+// file beside the application holds is not its business until there is a
+// passphrase to open it with.
+func TestAPortableVaultWithNoLockReadsNothing(t *testing.T) {
+	dir := t.TempDir()
+	sf, _, err := store.OpenSettings(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := secrets.NewFile(filepath.Join(dir, "secrets.json"))
+	// Something a locked run left behind, whose lock is no longer set.
+	l, _ := aLock(t, "gone")
+	sealed, err := l.Seal("hunter2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Set("c1", "password", sealed); err != nil {
+		t.Fatal(err)
+	}
+	v := NewPortableVault(file)
+	_ = NewConnections(sf, v, nil)
+	if got, err := v.Get("c1", "password"); !errors.Is(err, secrets.ErrNotFound) {
+		t.Errorf("it read %q, %v", got, err)
+	}
+}
+
+// A portable copy's lock cannot be taken off: there is nowhere for the
+// passwords to go.
+func TestAPortableLockCannotComeOff(t *testing.T) {
+	dir := t.TempDir()
+	sf, _, err := store.OpenSettings(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewConnections(sf, NewPortableVault(secrets.NewFile(filepath.Join(dir, "secrets.json"))), nil)
+	if _, err := c.Create(draft("Orders"), map[string]string{"password": "hunter2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.LockVault("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveVaultLock("correct horse"); err == nil || !strings.Contains(err.Error(), "portable") {
+		t.Errorf("it said %v", err)
+	}
+	if !c.VaultLocked() {
+		t.Error("the lock came off anyway")
+	}
+	// Changing it is offered, though: that is a different question.
+	if err := c.LockVault("second"); err != nil {
+		t.Errorf("the passphrase could not be changed: %v", err)
 	}
 }

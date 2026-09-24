@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync/atomic"
 
@@ -116,7 +117,14 @@ func run() error {
 		backup = &app.Backup{Paths: paths, DB: db}
 	}
 
+	// A portable copy keeps its secrets beside itself rather than in this
+	// machine's keychain, and only sealed (FR-17.6, ADR-0154). Left in the
+	// keychain they would stay on every machine the copy was carried to,
+	// and travel with it nowhere.
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
+	if paths.Portable {
+		vault = app.NewPortableVault(secrets.NewFile(filepath.Join(paths.Data, "secrets.json")))
+	}
 	// The app-level lock over the vault, where one was put on (NFR-S7).
 	// What is saved recognises a passphrase; the window asks for it before
 	// anything reads a secret.
