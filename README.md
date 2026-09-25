@@ -40,6 +40,10 @@ their lag; records decoded as text, JSON or through a Schema Registry schema.
 Redis keys of every type. MongoDB documents with their own editor. Browsing a
 Kafka topic never joins a consumer group and never commits an offset.
 
+**See where the rows are.** A result with geometry in it — PostGIS, GeoJSON, or a
+pair of latitude and longitude columns — draws as places on a graticule. There is
+no basemap: tiles come from somebody's server, and this asks nobody for anything.
+
 **Build a query without writing one.** A canvas of tables and joins, every part
 of a `SELECT` beside it, and the SQL it makes shown as it changes.
 

@@ -3,9 +3,11 @@ package shell
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -127,6 +129,17 @@ var memosNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "memos"), 
 	Browsable: true, HasChildren: true}
 
 var aloneNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "alone"), Label: "alone",
+	Browsable: true, HasChildren: true}
+
+// placesNode is a table with somewhere in it: a latitude, a longitude and a
+// geometry, which is what a map is drawn from. Like memos it is not in the
+// tree's own list, so nothing that counts what a schema holds is changed by it.
+var placesNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "places"), Label: "places",
+	Browsable: true, HasChildren: true}
+
+// docsNode is a table whose place is only in its values: a JSON column holding
+// GeoJSON, which nothing but reading a row can recognise.
+var docsNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "docs"), Label: "docs",
 	Browsable: true, HasChildren: true}
 
 // Explain answers a small tree, measured where it was asked to run the
@@ -468,6 +481,10 @@ func (f fakeSource) Browse(_ context.Context, ref model.ObjectRef, opt source.Br
 		rows = &memoStream{next: opt.Offset, end: end}
 	case "alone":
 		rows = &aloneStream{next: opt.Offset, end: end}
+	case "places":
+		rows = &placeStream{next: opt.Offset, end: end}
+	case "docs":
+		rows = &geoDocStream{next: opt.Offset, end: end}
 	}
 	if len(opt.Columns) == 0 {
 		return rows, nil
@@ -558,6 +575,66 @@ func (s *memoStream) Next(context.Context) (model.Row, error) {
 }
 
 func (*memoStream) Close() error { return nil }
+
+// placeStream is the places table's rows: a name, a pair of coordinates and a
+// geometry, so that a map has all three ways of holding a place to be drawn
+// from. Every row is somewhere different, in a line running north-east.
+type placeStream struct{ next, end int64 }
+
+func (*placeStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{
+		{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text"}},
+		{Name: "lat", Type: model.DataType{Class: model.TypeFloat, Native: "double", Length: -1}},
+		{Name: "lon", Type: model.DataType{Class: model.TypeFloat, Native: "double", Length: -1}},
+		{Name: "shape", Type: model.DataType{Class: model.TypeGeometry, Native: "geometry", Length: -1}},
+	}
+}
+
+func (s *placeStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	i := float64(s.next)
+	s.next++
+	lat, lon := 51.5+i/10, -0.1+i/10
+	return model.Row{fmt.Sprintf("place %d", int(i)), lat, lon,
+		model.Geometry{SRID: 4326, WKB: wkbPointBytes(lon, lat)}}, nil
+}
+
+func (*placeStream) Close() error { return nil }
+
+// geoDocStream is the docs table's rows: a name and a document that happens to hold
+// GeoJSON. Nothing in the column's type says so, which is the point of it.
+type geoDocStream struct{ next, end int64 }
+
+func (*geoDocStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{
+		{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text"}},
+		{Name: "doc", Type: model.DataType{Class: model.TypeJSON, Native: "jsonb", Length: -1}},
+	}
+}
+
+func (s *geoDocStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	i := float64(s.next)
+	s.next++
+	doc := fmt.Sprintf(`{"type":"Point","coordinates":[%v,%v]}`, -0.1+i/10, 51.5+i/10)
+	return model.Row{fmt.Sprintf("doc %d", int(i)), model.JSON(doc)}, nil
+}
+
+func (*geoDocStream) Close() error { return nil }
+
+// wkbPointBytes writes a point as little-endian well-known binary, which is what
+// a geometry column hands back.
+func wkbPointBytes(x, y float64) []byte {
+	b := []byte{1}
+	b = binary.LittleEndian.AppendUint32(b, 1)
+	b = binary.LittleEndian.AppendUint64(b, math.Float64bits(x))
+	b = binary.LittleEndian.AppendUint64(b, math.Float64bits(y))
+	return b
+}
 
 // aloneStream is the alone table's rows, whose one column is of no other
 // table's name: somewhere with nothing to copy into.

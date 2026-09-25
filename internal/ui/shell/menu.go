@@ -84,6 +84,7 @@ const (
 	cmdExport           = "data.export"
 	cmdImport           = "data.import"
 	cmdChart            = "data.chart"
+	cmdMap              = "data.map"
 	cmdExplain          = "query.explain"
 	cmdExplainMeasure   = "query.explainMeasure"
 	cmdTxBegin          = "query.begin"
@@ -195,7 +196,7 @@ var menuBar = []struct {
 	}},
 	{"View", []menuEntry{
 		item(cmdPalette), item(cmdContextMenu), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdSearchStructure), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), separator,
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdSearchStructure), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), item(cmdMap), separator,
 		item(cmdSaveView), item(cmdViews),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
