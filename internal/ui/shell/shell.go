@@ -245,6 +245,9 @@ type tab struct {
 	compare *comparePanel
 	// diagram is the ER diagram, where this tab is one (erdiagram.go).
 	diagram *diagramPanel
+	// designer is the visual query designer, where this tab is one
+	// (designer.go).
+	designer *designerPanel
 	// chart is the chart of a result, where this tab is one (chartview.go).
 	chart *chartPanel
 	// plan is a query plan, where this tab is one (explain.go).
@@ -504,6 +507,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdDiagram, Category: "Explorer", Title: "Show the Diagram",
 			Keywords: []string{"er", "diagram", "relationships", "map", "picture"},
 			Enabled:  s.canDiagram, Run: s.diagramSelected},
+		{ID: cmdDesignQuery, Category: "Explorer", Title: "Design a Query…",
+			Keywords: []string{"designer", "visual", "query", "builder", "join", "canvas"},
+			Enabled:  s.canDesignQuery, Run: s.designQuerySelected},
 		{ID: cmdCompare, Category: "Explorer", Title: "Compare with a Saved Model…",
 			Keywords: []string{"diff", "compare", "schema", "model", "drift"},
 			Enabled:  s.canCompareSelected, Run: s.compareSelected},

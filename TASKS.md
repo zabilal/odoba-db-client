@@ -37,7 +37,12 @@ STATUS:    Phase 4's application work is done. T4.2, T4.3, T4.6,
            reached from the application at all. Registered, and the
            driver packages are now held against what the binary
            depends on.
-NEXT TASK: Phase 5, T5.1 onward. T4.7 is [~] and says why: the
+NEXT TASK: T5.2, the designer's panels for columns, conditions,
+           grouping, aggregates and ordering — the model for all of
+           it is already in internal/query and tested (T5.1,
+           ADR-0158), so what is left is the editing. Then T5.3, the
+           live SQL view, which is Render called on every change.
+           T4.7 is [~] and says why: the
            suite is green for the three Phase 4 drivers that could be
            built here — libSQL, Firebird and DynamoDB — and the other
            three need an account or a cluster nobody has.
@@ -1140,7 +1145,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 # PHASE 5 — Differentiators (v1.1+)
 
-- [ ] **T5.1** Visual query designer: canvas, FK-inferred joins → FR-9.1
+- [x] **T5.1** Visual query designer: canvas, FK-inferred joins → FR-9.1 — *the canvas was written for this: internal/ui/canvas has no Fyne in it and its Node already said "a table, view, or query-designer source", its Edge "for an ER diagram it is a foreign key; for the query designer, a join", and its -1 port "is what the query designer uses before a join condition is chosen". So what was needed was the other half. A design is data — internal/query holds tables, joins, outputs, conditions, grouping, ordering and a limit, with no Fyne and no connection in it — and rendering one is a function of it and a dialect, which is what lets the whole of the SQL be tested on every engine without a server and what keeps ARCH-2 (ADR-0158). A table is referred to by its place rather than its name, because two tables on one canvas may be the same table twice and a self-join is the commonest thing a designer is used for; the alias is what the SQL calls it, numbered when it is taken. A condition's right-hand side is text the person typed, as the grid's typed WHERE is: a designer whose values were quoted strings could not express CURRENT_DATE - 7, and there is no way to render one value as a literal on nine of the thirteen drivers — so what guards it is the last thing Render does, asking the dialect what the statement it has just written would do and refusing one that could change anything. Every table must be reached by a join, a table nothing joins being a cross product with everything before it; and the joins are written in the order the tables are reached rather than the order they were made in, because a join to a table SQL has not met yet is not legal — a join drawn backwards is written the other way round, and one between two tables already reached is written last. Only declared keys are inferred: two columns of one name in two tables are two columns, and joining on them would be this program's opinion presented as the catalogue's. A suggestion is offered rather than applied, and changing a join clears the mark that says the schema suggested it — which is what "editable" means in FR-9.1. The canvas shows the query and the panels edit it, rather than joins being made by dragging a line between columns: everything here has to be doable from the keyboard (NFR-A1), and a join made by picking two columns from two lists is one somebody using a screen reader can make. The limit is read out of a rendered browse, LIMIT and FETCH and TOP being the one part of a SELECT the engines do not agree on and a table of engine names having no business in this package. diagram.Widget gained Select, because a canvas rebuilt on every change would otherwise lose the selection each time a table was added, with the controls that depend on it going dead while the box was still highlighted. The model covers the whole of FR-9 and is tested; what T5.2 adds is the panels that edit the rest of it, and T5.3 is Render called on every change. A design is not saved anywhere yet: it lives in the tab, and no task claims saving one*
 - [ ] **T5.2** Designer: columns, conditions, grouping, aggregates, ordering → FR-9.2
 - [ ] **T5.3** Designer: live bidirectional SQL view → FR-9.3
 - [ ] **T5.4** AI: provider abstraction incl. local endpoint → FR-14.5
