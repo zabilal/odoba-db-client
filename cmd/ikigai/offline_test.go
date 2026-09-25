@@ -16,10 +16,12 @@ import (
 // time — and a person on a plane with a SQLite file has an application
 // that hangs. So it is held here rather than remembered.
 //
-// The network is used in exactly three places, each of them something a
+// The network is used in exactly four places, each of them something a
 // person asked for: a driver connecting to a server they configured, an
-// SSH tunnel they configured, and a cloud IAM token a connection asked
-// for. Nothing contacts any host belonging to this project.
+// SSH tunnel they configured, a cloud IAM token a connection asked for,
+// and the assistant, which is off until somebody turns it on and is
+// contacted only when they ask it a question (FR-14.4). Nothing contacts
+// any host belonging to this project.
 
 // netFree are the packages that must not be able to reach the network at
 // all, whatever a future change does above them: what is kept, what is
@@ -92,6 +94,13 @@ func TestOnlyTheseFilesSpeakHTTP(t *testing.T) {
 		// build that was given a feed to ask — which one made from source
 		// is not (FR-15.10).
 		filepath.Join("internal", "update", "update.go"),
+		// The assistant, which asks a language model a question (FR-14). It is
+		// off by default and off per connection, and the consent that turns it
+		// on is enforced before anything is sent rather than in the window
+		// (internal/assistant/consent.go). Nothing here is contacted unless
+		// somebody asks it something, and the endpoint is one they gave: there
+		// is no provider compiled in that would be reached by default.
+		filepath.Join("internal", "assistant", "provider.go"),
 	}
 	root := moduleRoot(t)
 	out, err := exec.Command("grep", "-rl", "net/http",
