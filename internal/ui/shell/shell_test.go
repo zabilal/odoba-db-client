@@ -987,9 +987,10 @@ func TestSwitchingEngineKeepsSharedFields(t *testing.T) {
 	if f.inputs["path"] == nil || f.inputs["host"].entry.Text != "db1" {
 		t.Error("the host should carry over and the file field appear")
 	}
-	// Name, Type, URL; host, file; encryption, environment, read-only, message.
-	if n := len(f.form.Items); n != 9 {
-		t.Errorf("%d form rows, want 9", n)
+	// Name, Type, URL; host, file; encryption, environment, read-only, the
+	// assistant's two switches, message.
+	if n := len(f.form.Items); n != 11 {
+		t.Errorf("%d form rows, want 11", n)
 	}
 }
 

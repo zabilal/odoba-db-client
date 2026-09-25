@@ -36,9 +36,7 @@ func TestWhatIsOfferedAStructureSearch(t *testing.T) {
 	}
 	// Disconnected rather than released, so that the node stays selected
 	// and it is being open that is in question.
-	if err := fx.ws.Disconnect(c.ID); err != nil {
-		t.Fatal(err)
-	}
+	disconnected(t, fx, c.ID)
 	fx.s.sync()
 	if fx.s.canSearchStructure() {
 		t.Error("a connection that is not open is offered a search")

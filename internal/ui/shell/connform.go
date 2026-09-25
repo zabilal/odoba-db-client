@@ -76,7 +76,12 @@ type connForm struct {
 	folder    *widget.Select
 	folderIDs []string
 	readOnly  *widget.Check
-	result    *widget.Label
+	// aiSchema and aiData are this connection's opt-in to the assistant
+	// (FR-14.4). Two switches rather than one, because being willing to ask
+	// about a schema is not being willing to send the rows.
+	aiSchema *widget.Check
+	aiData   *widget.Check
+	result   *widget.Label
 
 	testBtn, cancelBtn, saveBtn *widget.Button
 
@@ -162,6 +167,18 @@ func (f *connForm) build() {
 	}
 	f.folder = widget.NewSelect(folders, nil)
 	f.readOnly = widget.NewCheck("Read-only: refuse statements that change data", nil)
+	f.aiData = widget.NewCheck("…and its rows, not only its schema", nil)
+	f.aiSchema = widget.NewCheck("The assistant may be asked about this connection", func(on bool) {
+		// Sending rows is meaningless without the first switch, so it follows
+		// it: a connection nobody opted in has not opted in to anything.
+		if on {
+			f.aiData.Enable()
+			return
+		}
+		f.aiData.SetChecked(false)
+		f.aiData.Disable()
+	})
+	f.aiData.Disable()
 	f.result = widget.NewLabel("")
 	f.result.Wrapping = fyne.TextWrapWord
 
@@ -216,10 +233,23 @@ func (f *connForm) layout() {
 	items = append(items,
 		widget.NewFormItem("Environment", f.env),
 		widget.NewFormItem("", f.readOnly),
+		widget.NewFormItem("Assistant", f.aiSchema),
+		widget.NewFormItem("", f.aiData),
 		widget.NewFormItem("", f.result),
 	)
 	f.form.Items = items
 	f.form.Refresh()
+}
+
+// assistantOptIn is what this connection has agreed the assistant may see, or
+// nil where it has agreed nothing — which is what every connection is until
+// somebody ticks the box, and is how "off by default" is written in a file
+// (FR-14.4).
+func (f *connForm) assistantOptIn() *store.ConnectionAssistant {
+	if !f.aiSchema.Checked {
+		return nil
+	}
+	return &store.ConnectionAssistant{Enabled: true, Data: f.aiData.Checked}
 }
 
 // networked reports whether the driver connects over a network, which is
@@ -274,6 +304,10 @@ func (f *connForm) fill(c store.SavedConnection, typed map[string]string) {
 	f.tls.SetSelectedIndex(tlsIndex(c.TLS.Mode))
 	f.env.SetSelectedIndex(envIndex(c.Environment))
 	f.readOnly.SetChecked(c.ReadOnly)
+	if a := c.Assistant; a != nil {
+		f.aiSchema.SetChecked(a.Enabled)
+		f.aiData.SetChecked(a.Enabled && a.Data)
+	}
 	f.folder.SetSelectedIndex(max(0, slices.Index(f.folderIDs, c.Folder)))
 }
 
@@ -335,6 +369,7 @@ func (f *connForm) collect() (store.SavedConnection, map[string]string, error) {
 		c.Environment = environments[i].value
 	}
 	c.ReadOnly = f.readOnly.Checked
+	c.Assistant = f.assistantOptIn()
 	if i := f.folder.SelectedIndex(); i >= 0 {
 		c.Folder = f.folderIDs[i]
 	}
@@ -373,6 +408,7 @@ func (f *connForm) applyURL(text string) {
 		c.Environment = environments[i].value
 	}
 	c.ReadOnly = f.readOnly.Checked
+	c.Assistant = f.assistantOptIn()
 	f.base = c
 	f.driver.SetSelected(d.Name)
 	f.setDriver(d)

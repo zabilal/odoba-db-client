@@ -159,3 +159,9 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0152](0152-a-lock-that-seals.md) | A lock that seals | Accepted |
 | [0153](0153-a-backup-without-the-passwords.md) | A backup without the passwords | Accepted |
 | [0154](0154-a-copy-that-carries-its-own-keys.md) | A copy that carries its own keys | Accepted |
+| [0155](0155-the-same-sql-over-a-wire.md) | The same SQL over a wire | Accepted |
+| [0156](0156-a-catalogue-that-says-which.md) | A catalogue that says which | Accepted |
+| [0157](0157-a-table-that-is-a-collection.md) | A table that is a collection | Accepted |
+| [0158](0158-a-design-is-data.md) | A design is data | Accepted |
+| [0159](0159-two-wires-and-four-switches.md) | Two wires and four switches | Accepted |
+| [0160](0160-a-question-and-the-two-switches-that-let-it-be-asked.md) | A question, and the two switches that let it be asked | Accepted |

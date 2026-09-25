@@ -5,7 +5,7 @@ A claim like that is only worth something beside the list it was made against, s
 this is the list: everything known, what kind of thing it is, and why it is or is
 not the kind DoD-7 is about.
 
-**Last reviewed:** 2026-09-24, at T4.35.
+**Last reviewed:** 2026-09-25, at T5.8.
 
 Severity here is the requirements' own: `M` is must-fix for v1.0.
 
@@ -50,6 +50,7 @@ because a register with no history in it is a register nobody has used:
 | A Firebird connection cannot verify the server's identity | protocol limit | Firebird does not speak TLS; its own wire encryption carries no certificate. The connection is encrypted by default and refuses to fall back to plain text, and asking for verification is refused rather than silently downgraded. A deployment needing a verified identity needs a tunnel in front of it. |
 | The result of a query is not editable over libSQL or Turso | driver limit | Editing a query's rows needs to know which table each column came from; the libSQL wire protocol does not carry it, so the capability is not claimed and the grid is not editable there. Browsing a table and editing it works as everywhere else. |
 | MySQL, SQLite and Cassandra render no DDL | missing feature | So the designer previews nothing and the source editors are unavailable on them. Each says so rather than failing. |
+| Sending a production connection's rows to the assistant cannot be consented to | missing feature | The per-session confirmation FR-14.3 asks for is enforced (`assistant.Consent.Confirmed`) and no dialog sets it, so a production connection can be asked about its schema and not about its rows. The refusal says why. This is the safe direction: nothing leaves that should not, and what is missing is a way to allow more. ADR-0160. |
 | Three Avro advisories with no fix | dependency | Denial of service by unbounded allocation while decoding. Accepted by name in `security/accepted-vulnerabilities.md`. Nothing is written and no credential is involved. |
 
 ## Open: things only a developer notices

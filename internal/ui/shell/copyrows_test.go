@@ -32,9 +32,7 @@ func TestWhatIsOfferedACopy(t *testing.T) {
 	}
 	fx.s.Explorer.Tree.Select(view.NodeID(c.ID, itemsNode.Ref))
 	fx.s.sync()
-	if err := fx.ws.Disconnect(c.ID); err != nil {
-		t.Fatal(err)
-	}
+	disconnected(t, fx, c.ID)
 	fx.s.sync()
 	if fx.s.canCopyRows() {
 		t.Error("a connection that is not open was offered a copy")
