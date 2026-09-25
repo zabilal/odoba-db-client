@@ -165,3 +165,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0158](0158-a-design-is-data.md) | A design is data | Accepted |
 | [0159](0159-two-wires-and-four-switches.md) | Two wires and four switches | Accepted |
 | [0160](0160-a-question-and-the-two-switches-that-let-it-be-asked.md) | A question, and the two switches that let it be asked | Accepted |
+| [0161](0161-a-second-binary-and-a-status-a-build-can-read.md) | A second binary, and a status a build can read | Accepted |

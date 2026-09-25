@@ -5,7 +5,7 @@ A claim like that is only worth something beside the list it was made against, s
 this is the list: everything known, what kind of thing it is, and why it is or is
 not the kind DoD-7 is about.
 
-**Last reviewed:** 2026-09-25, at T5.8.
+**Last reviewed:** 2026-09-25, at T5.9.
 
 Severity here is the requirements' own: `M` is must-fix for v1.0.
 
@@ -35,10 +35,10 @@ because a register with no history in it is a register nobody has used:
 | What | Kind | Why not `M` data-loss or credential |
 |---|---|---|
 | A screen reader announces almost nothing | accessibility | Documented in `docs/ACCESSIBILITY.md`. A toolkit limitation, not a defect of ours, and nothing is lost. |
-| The binary is 86.1 MB against a 60 MB budget | performance | Measured on every build; the decision is the owner's (T4.30). Three drivers are most of it — Oracle 14.8 MB, Kafka 10.4 MB, DynamoDB 5.1 MB. Nothing is lost. |
+| The binary is 86.3 MB against a 60 MB budget, and the command line 69.8 MB | performance | Measured on every build; the decision is the owner's (T4.30). Three drivers are most of it — Oracle 14.8 MB, Kafka 10.4 MB, DynamoDB 5.1 MB — and the command line is the same drivers without the toolkit, so both move together whichever way it is decided. Nothing is lost. |
 | Cassandra reads an unset `int` back as `0` rather than as nothing | display | gocql gives no way to tell one from the other. Nothing is written wrongly: the grid shows `0`, and an edit writes what somebody typed. |
 | A ClickHouse table with an `AggregateFunction` column cannot be read at all | driver limit | clickhouse-go's limit. The table refuses to open, which is a visible failure rather than a quiet wrong answer. |
-| SQLite draws no ER diagram | missing feature | Its tree has nothing above its class folders, so there is no node to draw one from. Unclaimed by any task. |
+| SQLite draws no ER diagram | missing feature | Its tree has nothing above its class folders, so there is no node to draw one from. Unclaimed by any task. The same shape made every snapshot of a SQLite database empty until T5.9 found it; that is fixed, and this is only the diagram. |
 | Oracle has no bulk loading, `EXPLAIN` plan, editable results or explicit transactions | missing features | Each is absent and says so where it would be offered; nothing pretends to work. |
 | ClickHouse has no bulk loading, `EXPLAIN` plans, editable query results or transactions | missing features | The last two are experimental in the engine itself. |
 | Where in a statement an Oracle error was is not reported | diagnostics | go-ora keeps the offset to itself. The error is still shown. |

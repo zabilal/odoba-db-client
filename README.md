@@ -40,6 +40,15 @@ their lag; records decoded as text, JSON or through a Schema Registry schema.
 Redis keys of every type. MongoDB documents with their own editor. Browsing a
 Kafka topic never joins a consumer group and never commits an offset.
 
+**Build a query without writing one.** A canvas of tables and joins, every part
+of a `SELECT` beside it, and the SQL it makes shown as it changes.
+
+**Ask, if you want to.** A language model can turn a question into a statement
+grounded in the live schema, or say what a statement does. It is off until you
+turn it on, off again per connection until you opt that connection in, and it
+sends no rows unless you say so. The model can be one on your own machine.
+Nothing it writes ever runs: a statement lands in the editor, unrun.
+
 **Keep your work.** Tabs and unsaved query text come back after a crash. Named
 workspaces group the connections, tabs and saved queries of one piece of work.
 Everything can be backed up into one archive and put back.
@@ -52,16 +61,38 @@ Read `docs/KNOWN-DEFECTS.md` for the whole list, and
 - **A screen reader will announce almost nothing.** Keyboard operation, visible
   focus, AA contrast and text scaling are all done and tested; screen-reader
   support is not, because of where the toolkit is. That page says exactly why.
-- There is no visual query designer, no AI assistance and no web mode. Each is
-  planned and none is here.
+- There is no web mode, and there will not be one this cycle.
 - Releases are not yet signed or notarised, so there are no installers yet —
   only a build from source.
+
+## In a pipeline
+
+There is a second binary for the things a build does with a database, and it
+draws nothing at all, so it runs where there is no display:
+
+    ikigai-cli query   --url $URL --sql "SELECT count(*) FROM items"
+    ikigai-cli export  --url $URL --table public.items --out items.csv
+    ikigai-cli import  --url $URL --into public.items --from items.csv --dry-run
+    ikigai-cli save    --url $URL --model ./schema
+    ikigai-cli diff    --url $URL --model ./schema --exit-code
+    ikigai-cli deploy  --url $URL --model ./schema --apply
+
+A password comes from the environment — `IKIGAI_PASSWORD`, or `IKIGAI_URL` for a
+whole connection string — because a command line is visible to everything else
+on the machine. `--connection NAME` uses a connection saved in the application
+instead, keychain and all.
+
+Nothing changes a schema unasked: `deploy` prints the statements it would run and
+stops, and dropping anything needs `--allow-drops` as well as `--apply`. The exit
+status is 0 for done, 1 for failed, 2 for arguments it could not act on, and 3
+for "there is a difference", which is what a build gate reads.
 
 ## Building it
 
 Go 1.26 or later, and a C toolchain, which the graphics layer needs:
 
     go build ./cmd/ikigai        # the application
+    go build ./cmd/ikigai-cli    # the command line; no C toolchain, no display
     go test ./...                # everything that does not need a server
 
 DuckDB is behind a build tag, because it brings a hundred megabytes of prebuilt

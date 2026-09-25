@@ -230,3 +230,13 @@ jobs:
           if [ "$size" -gt "$budget" ]; then
             echo "::warning::the binary is over its NFR-P8 budget by $((size - budget)) bytes"
           fi
+          # The command line is the same drivers without the toolkit, so it is
+          # measured beside the application rather than on its own: whichever
+          # way T4.30 is decided, both move together.
+          go build -ldflags="-s -w" -trimpath -o ikigai-cli-release ./cmd/ikigai-cli
+          cli=$(wc -c < ikigai-cli-release | tr -d " ")
+          printf "command line: %s bytes (%.1f MB)\n" "$cli" "$(echo "$cli / 1048576" | bc -l)"
+          if [ "$cli" -gt "$size" ]; then
+            echo "::error::the command line is larger than the application, which draws: something it must not import has arrived"
+            exit 1
+          fi
