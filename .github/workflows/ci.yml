@@ -176,21 +176,24 @@ jobs:
 
   # NFR-P8: the binary is measured on every platform, on every push.
   #
-  # It does not meet its budget. A stripped macOS build is 81.0 MB against
-  # 60 MB, and two dependencies are most of the gap: go-ora, the Oracle
-  # driver, is 14.8 MB of it, and franz-go, the Kafka driver, 10.4 MB — a
-  # build without either is 55.8 MB. What to do about that is a product
-  # decision, not a build one: put those two behind build tags as DuckDB
-  # already is, raise the budget, or ship a core build and a full one.
-  # TASKS.md T4.30 records it as the owner's call.
+  # It does not meet its budget. A stripped macOS build is 86.1 MB against
+  # 60 MB, and three drivers are most of the gap: go-ora (Oracle) is 14.8 MB
+  # of it, franz-go (Kafka) 10.4, and aws-sdk-go-v2 (DynamoDB) 5.1 — a build
+  # without the three is 55.8 MB. What to do about that is a product decision,
+  # not a build one: put them behind build tags as DuckDB already is, raise the
+  # budget, or ship a core build and a full one. TASKS.md T4.30 records it as
+  # the owner's call.
   #
   # Until then this job is a ratchet rather than a gate: it prints the size
   # against the budget and fails only if the binary grows past the ceiling
   # below, so that the gap cannot widen unnoticed while the decision is open.
   # The ceiling moves only when a deliberate, measured addition moves it, and
-  # the commit that moves it says what it bought: at 80 MB it was Kafka
-  # becoming reachable from the application at all (T4.3), which cost 10.4 MB
-  # and had been written and unregistered.
+  # the commit that moves it says what it bought: 80 to 84 MB was Kafka
+  # becoming reachable from the application at all (T4.3, 10.4 MB, written and
+  # unregistered until then), and 84 to 90 was the DynamoDB driver (T4.6,
+  # 5.1 MB). Twice in a day is the ratchet documenting growth rather than
+  # limiting it, which is the argument for settling NFR-P8 rather than for
+  # moving this number again.
   # The ceiling is one number for three platforms because only macOS has been
   # measured; the print is what tells us the others.
   binary-size:
@@ -217,7 +220,7 @@ jobs:
           go build -ldflags="-s -w" -trimpath -o ikigai-release ./cmd/ikigai
           size=$(wc -c < ikigai-release | tr -d " ")
           budget=$((60 * 1024 * 1024))
-          ceiling=$((84 * 1024 * 1024))
+          ceiling=$((90 * 1024 * 1024))
           printf "binary: %s bytes (%.1f MB)\n" "$size" "$(echo "$size / 1048576" | bc -l)"
           printf "budget (NFR-P8): %s bytes; ceiling while the decision is open: %s\n" "$budget" "$ceiling"
           if [ "$size" -gt "$ceiling" ]; then
