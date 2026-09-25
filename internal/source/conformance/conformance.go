@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,6 +122,7 @@ func Run(t *testing.T, target Target) {
 		{"Writer", checkWriter},
 		{"EditableResults", checkEditableResults},
 		{"UnsupportedOptionsRejected", checkUnsupportedOptionsRejected},
+		{"EveryValueIsBound", checkEveryValueIsBound},
 		{"Loader", checkLoader},
 	}
 
@@ -541,6 +543,102 @@ func checkReadOnlyGuard(t *testing.T, target Target) {
 	if len(plan.Statements) == 0 {
 		t.Error("Plan produced no statements; FR-4.4 requires a reviewable preview")
 	}
+}
+
+// checkEveryValueIsBound holds NFR-S6 for every driver at once: nothing a
+// person typed is written into a statement.
+//
+// Three drivers asserted this for themselves and the rest did not, which is
+// exactly the gap a shared suite is for: a value concatenated into SQL is
+// the same defect in every dialect, and the one that has no test for it is
+// the one that will have it. The statement is only rendered, never run, so
+// this costs no server and every driver with a dialect takes it.
+func checkEveryValueIsBound(t *testing.T, target Target) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	src := target.Open(ctx, t)
+	defer src.Close()
+
+	d, ok := src.(source.Dialect)
+	if !ok {
+		t.Skip("source has no dialect to render a statement in")
+	}
+	// Only where the statement is what the server is given. A document or
+	// stream source builds its query as a structure — MongoDB hands the
+	// driver a bson.D — and what its dialect renders is a preview for
+	// somebody to read. A value appearing in a preview is not a value
+	// reaching a server, and holding a preview to this rule would be
+	// holding it to something it is not.
+	if p := src.Capabilities().Paradigm; p != model.ParadigmRelational {
+		t.Skipf("a %s source builds its query as a structure; what it renders is a preview", p)
+	}
+
+	// A value that is a statement, and another that is a name. If either
+	// reaches the SQL, something concatenated it.
+	const value = "'; DROP TABLE orders --"
+	const alsoValue = `x" or 1=1; --`
+	st, err := d.BuildBrowse(target.Browsable, source.BrowseOptions{
+		Limit: 10,
+		Filters: []source.Filter{
+			{Column: firstColumn(ctx, t, src, target.Browsable), Op: source.OpEqual, Values: []any{value}},
+		},
+	})
+	if err != nil {
+		// A driver that cannot filter on that column says so rather than
+		// building something that ignores it, which is its own check.
+		t.Skipf("BuildBrowse: %v", err)
+	}
+	if strings.Contains(st.SQL, "DROP TABLE") || strings.Contains(st.SQL, value) {
+		t.Fatalf("a value reached the statement: %s", st.SQL)
+	}
+	if !containsValue(st.Args, value) {
+		t.Errorf("the value was not bound; the statement binds %v", st.Args)
+	}
+	// And again with a value shaped like a quoted name, in case a dialect
+	// quotes values the way it quotes identifiers.
+	st, err = d.BuildBrowse(target.Browsable, source.BrowseOptions{
+		Limit: 10,
+		Filters: []source.Filter{
+			{Column: firstColumn(ctx, t, src, target.Browsable), Op: source.OpEqual, Values: []any{alsoValue}},
+		},
+	})
+	if err != nil {
+		t.Skipf("BuildBrowse: %v", err)
+	}
+	if strings.Contains(st.SQL, "1=1") || strings.Contains(st.SQL, alsoValue) {
+		t.Fatalf("a value reached the statement: %s", st.SQL)
+	}
+	if !containsValue(st.Args, alsoValue) {
+		t.Errorf("the value was not bound; the statement binds %v", st.Args)
+	}
+}
+
+// firstColumn is a column the browsable object has, since a filter has to
+// name one that is there.
+func firstColumn(ctx context.Context, t *testing.T, src source.Source, ref model.ObjectRef) string {
+	t.Helper()
+	rs, err := src.Browse(ctx, ref, source.BrowseOptions{Limit: 1})
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	defer rs.Close()
+	cols := rs.Columns()
+	if len(cols) == 0 {
+		t.Fatal("the browsable object has no columns")
+	}
+	return cols[0].Name
+}
+
+// containsValue reports whether a statement bound this value, wherever
+// among its arguments it put it.
+func containsValue(args []any, want string) bool {
+	for _, a := range args {
+		if s, ok := a.(string); ok && s == want {
+			return true
+		}
+	}
+	return false
 }
 
 func checkUnsupportedOptionsRejected(t *testing.T, target Target) {

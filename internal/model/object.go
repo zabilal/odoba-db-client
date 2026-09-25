@@ -44,6 +44,10 @@ const (
 	// Key-value
 	KindKey ObjectKind = "key"
 
+	// A published-to channel, which is neither a key nor a log: nothing is
+	// kept on one, so it is read only by listening (FR-12.5).
+	KindChannel ObjectKind = "channel"
+
 	// Stream
 	KindCluster       ObjectKind = "cluster"
 	KindTopic         ObjectKind = "topic"

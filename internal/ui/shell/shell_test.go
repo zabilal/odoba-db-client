@@ -3,9 +3,11 @@ package shell
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,6 +85,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 			Hint: "The server could not be reached.", Err: errors.New("dial tcp: connection refused")}
 	}
 	return fakeSource{uncounted: cfg.Host == "nocount", unkeyed: cfg.Host == "nokey", fkeys: cfg.Host == "fkeys",
+		wide: cfg.Host == "wide", slowList: cfg.Host == "slowlist",
 		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse",
 		noTx: cfg.Host == "notx", txPoisons: cfg.Host == "txpoisons",
 		noStats: cfg.Host == "nostats", guard: cfg.Guard}, nil
@@ -112,8 +115,32 @@ type fakeSource struct {
 	noTx      bool // it holds no explicit transactions
 	noStats   bool // it will not measure a column
 	txPoisons bool // a statement that fails in a transaction ends what it could do
-	guard     source.Guard
+	// wide holds two more tables: memos, whose columns are not the items
+	// table's, and alone, which shares no column with anything.
+	wide bool
+	// slowList takes its time listing what a database holds, so that an
+	// answer can be made to arrive after a newer one.
+	slowList bool
+	guard    source.Guard
 }
+
+// memosNode and aloneNode are the other tables of a wide source.
+var memosNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "memos"), Label: "memos",
+	Browsable: true, HasChildren: true}
+
+var aloneNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "alone"), Label: "alone",
+	Browsable: true, HasChildren: true}
+
+// placesNode is a table with somewhere in it: a latitude, a longitude and a
+// geometry, which is what a map is drawn from. Like memos it is not in the
+// tree's own list, so nothing that counts what a schema holds is changed by it.
+var placesNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "places"), Label: "places",
+	Browsable: true, HasChildren: true}
+
+// docsNode is a table whose place is only in its values: a JSON column holding
+// GeoJSON, which nothing but reading a row can recognise.
+var docsNode = model.Node{Ref: model.NewRef(model.KindTable, "main", "docs"), Label: "docs",
+	Browsable: true, HasChildren: true}
 
 // Explain answers a small tree, measured where it was asked to run the
 // statement (FR-5.13). The shape is what the window draws: a step that does
@@ -147,9 +174,15 @@ func (fakeSource) Root(context.Context) ([]model.Node, error) {
 	return []model.Node{{Ref: model.NewRef(model.KindDatabase, "main"), Label: "main", HasChildren: true}}, nil
 }
 
-func (fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
+func (f fakeSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
 	switch ref.Kind {
 	case model.KindDatabase:
+		if f.slowList {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if f.wide {
+			return []model.Node{itemsNode, memosNode, aloneNode}, nil
+		}
 		return []model.Node{itemsNode}, nil
 	case model.KindTable:
 		// A table's columns, as every driver lists them, with the type the
@@ -339,6 +372,7 @@ func writtenPlans() []*source.WritePlan {
 
 // fakeLoad is a load the fake source took.
 type fakeLoad struct {
+	target  model.ObjectRef
 	columns []string
 	rows    []model.Row
 	opt     source.LoadOptions
@@ -353,7 +387,7 @@ func loadsSoFar() []fakeLoad {
 // LoadRows keeps the rows a load gives it, as the guard allows, committing
 // 500 rows at a time as the drivers do; failWrite, when not 0, is the row
 // refused, by its place among those it is given, and left out when told.
-func (f fakeSource) LoadRows(ctx context.Context, _ model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
+func (f fakeSource) LoadRows(ctx context.Context, target model.ObjectRef, columns []string, rows model.RowStream, opt source.LoadOptions) (int64, error) {
 	if err := f.guard.Allow(source.AccessWrite, opt.Confirmed); err != nil {
 		return 0, err
 	}
@@ -384,7 +418,7 @@ func (f fakeSource) LoadRows(ctx context.Context, _ model.ObjectRef, columns []s
 		got = append(got, r)
 	}
 	fakeWrites.Lock()
-	fakeWrites.loads = append(fakeWrites.loads, fakeLoad{columns: columns, rows: got, opt: opt})
+	fakeWrites.loads = append(fakeWrites.loads, fakeLoad{target: target, columns: columns, rows: got, opt: opt})
 	fakeWrites.Unlock()
 	return int64(len(got)), nil
 }
@@ -422,7 +456,7 @@ var browses struct {
 	opts []source.BrowseOptions
 }
 
-func (f fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
+func (f fakeSource) Browse(_ context.Context, ref model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
 	browses.Lock()
 	browses.opts = append(browses.opts, opt)
 	browses.Unlock()
@@ -441,7 +475,17 @@ func (f fakeSource) Browse(_ context.Context, _ model.ObjectRef, opt source.Brow
 	if opt.Limit > 0 && opt.Offset+opt.Limit < end {
 		end = opt.Offset + opt.Limit
 	}
-	rows := &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}
+	var rows model.RowStream = &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}
+	switch ref.Name() {
+	case "memos":
+		rows = &memoStream{next: opt.Offset, end: end}
+	case "alone":
+		rows = &aloneStream{next: opt.Offset, end: end}
+	case "places":
+		rows = &placeStream{next: opt.Offset, end: end}
+	case "docs":
+		rows = &geoDocStream{next: opt.Offset, end: end}
+	}
 	if len(opt.Columns) == 0 {
 		return rows, nil
 	}
@@ -510,6 +554,106 @@ func (s *sliceStream) Next(context.Context) (model.Row, error) {
 }
 func (*sliceStream) Close() error { return nil }
 
+// memoStream is the memos table's rows: an id it shares with the items
+// table, and a memo it does not. Its id is text where the items table's is
+// a number, so a value copied into it has to be made its type.
+type memoStream struct{ next, end int64 }
+
+func (*memoStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{
+		{Name: "memo", Type: model.DataType{Class: model.TypeString, Native: "text", Nullable: true}},
+		{Name: "id", Type: model.DataType{Class: model.TypeString, Native: "text"}},
+	}
+}
+
+func (s *memoStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	s.next++
+	return model.Row{fmt.Sprintf("memo %d", s.next-1), fmt.Sprintf("%d", s.next-1)}, nil
+}
+
+func (*memoStream) Close() error { return nil }
+
+// placeStream is the places table's rows: a name, a pair of coordinates and a
+// geometry, so that a map has all three ways of holding a place to be drawn
+// from. Every row is somewhere different, in a line running north-east.
+type placeStream struct{ next, end int64 }
+
+func (*placeStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{
+		{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text"}},
+		{Name: "lat", Type: model.DataType{Class: model.TypeFloat, Native: "double", Length: -1}},
+		{Name: "lon", Type: model.DataType{Class: model.TypeFloat, Native: "double", Length: -1}},
+		{Name: "shape", Type: model.DataType{Class: model.TypeGeometry, Native: "geometry", Length: -1}},
+	}
+}
+
+func (s *placeStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	i := float64(s.next)
+	s.next++
+	lat, lon := 51.5+i/10, -0.1+i/10
+	return model.Row{fmt.Sprintf("place %d", int(i)), lat, lon,
+		model.Geometry{SRID: 4326, WKB: wkbPointBytes(lon, lat)}}, nil
+}
+
+func (*placeStream) Close() error { return nil }
+
+// geoDocStream is the docs table's rows: a name and a document that happens to hold
+// GeoJSON. Nothing in the column's type says so, which is the point of it.
+type geoDocStream struct{ next, end int64 }
+
+func (*geoDocStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{
+		{Name: "name", Type: model.DataType{Class: model.TypeString, Native: "text"}},
+		{Name: "doc", Type: model.DataType{Class: model.TypeJSON, Native: "jsonb", Length: -1}},
+	}
+}
+
+func (s *geoDocStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	i := float64(s.next)
+	s.next++
+	doc := fmt.Sprintf(`{"type":"Point","coordinates":[%v,%v]}`, -0.1+i/10, 51.5+i/10)
+	return model.Row{fmt.Sprintf("doc %d", int(i)), model.JSON(doc)}, nil
+}
+
+func (*geoDocStream) Close() error { return nil }
+
+// wkbPointBytes writes a point as little-endian well-known binary, which is what
+// a geometry column hands back.
+func wkbPointBytes(x, y float64) []byte {
+	b := []byte{1}
+	b = binary.LittleEndian.AppendUint32(b, 1)
+	b = binary.LittleEndian.AppendUint64(b, math.Float64bits(x))
+	b = binary.LittleEndian.AppendUint64(b, math.Float64bits(y))
+	return b
+}
+
+// aloneStream is the alone table's rows, whose one column is of no other
+// table's name: somewhere with nothing to copy into.
+type aloneStream struct{ next, end int64 }
+
+func (*aloneStream) Columns() []model.ColumnDef {
+	return []model.ColumnDef{{Name: "only", Type: model.DataType{Class: model.TypeString, Native: "text", Nullable: true}}}
+}
+
+func (s *aloneStream) Next(context.Context) (model.Row, error) {
+	if s.next >= s.end {
+		return nil, io.EOF
+	}
+	s.next++
+	return model.Row{fmt.Sprintf("only %d", s.next-1)}, nil
+}
+
+func (*aloneStream) Close() error { return nil }
+
 type fixture struct {
 	s            *Shell
 	q            *uithread.Queue
@@ -521,13 +665,26 @@ type fixture struct {
 	deps         Deps
 	files        *fakeFiles
 	app          *notedApp
+	// vaultKeys is the keychain behind the vault, so that a test can see
+	// what is stored rather than what is handed back.
+	vaultKeys *secrets.Memory
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	a := &notedApp{App: test.NewTempApp(t)}
 	// Opened first so it closes last: history writes finish in the background.
-	hist, err := localdb.Open(context.Background(), filepath.Join(t.TempDir(), "ikigai.db"))
+	// The local database lives in a directory this removes itself, and
+	// whose removal is allowed to fail. SQLite writes a sidecar file
+	// beside it as the last connection goes, and a file appearing while
+	// the directory is being removed is not something a test should fail
+	// on: t.TempDir's own cleanup reports that as an error.
+	dir, err := os.MkdirTemp("", "ikigai-shell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	hist, err := localdb.Open(context.Background(), filepath.Join(dir, "ikigai.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,18 +694,19 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conns := app.NewConnections(sf, app.NewVault(secrets.NewMemory(), nil), nil)
+	keys := secrets.NewMemory()
+	conns := app.NewConnections(sf, app.NewVault(keys, nil), nil)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
 	q := &uithread.Queue{}
 	files := &fakeFiles{}
-	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Params: hist,
+	d := Deps{Conns: conns, WS: ws, Settings: sf, History: hist, Saved: hist, Scratch: hist, Session: hist, Views: hist, Workspaces: hist, Params: hist,
 		Decoders: hist,
 		Layouts:  hist,
 		Autosave: time.Millisecond, Run: q.Run, GOOS: "darwin", Files: files}
 	s := New(a, d)
 	t.Cleanup(s.shutdown)
 	return &fixture{s: s, q: q, conns: conns, ws: ws, settings: sf, settingsPath: path, hist: hist, deps: d,
-		files: files, app: a}
+		files: files, app: a, vaultKeys: keys}
 }
 
 func (fx *fixture) create(t *testing.T, host string, sec map[string]string) store.SavedConnection {
@@ -906,9 +1064,10 @@ func TestSwitchingEngineKeepsSharedFields(t *testing.T) {
 	if f.inputs["path"] == nil || f.inputs["host"].entry.Text != "db1" {
 		t.Error("the host should carry over and the file field appear")
 	}
-	// Name, Type, URL; host, file; encryption, environment, read-only, message.
-	if n := len(f.form.Items); n != 9 {
-		t.Errorf("%d form rows, want 9", n)
+	// Name, Type, URL; host, file; encryption, environment, read-only, the
+	// assistant's two switches, message.
+	if n := len(f.form.Items); n != 11 {
+		t.Errorf("%d form rows, want 11", n)
 	}
 }
 

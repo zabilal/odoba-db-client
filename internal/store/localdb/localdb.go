@@ -134,6 +134,19 @@ func Open(ctx context.Context, path string) (*DB, error) {
 // Close closes the database.
 func (d *DB) Close() error { return d.db.Close() }
 
+// BackupTo writes a whole copy of the database to a file that does not
+// exist yet (FR-17.5).
+//
+// VACUUM INTO does it: it runs while the database is open and in use, and
+// what it writes is the database as of when it ran, with no -wal beside it
+// to carry. Copying the file by hand would copy whatever was mid-write.
+func (d *DB) BackupTo(ctx context.Context, path string) error {
+	if _, err := d.db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+		return fmt.Errorf("localdb: copying the database: %w", err)
+	}
+	return nil
+}
+
 // SchemaVersion returns the schema version on disk.
 func (d *DB) SchemaVersion(ctx context.Context) (int, error) {
 	var v int

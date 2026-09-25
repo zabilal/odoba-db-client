@@ -101,7 +101,7 @@ func naming(db string) string {
 func walkSnapshot(ctx context.Context, src source.Source, database string) (*model.Database, error) {
 	db := &model.Database{Name: database}
 	ref := model.NewRef(model.KindDatabase, database)
-	under, err := src.Children(ctx, ref)
+	under, err := classesUnder(ctx, src, ref)
 	if err != nil {
 		return nil, fmt.Errorf("reading what %s holds: %w", naming(database), err)
 	}
@@ -133,10 +133,35 @@ func walkSnapshot(ctx context.Context, src source.Source, database string) (*mod
 	return db, nil
 }
 
+// classesUnder is what a node holds: the schemas of a database, or the class
+// folders — Tables, Views and the rest — of a database or a schema.
+//
+// A source with one database has no node above those folders. Its root *is*
+// what its database holds (SQLite, and libSQL with it), so asking for the
+// children of a database reference it never made answers nothing at all, and a
+// snapshot of nothing compares equal to everything: two different databases
+// would read as identical, and a model saved from one would be empty. That is
+// the worst way for this to be wrong, so where the source has one database and
+// says nothing about it, the root is read instead.
+func classesUnder(ctx context.Context, src source.Source, ref model.ObjectRef) ([]model.Node, error) {
+	under, err := src.Children(ctx, ref)
+	switch {
+	case err != nil:
+		return nil, err
+	case len(under) > 0, ref.Kind != model.KindDatabase:
+		return under, nil
+	case src.Capabilities().Structure.MultipleDatabases:
+		// A source with databases of its own that says this one holds nothing
+		// is telling the truth about an empty database.
+		return under, nil
+	}
+	return src.Root(ctx)
+}
+
 // walkSchema fills one schema from the class folders under a node.
 func walkSchema(ctx context.Context, src source.Source, ref model.ObjectRef, name string) (model.Schema, error) {
 	out := model.Schema{Name: name}
-	classes, err := src.Children(ctx, ref)
+	classes, err := classesUnder(ctx, src, ref)
 	if err != nil {
 		return out, fmt.Errorf("reading what %s holds: %w", name, err)
 	}

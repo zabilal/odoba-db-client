@@ -309,13 +309,14 @@ type redisSource struct {
 }
 
 var (
-	_ source.Source    = (*redisSource)(nil)
-	_ source.Countable = (*redisSource)(nil)
-	_ source.Writer    = (*redisSource)(nil)
-	_ source.RowObject = (*redisSource)(nil)
-	_ source.Dialect   = (*redisSource)(nil)
-	_ source.Queryer   = (*redisSource)(nil)
-	_ source.Sessioner = (*redisSource)(nil)
+	_ source.Source     = (*redisSource)(nil)
+	_ source.Countable  = (*redisSource)(nil)
+	_ source.Writer     = (*redisSource)(nil)
+	_ source.RowObject  = (*redisSource)(nil)
+	_ source.Dialect    = (*redisSource)(nil)
+	_ source.Followable = (*redisSource)(nil)
+	_ source.Queryer    = (*redisSource)(nil)
+	_ source.Sessioner  = (*redisSource)(nil)
 )
 
 func (s *redisSource) Capabilities() capability.Capabilities {
@@ -336,8 +337,11 @@ func (s *redisSource) Capabilities() capability.Capabilities {
 		// cancelling its context, which the client does itself, so no Killer
 		// is needed.
 		Query: capability.Query{Supported: true, Language: "redis", MultiStatement: true},
+		// A channel is listened to, never read: nothing is kept on one, so
+		// there is nothing to consume and nowhere to start (FR-12.5).
+		Stream: capability.Stream{Follow: true},
 		Objects: map[model.ObjectKind]bool{
-			model.KindDatabase: true, model.KindKey: true,
+			model.KindDatabase: true, model.KindKey: true, model.KindChannel: true,
 		},
 	}
 }
@@ -404,15 +408,23 @@ func (s *redisSource) Close() (err error) {
 	return s.client.Close()
 }
 
+// Root is the databases, and the channels beside them: pub/sub is not part of
+// the keyspace, so a channel belongs to the server rather than to any one
+// database (pubsub.go).
 func (s *redisSource) Root(ctx context.Context) ([]model.Node, error) {
-	return s.databases(ctx)
+	dbs, err := s.databases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(dbs, s.channelClass(ctx)...), nil
 }
 
-// Children is nothing: a database holds keys, and keys are rows rather than
-// a tree. A keyspace of millions would be a tree nobody could read, and the
-// grid is where a pattern narrows it down (T2.40).
-func (s *redisSource) Children(context.Context, model.ObjectRef) ([]model.Node, error) {
-	return nil, nil
+// Children is the channels, and otherwise nothing: a database holds keys, and
+// keys are rows rather than a tree. A keyspace of millions would be a tree
+// nobody could read, and the grid is where a pattern narrows it down (T2.40).
+func (s *redisSource) Children(ctx context.Context, ref model.ObjectRef) (_ []model.Node, err error) {
+	defer panics.Recover(&err, "listing the channels")
+	return s.childChannels(ctx, ref)
 }
 
 // databases lists the numbered databases the server holds.

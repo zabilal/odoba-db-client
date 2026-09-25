@@ -79,6 +79,24 @@ func (w *Widget) View() *canvas.Viewport { return w.view }
 // Selected is the node chosen, or "".
 func (w *Widget) Selected() string { return w.selected }
 
+// Select chooses a node, or drops the choice when given "". It does not call
+// OnSelect: this is the owner saying what is chosen, and telling it what it has
+// just said would be a loop.
+//
+// It exists because a canvas is rebuilt when what is on it changes — the query
+// designer draws a new one for every table added — and a selection that could
+// not be put back would be lost on every change, with the controls that depend
+// on it going dead while the box is still highlighted.
+func (w *Widget) Select(id string) {
+	if id != "" && w.graph.NodeByID(id) == nil {
+		// A node that is not there cannot be chosen: leaving the old choice
+		// would be worse, so the choice is dropped.
+		id = ""
+	}
+	w.selected = id
+	w.Refresh()
+}
+
 // Fit puts the whole diagram on screen, which is where one starts.
 func (w *Widget) Fit() {
 	w.view.FitTo(w.graph.Bounds(), fitPadding)

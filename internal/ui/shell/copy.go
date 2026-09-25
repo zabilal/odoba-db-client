@@ -234,5 +234,17 @@ func nounCount(n int, noun string) string {
 	if n == 1 {
 		return "1 " + noun
 	}
-	return group(int64(n)) + " " + noun + "s"
+	return group(int64(n)) + " " + plural(noun)
+}
+
+// plural is a noun's plural. A noun ending in a sibilant takes "es", which
+// is the one irregularity among the words this window counts: matches,
+// indexes, boxes.
+func plural(noun string) string {
+	for _, end := range []string{"s", "x", "z", "ch", "sh"} {
+		if strings.HasSuffix(noun, end) {
+			return noun + "es"
+		}
+	}
+	return noun + "s"
 }

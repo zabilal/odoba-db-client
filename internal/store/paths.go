@@ -41,6 +41,11 @@ func (p Paths) SettingsFile() string { return filepath.Join(p.Config, "settings.
 // DatabaseFile is where the local database is kept.
 func (p Paths) DatabaseFile() string { return filepath.Join(p.Data, "ikigai.db") }
 
+// PluginsDir is where plugins live unless the settings name somewhere else: a
+// folder in this application's own data, so that installing one is putting a
+// folder there and nothing more (FR-16.2).
+func (p Paths) PluginsDir() string { return filepath.Join(p.Data, "plugins") }
+
 // Resolve returns this run's paths: portable if the marker file sits beside
 // the executable (FR-17.6), otherwise the platform's convention (FR-17.1).
 func Resolve() (Paths, error) {

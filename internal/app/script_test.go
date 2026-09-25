@@ -25,6 +25,8 @@ type schemaSource struct {
 	noDeps  bool
 	keys    map[string][]model.ForeignKey
 	read    []model.ObjectKind // the classes it was asked to list
+	dropped int                // how many times a DROP was asked for
+	cascade bool               // whether any of them asked for a cascade
 }
 
 func (*schemaSource) Capabilities() capability.Capabilities {
@@ -117,7 +119,13 @@ func (*schemaSource) AlterObject(ref model.ObjectRef, from, to any) ([]source.St
 func (*schemaSource) RenameColumn(model.ObjectRef, string, string) ([]source.Statement, error) {
 	return nil, nil
 }
-func (*schemaSource) DropObject(model.ObjectRef, bool) ([]source.Statement, error) { return nil, nil }
+
+// DropObject renders the DROP, and records that it was asked and how.
+func (s *schemaSource) DropObject(ref model.ObjectRef, cascade bool) ([]source.Statement, error) {
+	s.dropped++
+	s.cascade = s.cascade || cascade
+	return []source.Statement{{SQL: "DROP TABLE " + ref.Name()}}, nil
+}
 func (*schemaSource) RenameObject(model.ObjectRef, string) ([]source.Statement, error) {
 	return nil, nil
 }
@@ -310,6 +318,32 @@ func (*scriptPanicker) Children(context.Context, model.ObjectRef) ([]model.Node,
 func TestADriverThatFallsOverScriptingIsContained(t *testing.T) {
 	_, err := ScriptSchema(context.Background(), &scriptPanicker{}, schemaRef)
 	if err == nil || !strings.Contains(err.Error(), "writing a schema's DDL") {
+		t.Errorf("it said %v", err)
+	}
+}
+
+// A DROP is written, never run (FR-2.8).
+func TestScriptDropIsWritten(t *testing.T) {
+	src := &schemaSource{}
+	stmts, err := ScriptDrop(src, model.NewRef(model.KindTable, "sales", "public", "orders"))
+	if err != nil || len(stmts) != 1 {
+		t.Fatalf("it wrote %+v, %v", stmts, err)
+	}
+	if !strings.Contains(stmts[0].SQL, "DROP") || !strings.Contains(stmts[0].SQL, "orders") {
+		t.Errorf("it wrote %q", stmts[0].SQL)
+	}
+	if src.dropped != 1 {
+		t.Errorf("it asked the driver %d times", src.dropped)
+	}
+	if src.cascade {
+		t.Error("it asked for a cascade, which is a choice to make with the list in front of you")
+	}
+}
+
+// A connection that renders no DDL says so rather than writing something
+// it has guessed.
+func TestScriptDropNeedsADDLGenerator(t *testing.T) {
+	if _, err := ScriptDrop(&walker{}, model.NewRef(model.KindTable, "sales", "public", "orders")); !errors.Is(err, ErrNoDDL) {
 		t.Errorf("it said %v", err)
 	}
 }

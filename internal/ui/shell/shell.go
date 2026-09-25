@@ -59,6 +59,12 @@ type Deps struct {
 	// Session keeps the window as it was left, for the next start. Nil
 	// starts with an empty window every time.
 	Session app.SessionStore
+	// Views keeps a table's rows as somebody arranged them, under a name.
+	// Nil turns saved views off.
+	Views app.ViewStore
+	// Workspaces keeps the named groupings of connections, tabs and saved
+	// queries (FR-15.9). Nil turns workspaces off.
+	Workspaces app.WorkspaceStore
 
 	// Run schedules work on the UI goroutine, and refreshes are coalesced over
 	// Delay. Nil means Fyne's goroutine and one frame. Tests pass a
@@ -79,13 +85,29 @@ type Deps struct {
 	// Decoders remembers which decoder a topic's key and value are read with
 	// (FR-13.7). Nil keeps the choice for as long as the view lives.
 	Decoders app.DecoderStore
+	// Backup writes everything the application keeps into one archive and
+	// puts it back (FR-17.5). Nil turns both off.
+	Backup *app.Backup
+	// Version is this build, for saying what is running and for comparing
+	// against a release. UpdateFeed is where to ask about newer versions,
+	// and empty — which is the default — means never asking (FR-15.10,
+	// NFR-D6).
+	Version    string
+	UpdateFeed string
 }
+
+// windowTitle is the application's name, which a workspace's name joins.
+const windowTitle = "Ikigai DB"
 
 // Shell is one main window.
 type Shell struct {
 	d   Deps
 	app fyne.App
 	win fyne.Window
+	// master is the first window, which keeps the session and whose
+	// closing quits. A second window is over the same connections and
+	// closes alone.
+	master bool
 	// away is whether the app is in the background, where long work that
 	// ends is told by a notification (notify.go).
 	away bool
@@ -113,6 +135,10 @@ type Shell struct {
 	tasks      []*task
 	taskView   *tasksPanel
 	pal        *palette.Palette
+	// savedView is the Saved Queries panel, and searchView the structure
+	// search; each is current while its panel is open.
+	savedView  *savedPanel
+	searchView *searchPanel
 	// work is the tabs, or the empty state, and right holds work alone or
 	// beside the open side panel (panel.go).
 	work, right *fyne.Container
@@ -135,6 +161,12 @@ type Shell struct {
 	restoring      bool
 	sessionPending bool
 	lastSession    []byte
+
+	// workspace is the named piece of work this window is in, zero for
+	// none: every connection and every saved query (workspaces.go).
+	// loader is the explorer's, whose Shows the workspace narrows.
+	workspace localdb.Workspace
+	loader    *view.Loader
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -213,8 +245,17 @@ type tab struct {
 	compare *comparePanel
 	// diagram is the ER diagram, where this tab is one (erdiagram.go).
 	diagram *diagramPanel
+	// designer is the visual query designer, where this tab is one
+	// (designer.go).
+	designer *designerPanel
 	// chart is the chart of a result, where this tab is one (chartview.go).
 	chart *chartPanel
+	// geomap is the map of a result's places, where this tab is one
+	// (mapview.go).
+	geomap *mapPanel
+	// stream is the follow and seek controls, where this tab holds a log
+	// (streambar.go).
+	stream *streamBar
 	// plan is a query plan, where this tab is one (explain.go).
 	plan *planPanel
 	// stats is the column figures last asked for (colstats.go), kept so
@@ -234,7 +275,29 @@ type tab struct {
 }
 
 // New builds the main window. Show it with Window().ShowAndRun().
-func New(a fyne.App, d Deps) *Shell {
+// New opens the first window: the one that keeps the session and whose
+// closing quits the application.
+func New(a fyne.App, d Deps) *Shell { return newShell(a, d, true) }
+
+// NewWindow opens another window over the same connections, saved queries
+// and history (FR-15.8).
+//
+// One window keeps the session, and it is the first. What a session
+// restores is a window, and restoring the same tabs into a second one
+// would be two windows showing the same work rather than one showing more
+// of it — so this one opens empty and saves nothing about itself.
+//
+// Closing it closes it alone. The connections it was reading are the other
+// window's too, and belong to the application rather than to either.
+func (s *Shell) NewWindow() *Shell {
+	d := s.d
+	d.Session = nil
+	w := newShell(s.app, d, false)
+	w.win.Show()
+	return w
+}
+
+func newShell(a fyne.App, d Deps, master bool) *Shell {
 	if d.Run == nil {
 		d.Run, d.Delay = uithread.Fyne, uithread.FrameDelay
 	}
@@ -253,20 +316,26 @@ func New(a fyne.App, d Deps) *Shell {
 	if d.Settings != nil {
 		d.Theme.Appearance = appearanceNamed(d.Settings.Get().Appearance)
 		d.Theme.Accent = uitheme.AccentNamed(d.Settings.Get().Accent)
+		d.Theme.Text = textSizeNamed(d.Settings.Get().TextSize)
 	}
 	a.Settings().SetTheme(d.Theme)
 
-	s := &Shell{d: d, app: a, reg: commands.NewRegistry(), menuItems: map[string]*fyne.MenuItem{}}
+	s := &Shell{d: d, app: a, master: master, reg: commands.NewRegistry(), menuItems: map[string]*fyne.MenuItem{}}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.registerCommands()
 	a.Lifecycle().SetOnExitedForeground(func() { s.away = true })
 	a.Lifecycle().SetOnEnteredForeground(func() { s.away = false })
 
-	s.win = a.NewWindow("Ikigai DB")
+	s.win = a.NewWindow(windowTitle)
 	s.win.Resize(fyne.NewSize(1280, 800))
-	s.win.SetMaster()
+	if master {
+		// Only the first window is the master: closing a second one
+		// closes a window, and closing the first quits.
+		s.win.SetMaster()
+	}
 
-	s.Explorer = view.New(&view.Loader{Conns: d.Conns, WS: d.WS}, d.Run, d.Delay)
+	s.loader = &view.Loader{Conns: d.Conns, WS: d.WS}
+	s.Explorer = view.New(s.loader, d.Run, d.Delay)
 	s.Explorer.OnOpen = s.OpenObject
 	s.Explorer.OnMenu = s.showExplorerMenu
 	s.Explorer.OnSelect = func(string) { s.sync() }
@@ -310,7 +379,9 @@ func New(a fyne.App, d Deps) *Shell {
 	if d.Scratch != nil || d.Session != nil {
 		s.writer = newWriter(func(err error) { d.Run(func() { s.autosaveFailed(err) }) })
 	}
-	s.restore()
+	if master {
+		s.askToUnlock(s.restore)
+	}
 	s.sync()
 	return s
 }
@@ -333,6 +404,19 @@ func (s *Shell) ActiveGrid() *grid.TableGrid {
 		return nil
 	}
 	return t.grid
+}
+
+// ActiveFooter is what the tab being worked in says about itself: how many rows,
+// what is filtered, whether a log is being followed.
+//
+// Exported for the same reason ActiveGrid is: a journey reads what a person
+// reads, and the footer is where the window says what is happening.
+func (s *Shell) ActiveFooter() string {
+	t := s.activeTab()
+	if t == nil || t.footer == nil {
+		return ""
+	}
+	return t.footer.Text
 }
 
 // ShowNotice tells the user what happened to their settings file at startup,
@@ -397,12 +481,63 @@ func (s *Shell) registerCommands() {
 		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
+		{ID: cmdCheckUpdates, Category: "Help", Title: "Check for Updates…",
+			Keywords: []string{"update", "version", "newer", "release", "upgrade"},
+			Enabled:  s.canCheckForUpdates, Run: s.checkForUpdates},
+		{ID: cmdBackUp, Category: "File", Title: "Back Up Everything…",
+			Keywords: []string{"backup", "archive", "zip", "save", "copy", "export", "migrate"},
+			Enabled:  s.canBackUp, Run: s.backUp},
+		{ID: cmdRestore, Category: "File", Title: "Restore from a Backup…",
+			Keywords: []string{"restore", "backup", "archive", "zip", "import", "migrate"},
+			Enabled:  s.canRestore, Run: s.restoreBackup},
+		{ID: cmdVaultLock, Category: "Connection", Title: "Lock the Vault…",
+			Keywords: []string{"vault", "lock", "passphrase", "password", "secret", "seal", "encrypt"},
+			Enabled:  s.canLockVault, Run: s.lockVault},
+		{ID: cmdVaultClose, Category: "Connection", Title: "Shut the Vault Now",
+			Keywords: []string{"vault", "lock", "shut", "close", "away", "leave"},
+			Enabled:  s.canCloseVault, Run: s.closeVault},
+		{ID: cmdVaultRemove, Category: "Connection", Title: "Remove the Vault Lock…",
+			Keywords: []string{"vault", "lock", "remove", "off", "passphrase"},
+			Enabled:  s.canRemoveVaultLock, Run: s.removeVaultLock},
+		{ID: cmdCopyRows, Category: "Explorer", Title: "Copy Rows To…",
+			Keywords: []string{"copy", "rows", "table", "transfer", "move", "another", "connection", "load"},
+			Enabled:  s.canCopyRows, Run: func() { s.copyRowsFrom() }},
+		{ID: cmdMark, Category: "Explorer", Title: "Mark for Batch",
+			Keywords: []string{"mark", "batch", "multi", "select", "several", "tick"},
+			Enabled:  s.canMark, Run: s.markSelected},
+		{ID: cmdMarksClear, Category: "Explorer", Title: "Clear Marks",
+			Keywords: []string{"mark", "batch", "clear", "none", "unmark"},
+			Enabled:  s.canClearMarks, Run: s.clearMarks},
+		{ID: cmdMarksSelect, Category: "Explorer", Title: "Script Marked as SELECT",
+			Keywords: []string{"mark", "batch", "script", "select", "several"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedSelect},
+		{ID: cmdMarksCreate, Category: "Explorer", Title: "Script Marked as CREATE",
+			Keywords: []string{"mark", "batch", "script", "create", "ddl", "several"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedCreate},
+		{ID: cmdMarksDrop, Category: "Explorer", Title: "Script Marked as DROP",
+			Keywords: []string{"mark", "batch", "script", "drop", "delete", "remove", "ddl"},
+			Enabled:  s.canScriptMarked, Run: s.scriptMarkedDrop},
+		{ID: cmdMarksExport, Category: "Explorer", Title: "Export Marked Objects…",
+			Keywords: []string{"mark", "batch", "export", "csv", "json", "several", "files"},
+			Enabled:  s.canExportMarked, Run: s.exportMarked},
 		{ID: cmdScriptSchema, Category: "Explorer", Title: "Script Whole Schema",
 			Keywords: []string{"ddl", "create", "schema", "export", "everything"},
 			Enabled:  s.canScriptSchema, Run: s.scriptSelectedSchema},
 		{ID: cmdDiagram, Category: "Explorer", Title: "Show the Diagram",
 			Keywords: []string{"er", "diagram", "relationships", "map", "picture"},
 			Enabled:  s.canDiagram, Run: s.diagramSelected},
+		{ID: cmdDesignQuery, Category: "Explorer", Title: "Design a Query…",
+			Keywords: []string{"designer", "visual", "query", "builder", "join", "canvas"},
+			Enabled:  s.canDesignQuery, Run: s.designQuerySelected},
+		{ID: cmdAssistantSetUp, Category: "Assistant", Title: "Assistant…",
+			Keywords: []string{"ai", "assistant", "model", "openai", "anthropic", "ollama", "local"},
+			Enabled:  s.canSetUpAssistant, Run: s.setUpAssistant},
+		{ID: cmdAssistantAsk, Category: "Assistant", Title: "Ask the Assistant…",
+			Keywords: []string{"ai", "ask", "question", "natural language", "generate", "sql"},
+			Enabled:  s.canAskAssistant, Run: s.askAssistant},
+		{ID: cmdAssistantExplain, Category: "Assistant", Title: "Explain This Statement",
+			Keywords: []string{"ai", "explain", "what does this do", "assistant"},
+			Enabled:  s.canExplainWithAssistant, Run: s.explainWithAssistant},
 		{ID: cmdCompare, Category: "Explorer", Title: "Compare with a Saved Model…",
 			Keywords: []string{"diff", "compare", "schema", "model", "drift"},
 			Enabled:  s.canCompareSelected, Run: s.compareSelected},
@@ -460,6 +595,18 @@ func (s *Shell) registerCommands() {
 			Enabled:  s.canOpenRowObject, Run: s.openRowObject},
 		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
 			Enabled: s.canShowReferring, Run: s.showReferring},
+		{ID: cmdSaveView, Category: "View", Title: "Save This View…",
+			Keywords: []string{"view", "save", "named", "filter", "sort", "columns", "arrangement"},
+			Enabled:  s.canSaveView, Run: s.saveView},
+		{ID: cmdWorkspaceSave, Category: "File", Title: "Save Workspace…",
+			Keywords: []string{"workspace", "project", "group", "save", "connections", "tabs"},
+			Enabled:  s.canUseWorkspaces, Run: s.saveWorkspace},
+		{ID: cmdWorkspaces, Category: "File", Title: "Workspaces…",
+			Keywords: []string{"workspace", "project", "group", "switch", "open", "connections", "tabs"},
+			Enabled:  s.canUseWorkspaces, Run: s.showWorkspaces},
+		{ID: cmdViews, Category: "View", Title: "Saved Views…",
+			Keywords: []string{"view", "saved", "named", "filter", "sort", "columns", "arrangement"},
+			Enabled:  s.canShowViews, Run: s.showViews},
 		{ID: cmdDetail, Category: "View", Title: "Detail Rows", Keywords: []string{"master", "detail", "children", "child rows", "nested", "related"},
 			Enabled: s.canShowDetail, Run: s.toggleDetail},
 		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
@@ -520,6 +667,12 @@ func (s *Shell) registerCommands() {
 			Enabled: s.canChooseKey, Run: s.chooseKey},
 		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
+		{ID: cmdContextMenu, Category: "View", Title: "Show the Menu for This",
+			Keywords: []string{"context", "menu", "right click", "secondary", "actions", "keyboard"},
+			Shortcut: sc("F10", commands.ModShift), Enabled: s.canShowContextMenu, Run: s.showContextMenu},
+		{ID: cmdSearchStructure, Category: "View", Title: "Search Structure…",
+			Keywords: []string{"find", "search", "definition", "column", "body", "procedure", "view", "grep"},
+			Enabled:  s.canSearchStructure, Run: s.searchStructure},
 		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
 		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
@@ -546,6 +699,10 @@ func (s *Shell) registerCommands() {
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.moveToOtherPane},
 		{ID: cmdJoinPanes, Category: "Window", Title: "Join Panes", Keywords: []string{"unsplit", "close split", "merge", "one pane"},
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.joinPanes},
+		{ID: cmdNewWindow, Category: "Window", Title: "New Window",
+			Keywords: []string{"window", "new", "another", "second"},
+			Shortcut: sc("N", commands.ModShortcut|commands.ModShift),
+			Run:      func() { s.NewWindow() }},
 		{ID: cmdTasks, Category: "Window", Title: "Tasks", Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
 			Run: func() { s.togglePanel(panelTasks, func() { s.showTasks() }) }},
 		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
@@ -612,6 +769,20 @@ func (s *Shell) registerCommands() {
 		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
 			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
 			Enabled:  s.canChart, Run: s.chartActive},
+		{ID: cmdSeek, Category: "Data", Title: "Start Reading At…",
+			Keywords: []string{"seek", "offset", "timestamp", "beginning", "last", "records",
+				"where to start", "rewind"},
+			Enabled: s.canSeek, Run: s.askSeek},
+		{ID: cmdFollow, Category: "Data", Title: "Follow the Records",
+			Keywords: []string{"follow", "tail", "live", "stream", "watch", "records"},
+			Enabled:  s.canFollow, Run: s.toggleFollow},
+		{ID: cmdPause, Category: "Data", Title: "Pause Following",
+			Keywords: []string{"pause", "resume", "hold", "follow", "tail"},
+			Enabled:  s.canPauseFollowing, Run: s.togglePause},
+		{ID: cmdMap, Category: "Data", Title: "Map the Result",
+			Keywords: []string{"map", "geometry", "geography", "postgis", "geojson", "latitude",
+				"longitude", "coordinates", "places", "where"},
+			Enabled: s.canMap, Run: s.mapActive},
 		{ID: cmdFind, Category: "Edit", Title: "Find…", Keywords: []string{"search", "look for"},
 			Shortcut: sc("F", commands.ModShortcut), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(false) }) }},
 		{ID: cmdFindReplace, Category: "Edit", Title: "Find and Replace…", Keywords: []string{"substitute", "change"},
@@ -626,7 +797,7 @@ func (s *Shell) registerCommands() {
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
 		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
-	}, append(append(s.accentCommands(), s.folderCommands()...), s.lostCommands()...)...) {
+	}, append(append(append(s.accentCommands(), s.textSizeCommands()...), s.folderCommands()...), s.lostCommands()...)...) {
 		s.reg.MustRegister(c)
 	}
 }
@@ -674,7 +845,18 @@ func (s *Shell) sync() {
 	s.sessionChanged()
 }
 
+// statusText is the status line: what is marked for a batch, if anything,
+// and then the connection the selection is on. The marks go first because
+// building a batch takes several actions, and how many are in it so far is
+// the thing somebody is keeping count of (FR-2.8).
 func (s *Shell) statusText() string {
+	if n := len(s.Explorer.Marks()); n > 0 {
+		return nounCount(n, "object") + " marked · " + s.connectionText()
+	}
+	return s.connectionText()
+}
+
+func (s *Shell) connectionText() string {
 	id, ok := s.selectedConn()
 	if !ok {
 		switch n := len(s.d.WS.OpenIDs()); n {
@@ -834,6 +1016,9 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
+	// A log gets its own controls above the rows: where to start reading, and
+	// whether to follow it (FR-13.5, FR-13.6).
+	s.showStreamBar(t)
 	s.sync()
 	if v := t.restore; v != nil {
 		t.restore = nil
@@ -885,6 +1070,15 @@ func (s *Shell) showCount(t *tab) {
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
 	}
+	if b := t.stream; b != nil && b.seeking != "" {
+		// Where a log is being read from, which is not the beginning unless
+		// somebody said so: a window showing the middle of a log that looked
+		// like the whole of it would be a window nobody could trust (FR-13.5).
+		//
+		// No need to ask whether it is being followed: while a tail is running
+		// the footer is the bar's own line, and this is not what writes it.
+		text += " · from " + b.seeking
+	}
 	if f := t.local; f != nil {
 		// Not "filtered", which is what a filter over a whole table says. This
 		// one has seen what it has read and nothing else (ADR-0099).
@@ -913,6 +1107,13 @@ func (s *Shell) showCount(t *tab) {
 // beside the row count, which pages loading behind it would otherwise wipe;
 // a query tab has no count to lose it to.
 func (s *Shell) say(t *tab, text string) {
+	if t == nil {
+		// Something with no tab to say it in — a batch of objects picked
+		// out in the explorer — says it where the window says everything
+		// that belongs to no tab.
+		s.status.SetText(text)
+		return
+	}
 	if t.model == nil {
 		t.footer.SetText(text)
 		return
@@ -1139,6 +1340,9 @@ func (s *Shell) release(id string, keep bool) {
 // settings, and quietly keeping it would show data from the wrong place.
 func (s *Shell) connectionSaved(id string, edited bool) {
 	defer s.refreshFavorites() // a renamed connection renames its favourites' rows
+	if !edited {
+		s.joinWorkspace(id) // made in a workspace, and so part of it
+	}
 	if _, open := s.d.WS.Get(id); edited && open {
 		s.disconnect(id)
 	}
@@ -1170,6 +1374,12 @@ func (s *Shell) checked(id string) bool {
 		return s.d.Theme.Appearance == uitheme.AppearanceLight
 	case cmdAppearDark:
 		return s.d.Theme.Appearance == uitheme.AppearanceDark
+	case textSizeID(uitheme.TextDefault):
+		return s.d.Theme.Text == uitheme.TextDefault
+	case textSizeID(uitheme.TextLarge):
+		return s.d.Theme.Text == uitheme.TextLarge
+	case textSizeID(uitheme.TextLarger):
+		return s.d.Theme.Text == uitheme.TextLarger
 	case cmdPinTab:
 		t := s.activeTab()
 		return t != nil && t.pinned
@@ -1225,7 +1435,11 @@ const shutdownWait = 3 * time.Second
 
 func (s *Shell) shutdown() {
 	// The session and unsaved query text first, while the tabs still hold
-	// them. Both come back at the next start (NFR-R3).
+	// them. Both come back at the next start (NFR-R3), and so does the
+	// workspace they are in (FR-15.9). After a restore neither writes
+	// anything: the writer was stopped before the database they were
+	// being kept in was replaced (FR-17.5).
+	s.rememberWorkspace()
 	s.saveSession()
 	for _, t := range s.open {
 		s.keep(t)
@@ -1243,6 +1457,11 @@ func (s *Shell) shutdown() {
 	// not close while any are out: closing connections first hung quitting
 	// whenever a query tab was open (found by the J3 journey test).
 	s.closeSessions(func(*tab) bool { return true })
+	if !s.master {
+		// The connections belong to the application rather than to this
+		// window, and the other window is still reading them.
+		return
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

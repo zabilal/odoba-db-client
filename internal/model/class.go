@@ -32,6 +32,7 @@ var Classes = []Class{
 	{KindUserType, "Types"},
 	{KindCollection, "Collections"},
 	{KindKey, "Keys"},
+	{KindChannel, "Channels"},
 	{KindTopic, "Topics"},
 	{KindConsumerGroup, "Consumer Groups"},
 	{KindSubject, "Subjects"},

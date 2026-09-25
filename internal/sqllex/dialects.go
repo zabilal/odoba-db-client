@@ -162,6 +162,47 @@ var Oracle = &Dialect{
 	QuoteIdent: '"',
 }
 
+// Firebird's SQL, and the PSQL a script of it carries. A procedure or a
+// trigger body is a block of statements of its own, opened by words that are
+// as much of the language as SELECT is; FIRST/SKIP are Firebird's own way of
+// paging, older than the OFFSET/FETCH it also takes, and both are in scripts
+// people already have. Identifiers are double-quoted, and an unquoted one is
+// folded to upper case rather than lower.
+var Firebird = &Dialect{
+	Name: "firebird",
+	Keywords: words(commonKeywords + `
+		first skip rows only containing starting similar escape
+		generator sequence generated always identity restart
+		procedure function trigger domain exception shadow filter
+		returns returning suspend declare variable begin end
+		active inactive before after position computed
+		plan natural merge matched using recursive
+		gdscode sqlcode sqlstate row_count rdb$db_key
+		segment size sub_type collate character set
+		commit rollback retain snapshot isolation level
+		read write wait no record_version consistency
+		if elseif while leave for do exit execute block statement
+		is not null unknown singular external engine
+	`),
+	Types: words(commonTypes + `
+		varchar char nchar blob clob smallint bigint int128
+		double precision float numeric decimal
+		date time timestamp boolean binary varbinary
+		decfloat timezone
+	`),
+	Functions: words(commonFunctions + `
+		gen_id next value nullif coalesce iif decode
+		substring position overlay trim lpad rpad
+		list rdb$get_context rdb$set_context
+		cast extract datediff dateadd
+		bin_and bin_or bin_xor bin_shl bin_shr
+		char_length octet_length bit_length
+		current_date current_time current_timestamp current_user current_role
+		row_number rank dense_rank lead lag
+	`),
+	QuoteIdent: '"',
+}
+
 // CQL is Cassandra's query language (FR-12.3, FR-5.1).
 var CQL = &Dialect{
 	Name: "cql",
@@ -247,6 +288,7 @@ var dialects = map[string]*Dialect{
 	"mssql":       SQLServer,
 	"clickhouse":  ClickHouse,
 	"oracle":      Oracle,
+	"firebird":    Firebird,
 	"cql":         CQL,
 	"cassandra":   CQL,
 	"mongosh":     Mongosh,

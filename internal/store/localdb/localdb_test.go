@@ -314,3 +314,30 @@ func TestSessionState(t *testing.T) {
 		t.Error("deleted key still present")
 	}
 }
+
+// A copy of the database can be taken while it is open and in use, which
+// is what a backup of a running application needs (FR-17.5).
+func TestTheDatabaseIsCopiedWhileOpen(t *testing.T) {
+	db, _ := open(t)
+	ctx := context.Background()
+	if _, err := db.SaveQuery(ctx, SavedQuery{Name: "totals", Body: "select 1"}); err != nil {
+		t.Fatal(err)
+	}
+	to := filepath.Join(t.TempDir(), "copy.db")
+	if err := db.BackupTo(ctx, to); err != nil {
+		t.Fatal(err)
+	}
+	// Whole on its own: no -wal beside it to carry, and the row is there.
+	copied, err := Open(ctx, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copied.Close()
+	if got, err := copied.SavedQueries(ctx); err != nil || len(got) != 1 || got[0].Name != "totals" {
+		t.Errorf("the copy holds %+v (%v)", got, err)
+	}
+	// And the one it was copied from is still open and still writes.
+	if _, err := db.SaveQuery(ctx, SavedQuery{Name: "after", Body: "select 2"}); err != nil {
+		t.Errorf("the database it copied is no longer usable: %v", err)
+	}
+}

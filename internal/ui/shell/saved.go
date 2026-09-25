@@ -217,6 +217,7 @@ func (s *Shell) showSaved() *savedPanel {
 		return nil
 	}
 	p := &savedPanel{s: s, filter: s.newPanelEntry(), status: widget.NewLabel(""), now: time.Now}
+	s.savedView = p
 	p.filter.SetPlaceHolder("Filter by name, folder or text")
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(
@@ -271,7 +272,7 @@ func (p *savedPanel) load() {
 				p.status.SetText("Could not read saved queries: " + err.Error())
 				return
 			}
-			p.all, p.loaded = all, true
+			p.all, p.loaded = p.s.queriesHere(all), true
 			p.apply()
 		})
 	}()
@@ -374,4 +375,20 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 	d.SetConfirmText("Delete")
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
+}
+
+// queriesHere is the saved queries this window's workspace is over: the
+// ones on its connections, and the ones on no connection at all, which
+// belong to no workspace in particular and so to all of them (FR-15.9).
+func (s *Shell) queriesHere(all []localdb.SavedQuery) []localdb.SavedQuery {
+	if s.workspace.ID == "" {
+		return all
+	}
+	out := all[:0:0]
+	for _, q := range all {
+		if q.ConnectionID == "" || s.workspace.Holds(q.ConnectionID) {
+			out = append(out, q)
+		}
+	}
+	return out
 }

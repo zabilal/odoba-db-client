@@ -27,6 +27,16 @@ type Upserter interface {
 	UpsertClause(keys, cols []string) string
 }
 
+// UpsertRewriter is a dialect whose upsert is not a clause after an INSERT.
+// Firebird writes UPDATE OR INSERT … MATCHING (keys): the first two words
+// change, so there is nothing a suffix alone could say. A dialect implements
+// this or Upserter, not both.
+type UpsertRewriter interface {
+	// UpsertAround is what goes before and after an INSERT of cols so that a
+	// row whose keys are taken updates the row there from the row given.
+	UpsertAround(keys, cols []string) (before, after string)
+}
+
 // OnConflict is PostgreSQL's and SQLite's upsert clause: a row whose keys
 // are taken updates the other columns of the row there from the row given,
 // or, with no other columns, leaves it as it is.
@@ -85,7 +95,7 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 	case len(opt.Keys) > 0 && opt.Truncate:
 		return 0, errors.New("sqlscript: a load cannot both empty a table and update its rows by key")
 	}
-	upsert, err := upsertClause(d, columns, opt.Keys)
+	upsert, err := upsertParts(d, columns, opt.Keys)
 	if err != nil {
 		return 0, err
 	}
@@ -154,29 +164,40 @@ func LoadWith(ctx context.Context, d source.Dialect, guard source.Guard, target 
 	return committed + open, nil
 }
 
-// upsertClause is what follows each row's INSERT so that a row whose key is
+// upsert is what goes around each row's INSERT so that a row whose key is
+// taken updates the row there. Both halves are empty when no key was given,
+// which is a load of nothing but new rows.
+type upsert struct{ before, after string }
+
+// none reports that there is no upsert: the rows are new rows.
+func (u upsert) none() bool { return u.before == "" && u.after == "" }
+
+// upsertParts is what goes around each row's INSERT so that a row whose key is
 // taken updates the row there: nothing, when the load names no key.
-func upsertClause(d source.Dialect, columns, keys []string) (string, error) {
+func upsertParts(d source.Dialect, columns, keys []string) (upsert, error) {
 	if len(keys) == 0 {
-		return "", nil
-	}
-	u, ok := d.(Upserter)
-	if !ok {
-		return "", errors.New("sqlscript: this source cannot update rows by key")
+		return upsert{}, nil
 	}
 	for _, k := range keys {
 		if !slices.Contains(columns, k) {
-			return "", fmt.Errorf("sqlscript: the key column %s is not loaded", k)
+			return upsert{}, fmt.Errorf("sqlscript: the key column %s is not loaded", k)
 		}
 	}
-	return u.UpsertClause(keys, columns), nil
+	switch u := d.(type) {
+	case UpsertRewriter:
+		before, after := u.UpsertAround(keys, columns)
+		return upsert{before: before, after: after}, nil
+	case Upserter:
+		return upsert{after: u.UpsertClause(keys, columns)}, nil
+	}
+	return upsert{}, errors.New("sqlscript: this source cannot update rows by key")
 }
 
 // insertRow writes one row as a new row: its values, in the columns' order,
 // NULL where it is short, followed by upsert. A row that adds other than one
 // row is refused, unless it may update one instead, which engines count
 // their own ways.
-func insertRow(d source.Dialect, table string, columns []string, row model.Row, upsert string, tx Tx) error {
+func insertRow(d source.Dialect, table string, columns []string, row model.Row, up upsert, tx Tx) error {
 	vals := make(map[string]any, len(columns))
 	for i, c := range columns {
 		var v any
@@ -189,9 +210,9 @@ func insertRow(d source.Dialect, table string, columns []string, row model.Row, 
 	if err != nil {
 		return err
 	}
-	st.SQL += upsert
+	st.SQL = up.before + st.SQL + up.after
 	n, err := tx.Exec(st)
-	if err == nil && upsert == "" && n != 1 {
+	if err == nil && up.none() && n != 1 {
 		err = fmt.Errorf("%d rows added, where the row was one", n)
 	}
 	return err
@@ -202,11 +223,11 @@ func insertRow(d source.Dialect, table string, columns []string, row model.Row, 
 // failed statement, and every engine here rolls back to a savepoint. The
 // savepoint is released either way, so that none pile up. It says why the
 // row was refused, and, as err, a savepoint that failed.
-func insertAside(d source.Dialect, table string, columns []string, row model.Row, upsert string, tx Tx) (refused, err error) {
+func insertAside(d source.Dialect, table string, columns []string, row model.Row, up upsert, tx Tx) (refused, err error) {
 	if _, err := tx.Exec(source.Statement{SQL: "SAVEPOINT ikigai_row"}); err != nil {
 		return nil, err
 	}
-	if refused = insertRow(d, table, columns, row, upsert, tx); refused != nil {
+	if refused = insertRow(d, table, columns, row, up, tx); refused != nil {
 		if _, err := tx.Exec(source.Statement{SQL: "ROLLBACK TO SAVEPOINT ikigai_row"}); err != nil {
 			return nil, err
 		}

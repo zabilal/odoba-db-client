@@ -118,20 +118,24 @@ func TestATailKeepsTheLastFewAndCountsWhatItDropped(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		f.rows <- model.Row{int64(i)}
 	}
-	held := waitFor(t, tail, 3)
 
-	// The window holds the newest three, oldest first: a tail is about what
-	// is happening now.
-	if len(held) != 3 || held[0][0] != int64(2) || held[2][0] != int64(4) {
-		t.Fatalf("the window holds %v", held)
-	}
-	// And what fell out is counted rather than lost quietly.
+	// Wait for what fell out rather than for what is held. A window of
+	// three holds three from the moment the third arrives, so waiting for
+	// a count of three can read the window before the last two records
+	// have been put in it — and then the newest three are not yet the
+	// three it holds.
 	deadline := time.Now().Add(5 * time.Second)
 	for tail.Dropped() < 2 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	if got := tail.Dropped(); got != 2 {
-		t.Errorf("%d records were dropped, and five were written into a window of three", got)
+		t.Fatalf("%d records were dropped, and five were written into a window of three", got)
+	}
+
+	// The window holds the newest three, oldest first: a tail is about what
+	// is happening now.
+	if held := tail.Rows(); len(held) != 3 || held[0][0] != int64(2) || held[2][0] != int64(4) {
+		t.Fatalf("the window holds %v", held)
 	}
 }
 
@@ -302,5 +306,103 @@ func TestAPausedTailCanStillBeClosed(t *testing.T) {
 	}
 	if got := f.closed(); got != 1 {
 		t.Errorf("the stream was closed %d times", got)
+	}
+}
+
+// A tail is drawn by the same grid a paged read is (FR-13.6). What that takes is
+// windows of what is held, a count of it, and a way to tell whether there is
+// anything new — the last of which is what keeps a quiet topic free.
+func TestATailIsAWindowAGridCanDraw(t *testing.T) {
+	tail, f := followed(t, 3)
+	ctx := context.Background()
+
+	if n, _ := tail.Count(ctx); n != 0 {
+		t.Errorf("a tail that has seen nothing holds %d", n)
+	}
+	if tail.Changes() != 0 {
+		t.Errorf("it says %d records have arrived", tail.Changes())
+	}
+	if rows, err := tail.Fetch(ctx, 0, 10); err != nil || len(rows) != 0 {
+		t.Errorf("it answered %v, %v", rows, err)
+	}
+
+	for i := 0; i < 3; i++ {
+		f.rows <- model.Row{int64(i)}
+	}
+	waitFor(t, tail, 3)
+	if n, _ := tail.Count(ctx); n != 3 {
+		t.Errorf("it holds %d records", n)
+	}
+	if tail.Changes() != 3 {
+		t.Errorf("%d records arrived", tail.Changes())
+	}
+	rows, _ := tail.Fetch(ctx, 1, 2)
+	if len(rows) != 2 || rows[0][0] != int64(1) || rows[1][0] != int64(2) {
+		t.Errorf("a window of two from one is %v", rows)
+	}
+	// Past the end is nothing rather than an error: a grid asks for the page
+	// after the last one as a matter of course.
+	if rows, err := tail.Fetch(ctx, 99, 10); err != nil || len(rows) != 0 {
+		t.Errorf("past the end: %v, %v", rows, err)
+	}
+	// No limit is everything held.
+	if rows, _ := tail.Fetch(ctx, 0, 0); len(rows) != 3 {
+		t.Errorf("no limit answered %d rows", len(rows))
+	}
+
+	// Once the window is full the oldest goes, and what arrived keeps counting:
+	// that is how a grid knows to draw again although the count has not moved.
+	f.rows <- model.Row{int64(3)}
+	deadline := time.Now().Add(5 * time.Second)
+	for tail.Dropped() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("nothing was dropped from a full window")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if n, _ := tail.Count(ctx); n != 3 {
+		t.Errorf("a full window holds %d", n)
+	}
+	if tail.Changes() != 4 {
+		t.Errorf("%d records arrived", tail.Changes())
+	}
+	if rows, _ := tail.Fetch(ctx, 0, 10); len(rows) != 3 || rows[0][0] != int64(1) {
+		t.Errorf("the window holds %v", rows)
+	}
+}
+
+// A tail whose stream has broken still draws what it has. Losing what somebody
+// was reading because the log went away would be the worst moment to lose it.
+func TestATailThatHasFailedStillDrawsWhatItHeld(t *testing.T) {
+	tail, f := followed(t, 4)
+	ctx := context.Background()
+	f.rows <- model.Row{int64(1)}
+	waitFor(t, tail, 1)
+
+	f.mu.Lock()
+	f.fail = errors.New("the broker went away")
+	f.mu.Unlock()
+	// Wake the read so it takes the failure, as the test above does: a read
+	// already waiting does not notice a field being set behind it.
+	select {
+	case f.rows <- model.Row{int64(2)}:
+	default:
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for tail.Err() == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("a broken stream was never noticed")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	rows, err := tail.Fetch(ctx, 0, 10)
+	if err != nil {
+		t.Errorf("it answered %v", err)
+	}
+	if len(rows) == 0 {
+		t.Error("it holds nothing of what it had")
+	}
+	if n, _ := tail.Count(ctx); n != int64(len(rows)) {
+		t.Errorf("it counts %d and holds %d", n, len(rows))
 	}
 }

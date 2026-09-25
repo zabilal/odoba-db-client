@@ -32,7 +32,7 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 	}
 	s.Explorer.Tree.Select(id)
 	s.sync()
-	ids := []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, "", cmdRefresh}
+	ids := []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, "", cmdCopyRows, "", cmdMark, cmdMarksClear, "", cmdRefresh}
 	switch {
 	case s.selectionIsTopic():
 		// Everything a topic can be asked for: read from, written to, grown,

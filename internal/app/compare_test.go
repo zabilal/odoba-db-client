@@ -136,6 +136,94 @@ func TestAConnectionWithNoSnapshotIsWalked(t *testing.T) {
 	}
 }
 
+// A source with one database has no node above its class folders: its root *is*
+// what its database holds, and asking for the children of a database reference
+// it never made answers nothing. Walking that shape must read the root instead.
+//
+// Nothing about this is hypothetical. SQLite is that shape, and while this read
+// the children of a database reference alone, a snapshot of any SQLite database
+// was empty — so two different databases compared equal, a model saved from one
+// held nothing, and every one of those looked like success.
+func TestASourceWhoseRootIsItsDatabaseIsStillWalked(t *testing.T) {
+	src := &rooted{}
+	got, err := Snapshot(context.Background(), src, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Schemas) != 1 {
+		t.Fatalf("it read %+v", got.Schemas)
+	}
+	if n := len(got.Schemas[0].Tables); n != 1 {
+		t.Fatalf("it read %d tables, and a snapshot of nothing compares equal to everything", n)
+	}
+	if got.Schemas[0].Tables[0].Name != "people" {
+		t.Errorf("it read %q", got.Schemas[0].Tables[0].Name)
+	}
+}
+
+// An empty database of a source that does have databases is empty, and is not
+// the root read a second time: the fall-back is for the shape that has no node
+// there, not for every source that answers nothing.
+func TestAnEmptyDatabaseIsEmpty(t *testing.T) {
+	src := &rooted{many: true}
+	got, err := Snapshot(context.Background(), src, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Schemas) != 1 || len(got.Schemas[0].Tables) != 0 {
+		t.Errorf("it read %+v", got.Schemas)
+	}
+}
+
+// A schema that holds nothing holds nothing. Reading the root for it instead
+// would put the whole database into every empty schema, which is the mistake the
+// fall-back above could turn into if it were not asked which node it was at.
+func TestAnEmptySchemaIsEmpty(t *testing.T) {
+	got, err := Snapshot(context.Background(), &rooted{schema: true}, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Schemas) != 1 || got.Schemas[0].Name != "empty" {
+		t.Fatalf("it read %+v", got.Schemas)
+	}
+	if n := len(got.Schemas[0].Tables); n != 0 {
+		t.Errorf("an empty schema holds %d tables", n)
+	}
+}
+
+// rooted is a driver shaped like SQLite: one database, and class folders at the
+// root rather than under a database node.
+type rooted struct {
+	source.Source
+	many   bool // it has databases of its own after all, and this one is empty
+	schema bool // its database holds one schema, and the schema holds nothing
+}
+
+func (r *rooted) Capabilities() capability.Capabilities {
+	return capability.Capabilities{Paradigm: model.ParadigmRelational,
+		Structure: capability.Structure{MultipleDatabases: r.many}}
+}
+
+func (r *rooted) Root(context.Context) ([]model.Node, error) {
+	return []model.Node{model.ClassNode(model.NewRef(model.KindDatabase, "main"), model.KindTable, 1)}, nil
+}
+
+// Children answers nothing for the database, as a source with no node there
+// does, and the table for its Tables folder.
+func (r *rooted) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
+	if r.schema && ref.Kind == model.KindDatabase {
+		return []model.Node{{Ref: model.NewRef(model.KindSchema, "main", "empty"), Label: "empty"}}, nil
+	}
+	if _, ok := model.ClassOf(ref); !ok {
+		return nil, nil
+	}
+	return []model.Node{{Ref: model.NewRef(model.KindTable, "main", "people"), Label: "people"}}, nil
+}
+
+func (r *rooted) Describe(_ context.Context, ref model.ObjectRef) (any, error) {
+	return &model.Table{Name: ref.Name(), RowsEstimate: -1}, nil
+}
+
 // A trigger arrives with the table it is on and an index with it too, so
 // listing them again from their own folders would double them.
 func TestWhatArrivesWithATableIsNotReadTwice(t *testing.T) {

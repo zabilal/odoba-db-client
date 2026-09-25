@@ -15,8 +15,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/app/decode"
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -139,6 +142,12 @@ func (s *Shell) exportSource() *exportSrc {
 		if t.query == nil && t.browse.CanScriptRows() {
 			src.inserts = t.browse.InsertRows
 		}
+		if t.ref.Kind == model.KindTopic {
+			// A topic's records are exported as the window is reading
+			// them, not as the bytes it is reading them from (FR-13.16).
+			rows, connID, topic := src.rows, t.connID, t.ref.Name()
+			src.rows = func() model.RowStream { return s.decodedRecords(connID, topic, rows()) }
+		}
 		return src
 	case t.query != nil:
 		q := t.query
@@ -236,7 +245,7 @@ func (s *Shell) exportTo(t *tab, src *exportSrc, opt export.Options, path string
 	case err != nil:
 		s.showError(err)
 		return nil
-	case path == "" || t.ctx.Err() != nil:
+	case path == "" || s.exportCtx(t).Err() != nil:
 		return nil // the dialog was cancelled, or the tab has gone
 	}
 	f, err := os.Create(path)
@@ -290,7 +299,7 @@ type exportJob struct {
 // the tab cancels it too. On failure or cancellation, discard removes what
 // was written: a truncated file left behind looks like a complete export.
 func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.WriteCloser, dest string, discard func()) *exportJob {
-	ctx, cancel := context.WithCancel(t.ctx)
+	ctx, cancel := context.WithCancel(s.exportCtx(t))
 	j := &exportJob{cancel: cancel}
 	j.task = s.startTask(t, "Export to "+dest, cancel)
 
@@ -338,6 +347,15 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 	return j
 }
 
+// exportCtx is what an export runs under: the tab's, so that closing the
+// tab cancels it, or the window's for an export that belongs to no tab.
+func (s *Shell) exportCtx(t *tab) context.Context {
+	if t == nil {
+		return s.ctx
+	}
+	return t.ctx
+}
+
 // exportStatus words an export's progress: how many rows, how fast, and, when
 // the total is known, how long is left.
 func exportStatus(p export.Progress, total int64) string {
@@ -366,4 +384,44 @@ func approx(d time.Duration) string {
 		return fmt.Sprintf("%d min", int(d.Minutes()+0.5))
 	}
 	return fmt.Sprintf("%.1f h", d.Hours())
+}
+
+// decodedRecords is a topic's rows with the key and value read the way
+// this window is reading them: the decoder somebody picked for the topic,
+// or, where they picked none, the most decoded form the bytes admit, with
+// a registry's decoder offered ahead of those (FR-13.16).
+//
+// It is called on the export's own goroutine, as the rows are asked for,
+// because resolving a schema is a round trip and an export that has not
+// started yet should not have made one.
+func (s *Shell) decodedRecords(connID, topic string, rows model.RowStream) model.RowStream {
+	ctx, cancel := context.WithTimeout(s.ctx, decoderTimeout)
+	defer cancel()
+	var keyReg, valueReg source.Decoder
+	if live, err := s.d.WS.Connect(ctx, connID); err == nil {
+		if reg, ok := live.Source.(source.SchemaRegistry); ok && live.Source.Capabilities().Stream.SchemaRegistry {
+			keyReg, _ = reg.Decoder(ctx, topic+"-key")
+			valueReg, _ = reg.Decoder(ctx, topic+"-value")
+		}
+	}
+	return app.DecodeRecords(rows,
+		s.readerFor(connID, app.DecodeKey, topic, keyReg),
+		s.readerFor(connID, app.DecodeValue, topic, valueReg))
+}
+
+// readerFor is how one field of a topic's records is being read.
+func (s *Shell) readerFor(connID, field, topic string, reg source.Decoder) app.RecordReader {
+	r := app.RecordReader{Extra: reg}
+	// A field nobody has chosen a decoder for has an empty name here, and
+	// an empty name is no decoder's: it matches neither the registry's nor
+	// any of the local ones, and the reader is left to the bytes.
+	switch name := s.rememberedDecoder(connID, field, topic); {
+	case reg != nil && reg.Name() == name:
+		r.Chosen = reg
+	default:
+		if d, ok := decode.ByName(name); ok {
+			r.Chosen = d
+		}
+	}
+	return r
 }

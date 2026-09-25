@@ -500,12 +500,29 @@ func (e *MissingSecretsError) Error() string {
 }
 
 // Open connects to a saved connection and starts watching its health.
-func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (_ *Live, err error) {
+func (c *Connections) Open(ctx context.Context, id string, mon MonitorConfig) (*Live, error) {
+	return c.open(ctx, id, mon, false)
+}
+
+// OpenReadOnly connects with read-only enforced whether the connection says so
+// or not, for a caller that asks for it once rather than saving it — the
+// command line's --read-only (FR-16.1).
+//
+// Tightening only, and not written anywhere: a connection that is already
+// read-only stays so, and one that is not is unchanged for everything else
+// that opens it. The guard is the connection's own, in the data layer where
+// read-only is enforced (NFR-S4); this does not check statements itself.
+func (c *Connections) OpenReadOnly(ctx context.Context, id string, mon MonitorConfig) (*Live, error) {
+	return c.open(ctx, id, mon, true)
+}
+
+func (c *Connections) open(ctx context.Context, id string, mon MonitorConfig, readOnly bool) (_ *Live, err error) {
 	defer panics.Recover(&err, "opening the connection")
 	conn, ok := c.Get(id)
 	if !ok {
 		return nil, ErrNotFound
 	}
+	conn.ReadOnly = conn.ReadOnly || readOnly
 	if missing := c.MissingSecrets(id); len(missing) > 0 {
 		return nil, &MissingSecretsError{Names: missing}
 	}

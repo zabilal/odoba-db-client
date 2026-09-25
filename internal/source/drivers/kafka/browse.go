@@ -40,10 +40,16 @@ const records = 256
 // an offset, so that looking at a topic cannot move anybody else's place in it
 // (FR-13.19). That is not an option a caller sets: there is no way to ask this
 // for the other thing.
+// CanFollow is a topic: a cluster's records are in its topics, and a consumer
+// group or a partition is something to look at rather than to read.
+func (s *kafkaSource) CanFollow(ref model.ObjectRef) bool {
+	return ref.Kind == model.KindTopic
+}
+
 func (s *kafkaSource) Browse(ctx context.Context, ref model.ObjectRef, opt source.BrowseOptions) (_ model.RowStream, err error) {
 	defer panics.Recover(&err, "reading records")
 
-	if ref.Kind != model.KindTopic {
+	if !s.CanFollow(ref) {
 		return nil, fmt.Errorf("kafka: %s holds no records to read", ref.Kind)
 	}
 	if opt.Where != "" {

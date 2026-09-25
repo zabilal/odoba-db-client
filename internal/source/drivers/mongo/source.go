@@ -230,6 +230,7 @@ var (
 	_ source.Dialect       = (*mongoSource)(nil)
 	_ source.Queryer       = (*mongoSource)(nil)
 	_ source.Sessioner     = (*mongoSource)(nil)
+	_ source.Followable    = (*mongoSource)(nil)
 )
 
 func (s *mongoSource) Capabilities() capability.Capabilities {
@@ -252,6 +253,12 @@ func (s *mongoSource) Capabilities() capability.Capabilities {
 		// An index is made and unmade on its own; a collection has no DDL
 		// to alter (T2.36).
 		Schema: capability.Schema{Indexes: true},
+		// A collection can be followed: a change stream is what this has
+		// instead of a log, and it answers when somebody writes (FR-12.5,
+		// watch.go). Nothing is consumed — the oplog is not a log this reads
+		// pages of — so the one position it has is a time, which is where
+		// following begins rather than a page to fetch.
+		Stream: capability.Stream{Follow: true, SeekTimestamp: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindDatabase: true, model.KindFolder: true,
 			model.KindCollection: true, model.KindIndex: true,

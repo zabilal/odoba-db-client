@@ -36,6 +36,11 @@ func (s *mongoSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	if ref.Kind != model.KindCollection || len(ref.Path) < 2 {
 		return nil, fmt.Errorf("mongodb: %s holds no documents", ref)
 	}
+	if opt.Follow {
+		// A collection being followed is a change stream: what happened, to
+		// which document, and what it is now (watch.go, FR-12.5).
+		return s.watch(ctx, ref, opt)
+	}
 	// A condition a person types is a filter document, which is what a
 	// condition is in this language (ADR-0070).
 	filter, err := browseFilter(opt)

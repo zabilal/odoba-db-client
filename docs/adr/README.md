@@ -151,4 +151,23 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0144](0144-a-row-that-knows-where-it-is.md) | A row that knows where it is | Accepted |
 | [0145](0145-one-connection-a-whole-cluster.md) | One connection, a whole cluster | Accepted |
 | [0146](0146-an-engine-that-is-not-a-server.md) | An engine that is not a server | Accepted |
+| [0147](0147-a-workspace-that-holds-nothing.md) | A workspace that holds nothing | Accepted |
+| [0148](0148-searching-by-walking.md) | Searching by walking | Accepted |
+| [0149](0149-a-mark-not-a-selection.md) | A mark, not a selection | Accepted |
+| [0150](0150-a-table-where-the-file-was.md) | A table where the file was | Accepted |
+| [0151](0151-exporting-what-the-window-shows.md) | Exporting what the window shows | Accepted |
+| [0152](0152-a-lock-that-seals.md) | A lock that seals | Accepted |
+| [0153](0153-a-backup-without-the-passwords.md) | A backup without the passwords | Accepted |
+| [0154](0154-a-copy-that-carries-its-own-keys.md) | A copy that carries its own keys | Accepted |
+| [0155](0155-the-same-sql-over-a-wire.md) | The same SQL over a wire | Accepted |
+| [0156](0156-a-catalogue-that-says-which.md) | A catalogue that says which | Accepted |
+| [0157](0157-a-table-that-is-a-collection.md) | A table that is a collection | Accepted |
+| [0158](0158-a-design-is-data.md) | A design is data | Accepted |
+| [0159](0159-two-wires-and-four-switches.md) | Two wires and four switches | Accepted |
+| [0160](0160-a-question-and-the-two-switches-that-let-it-be-asked.md) | A question, and the two switches that let it be asked | Accepted |
+| [0161](0161-a-second-binary-and-a-status-a-build-can-read.md) | A second binary, and a status a build can read | Accepted |
+| [0162](0162-a-plugin-is-a-program.md) | A plugin is a program | Accepted |
+| [0163](0163-a-map-with-no-map-under-it.md) | A map with no map under it | Accepted |
+| [0164](0164-the-same-grid-following.md) | The same grid, following | Accepted |
+| [0165](0165-a-change-is-not-a-document-and-a-channel-is-not-a-key.md) | A change is not a document, and a channel is not a key | Accepted |
 | [0145](0145-one-connection-a-whole-cluster.md) | One connection, a whole cluster | Accepted |

@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"fyne.io/fyne/v2"
+	fynetheme "fyne.io/fyne/v2/theme"
+
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
@@ -55,5 +58,63 @@ func TestTheLoaderSaysHowAConnectionIs(t *testing.T) {
 	}
 	if st, open := l.Status(saved[0].ID); !open || st.State != app.StateConnected {
 		t.Errorf("an open connection is %+v, open %v", st, open)
+	}
+}
+
+// The tree says when the keyboard is in it: a selected row says which row,
+// and nothing about whether the tree is listening (NFR-A1).
+func TestTheTreeShowsWhenItHasTheFocus(t *testing.T) {
+	newApp(t)
+	l, _ := setup(t, "primary")
+	e := New(l, (&uithread.Queue{}).Run, 0)
+	if e.ring == nil {
+		t.Fatal("the tree has no ring to show")
+	}
+	if e.ring.Visible() {
+		t.Error("the ring is drawn before anything has the focus")
+	}
+	e.Tree.FocusGained()
+	if !e.ring.Visible() {
+		t.Fatal("the focused tree draws no ring")
+	}
+	if _, _, _, a := e.ring.StrokeColor.RGBA(); a == 0 {
+		t.Error("the ring is drawn in nothing at all")
+	}
+	if e.ring.StrokeWidth <= 0 {
+		t.Errorf("the ring is %v wide", e.ring.StrokeWidth)
+	}
+	e.Tree.FocusLost()
+	if e.ring.Visible() {
+		t.Error("the ring stayed after the focus went")
+	}
+}
+
+// The ring is the theme's focus colour, so that it is the same sign
+// everywhere else in the window uses one.
+func TestTheRingIsTheThemesFocusColour(t *testing.T) {
+	newApp(t)
+	l, _ := setup(t, "primary")
+	e := New(l, (&uithread.Queue{}).Run, 0)
+	e.Tree.FocusGained()
+	th, v := fyne.CurrentApp().Settings().Theme(), fyne.CurrentApp().Settings().ThemeVariant()
+	want := th.Color(fynetheme.ColorNameFocus, v)
+	if e.ring.StrokeColor != want {
+		t.Errorf("the ring is %v, and the theme's focus colour is %v", e.ring.StrokeColor, want)
+	}
+}
+
+// Taking the focus puts the tree's own highlight on the first row, so
+// that the arrow keys have somewhere to start.
+func TestFocusingTheTreeStartsAtTheFirstRow(t *testing.T) {
+	newApp(t)
+	l, _ := setup(t, "primary")
+	e := New(l, (&uithread.Queue{}).Run, 0)
+	e.Model.Children(explorer.RootID)
+	root := waitReal(t, e.Model, explorer.RootID)
+	highlighted := ""
+	e.Tree.OnHighlighted = func(id string) { highlighted = id }
+	e.Tree.FocusGained()
+	if highlighted != root[0] {
+		t.Errorf("the keyboard starts at %q, and the first row is %q", highlighted, root[0])
 	}
 }

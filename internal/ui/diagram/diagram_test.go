@@ -565,3 +565,37 @@ func TestAPNGIsWritten(t *testing.T) {
 		t.Errorf("the picture is one colour")
 	}
 }
+
+// A selection can be put back, which is what a canvas rebuilt on every change
+// needs: a choice lost on each change would leave the controls that depend on
+// it dead while the box was still highlighted.
+func TestASelectionCanBePutBack(t *testing.T) {
+	g := canvas.NewGraph([]canvas.Node{
+		{ID: "a", Title: "a", Size: canvas.Size{W: 100, H: 60}},
+		{ID: "b", Title: "b", Pos: canvas.Point{X: 200}, Size: canvas.Size{W: 100, H: 60}},
+	}, nil)
+	w := New(g, theme.New().PaletteFor(ftheme.VariantLight))
+	told := ""
+	w.OnSelect = func(id string) { told = id }
+
+	w.Select("b")
+	if w.Selected() != "b" {
+		t.Errorf("it says %q is chosen", w.Selected())
+	}
+	// Putting a choice back is the owner saying what is chosen; telling it what
+	// it has just said would be a loop.
+	if told != "" {
+		t.Errorf("it called back with %q", told)
+	}
+	w.Select("")
+	if w.Selected() != "" {
+		t.Errorf("dropping the choice left %q", w.Selected())
+	}
+	// A node that is not there cannot be chosen, and leaving the old choice
+	// would be worse than dropping it.
+	w.Select("a")
+	w.Select("nowhere")
+	if w.Selected() != "" {
+		t.Errorf("choosing a box that is not there left %q", w.Selected())
+	}
+}

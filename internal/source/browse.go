@@ -170,6 +170,21 @@ type Countable interface {
 	Count(ctx context.Context, ref model.ObjectRef, opt BrowseOptions) (int64, error)
 }
 
+// Followable is an optional Browser refinement for sources where only some
+// objects can be followed (FR-12.5). A Redis channel can be listened to and a
+// key cannot; a Mongo collection has a change stream and a database's own
+// browse is not one.
+//
+// It is the source's to answer rather than the window's to guess from a kind:
+// which of a server's objects has a stream behind it is as much the engine's
+// business as what its columns are (REQ-DB-1). Without it, a source claiming
+// capability.Stream.Follow is taken to mean anything it can browse.
+type Followable interface {
+	// CanFollow reports whether a following browse of ref is a request the
+	// source can answer.
+	CanFollow(ref model.ObjectRef) bool
+}
+
 // RowObject is an optional Browser refinement for rows that are objects of
 // their own (FR-12.2). A Redis database browses as its keys, and each of
 // those rows is a key whose value opens as rows in turn.
