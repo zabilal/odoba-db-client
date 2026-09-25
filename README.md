@@ -4,9 +4,9 @@ A database client that opens fast, stays out of the way, and tells you the truth
 about what it is doing. One binary, no runtime to install, no browser inside it.
 
 It reads and writes PostgreSQL, MySQL, MariaDB, SQLite, libSQL and Turso,
-SQL Server, Oracle, Firebird, CockroachDB, ClickHouse, DuckDB, MongoDB, Redis
-and Valkey, Cassandra and ScyllaDB, and Apache Kafka — through one window,
-with the same grid, the same editor and the same keyboard.
+SQL Server, Oracle, Firebird, CockroachDB, ClickHouse, DuckDB, MongoDB,
+DynamoDB, Redis and Valkey, Cassandra and ScyllaDB, and Apache Kafka — through
+one window, with the same grid, the same editor and the same keyboard.
 
 **Licence: not yet decided.** Until it is, this is source you can read and build,
 and not something to depend on. See `LICENSE`.

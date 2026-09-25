@@ -112,6 +112,13 @@ jobs:
           FIREBIRD_PASSWORD: ikigai
           FIREBIRD_CONF_WireCrypt: Disabled
 
+      # DynamoDB Local is the service's own implementation of its API and
+      # runs offline (T4.6). It takes any credentials at all, so what it can
+      # prove is everything but the classification of a refused one.
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports: ["8000:8000"]
+
       schema-registry:
         image: confluentinc/cp-schema-registry:7.7.0
         ports: ["8081:8081"]
@@ -153,4 +160,6 @@ jobs:
           IKIGAI_REQUIRE_FIREBIRD: "1"
           IKIGAI_FIREBIRD_PORT: "3050"
           IKIGAI_FIREBIRD_PLAIN_PORT: "3051"
+          IKIGAI_REQUIRE_DYNAMODB: "1"
+          IKIGAI_DYNAMODB_ENDPOINT: "http://127.0.0.1:8000"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
