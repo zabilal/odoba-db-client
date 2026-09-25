@@ -253,6 +253,9 @@ type tab struct {
 	// geomap is the map of a result's places, where this tab is one
 	// (mapview.go).
 	geomap *mapPanel
+	// stream is the follow and seek controls, where this tab holds a log
+	// (streambar.go).
+	stream *streamBar
 	// plan is a query plan, where this tab is one (explain.go).
 	plan *planPanel
 	// stats is the column figures last asked for (colstats.go), kept so
@@ -401,6 +404,19 @@ func (s *Shell) ActiveGrid() *grid.TableGrid {
 		return nil
 	}
 	return t.grid
+}
+
+// ActiveFooter is what the tab being worked in says about itself: how many rows,
+// what is filtered, whether a log is being followed.
+//
+// Exported for the same reason ActiveGrid is: a journey reads what a person
+// reads, and the footer is where the window says what is happening.
+func (s *Shell) ActiveFooter() string {
+	t := s.activeTab()
+	if t == nil || t.footer == nil {
+		return ""
+	}
+	return t.footer.Text
 }
 
 // ShowNotice tells the user what happened to their settings file at startup,
@@ -753,6 +769,16 @@ func (s *Shell) registerCommands() {
 		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
 			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
 			Enabled:  s.canChart, Run: s.chartActive},
+		{ID: cmdSeek, Category: "Data", Title: "Start Reading At…",
+			Keywords: []string{"seek", "offset", "timestamp", "beginning", "last", "records",
+				"where to start", "rewind"},
+			Enabled: s.canSeek, Run: s.askSeek},
+		{ID: cmdFollow, Category: "Data", Title: "Follow the Records",
+			Keywords: []string{"follow", "tail", "live", "stream", "watch", "records"},
+			Enabled:  s.canFollow, Run: s.toggleFollow},
+		{ID: cmdPause, Category: "Data", Title: "Pause Following",
+			Keywords: []string{"pause", "resume", "hold", "follow", "tail"},
+			Enabled:  s.canPauseFollowing, Run: s.togglePause},
 		{ID: cmdMap, Category: "Data", Title: "Map the Result",
 			Keywords: []string{"map", "geometry", "geography", "postgis", "geojson", "latitude",
 				"longitude", "coordinates", "places", "where"},
@@ -990,6 +1016,9 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	t.body.Objects = []fyne.CanvasObject{g.View()}
 	t.body.Refresh()
 	s.count(t)
+	// A log gets its own controls above the rows: where to start reading, and
+	// whether to follow it (FR-13.5, FR-13.6).
+	s.showStreamBar(t)
 	s.sync()
 	if v := t.restore; v != nil {
 		t.restore = nil
@@ -1040,6 +1069,15 @@ func (s *Shell) showCount(t *tab) {
 	}
 	if o := t.browse; o != nil && (len(o.Options().Filters) > 0 || o.Options().Where != "") {
 		text += " · filtered"
+	}
+	if b := t.stream; b != nil && b.seeking != "" {
+		// Where a log is being read from, which is not the beginning unless
+		// somebody said so: a window showing the middle of a log that looked
+		// like the whole of it would be a window nobody could trust (FR-13.5).
+		//
+		// No need to ask whether it is being followed: while a tail is running
+		// the footer is the bar's own line, and this is not what writes it.
+		text += " · from " + b.seeking
 	}
 	if f := t.local; f != nil {
 		// Not "filtered", which is what a filter over a whole table says. This
