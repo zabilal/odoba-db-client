@@ -65,6 +65,12 @@ func (s *redisSource) BuildBrowse(ref model.ObjectRef, opt source.BrowseOptions)
 	if ref.Kind == model.KindKey {
 		return browseValueStatement(s.kindRead(ref), ref, opt, limit)
 	}
+	if name, err := channelOf(ref); err == nil {
+		// What a person would type to see the same thing. Only a followed
+		// browse sends it — a channel read without following sends nothing at
+		// all, because there is nothing to ask for.
+		return source.Statement{SQL: "SUBSCRIBE " + quote(name)}, nil
+	}
 	if _, err := databaseOf(ref); err != nil {
 		return source.Statement{}, err
 	}

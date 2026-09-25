@@ -49,7 +49,52 @@ func (s *sqliteSource) Browse(ctx context.Context, ref model.ObjectRef, opt sour
 	if err != nil {
 		return nil, statementError(err)
 	}
-	return newRowStream(rows, ref, id)
+	stream, err := newRowStream(rows, ref, id)
+	if err != nil {
+		return nil, err
+	}
+	// A connection that did not say what its columns hold is asked of the
+	// object itself, which declared them. A local file always answers, so
+	// this costs nothing there; over a wire the libSQL protocol carries a
+	// declared type but the Go client drops it, and without this a browse
+	// would be four columns of "unknown" — nothing to group by, nothing to
+	// right-align, every value shown as the text it arrived as.
+	if unknownTypes(stream.cols) {
+		if decl, err := s.columns(ctx, ref.Name()); err == nil {
+			applyDeclared(stream.cols, decl)
+		}
+	}
+	return stream, nil
+}
+
+// unknownTypes reports whether any column arrived without a type.
+func unknownTypes(cols []model.ColumnDef) bool {
+	for _, c := range cols {
+		if c.Type.Class == model.TypeUnknown {
+			return true
+		}
+	}
+	return false
+}
+
+// applyDeclared gives each untyped column the type the object declares for
+// the name it came back under. A column the object does not declare — a
+// rowid selected to address the row by — is left as it is: unknown is the
+// truthful answer for a value nothing declared a type for, and a guess
+// would be worse than none.
+func applyDeclared(cols []model.ColumnDef, decl []model.Column) {
+	by := make(map[string]model.DataType, len(decl))
+	for _, d := range decl {
+		by[d.Name] = d.Type
+	}
+	for i, c := range cols {
+		if c.Type.Class != model.TypeUnknown {
+			continue
+		}
+		if t, ok := by[c.Name]; ok {
+			cols[i].Type = t
+		}
+	}
 }
 
 // identity is how a table's rows are told apart: its primary key when it

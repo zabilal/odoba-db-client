@@ -64,6 +64,16 @@ func connectionItem(c store.SavedConnection) explorer.Item {
 type Loader struct {
 	Conns *app.Connections
 	WS    *app.Workspace
+	// Shows reports whether a connection belongs in the tree. It is how a
+	// workspace narrows the explorer to the connections it is over
+	// (FR-15.9). Nil shows every connection, which is what a window in no
+	// workspace in particular shows.
+	Shows func(connID string) bool
+}
+
+// shows applies Shows, if there is one.
+func (l *Loader) shows(c store.SavedConnection) bool {
+	return l.Shows == nil || l.Shows(c.ID)
 }
 
 var _ explorer.Loader = (*Loader)(nil)
@@ -117,15 +127,24 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 		// The store refuses a connection in a folder that is not there.
 		in := map[string]int{}
 		for _, c := range l.Conns.List() {
-			in[c.Folder]++
+			if l.shows(c) {
+				in[c.Folder]++
+			}
 		}
 		var out []explorer.Item
 		for _, f := range l.Conns.Folders() {
+			// A folder a workspace has emptied is left out rather than
+			// shown opening onto nothing. One that is empty because
+			// nobody has filled it yet stays: it is a shelf somebody just
+			// made, and something is about to go in it.
+			if in[f.ID] == 0 && l.Shows != nil {
+				continue
+			}
 			out = append(out, explorer.Item{ID: FolderID(f.ID), Label: f.Name, HasChildren: in[f.ID] > 0, Eager: true,
 				Data: folderItem{ID: f.ID, Color: f.Color}})
 		}
 		for _, c := range l.Conns.List() {
-			if c.Folder == "" {
+			if c.Folder == "" && l.shows(c) {
 				out = append(out, connectionItem(c))
 			}
 		}
@@ -133,7 +152,7 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 	case folderItem:
 		var out []explorer.Item
 		for _, c := range l.Conns.List() {
-			if c.Folder == d.ID {
+			if c.Folder == d.ID && l.shows(c) {
 				out = append(out, connectionItem(c))
 			}
 		}
@@ -200,7 +219,7 @@ func ConnectionOf(id string) (string, bool) {
 
 // Explorer is the tree widget.
 type Explorer struct {
-	Tree  *widget.Tree
+	Tree  *focusTree
 	Model *explorer.Model
 
 	// OnOpen is called when a browsable node — a table, view or collection —
@@ -219,6 +238,14 @@ type Explorer struct {
 	selected string
 	open     map[string]bool // the branches open
 	refresh  func()
+
+	// marks are the nodes picked out for something to be done to all of
+	// them (FR-2.8). The tree selects one row at a time, so this is the
+	// explorer's own: the IDs in the order they were marked, drawn with a
+	// tick, and kept as branches open and close.
+	marks []string
+	// OnMark is called on the UI goroutine when the marks change.
+	OnMark func()
 
 	// Badges are fetched as their rows are drawn, badgeWorkers at a time,
 	// and remembered, "none" included (FR-2.5). badges and waiting are the
@@ -240,6 +267,54 @@ type Explorer struct {
 	body    *fyne.Container   // the tree, or found in its place
 	view    fyne.CanvasObject
 	search  func()
+	// ring is drawn around the tree while it has the focus.
+	ring *canvas.Rectangle
+}
+
+// The focus ring around the sidebar's tree.
+const (
+	focusRingWidth  = 2
+	focusRingRadius = 4
+)
+
+// focusTree is the sidebar's tree, which says when the keyboard is in it.
+// widget.Tree draws a selected row and nothing about the focus, so this
+// adds the one thing missing and leaves the rest of the tree alone.
+type focusTree struct {
+	widget.Tree
+	e *Explorer
+}
+
+func newFocusTree(e *Explorer) *focusTree {
+	t := &focusTree{e: e}
+	t.ExtendBaseWidget(t)
+	return t
+}
+
+func (t *focusTree) FocusGained() {
+	t.Tree.FocusGained()
+	t.e.showRing(true)
+}
+
+func (t *focusTree) FocusLost() {
+	t.Tree.FocusLost()
+	t.e.showRing(false)
+}
+
+// showRing draws the ring, or takes it away.
+func (e *Explorer) showRing(on bool) {
+	if e.ring == nil {
+		return
+	}
+	if !on {
+		e.ring.Hide()
+		e.ring.Refresh()
+		return
+	}
+	th, v := fyne.CurrentApp().Settings().Theme(), fyne.CurrentApp().Settings().ThemeVariant()
+	e.ring.StrokeColor = th.Color(fynetheme.ColorNameFocus, v)
+	e.ring.Show()
+	e.ring.Refresh()
 }
 
 // searchLimit is how many matches the filter lists.
@@ -253,12 +328,11 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 		badges: map[string]fetched{}, waiting: map[string]*fetch{}, slots: make(chan struct{}, badgeWorkers)}
 	e.badger, _ = l.(badger)
 	e.stater, _ = l.(stater)
-	e.Tree = widget.NewTree(
-		func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) },
-		func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) },
-		func(bool) fyne.CanvasObject { return newNodeRow() },
-		func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { e.update(id, o.(*nodeRow)) },
-	)
+	e.Tree = newFocusTree(e)
+	e.Tree.ChildUIDs = func(id widget.TreeNodeID) []widget.TreeNodeID { return e.Model.Children(id) }
+	e.Tree.IsBranch = func(id widget.TreeNodeID) bool { return e.Model.IsBranch(id) }
+	e.Tree.CreateNode = func(bool) fyne.CanvasObject { return newNodeRow() }
+	e.Tree.UpdateNode = func(id widget.TreeNodeID, _ bool, o fyne.CanvasObject) { e.update(id, o.(*nodeRow)) }
 	e.open = map[string]bool{}
 	e.Tree.OnBranchOpened = func(id widget.TreeNodeID) { e.expanded(id, true) }
 	e.Tree.OnBranchClosed = func(id widget.TreeNodeID) { e.expanded(id, false) }
@@ -308,7 +382,15 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 	}
 	e.found = container.NewBorder(nil, e.note, nil, nil, e.results)
 	e.body = container.NewStack(e.Tree)
-	e.view = container.NewBorder(e.Filter, nil, nil, nil, e.body)
+	// A ring around the tree while the keyboard is in it. A tree says
+	// which row is selected and nothing about whether it is listening, so
+	// somebody who tabbed into the sidebar had no way to see they were
+	// there (NFR-A1).
+	e.ring = canvas.NewRectangle(color.Transparent)
+	e.ring.StrokeWidth = focusRingWidth
+	e.ring.CornerRadius = focusRingRadius
+	e.ring.Hide()
+	e.view = container.NewBorder(e.Filter, nil, nil, nil, container.NewStack(e.body, e.ring))
 	e.search = uithread.Coalesce(run, delay, e.runSearch)
 	e.Filter.OnChanged = func(string) { e.search() }
 	e.Filter.OnSubmitted = func(string) {
@@ -424,6 +506,73 @@ func (e *Explorer) expanded(id string, open bool) {
 // Expanded is the branches open, in order.
 func (e *Explorer) Expanded() []string { return slices.Sorted(maps.Keys(e.open)) }
 
+// markGlyph goes in front of a marked row's label. It is a character
+// rather than a colour because a colour alone is not a sign somebody can
+// see or have read out (NFR-A2).
+const markGlyph = "✓ "
+
+// Marked reports whether a node is marked.
+func (e *Explorer) Marked(id string) bool { return slices.Contains(e.marks, id) }
+
+// Marks are the marked nodes, in the order they were marked.
+func (e *Explorer) Marks() []string { return slices.Clone(e.marks) }
+
+// ToggleMark marks a node or unmarks it, and reports whether it is now
+// marked. A placeholder row — loading, or an error — cannot be marked:
+// there is no object there to do anything to.
+func (e *Explorer) ToggleMark(id string) bool {
+	if explorer.IsPlaceholder(id) || id == "" {
+		return false
+	}
+	if i := slices.Index(e.marks, id); i >= 0 {
+		e.marks = slices.Delete(e.marks, i, i+1)
+		e.marked()
+		return false
+	}
+	e.marks = append(e.marks, id)
+	e.marked()
+	return true
+}
+
+// ClearMarks unmarks everything.
+func (e *Explorer) ClearMarks() {
+	if len(e.marks) == 0 {
+		return
+	}
+	e.marks = nil
+	e.marked()
+}
+
+// MarkedNodes are the marked objects and the connections they are on.
+// A mark on something that is not an object — a folder, a connection, a
+// row that has gone since it was marked — is left out: what is done in
+// batch is done to objects.
+func (e *Explorer) MarkedNodes() []MarkedNode {
+	out := make([]MarkedNode, 0, len(e.marks))
+	for _, id := range e.marks {
+		it, _, _ := e.Model.Item(id)
+		if d, ok := it.Data.(objItem); ok {
+			out = append(out, MarkedNode{ID: id, ConnID: d.ConnID, Node: d.Node})
+		}
+	}
+	return out
+}
+
+// MarkedNode is one marked object.
+type MarkedNode struct {
+	ID     string
+	ConnID string
+	Node   model.Node
+}
+
+// marked redraws the tree and says the marks changed.
+func (e *Explorer) marked() {
+	e.Tree.Refresh()
+	if e.OnMark != nil {
+		e.OnMark()
+	}
+}
+
 // Selected returns the selected node's ID.
 func (e *Explorer) Selected() string { return e.selected }
 
@@ -452,6 +601,7 @@ func (e *Explorer) activate(id string) {
 func (e *Explorer) update(id string, r *nodeRow) {
 	r.onDouble = func() { e.activate(id) }
 	r.onSecondary = func(at fyne.Position) { e.menu(id, at) }
+	r.marked = e.Marked(id) // rows are reused, so this is set every time
 	it, st, _ := e.Model.Item(id)
 	if explorer.IsPlaceholder(id) {
 		r.placeholder(it.Label, st == explorer.Failed)
@@ -490,6 +640,7 @@ var kindIcons = map[model.ObjectKind]fyne.ThemeIconName{
 	model.KindUserType:         uitheme.IconNameType,
 	model.KindCollection:       uitheme.IconNameCollection,
 	model.KindKey:              uitheme.IconNameKey,
+	model.KindChannel:          uitheme.IconNameChannel,
 	model.KindTopic:            uitheme.IconNameTopic,
 	model.KindPartition:        uitheme.IconNamePartition,
 	model.KindConsumerGroup:    uitheme.IconNameConsumerGroup,
@@ -662,6 +813,8 @@ type nodeRow struct {
 	onDouble func()
 	// onSecondary is a right-click, with where it was on the canvas.
 	onSecondary func(at fyne.Position)
+	// marked draws the row as one of the marked (FR-2.8).
+	marked bool
 }
 
 func newNodeRow() *nodeRow {
@@ -721,6 +874,9 @@ func (r *nodeRow) show(icon fyne.ThemeIconName, label string, b badgeText) {
 		r.icon.SetResource(nil)
 	}
 	r.label.Text, r.label.Color, r.label.TextStyle = label, fg, fyne.TextStyle{}
+	if r.marked {
+		r.label.Text, r.label.TextStyle = markGlyph+label, fyne.TextStyle{Bold: true}
+	}
 	r.badge.Text, r.badge.Color = b.text, secondary
 	r.badge.TextStyle = fyne.TextStyle{}
 	if b.emphatic {

@@ -40,6 +40,9 @@ type Tail struct {
 	first   int // where the oldest record is
 	n       int
 	dropped int64
+	// arrived counts every record that has come, whether or not it is still
+	// held: what tells a grid whether there is anything new to draw.
+	arrived int64
 	paused  bool
 	err     error
 	closed  bool
@@ -110,6 +113,7 @@ func (t *Tail) follow(ctx context.Context) {
 func (t *Tail) keep(row model.Row) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.arrived++
 	if t.n == len(t.ring) {
 		t.ring[t.first] = row
 		t.first = (t.first + 1) % len(t.ring)
@@ -186,4 +190,51 @@ func (t *Tail) Close() error {
 	t.cancel()
 	<-t.done
 	return t.rs.Close()
+}
+
+// A tail, drawn (FR-13.6).
+//
+// The grid asks a Fetcher for windows of rows, and a tail holds a window
+// already: these three methods are the whole of what it takes to draw one, so a
+// following read reaches the same grid as a paged read rather than needing a
+// second kind of table.
+//
+// What is held changes under the reader — that is what following means — so the
+// grid is told to read again when records have arrived (Changes), and a row it
+// is drawing cannot be pulled out from under it (Rows copies).
+
+// Fetch answers a window of what is held, oldest first.
+//
+// Never an error: a tail's failure is its own (Err), and a grid that could not
+// draw the records it has because the stream has since broken would lose what
+// somebody was reading.
+func (t *Tail) Fetch(_ context.Context, offset, limit int64) ([]model.Row, error) {
+	rows := t.Rows()
+	if offset >= int64(len(rows)) {
+		return nil, nil
+	}
+	end := offset + limit
+	if limit <= 0 || end > int64(len(rows)) {
+		end = int64(len(rows))
+	}
+	return rows[offset:end], nil
+}
+
+// Count is how many records are held. It is exact, and it is not how many the
+// log holds: a tail is a window onto what is happening now.
+func (t *Tail) Count(context.Context) (int64, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return int64(t.n), nil
+}
+
+// Changes counts the records that have arrived, dropped ones included.
+//
+// What it is for is deciding whether to draw again: a window that has not
+// changed needs no redraw, and a tail on a quiet topic should cost nothing at
+// all. It only ever grows.
+func (t *Tail) Changes() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.arrived
 }

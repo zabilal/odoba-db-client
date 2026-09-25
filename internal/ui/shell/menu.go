@@ -13,113 +13,141 @@ import (
 // Command IDs. They are stable: custom key bindings will be keyed on them
 // (FR-15.4).
 const (
-	cmdPalette        = "palette.show"
-	cmdShortcuts      = "help.shortcuts"
-	cmdConnNew        = "connection.new"
-	cmdConnEdit       = "connection.edit"
-	cmdConnDup        = "connection.duplicate"
-	cmdConnDelete     = "connection.delete"
-	cmdDisconnect     = "connection.disconnect"
-	cmdOpen           = "object.open"
-	cmdStructure      = "object.structure"
-	cmdProduce        = "object.produce"
-	cmdTopicNew       = "topic.new"
-	cmdTopicDelete    = "topic.delete"
-	cmdTopicPartition = "topic.addPartitions"
-	cmdTopicConfig    = "topic.settings"
-	cmdGroupReset     = "group.resetOffsets"
-	cmdScriptSelect   = "object.script.select"
-	cmdScriptInsert   = "object.script.insert"
-	cmdScriptUpdate   = "object.script.update"
-	cmdScriptCreate   = "object.script.create"
-	cmdScriptSchema   = "object.script.schema"
-	cmdCompare        = "schema.compare"
-	cmdSaveModel      = "schema.saveModel"
-	cmdDiagram        = "schema.diagram"
-	cmdFavorite       = "explorer.favorite"
-	cmdRefresh        = "explorer.refresh"
-	cmdReload         = "tab.reload"
-	cmdSidebar        = "view.sidebar"
-	cmdFilterObjects  = "explorer.filter"
-	cmdTabClose       = "tab.close"
-	cmdTabNext        = "tab.next"
-	cmdTabPrev        = "tab.previous"
-	cmdMoveTabLeft    = "tab.moveLeft"
-	cmdMoveTabRight   = "tab.moveRight"
-	cmdPinTab         = "tab.pin"
-	cmdTasks          = "window.tasks"
-	cmdSplitRight     = "window.splitRight"
-	cmdSplitDown      = "window.splitDown"
-	cmdMoveToPane     = "window.moveToOtherPane"
-	cmdJoinPanes      = "window.joinPanes"
-	cmdQueryNew       = "query.new"
-	cmdQueryComplete  = "query.complete"
-	cmdQueryRun       = "query.run"
-	cmdQueryRunAll    = "query.runAll"
-	cmdQueryStop      = "query.stop"
-	cmdHistory        = "query.history"
-	cmdQuerySave      = "query.save"
-	cmdQuerySaveAs    = "query.saveAs"
-	cmdOpenSaved      = "query.openSaved"
-	cmdExport         = "data.export"
-	cmdImport         = "data.import"
-	cmdChart          = "data.chart"
-	cmdExplain        = "query.explain"
-	cmdExplainMeasure = "query.explainMeasure"
-	cmdTxBegin        = "query.begin"
-	cmdTxCommit       = "query.commit"
-	cmdTxRollback     = "query.rollback"
-	cmdFormatSQL      = "query.format"
-	cmdColumnStats    = "data.columnStats"
-	cmdAggregates     = "data.aggregates"
-	cmdFilterValues   = "data.filterValues"
-	cmdWhere          = "data.where"
-	cmdCopyCells      = "grid.copy"
-	cmdPasteCells     = "grid.paste"
-	cmdSelectRow      = "grid.selectRow"
-	cmdSelectColumn   = "grid.selectColumn"
-	cmdSelectAllCells = "grid.selectAll"
-	cmdEditCell       = "grid.editCell"
-	cmdEditValue      = "grid.editValue"
-	cmdSetNull        = "grid.setNull"
-	cmdSetValue       = "grid.setValue"
-	cmdInsertRow      = "grid.insertRow"
-	cmdDuplicateRows  = "grid.duplicateRows"
-	cmdDeleteRows     = "grid.deleteRows"
-	cmdDesign         = "object.design"
-	cmdEditSource     = "object.editSource"
-	cmdRename         = "object.rename"
-	cmdReviewChanges  = "data.reviewChanges"
-	cmdRevertCells    = "data.revertCells"
-	cmdRevertRows     = "data.revertRows"
-	cmdDiscardAll     = "data.discardAll"
-	cmdChooseKey      = "data.chooseKey"
-	cmdCopyCSV        = "grid.copyCSV"
-	cmdCopyJSON       = "grid.copyJSON"
-	cmdCopyMarkdown   = "grid.copyMarkdown"
-	cmdCopyInsert     = "grid.copyInsert"
-	cmdCellViewer     = "grid.viewer"
-	cmdFormView       = "grid.form"
-	cmdJSONView       = "grid.json"
-	cmdRecordView     = "grid.record"
-	cmdPipeline       = "data.pipeline"
-	cmdGoToReferenced = "data.goToReferenced"
-	cmdOpenRowObject  = "data.openRowObject"
-	cmdShowReferring  = "data.showReferring"
-	cmdDetail         = "data.detail"
-	cmdHideColumn     = "grid.hideColumn"
-	cmdShowColumns    = "grid.showColumns"
-	cmdMoveLeft       = "grid.moveLeft"
-	cmdMoveRight      = "grid.moveRight"
-	cmdFreeze         = "grid.freeze"
-	cmdUnfreeze       = "grid.unfreeze"
-	cmdFind           = "edit.find"
-	cmdFindReplace    = "edit.findReplace"
-	cmdFindNext       = "edit.findNext"
-	cmdFindPrev       = "edit.findPrevious"
-	cmdAppearSystem   = "appearance.system"
-	cmdAppearLight    = "appearance.light"
-	cmdAppearDark     = "appearance.dark"
+	cmdPalette          = "palette.show"
+	cmdShortcuts        = "help.shortcuts"
+	cmdConnNew          = "connection.new"
+	cmdConnEdit         = "connection.edit"
+	cmdConnDup          = "connection.duplicate"
+	cmdConnDelete       = "connection.delete"
+	cmdDisconnect       = "connection.disconnect"
+	cmdOpen             = "object.open"
+	cmdStructure        = "object.structure"
+	cmdProduce          = "object.produce"
+	cmdTopicNew         = "topic.new"
+	cmdTopicDelete      = "topic.delete"
+	cmdTopicPartition   = "topic.addPartitions"
+	cmdTopicConfig      = "topic.settings"
+	cmdGroupReset       = "group.resetOffsets"
+	cmdScriptSelect     = "object.script.select"
+	cmdScriptInsert     = "object.script.insert"
+	cmdScriptUpdate     = "object.script.update"
+	cmdScriptCreate     = "object.script.create"
+	cmdScriptSchema     = "object.script.schema"
+	cmdCompare          = "schema.compare"
+	cmdSaveModel        = "schema.saveModel"
+	cmdDiagram          = "schema.diagram"
+	cmdDesignQuery      = "schema.designQuery"
+	cmdAssistantSetUp   = "assistant.setUp"
+	cmdAssistantAsk     = "assistant.ask"
+	cmdAssistantExplain = "assistant.explain"
+	cmdFavorite         = "explorer.favorite"
+	cmdRefresh          = "explorer.refresh"
+	cmdReload           = "tab.reload"
+	cmdSidebar          = "view.sidebar"
+	cmdFilterObjects    = "explorer.filter"
+	cmdSearchStructure  = "explorer.searchStructure"
+	cmdContextMenu      = "view.contextMenu"
+	cmdMark             = "explorer.mark"
+	cmdMarksClear       = "explorer.clearMarks"
+	cmdMarksSelect      = "explorer.scriptMarkedSelect"
+	cmdMarksCreate      = "explorer.scriptMarkedCreate"
+	cmdMarksDrop        = "explorer.scriptMarkedDrop"
+	cmdMarksExport      = "explorer.exportMarked"
+	cmdCopyRows         = "explorer.copyRows"
+	cmdBackUp           = "file.backUp"
+	cmdCheckUpdates     = "help.checkUpdates"
+	cmdRestore          = "file.restore"
+	cmdVaultLock        = "vault.lock"
+	cmdVaultClose       = "vault.close"
+	cmdVaultRemove      = "vault.remove"
+	cmdTabClose         = "tab.close"
+	cmdTabNext          = "tab.next"
+	cmdTabPrev          = "tab.previous"
+	cmdMoveTabLeft      = "tab.moveLeft"
+	cmdMoveTabRight     = "tab.moveRight"
+	cmdPinTab           = "tab.pin"
+	cmdTasks            = "window.tasks"
+	cmdNewWindow        = "window.new"
+	cmdSplitRight       = "window.splitRight"
+	cmdSplitDown        = "window.splitDown"
+	cmdMoveToPane       = "window.moveToOtherPane"
+	cmdJoinPanes        = "window.joinPanes"
+	cmdQueryNew         = "query.new"
+	cmdQueryComplete    = "query.complete"
+	cmdQueryRun         = "query.run"
+	cmdQueryRunAll      = "query.runAll"
+	cmdQueryStop        = "query.stop"
+	cmdHistory          = "query.history"
+	cmdQuerySave        = "query.save"
+	cmdQuerySaveAs      = "query.saveAs"
+	cmdOpenSaved        = "query.openSaved"
+	cmdExport           = "data.export"
+	cmdImport           = "data.import"
+	cmdChart            = "data.chart"
+	cmdMap              = "data.map"
+	cmdFollow           = "stream.follow"
+	cmdPause            = "stream.pause"
+	cmdSeek             = "stream.seek"
+	cmdExplain          = "query.explain"
+	cmdExplainMeasure   = "query.explainMeasure"
+	cmdTxBegin          = "query.begin"
+	cmdTxCommit         = "query.commit"
+	cmdTxRollback       = "query.rollback"
+	cmdFormatSQL        = "query.format"
+	cmdColumnStats      = "data.columnStats"
+	cmdAggregates       = "data.aggregates"
+	cmdFilterValues     = "data.filterValues"
+	cmdWhere            = "data.where"
+	cmdCopyCells        = "grid.copy"
+	cmdPasteCells       = "grid.paste"
+	cmdSelectRow        = "grid.selectRow"
+	cmdSelectColumn     = "grid.selectColumn"
+	cmdSelectAllCells   = "grid.selectAll"
+	cmdEditCell         = "grid.editCell"
+	cmdEditValue        = "grid.editValue"
+	cmdSetNull          = "grid.setNull"
+	cmdSetValue         = "grid.setValue"
+	cmdInsertRow        = "grid.insertRow"
+	cmdDuplicateRows    = "grid.duplicateRows"
+	cmdDeleteRows       = "grid.deleteRows"
+	cmdDesign           = "object.design"
+	cmdEditSource       = "object.editSource"
+	cmdRename           = "object.rename"
+	cmdReviewChanges    = "data.reviewChanges"
+	cmdRevertCells      = "data.revertCells"
+	cmdRevertRows       = "data.revertRows"
+	cmdDiscardAll       = "data.discardAll"
+	cmdChooseKey        = "data.chooseKey"
+	cmdCopyCSV          = "grid.copyCSV"
+	cmdCopyJSON         = "grid.copyJSON"
+	cmdCopyMarkdown     = "grid.copyMarkdown"
+	cmdCopyInsert       = "grid.copyInsert"
+	cmdCellViewer       = "grid.viewer"
+	cmdFormView         = "grid.form"
+	cmdJSONView         = "grid.json"
+	cmdRecordView       = "grid.record"
+	cmdPipeline         = "data.pipeline"
+	cmdGoToReferenced   = "data.goToReferenced"
+	cmdOpenRowObject    = "data.openRowObject"
+	cmdShowReferring    = "data.showReferring"
+	cmdDetail           = "data.detail"
+	cmdSaveView         = "data.saveView"
+	cmdWorkspaceSave    = "file.saveWorkspace"
+	cmdWorkspaces       = "file.workspaces"
+	cmdViews            = "data.views"
+	cmdHideColumn       = "grid.hideColumn"
+	cmdShowColumns      = "grid.showColumns"
+	cmdMoveLeft         = "grid.moveLeft"
+	cmdMoveRight        = "grid.moveRight"
+	cmdFreeze           = "grid.freeze"
+	cmdUnfreeze         = "grid.unfreeze"
+	cmdFind             = "edit.find"
+	cmdFindReplace      = "edit.findReplace"
+	cmdFindNext         = "edit.findNext"
+	cmdFindPrev         = "edit.findPrevious"
+	cmdAppearSystem     = "appearance.system"
+	cmdAppearLight      = "appearance.light"
+	cmdAppearDark       = "appearance.dark"
 )
 
 // menuEntry is one menu-bar item: a command, a separator (the zero value), or
@@ -153,8 +181,10 @@ var menuBar = []struct {
 }{
 	{"File", []menuEntry{
 		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
+		submenu("Workspace", cmdWorkspaceSave, cmdWorkspaces), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
 		item(cmdExport), item(cmdImport), separator,
+		item(cmdBackUp), item(cmdRestore), separator,
 		item(cmdTabClose),
 	}},
 	{"Edit", []menuEntry{
@@ -162,32 +192,43 @@ var menuBar = []struct {
 		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
 		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), item(cmdSetValue), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
-		item(cmdDesign), item(cmdEditSource), item(cmdRename), item(cmdSaveModel), item(cmdCompare), item(cmdDiagram), separator,
+		item(cmdDesign), item(cmdEditSource), item(cmdRename), item(cmdSaveModel), item(cmdCompare),
+		item(cmdDiagram), item(cmdDesignQuery), separator,
 		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,
 		item(cmdChooseKey),
 	}},
 	{"View", []menuEntry{
-		item(cmdPalette), separator,
-		item(cmdSidebar), item(cmdFilterObjects), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart),
+		item(cmdPalette), item(cmdContextMenu), separator,
+		item(cmdSidebar), item(cmdFilterObjects), item(cmdSearchStructure), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), item(cmdMap), separator,
+		item(cmdSeek), item(cmdFollow), item(cmdPause), separator,
+		item(cmdSaveView), item(cmdViews),
 		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
 		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu("Accent Colour", accentIDs()...),
+		submenu("Text Size", textSizeIDs()...),
 	}},
 	{"Connection", []menuEntry{
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),
 		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, cmdScriptCreate, cmdScriptSchema), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
+		item(cmdCopyRows), separator,
+		submenu("Batch", cmdMark, cmdMarksClear, cmdMarksSelect, cmdMarksCreate, cmdMarksDrop, cmdMarksExport), separator,
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
-		item(cmdReconnect), item(cmdDisconnect),
+		item(cmdReconnect), item(cmdDisconnect), separator,
+		submenu("Vault", cmdVaultLock, cmdVaultClose, cmdVaultRemove),
 	}},
 	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
 		item(cmdExplain), item(cmdExplainMeasure), separator,
 		item(cmdTxBegin), item(cmdTxCommit), item(cmdTxRollback), separator,
-		item(cmdFormatSQL), item(cmdQueryComplete), separator, item(cmdHistory)}},
+		item(cmdFormatSQL), item(cmdQueryComplete), separator, item(cmdHistory), separator,
+		// The assistant sits with the query editor because that is where its
+		// answers land: a generated statement goes into the editor for review
+		// and is never run (FR-14.6).
+		submenu("Assistant", cmdAssistantAsk, cmdAssistantExplain, cmdAssistantSetUp)}},
 	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
-		item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
-	{"Help", []menuEntry{item(cmdShortcuts)}},
+		item(cmdNewWindow), separator, item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
+	{"Help", []menuEntry{item(cmdShortcuts), separator, item(cmdCheckUpdates)}},
 }
 
 func (s *Shell) buildMenu() *fyne.MainMenu {

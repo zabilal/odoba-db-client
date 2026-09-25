@@ -73,6 +73,33 @@ func (s *Shell) restore() {
 	if last.Sidebar > 0 && last.Sidebar < 1 {
 		s.split.SetOffset(last.Sidebar)
 	}
+	// Which workspace the window was left in, before any tab opens: it is
+	// what the explorer shows, and it must not show what is not in it.
+	if s.d.Workspaces != nil && last.Workspace != "" {
+		all, err := s.d.Workspaces.Workspaces(ctx)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("the workspace could not be read back: %w", err))
+		}
+		for _, w := range all {
+			if w.ID == last.Workspace {
+				s.workspace = w
+			}
+		}
+		s.scopeToWorkspace()
+	}
+	s.reopen(last, scratches, saved)
+	if err := errors.Join(problems...); err != nil {
+		s.showError(err)
+	}
+}
+
+// reopen puts back the tabs a session names, and the explorer's branches
+// with them. It is how the last session comes back at a start, and how a
+// workspace's tabs come back when somebody goes to it (FR-15.9).
+func (s *Shell) reopen(last localdb.Session, scratches []localdb.Scratch, saved map[string]localdb.SavedQuery) {
+	was := s.restoring
+	s.restoring = true
+	defer func() { s.restoring = was }()
 	byID := make(map[string]localdb.Scratch, len(scratches))
 	for _, sc := range scratches {
 		byID[sc.ID] = sc
@@ -96,9 +123,6 @@ func (s *Shell) restore() {
 	s.resplit(last, opened)
 	if a := last.Active; a >= 0 && a < len(opened) && opened[a] != nil {
 		s.selectTab(opened[a])
-	}
-	if err := errors.Join(problems...); err != nil {
-		s.showError(err)
 	}
 }
 
@@ -280,7 +304,8 @@ func layoutOf(g *grid.TableGrid, cols []model.ColumnDef, st *localdb.SessionTab)
 // sessionOf is the window as it is now.
 func (s *Shell) sessionOf() localdb.Session {
 	size := s.win.Canvas().Size()
-	ss := localdb.Session{Width: size.Width, Height: size.Height, Sidebar: s.split.Offset, Active: -1}
+	ss := localdb.Session{Width: size.Width, Height: size.Height, Sidebar: s.split.Offset, Active: -1,
+		Workspace: s.workspace.ID}
 	ss.Expanded = s.Explorer.Expanded()
 	active := s.activeTab()
 	for i, p := range s.panes {

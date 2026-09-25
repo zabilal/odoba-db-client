@@ -64,8 +64,8 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 		db.Close()
 		return nil, &source.ConnectError{Kind: source.ConnectConfig, Hint: "The file is not an SQLite database.", Err: err}
 	}
-	return &sqliteSource{db: db, cfg: cfg, path: path, sessions: map[string]*session{},
-		identities: map[string]model.RowIdentity{}}, nil
+	return NewSource(db, cfg, Flavour{Product: "SQLite", Where: path, WhereIs: "file",
+		ResultOrigins: true}), nil
 }
 
 // dsn builds the connection string. Pragmas go in it, not in an Exec after
@@ -86,11 +86,39 @@ func dsn(path string, readOnly bool) string {
 	return s
 }
 
+// A Flavour is the engine behind a connection: a local file, or a server
+// speaking the same SQL over the wire (libSQL). Everything below Open is
+// the same code either way, because the SQL is the same SQL — which is the
+// point of libSQL, and the reason there is not a second driver's worth of
+// introspection for it (REQ-DB-4).
+type Flavour struct {
+	// Product and Where are what Info reports: the engine's name, and the
+	// file or address it is, under the attribute WhereIs.
+	Product string
+	Where   string
+	WhereIs string
+	// ResultOrigins reports whether the connection can say where a query's
+	// columns were read from. SQLite itself can, through the prepared
+	// statement; the libSQL wire protocol carries a column's name and its
+	// declared type and nothing about where it came from, so over a wire
+	// the answer is not available at any price. What depends on it is
+	// editing the result of a query (FR-4.8) — browsing a table and editing
+	// it does not, a browse knowing its own table (ADR-0034).
+	ResultOrigins bool
+}
+
+// NewSource wraps a database this driver or another has opened and proved.
+// It is exported for the libSQL driver, which is this SQL over a wire.
+func NewSource(db *sql.DB, cfg source.ConnectionConfig, f Flavour) source.Source {
+	return &sqliteSource{db: db, cfg: cfg, flavour: f, sessions: map[string]*session{},
+		identities: map[string]model.RowIdentity{}}
+}
+
 type sqliteSource struct {
 	dialect
-	db   *sql.DB
-	cfg  source.ConnectionConfig
-	path string
+	db      *sql.DB
+	cfg     source.ConnectionConfig
+	flavour Flavour
 
 	mu         sync.Mutex
 	sessions   map[string]*session // for KillQuery
@@ -112,7 +140,8 @@ func (s *sqliteSource) Capabilities() capability.Capabilities {
 		Paradigm: model.ParadigmRelational,
 		Query: capability.Query{
 			Supported: true, Language: "sqlite", MultiStatement: true,
-			Cancel: true, Parameters: true, Explain: true, Transactions: true, EditableResults: true,
+			Cancel: true, Parameters: true, Explain: true, Transactions: true,
+			EditableResults: s.flavour.ResultOrigins,
 		},
 		// A local file counts quickly, so the grid gets a real scrollbar.
 		Data: capability.Data{ServerSort: true, ServerFilter: true, ExactCount: true, DistinctValues: true, ColumnStats: true,
@@ -131,8 +160,8 @@ func (s *sqliteSource) Info(ctx context.Context) (source.ServerInfo, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT sqlite_version()`).Scan(&v); err != nil {
 		return source.ServerInfo{}, err
 	}
-	return source.ServerInfo{Product: "SQLite", Version: v, Latency: time.Since(start),
-		Attrs: map[string]string{"file": s.path}}, nil
+	return source.ServerInfo{Product: s.flavour.Product, Version: v, Latency: time.Since(start),
+		Attrs: map[string]string{s.flavour.WhereIs: s.flavour.Where}}, nil
 }
 
 func (s *sqliteSource) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }

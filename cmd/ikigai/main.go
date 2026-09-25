@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync/atomic"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/logging"
+	"github.com/ikigai-db/ikigai-db/internal/plugin"
 	"github.com/ikigai-db/ikigai-db/internal/single"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
@@ -27,6 +29,10 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cassandra"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cockroach"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/dynamodb"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/firebird"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/kafka"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/libsql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mysql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/oracle"
@@ -38,6 +44,11 @@ import (
 
 // version is set at build time via -ldflags.
 var version = "dev"
+
+// updateFeed is where this build asks about newer versions, set at build
+// time via -ldflags. Empty — which is what a build made from source is —
+// means it never asks (FR-15.10, NFR-D6).
+var updateFeed = ""
 
 // appID keys Fyne's per-application storage. Like the module path it is a
 // placeholder until the project's home is settled (OQ-1).
@@ -104,20 +115,50 @@ func run() error {
 		params   app.ParamStore
 		decoders app.DecoderStore
 		layouts  app.LayoutStore
+		views    app.ViewStore
+		spaces   app.WorkspaceStore
+		backup   *app.Backup
 	)
 	if db, err := localdb.Open(context.Background(), paths.DatabaseFile()); err != nil {
 		log.Warn("history, saved queries, autosave and the session unavailable", "err", err)
 	} else {
 		defer db.Close()
-		history, saved, scratch, session, params, decoders, layouts = db, db, db, db, db, db, db
+		history, saved, scratch, session, params, decoders, layouts, views, spaces = db, db, db, db, db, db, db, db, db
+		backup = &app.Backup{Paths: paths, DB: db}
 	}
 
+	// A portable copy keeps its secrets beside itself rather than in this
+	// machine's keychain, and only sealed (FR-17.6, ADR-0154). Left in the
+	// keychain they would stay on every machine the copy was carried to,
+	// and travel with it nowhere.
 	vault := app.NewVault(secrets.OS(), keychainAvailability())
+	if paths.Portable {
+		vault = app.NewPortableVault(secrets.NewFile(filepath.Join(paths.Data, "secrets.json")))
+	}
+	// The app-level lock over the vault, where one was put on (NFR-S7).
+	// What is saved recognises a passphrase; the window asks for it before
+	// anything reads a secret.
+	vault.SetLock(app.NewLock(settings.Get().Vault))
+
+	// Plugins are programs, and are started before the window so that the
+	// sources they add are in the registry when the connection picker is
+	// built (REQ-DB-1). Nothing runs unless somebody turned them on: a
+	// program that ran because it was in a folder is a program nobody chose
+	// (FR-16.2).
+	plugins, err := plugin.FromSettings(context.Background(), settings.Get().Plugins, paths, log)
+	if err != nil {
+		log.Warn("the plugins directory could not be read", "err", err)
+	}
+	defer plugins.Close()
+	if n := len(plugins.Plugins); n > 0 {
+		log.Info("plugins", "loaded", n, "failed", len(plugins.Failed))
+	}
+
 	conns := app.NewConnections(settings, vault, log)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 
 	s := shell.New(fyneapp.NewWithID(appID), shell.Deps{
-		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Params: params, Decoders: decoders, Layouts: layouts, Theme: uitheme.New(), Log: log,
+		Conns: conns, WS: ws, Settings: settings, History: history, Saved: saved, Scratch: scratch, Session: session, Views: views, Workspaces: spaces, Backup: backup, Params: params, Decoders: decoders, Layouts: layouts, Theme: uitheme.New(), Log: log, Version: version, UpdateFeed: updateFeed,
 	})
 	s.ShowNotice(notice)
 	w := s.Window()

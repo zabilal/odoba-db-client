@@ -13,6 +13,7 @@ import (
 const (
 	panelHistory   = "history"
 	panelSaved     = "saved"
+	panelSearch    = "search"
 	panelShortcuts = "shortcuts"
 )
 
@@ -54,6 +55,11 @@ func (s *Shell) openPanel(kind, title string, body fyne.CanvasObject, focus fyne
 func (s *Shell) closePanel() {
 	if s.panel == nil {
 		return
+	}
+	if s.panelIs(panelSearch) {
+		// Closing the panel stops what it was doing: a search nobody can
+		// see the results of should not go on asking the server.
+		s.searchView.cancel()
 	}
 	s.panel = nil
 	s.right.Objects = []fyne.CanvasObject{s.work}

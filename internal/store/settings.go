@@ -30,9 +30,12 @@ var ErrSettingsFrozen = errors.New("store: the settings file will not be overwri
 // predictably and diffs cleanly under version control. Keys are snake_case
 // because people edit this file by hand.
 type Settings struct {
-	Version     int               `json:"version"`
-	Appearance  string            `json:"appearance,omitempty"` // system, light, dark
-	Accent      string            `json:"accent,omitempty"`     // blue unless set: see theme.Accents
+	Version    int    `json:"version"`
+	Appearance string `json:"appearance,omitempty"` // system, light, dark
+	Accent     string `json:"accent,omitempty"`     // blue unless set: see theme.Accents
+	// TextSize is how large text is drawn: default, large or larger
+	// (NFR-A2). Empty is the default.
+	TextSize    string            `json:"text_size,omitempty"`
 	Editor      EditorSettings    `json:"editor"`
 	Folders     []Folder          `json:"folders,omitempty"`
 	Connections []SavedConnection `json:"connections"`
@@ -40,6 +43,67 @@ type Settings struct {
 	// Bindings are the shortcuts a person changed, by command ID, in the
 	// form commands.Shortcut.String writes; "" is no shortcut (T1.8).
 	Bindings map[string]string `json:"bindings,omitempty"`
+	// Vault is the app-level lock over the credential vault, or nil where
+	// there is none (NFR-S7). It holds what recognises a passphrase and
+	// nothing that could be used to work one out.
+	Vault *VaultLock `json:"vault,omitempty"`
+	// Assistant is the AI assistant's settings, or nil where nobody has
+	// turned it on — which is how it ships and what "off by default" means in
+	// a file (FR-14.4). A settings file with no assistant section is a
+	// settings file with no assistant.
+	Assistant *Assistant `json:"assistant,omitempty"`
+	// Plugins is where third-party sources are loaded from, or nil where
+	// nobody has turned them on. A plugin is a program, and a program that
+	// ran because it was in a folder is a program nobody chose, so this
+	// section's absence is the whole of "off" (FR-16.2).
+	Plugins *Plugins `json:"plugins,omitempty"`
+}
+
+// Plugins is where plugins come from and whether they are run at all.
+type Plugins struct {
+	// Enabled runs them. Off until somebody says otherwise, and asked for in
+	// the words that say what it means: a plugin sees the connections it is
+	// used for, secrets and all.
+	Enabled bool `json:"enabled,omitempty"`
+	// Directory holds one subdirectory per plugin. Empty is the "plugins"
+	// folder in the application's own data directory.
+	Directory string `json:"directory,omitempty"`
+}
+
+// Assistant is how the AI assistant is set up (FR-14.5).
+//
+// No key lives here. The key is in the keychain under the name the provider
+// gives, as a connection's password is, and this file is written in plain
+// sight (FR-1.5, NFR-S1).
+type Assistant struct {
+	// Enabled is the application's own switch. A section that exists with
+	// this false is somebody who configured a provider and turned it off,
+	// which is worth keeping: turning it on again should not mean setting it
+	// up again.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Provider is the provider's ID, as internal/assistant writes it.
+	Provider string `json:"provider,omitempty"`
+
+	// Model is the model to ask, which is never guessed: a model nobody
+	// chose is a bill nobody expected (FR-14.5).
+	Model string `json:"model,omitempty"`
+
+	// Endpoint overrides the provider's own address, which is what a gateway
+	// of one's own and a model on one's own machine both need.
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// Header is the name of the header the key goes in, for a gateway that
+	// differs from the provider it stands in front of.
+	Header string `json:"header,omitempty"`
+}
+
+// VaultLock is what is kept of an app-level lock: the salt the key is
+// derived with, and a verifier that says whether a passphrase is the right
+// one. Neither the passphrase nor the key it makes is stored anywhere.
+type VaultLock struct {
+	Salt     []byte `json:"salt"`
+	Verifier []byte `json:"verifier"`
 }
 
 // EditorSettings are query-editor preferences.
@@ -90,6 +154,25 @@ type SavedConnection struct {
 	Folder      string            `json:"folder,omitempty"`
 	Color       string            `json:"color,omitempty"`
 	Secrets     []string          `json:"secrets,omitempty"`
+	// Assistant is what this connection has agreed the assistant may see, or
+	// nil for one that has agreed nothing — which is every connection until
+	// somebody says otherwise (FR-14.4).
+	Assistant *ConnectionAssistant `json:"assistant,omitempty"`
+}
+
+// ConnectionAssistant is one connection's opt-in (FR-14.4).
+//
+// Per connection on purpose: a person may be happy to ask about a scratch
+// database and not about their employer's. There is deliberately nothing here
+// about production consent — that is given for a session and asked again next
+// time, so writing it would be writing a consent nobody gave.
+type ConnectionAssistant struct {
+	// Enabled is the opt-in: the assistant may be asked about this
+	// connection's schema.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Data is the second switch: its rows may be sent too (FR-14.3).
+	Data bool `json:"data,omitempty"`
 }
 
 // TLS is a connection's transport-security settings: paths, never key material.

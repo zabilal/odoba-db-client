@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
@@ -273,5 +274,61 @@ func TestATablesRowsExportAsItsInserts(t *testing.T) {
 	tb.grid.Select(grid.CellID{Row: 2, Col: 1}, grid.CellID{Row: 4, Col: 1})
 	if sel := fx.s.selectionSource(tb.grid, src); sel == nil || sel.inserts == nil || sel.name != "items selection" {
 		t.Error("a selection of a table's rows is written as its INSERTs too")
+	}
+}
+
+// Closing the tab an export came from cancels it: nobody is waiting for a
+// file whose tab has gone, and the partial one is removed.
+func TestClosingTheTabCancelsItsExport(t *testing.T) {
+	fx := newFixture(t)
+	tb, q := openQuery(t, fx, "")
+	q.editor.Document().SetText("slow 100000;")
+	fx.s.run(cmdQueryRun)
+	pump(t, fx.q, func() bool { return len(q.sets) == 1 })
+	discarded := false
+	out := &sink{}
+	j := fx.s.runExport(tb, fx.s.exportSource(), export.Options{Format: export.NDJSON}, out, "r.ndjson",
+		func() { discarded = true })
+
+	fx.s.closeTab(tb.item)
+	pump(t, fx.q, func() bool { return j.done })
+	if !errors.Is(j.err, context.Canceled) || !discarded {
+		t.Errorf("err %v, discarded %v", j.err, discarded)
+	}
+}
+
+// endless is a stream that never ends by itself: it stops when the context
+// the export is running under stops, and not before.
+type endless struct{}
+
+func (endless) Columns() []model.ColumnDef {
+	return []model.ColumnDef{{Name: "n", Type: model.DataType{Class: model.TypeInteger, Native: "integer"}}}
+}
+
+func (endless) Next(ctx context.Context) (model.Row, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return model.Row{int64(1)}, nil
+}
+
+func (endless) Close() error { return nil }
+
+// An export started from a tab is the tab's, whatever it is reading from:
+// closing the tab stops it. A stream that is not the tab's own would
+// otherwise go on writing into a file nobody is waiting for.
+func TestAnExportBelongsToItsTab(t *testing.T) {
+	fx := newFixture(t)
+	tb, _ := openQuery(t, fx, "")
+	discarded := false
+	out := &sink{}
+	j := fx.s.runExport(tb, &exportSrc{name: "forever", total: -1,
+		rows: func() model.RowStream { return endless{} }},
+		export.Options{Format: export.NDJSON}, out, "forever.ndjson", func() { discarded = true })
+
+	fx.s.closeTab(tb.item)
+	pump(t, fx.q, func() bool { return j.done })
+	if !errors.Is(j.err, context.Canceled) || !discarded {
+		t.Errorf("err %v, discarded %v", j.err, discarded)
 	}
 }
