@@ -59,6 +59,20 @@ type designerPanel struct {
 	joins   *widget.List
 	remove  *widget.Button
 	suggest *widget.Button
+
+	// The parts of the query beside the canvas (designerparts.go). Each is a
+	// list with the same three buttons, because each is the same kind of thing.
+	outputs, wheres, havings, groups, orders *editList
+
+	// distinct and limit are the two parts of a query that are neither a list
+	// nor a table: a tick and a number.
+	distinct *widget.Check
+	limit    *widget.Entry
+
+	// sql is the statement the design has become, updated on every change
+	// (FR-9.3). It is read-only: what edits SQL is the editor, and Open as a
+	// Query is how a design gets there.
+	sql *widget.Entry
 }
 
 func designerKey(connID string, ref model.ObjectRef) string {
@@ -163,7 +177,7 @@ func (p *designerPanel) draw() {
 	p.w.Select(p.chosenAlias)
 
 	p.t.body.Objects = []fyne.CanvasObject{
-		container.NewBorder(p.toolbar(), nil, nil, p.side(), p.w),
+		container.NewBorder(p.toolbar(), p.sqlView(), nil, p.side(), p.w),
 	}
 	p.t.body.Refresh()
 	// Fitted every time, because every redraw follows a change to what is on
@@ -200,8 +214,9 @@ func (p *designerPanel) toolbar() fyne.CanvasObject {
 	)
 }
 
-// side is the joins, listed so that each can be changed or taken away without
-// anybody having to click a line (NFR-A1).
+// side is the query beside the canvas: the joins, and every other part of a
+// SELECT, each a list with the same three buttons so that all of it is
+// reachable from a keyboard (NFR-A1).
 func (p *designerPanel) side() fyne.CanvasObject {
 	p.joins = widget.NewList(
 		func() int { return len(p.design.Joins) },
@@ -215,10 +230,115 @@ func (p *designerPanel) side() fyne.CanvasObject {
 			row.Objects[1].(*widget.Button).OnTapped = func() { p.editJoin(i) }
 			row.Objects[2].(*widget.Button).OnTapped = func() { p.removeJoin(i) }
 		})
-	head := widget.NewLabel("Joins")
+	joinHead := widget.NewLabel("Joins")
+	joinHead.TextStyle = fyne.TextStyle{Bold: true}
+	joins := container.NewBorder(joinHead, nil, nil, nil,
+		container.NewGridWrap(fyne.NewSize(380, 140), p.joins))
+
+	p.outputs = newEditList("Columns",
+		func() int { return len(p.design.Outputs) }, p.outputLabel,
+		func() { p.editOutput(-1) }, p.editOutput, p.removeOutput)
+	p.wheres = newEditList("Conditions on rows",
+		func() int { return len(p.design.Where) },
+		func(i int) string { return conditionLabel(p, p.design.Where, i) },
+		func() { p.editCondition(&p.design.Where, -1, false) },
+		func(i int) { p.editCondition(&p.design.Where, i, false) },
+		func(i int) {
+			if removeAt(&p.design.Where, i) {
+				p.draw()
+			}
+		})
+	p.havings = newEditList("Conditions on groups",
+		func() int { return len(p.design.Having) },
+		func(i int) string { return conditionLabel(p, p.design.Having, i) },
+		func() { p.editCondition(&p.design.Having, -1, true) },
+		func(i int) { p.editCondition(&p.design.Having, i, true) },
+		func(i int) {
+			if removeAt(&p.design.Having, i) {
+				p.draw()
+			}
+		})
+	p.groups = newEditList("Grouped by",
+		func() int { return len(p.design.Group) }, p.groupLabel,
+		func() { p.editGroup(-1) }, p.editGroup,
+		func(i int) {
+			if removeAt(&p.design.Group, i) {
+				p.draw()
+			}
+		})
+	p.orders = newEditList("Ordered by",
+		func() int { return len(p.design.Order) }, p.orderLabel,
+		func() { p.editOrder(-1) }, p.editOrder,
+		func(i int) {
+			if removeAt(&p.design.Order, i) {
+				p.draw()
+			}
+		})
+
+	p.distinct = widget.NewCheck("Only rows that differ", func(on bool) {
+		p.design.Distinct = on
+		p.refresh()
+	})
+	p.distinct.SetChecked(p.design.Distinct)
+	p.limit = p.limitEntry()
+
+	rows := container.NewVBox(p.distinct,
+		container.NewBorder(nil, nil, widget.NewLabel("How many rows"), nil, p.limit))
+
+	return container.NewGridWrap(fyne.NewSize(400, 620), container.NewVScroll(
+		container.NewVBox(joins, p.outputs.content, p.wheres.content, p.havings.content,
+			p.groups.content, p.orders.content, rows)))
+}
+
+// sqlView is the statement the design has become, under the canvas (FR-9.3).
+//
+// Live and one-way. It is written afresh on every change, which is what "live"
+// means and costs nothing: rendering a design is a pure function of it. It is
+// not editable, and that is the honest half of "bidirectional": reading SQL
+// back into a design means parsing every dialect's SELECT, and a designer that
+// accepted an edit and silently dropped what it could not understand would be
+// worse than one that does not accept it. Open as a Query is the way out, and
+// the editor is where SQL is edited.
+func (p *designerPanel) sqlView() fyne.CanvasObject {
+	p.sql = widget.NewMultiLineEntry()
+	p.sql.Wrapping = fyne.TextWrapOff
+	p.sql.TextStyle = fyne.TextStyle{Monospace: true}
+	head := widget.NewLabel("SQL")
 	head.TextStyle = fyne.TextStyle{Bold: true}
-	return container.NewBorder(head, nil, nil, nil,
-		container.NewGridWrap(fyne.NewSize(360, 300), p.joins))
+	p.showSQL()
+	return container.NewGridWrap(fyne.NewSize(400, 180),
+		container.NewBorder(head, nil, nil, nil, p.sql))
+}
+
+// showSQL writes what the design is now, or what is wrong with it.
+//
+// A design that is not a query yet says so in the same place the SQL goes,
+// because that is where somebody is looking to find out what it is doing.
+func (p *designerPanel) showSQL() {
+	if p.sql == nil {
+		return
+	}
+	text := "Add a table to begin."
+	if len(p.design.Tables) > 0 {
+		if sql, err := query.Render(p.design, p.dialect()); err == nil {
+			text = sql
+		} else {
+			text = "Not a query yet: " + err.Error() + "."
+		}
+	}
+	p.sql.SetText(text)
+	// An entry nobody may type in still shows its text, and cannot be typed in.
+	p.sql.Disable()
+}
+
+// dialect is the connection's, or nil where it has none or has closed.
+func (p *designerPanel) dialect() source.Dialect {
+	live, open := p.s.d.WS.Get(p.t.connID)
+	if !open {
+		return nil
+	}
+	dl, _ := live.Source.(source.Dialect)
+	return dl
 }
 
 // joinLabel says what a join does, in one line: which tables, which kind, and
@@ -252,9 +372,9 @@ func (p *designerPanel) aliasAt(i int) string {
 
 // refresh turns the controls on and off and says what is there.
 func (p *designerPanel) refresh() {
-	if p.joins != nil {
-		p.joins.Refresh()
-	}
+	// Nothing here refreshes a list. Every change to what is in one goes
+	// through draw, which builds them afresh; a Refresh here would be a line
+	// no test could tell the absence of, which is how it was found.
 	if p.suggest != nil {
 		if len(query.Suggest(p.design, p.db)) > 0 {
 			p.suggest.Enable()
@@ -262,6 +382,10 @@ func (p *designerPanel) refresh() {
 			p.suggest.Disable()
 		}
 	}
+	// The SQL is written afresh whenever anything changes, which is what
+	// "live" means and costs nothing: rendering a design is a pure function
+	// of it (FR-9.3).
+	p.showSQL()
 	if p.remove != nil {
 		if p.chosen() >= 0 {
 			p.remove.SetText("Remove " + p.aliasAt(p.chosen()))
