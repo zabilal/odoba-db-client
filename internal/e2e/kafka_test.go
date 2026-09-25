@@ -187,8 +187,9 @@ func registerSchema(t *testing.T, subject, schema string) int {
 // window can drive — a topic opened, its records decoded against the schema
 // registry, and a consumer group's lag read — and stops where the window
 // does. Seeking to a timestamp and tailing live messages have no way in from
-// the window: source.Seek and app.NewTail exist and are tested, and nothing
-// reaches them. TASKS.md records that, and this journey is [~] until it does.
+// the window (T5.12): a topic is opened onto its records, decoded against the
+// registry, exported as it reads them, told where to start, followed while
+// something writes to it, and a consumer group's lag is read.
 func runJ8(t *testing.T, j journey, group string) {
 	h := start(t, j)
 
@@ -265,6 +266,71 @@ func runJ8(t *testing.T, j journey, group string) {
 			!strings.Contains(string(b), `"value":"`) // not base64, and not hex
 	})
 
+	// Told where to start: from the beginning of the log, which is a read the
+	// window had no way of asking for until T5.12 (FR-13.5). The topic's own
+	// tab is where the control is, so the journey goes back to it.
+	h.s.Commands().Run("tab.previous")
+	walkTo(t, h, j.path)
+	if err := h.s.Commands().Run("object.open"); err != nil {
+		t.Fatalf("Open Data again: %v", err)
+	}
+	if err := h.s.Commands().Run("stream.seek"); err != nil {
+		t.Fatalf("Start Reading At: %v", err)
+	}
+	where := h.w.Canvas().Overlays().Top()
+	if where == nil {
+		t.Fatal("it did not ask where to start")
+	}
+	for _, sel := range find[*widget.Select](where) {
+		if slices.Contains(sel.Options, "The beginning") {
+			sel.SetSelected("The beginning")
+		}
+	}
+	test.Tap(button(t, where, "Read"))
+	waitFor(t, h.q, "the log read from its beginning", func() bool {
+		h.w.Canvas().Capture()
+		return strings.Contains(h.s.ActiveFooter(), "the beginning")
+	})
+	waitFor(t, h.q, "every record", func() bool {
+		g := h.s.ActiveGrid()
+		if g == nil {
+			return false
+		}
+		n, _ := g.Model().Extent()
+		return n == j8Records
+	})
+
+	// And followed: a record written while the window is watching arrives in
+	// it, which is the step the window could not take at all (FR-13.6).
+	if err := h.s.Commands().Run("stream.follow"); err != nil {
+		t.Fatalf("Follow the Records: %v", err)
+	}
+	waitFor(t, h.q, "the tail to start", func() bool {
+		h.w.Canvas().Capture()
+		return strings.Contains(h.s.ActiveFooter(), "following")
+	})
+	writeRecord(t, j, "written-while-following")
+	waitFor(t, h.q, "the record written while following", func() bool {
+		h.w.Canvas().Capture()
+		g := h.s.ActiveGrid()
+		if g == nil {
+			return false
+		}
+		n, _ := g.Model().Extent()
+		return n >= 1
+	})
+	// Pausing holds it where it is, and stopping puts the log back.
+	if err := h.s.Commands().Run("stream.pause"); err != nil {
+		t.Fatalf("Pause Following: %v", err)
+	}
+	waitFor(t, h.q, "the tail to hold", func() bool {
+		h.w.Canvas().Capture()
+		return strings.Contains(h.s.ActiveFooter(), "paused")
+	})
+	if err := h.s.Commands().Run("stream.follow"); err != nil {
+		t.Fatalf("Stop following: %v", err)
+	}
+
 	// And a consumer group says how far behind it is.
 	groupPath := []model.ObjectRef{
 		j.path[0],
@@ -286,7 +352,11 @@ func runJ8(t *testing.T, j journey, group string) {
 
 	// It is every record behind, and the view says so in records rather than
 	// in offsets: a number somebody can act on.
-	behind := fmt.Sprintf("%d records behind", j8Records)
+	//
+	// Every record includes the one written while the window was following,
+	// because it is in the log now: a journey that expected the count from
+	// before its own step would be a journey ignoring what it just did.
+	behind := fmt.Sprintf("%d records behind", j8Records+1)
 	waitFor(t, h.q, "the group's lag", func() bool {
 		h.w.Canvas().Capture()
 		return strings.Contains(strings.Join(labelsIn(h.tabs.Selected().Content), " "), behind)
@@ -326,4 +396,31 @@ func schemaForm(o fyne.CanvasObject) string {
 		}
 	}
 	return ""
+}
+
+// writeRecord writes one record to the journey's topic, as something else
+// would while somebody is watching the log.
+func writeRecord(t *testing.T, j journey, key string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	drv, err := source.Lookup(j.conn.Driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := drv.Open(ctx, j.conn.ConnectionConfig(
+		func(_, key string) (string, error) { return j.secrets[key], nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	producer, ok := src.(source.StreamProducer)
+	if !ok {
+		t.Fatal("this driver cannot write a record")
+	}
+	if _, _, err := producer.Produce(ctx, source.ProduceRequest{
+		Topic: j.table, Partition: -1, Key: []byte(key),
+		Value: []byte("a record written while the window was watching"), Confirmed: true}); err != nil {
+		t.Fatalf("writing a record: %v", err)
+	}
 }

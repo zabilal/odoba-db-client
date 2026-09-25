@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,8 +35,26 @@ func (recordFake) Describe() source.Descriptor {
 		Fields: []source.Field{{Key: "host", Label: "Host", Kind: source.FieldText, Required: true}}}
 }
 
-func (recordFake) Open(context.Context, source.ConnectionConfig) (source.Source, error) {
-	return &recordSource{}, nil
+func (recordFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Source, error) {
+	// A connection with "notime" in its host cannot find a position by time,
+	// which is how a test says so without a second fake driver.
+	return &recordSource{live: make(chan model.Row, 16),
+		noTime: strings.Contains(cfg.Host, "notime")}, nil
+}
+
+// recordSourceOf is the fake behind a connection, for a test that wants to write
+// to a log the window is following or to read what the window asked for.
+func recordSourceOf(t *testing.T, fx *fixture, connID string) *recordSource {
+	t.Helper()
+	live, ok := fx.ws.Get(connID)
+	if !ok {
+		t.Fatal("that connection is not open")
+	}
+	src, ok := live.Source.(*recordSource)
+	if !ok {
+		t.Fatalf("its source is a %T", live.Source)
+	}
+	return src
 }
 
 type recordSource struct {
@@ -45,6 +65,41 @@ type recordSource struct {
 	produced []source.ProduceRequest
 	changed  []string
 	refuse   error
+
+	// live is where a test writes the records a following read hands over, and
+	// asked is every browse this source was given — including where the window
+	// said to start, which is the other half of what these controls do.
+	mu    sync.Mutex
+	live  chan model.Row
+	asked []source.BrowseOptions
+	// noTime is a source that cannot find a position by time, so that the
+	// window's not offering it can be told from its offering it.
+	noTime bool
+	// gone is what a followed log says once the test has taken it away, and
+	// closes counts the following reads that were let go of.
+	gone   error
+	closes int
+}
+
+// closedFollows is how many following reads this source has let go of.
+func (r *recordSource) closedFollows() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.closes
+}
+
+// failing is what a followed read answers now, or nothing.
+func (r *recordSource) failing() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.gone
+}
+
+// goesAway makes a followed log fail, as a broker that has gone does.
+func (r *recordSource) goesAway(err error) {
+	r.mu.Lock()
+	r.gone = err
+	r.mu.Unlock()
 }
 
 // allowed refuses the way the guard does: a read-only connection refuses
@@ -108,10 +163,10 @@ func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (mo
 	return model.TopicPartition{Topic: rec.Topic, Partition: 1}, 42, nil
 }
 
-func (*recordSource) Capabilities() capability.Capabilities {
+func (r *recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
-		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
+		Stream: capability.Stream{Consume: true, SeekTimestamp: !r.noTime, Follow: true,
 			Produce: true, TopicAdmin: true, ResetOffsets: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true, model.KindConsumerGroup: true,
@@ -185,11 +240,59 @@ var fakeRecords = []model.Row{
 	{int64(3), int64(12), recordWhen, nil, []byte{0xff, 0xfe, 0x00}, nil},
 }
 
-func (*recordSource) Browse(_ context.Context, ref model.ObjectRef, _ source.BrowseOptions) (model.RowStream, error) {
+func (r *recordSource) Browse(_ context.Context, ref model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {
 	if ref.Kind != model.KindTopic {
 		return nil, errors.New("recordfake: only a topic holds records")
 	}
+	r.mu.Lock()
+	r.asked = append(r.asked, opt)
+	r.mu.Unlock()
+	if opt.Follow {
+		// A following read answers when somebody writes and never ends, which
+		// is what a log being followed does. The test is the one writing.
+		return &liveStream{src: r, records: r.live}, nil
+	}
 	return &recordStream{}, nil
+}
+
+// asks is every browse this source was given, so that a test can say what the
+// window asked for rather than only what it drew.
+func (r *recordSource) asks() []source.BrowseOptions {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]source.BrowseOptions(nil), r.asked...)
+}
+
+// liveStream is a log being followed: it waits, and hands over what the test
+// writes. It never ends, because a log has not ended — unless the test says the
+// log went away, which is the other thing a followed log does.
+type liveStream struct {
+	src     *recordSource
+	records chan model.Row
+}
+
+func (*liveStream) Columns() []model.ColumnDef { return recordCols }
+
+func (l *liveStream) Next(ctx context.Context) (model.Row, error) {
+	if err := l.src.failing(); err != nil {
+		return nil, err
+	}
+	select {
+	case row := <-l.records:
+		if err := l.src.failing(); err != nil {
+			return nil, err
+		}
+		return row, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (l *liveStream) Close() error {
+	l.src.mu.Lock()
+	l.src.closes++
+	l.src.mu.Unlock()
+	return nil
 }
 
 type recordStream struct{ at int }
