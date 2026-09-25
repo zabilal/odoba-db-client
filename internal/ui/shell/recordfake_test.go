@@ -36,10 +36,15 @@ func (recordFake) Describe() source.Descriptor {
 }
 
 func (recordFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Source, error) {
-	// A connection with "notime" in its host cannot find a position by time,
-	// which is how a test says so without a second fake driver.
+	// What a connection's host says it is, which is how a test asks for a
+	// source of a particular shape without a second fake driver: "notime"
+	// cannot find a position by time, "keepsnothing" keeps no records to read
+	// and can only be followed, and "shy" says nothing of its can be followed
+	// at all.
 	return &recordSource{live: make(chan model.Row, 16),
-		noTime: strings.Contains(cfg.Host, "notime")}, nil
+		noTime:       strings.Contains(cfg.Host, "notime"),
+		keepsNothing: strings.Contains(cfg.Host, "keepsnothing"),
+		shy:          strings.Contains(cfg.Host, "shy")}, nil
 }
 
 // recordSourceOf is the fake behind a connection, for a test that wants to write
@@ -75,6 +80,12 @@ type recordSource struct {
 	// noTime is a source that cannot find a position by time, so that the
 	// window's not offering it can be told from its offering it.
 	noTime bool
+	// keepsNothing is a source with nothing to read: a Redis channel or a
+	// Mongo collection's changes, where the only way in is to follow.
+	keepsNothing bool
+	// shy is a source that claims following and then says this object is not
+	// one of the ones it can follow.
+	shy bool
 	// gone is what a followed log says once the test has taken it away, and
 	// closes counts the following reads that were let go of.
 	gone   error
@@ -166,7 +177,7 @@ func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (mo
 func (r *recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
-		Stream: capability.Stream{Consume: true, SeekTimestamp: !r.noTime, Follow: true,
+		Stream: capability.Stream{Consume: !r.keepsNothing, SeekTimestamp: !r.noTime, Follow: true,
 			Produce: true, TopicAdmin: true, ResetOffsets: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true, model.KindConsumerGroup: true,
@@ -238,6 +249,12 @@ var fakeRecords = []model.Row{
 	{int64(0), int64(11), recordWhen, []byte("order-2"), []byte("plain words"), nil},
 	// No key at all, and bytes that are not text: a producer may send either.
 	{int64(3), int64(12), recordWhen, nil, []byte{0xff, 0xfe, 0x00}, nil},
+}
+
+// CanFollow is what this source says can be followed, which is every topic
+// unless the test asked for a source that follows nothing.
+func (r *recordSource) CanFollow(ref model.ObjectRef) bool {
+	return !r.shy && ref.Kind == model.KindTopic
 }
 
 func (r *recordSource) Browse(_ context.Context, ref model.ObjectRef, opt source.BrowseOptions) (model.RowStream, error) {

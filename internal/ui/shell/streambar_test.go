@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
+
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -307,6 +309,11 @@ func TestATimeIsNotOfferedWhereItCannotBeAnswered(t *testing.T) {
 	fx.s.selectTab(tb)
 	fx.s.sync()
 
+	// It can still be told where to start: a log that is kept has places in it
+	// whether or not the source can find one by time.
+	if !fx.s.canSeek() {
+		t.Error("a log whose times cannot be found has no positions either")
+	}
 	bar := fx.s.streamControls(tb)
 	bar.askSeek()
 	top := fx.s.win.Canvas().Overlays().Top()
@@ -409,5 +416,121 @@ func TestAFollowThatStoppedSaysSo(t *testing.T) {
 	}
 	if rows, err := tb.model.Read(tb.ctx, 0, 10); err != nil || len(rows) == 0 {
 		t.Errorf("it holds %d rows: %v", len(rows), err)
+	}
+}
+
+// openLog opens the fake's topic on a connection of a given shape, so that a
+// test can ask for a source that keeps nothing or follows nothing.
+func openLog(t *testing.T, host string) (*fixture, *tab, *streamBar, *recordSource) {
+	t.Helper()
+	fx := newFixture(t)
+	c, err := fx.conns.Create(store.SavedConnection{Name: "log-" + host, Driver: "recordfake",
+		Host: host}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.s.OpenObject(c.ID, model.Node{Ref: topicRef, Label: "events", Browsable: true})
+	tb := fx.onlyTab(t)
+	pump(t, fx.q, func() bool { return tb.browse != nil })
+	fx.s.selectTab(tb)
+	fx.s.sync()
+	return fx, tb, fx.s.streamControls(tb), recordSourceOf(t, fx, tb.connID)
+}
+
+// Which of a server's objects can be followed is the source's own answer, not a
+// guess from what kind of server it is: a Redis connection can follow a channel
+// and not a key, so a source that says no to this object gets no control — one
+// that could only fail when it was pressed.
+func TestWhatASourceWillNotFollowGetsNoControl(t *testing.T) {
+	fx, tb, bar, _ := openLog(t, "shy")
+	if fx.s.canFollow() {
+		t.Error("it offers to follow what the source says it cannot")
+	}
+	// Its records can still be read from a position — that is a different
+	// question, and this source keeps them — so the bar is there, with the
+	// controls that apply and not the ones that do not.
+	if !fx.s.canSeek() {
+		t.Error("it cannot be told where to start either")
+	}
+	fx.s.showStreamBar(tb)
+	within := func(b fyne.CanvasObject) bool {
+		for _, o := range bar.box.Objects {
+			if o == b {
+				return true
+			}
+		}
+		return false
+	}
+	if within(bar.follow) || within(bar.pause) {
+		t.Error("the bar carries a Follow that could only fail")
+	}
+	if !within(bar.seek) {
+		t.Error("the bar carries no way to say where to start")
+	}
+	// And the menu command is not offered either, because a command that can
+	// only fail is worse than one that is not there.
+	fx.s.sync()
+	if !fx.s.menuItems[cmdFollow].Disabled {
+		t.Error("the Follow command is offered")
+	}
+}
+
+// A source that keeps nothing — a change stream, a channel — can still be told
+// where to start, because a time is where following begins. The other positions
+// are places in a log that is kept, and are not offered.
+func TestWhereToStartOnAStreamThatKeepsNothing(t *testing.T) {
+	fx, _, bar, _ := openLog(t, "keepsnothing")
+	if !fx.s.canSeek() {
+		t.Fatal("it cannot be told where to start")
+	}
+	bar.askSeek()
+	top := fx.s.win.Canvas().Overlays().Top()
+	if top == nil {
+		t.Fatal("it asked nothing")
+	}
+	picks := selectsIn(top)
+	if len(picks) == 0 {
+		t.Fatal("there is nowhere to choose from")
+	}
+	offered := picks[0].Options
+	if len(offered) != 1 || offered[0] != "A time" {
+		t.Errorf("it offers %v", offered)
+	}
+}
+
+// And starting there follows from there rather than reading again: on a source
+// that keeps nothing there is no page to fetch, so a read would answer the same
+// nothing and claim it came from somewhere.
+func TestStartingSomewhereOnAStreamThatKeepsNothingFollows(t *testing.T) {
+	fx, tb, bar, src := openLog(t, "keepsnothing")
+	from := time.Date(2026, 9, 25, 14, 30, 0, 0, time.UTC)
+	bar.startAt(&source.Seek{Mode: source.SeekTimestamp, Time: from}, "14:30")
+	if !bar.following() {
+		t.Fatal("it is not following")
+	}
+	asks := src.asks()
+	last := asks[len(asks)-1]
+	if !last.Follow {
+		t.Error("it read the log instead of following it")
+	}
+	if last.Seek == nil || !last.Seek.Time.Equal(from) {
+		t.Fatalf("it followed from %+v", last.Seek)
+	}
+	pump(t, fx.q, func() bool { return strings.Contains(tb.footer.Text, "following") })
+}
+
+// Where there is nothing kept to read and nothing to follow, there are no
+// controls at all: not a Follow that could only fail, and not a position on a
+// stream that would not be followed from it.
+func TestNoControlsWhereThereIsNothingToReadOrFollow(t *testing.T) {
+	fx, tb, bar, _ := openLog(t, "shy-keepsnothing")
+	if fx.s.canFollow() || fx.s.canSeek() {
+		t.Error("it offers to follow or to start somewhere")
+	}
+	fx.s.showStreamBar(tb)
+	for _, o := range tb.top.Objects {
+		if o == bar.box {
+			t.Error("the controls are above the grid anyway")
+		}
 	}
 }

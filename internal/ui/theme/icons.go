@@ -32,6 +32,7 @@ const (
 	IconNameCollection    fyne.ThemeIconName = "ikigai:collection"
 	IconNameKey           fyne.ThemeIconName = "ikigai:key"
 	IconNameTopic         fyne.ThemeIconName = "ikigai:topic"
+	IconNameChannel       fyne.ThemeIconName = "ikigai:channel"
 	IconNamePartition     fyne.ThemeIconName = "ikigai:partition"
 	IconNameConsumerGroup fyne.ThemeIconName = "ikigai:consumergroup"
 	IconNameCluster       fyne.ThemeIconName = "ikigai:cluster"
@@ -118,6 +119,13 @@ var customIcons = map[fyne.ThemeIconName]fyne.Resource{
 	IconNameTopic: svgIcon("topic.svg",
 		`<path d="M2.6 4.6h10.8"/><path d="M2.6 8h10.8"/><path d="M2.6 11.4h10.8"/>`+
 			`<path d="M11 2.9l2.4 1.7L11 6.3"/>`),
+
+	// Something broadcasting: what is said goes out to whoever is listening
+	// and is kept by nobody, which is what a channel is.
+	IconNameChannel: svgIcon("channel.svg",
+		`<circle cx="4.2" cy="8" r="1.2"/>`+
+			`<path d="M7.4 5.4a4.2 4.2 0 010 5.2"/>`+
+			`<path d="M10.2 3.2a7.8 7.8 0 010 9.6"/>`),
 
 	// One lane of a log.
 	IconNamePartition: svgIcon("partition.svg",

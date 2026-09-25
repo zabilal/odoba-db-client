@@ -640,6 +640,7 @@ var kindIcons = map[model.ObjectKind]fyne.ThemeIconName{
 	model.KindUserType:         uitheme.IconNameType,
 	model.KindCollection:       uitheme.IconNameCollection,
 	model.KindKey:              uitheme.IconNameKey,
+	model.KindChannel:          uitheme.IconNameChannel,
 	model.KindTopic:            uitheme.IconNameTopic,
 	model.KindPartition:        uitheme.IconNamePartition,
 	model.KindConsumerGroup:    uitheme.IconNameConsumerGroup,

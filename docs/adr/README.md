@@ -169,3 +169,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0162](0162-a-plugin-is-a-program.md) | A plugin is a program | Accepted |
 | [0163](0163-a-map-with-no-map-under-it.md) | A map with no map under it | Accepted |
 | [0164](0164-the-same-grid-following.md) | The same grid, following | Accepted |
+| [0165](0165-a-change-is-not-a-document-and-a-channel-is-not-a-key.md) | A change is not a document, and a channel is not a key | Accepted |
