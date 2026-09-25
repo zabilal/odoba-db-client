@@ -52,6 +52,22 @@ type Settings struct {
 	// a file (FR-14.4). A settings file with no assistant section is a
 	// settings file with no assistant.
 	Assistant *Assistant `json:"assistant,omitempty"`
+	// Plugins is where third-party sources are loaded from, or nil where
+	// nobody has turned them on. A plugin is a program, and a program that
+	// ran because it was in a folder is a program nobody chose, so this
+	// section's absence is the whole of "off" (FR-16.2).
+	Plugins *Plugins `json:"plugins,omitempty"`
+}
+
+// Plugins is where plugins come from and whether they are run at all.
+type Plugins struct {
+	// Enabled runs them. Off until somebody says otherwise, and asked for in
+	// the words that say what it means: a plugin sees the connections it is
+	// used for, secrets and all.
+	Enabled bool `json:"enabled,omitempty"`
+	// Directory holds one subdirectory per plugin. Empty is the "plugins"
+	// folder in the application's own data directory.
+	Directory string `json:"directory,omitempty"`
 }
 
 // Assistant is how the AI assistant is set up (FR-14.5).

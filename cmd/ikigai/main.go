@@ -16,6 +16,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/logging"
+	"github.com/ikigai-db/ikigai-db/internal/plugin"
 	"github.com/ikigai-db/ikigai-db/internal/single"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
@@ -138,6 +139,21 @@ func run() error {
 	// What is saved recognises a passphrase; the window asks for it before
 	// anything reads a secret.
 	vault.SetLock(app.NewLock(settings.Get().Vault))
+
+	// Plugins are programs, and are started before the window so that the
+	// sources they add are in the registry when the connection picker is
+	// built (REQ-DB-1). Nothing runs unless somebody turned them on: a
+	// program that ran because it was in a folder is a program nobody chose
+	// (FR-16.2).
+	plugins, err := plugin.FromSettings(context.Background(), settings.Get().Plugins, paths, log)
+	if err != nil {
+		log.Warn("the plugins directory could not be read", "err", err)
+	}
+	defer plugins.Close()
+	if n := len(plugins.Plugins); n > 0 {
+		log.Info("plugins", "loaded", n, "failed", len(plugins.Failed))
+	}
+
 	conns := app.NewConnections(settings, vault, log)
 	ws := app.NewWorkspace(conns, app.MonitorConfig{})
 

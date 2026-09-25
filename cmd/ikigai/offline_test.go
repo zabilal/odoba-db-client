@@ -40,6 +40,11 @@ var netFree = []string{
 	"diff",
 	"sqlfmt",
 	"sqllex",
+	// The plugin host runs a program somebody installed. It does not fetch
+	// one: there is no plugin directory to download from and no plugin
+	// manager, and a host that could reach the network would be the beginning
+	// of both (FR-16.2).
+	"plugin",
 }
 
 // modulePath is what a package of ours is called from anywhere in the
