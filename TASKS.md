@@ -37,24 +37,26 @@ STATUS:    Phase 4's application work is done. T4.2, T4.3, T4.6,
            reached from the application at all. Registered, and the
            driver packages are now held against what the binary
            depends on.
-NEXT TASK: T5.9: the CLI — run a query, export, import, deploy a
-           model, diff.
-           T5.5 to T5.8 are closed: the assistant is reachable from
-           the window (ADR-0160). Assistant… configures a provider,
-           Ask the Assistant… puts a generated statement in an editor
-           unrun, and Explain This Statement explains what Run would
-           run; all three are disabled until a provider is configured
-           and a connection has opted in. Off by default is the
-           absence of a section in the file rather than a flag set to
-           false, and the window decides nothing about consent — it
-           asks internal/assistant. What is enforced and not yet
-           asked anywhere is the per-session confirmation for
-           production data: no dialog sets it, so a production
-           connection can be asked about its schema and not its rows.
-           Adding the way in found a defect in itself: the command
-           read the explorer's selection as a selected object, which
-           reports nothing for a connection row, so it was offered
-           and then did nothing.
+NEXT TASK: T5.10: the plugin SDK for third-party sources and
+           formats.
+           T5.9 is closed: there is a command line, in a binary of
+           its own that draws nothing (ADR-0161). query, export,
+           import, save, diff and deploy, with four exit statuses and
+           3 meaning "there is a difference" so that a build gate can
+           tell that from a failure. deploy prints its statements and
+           stops unless told to apply them, and will not drop
+           anything without being told twice.
+           It found a defect in the application while being built: a
+           snapshot of a SQLite database was empty, because the walk
+           asked for the children of a database node SQLite has not
+           got — so two different SQLite databases compared equal and
+           a model saved from one held nothing. Fixed in
+           internal/app, where the window reads it too.
+           T5.5 to T5.8 are closed as well: the assistant is
+           reachable from the window (ADR-0160), off until it is
+           turned on and off per connection until that connection
+           opts in. What is enforced and not yet asked anywhere is
+           the per-session confirmation for production data.
            The designer is done: T5.1 and T5.2 are closed and T5.3 is
            [~] because its SQL view is live and one-way, which its
            line explains.
@@ -1169,7 +1171,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T5.6** AI: explain query / explain plan → FR-14.2 — *Explain This Statement explains what Run would run: the selection where there is one, the whole script otherwise, which is the same reading Run makes, so that an explanation of five statements cannot be an explanation of the one somebody had picked out. It sends no rows even where rows are allowed, a question about what a statement does being answerable from the statement. It is offered only where there is a statement and the assistant is on, and goes away with either (ADR-0160)*
 - [x] **T5.7** AI: consent model — off by default, per-connection opt-in, data toggle → FR-14.3, FR-14.4 — *the four switches T5.4 built now have somebody to set them. Off by default is the absence of a section rather than a flag set to false: the settings hold an assistant section only once one is configured, a connection holds one only once a box is ticked, and a file that has never seen the feature says nothing about it — a test marshals a fresh settings file and fails on the word. Two switches on a connection, the second following the first, because sending rows is meaningless without the opt-in and a tick nobody can act on reads as one that means something; taking the first away takes the second with it and leaves no section behind. The window decides nothing: ProviderFor, ConsentFor and Ready read the settings and the connection, and the window asks them, for the reason read-only mode is enforced in the data layer — a disabled menu item is a courtesy, not a control, so asking is refused again on the way in and a test drives that path rather than the menu. Consent.Data carries the connection's switch as it stands: the Enabled && that guarded it came out, Allow and Describe both answering for the opt-in before they look at the data, and a doubled guard being exactly what survives having either half removed. Every place the assistant appears says what it may see — provider, model and one line of consent — so that somebody about to send their schema to a company does not have to open Settings to find out that they are. The key goes to the keychain under a name of its own, never a connection's ID, which is deleted with that connection; it is not shown back, and a blank field leaves it alone, because somebody changing which model to ask has not asked for their key to be forgotten. Turning it on validates the provider it would use, so a setting that could not work is never written — plain http:// still only to this machine. What is enforced and not yet asked anywhere is the per-session consent for production data: no dialog sets Confirmed, so a production connection can be asked about its schema and not about its rows, which is the safe direction and is written down in ADR-0160 rather than left to be found*
 - [x] **T5.8** AI: never auto-execute; statements land in the editor → FR-14.6 — *an answer with a statement in it opens a script with two comment lines above it — what answered, and that nothing here has run — and there is no path from an answer to an execution: the test asserts the absence of one, no result sets and nothing running, because a feature whose whole promise is that it did not do something is tested by showing that it did not. An answer with no statement in it is shown as the words it is rather than guessed into an editor (ADR-0160)*
-- [ ] **T5.9** CLI: run query, export, import, deploy model, diff → FR-16.1, FR-7.7
+- [x] **T5.9** CLI: run query, export, import, deploy model, diff → FR-16.1, FR-7.7 — *a second binary, because the first one draws: a binary that links the platform's window system needs those libraries present to run at all, and a pipeline runs in a container that has none — so cmd/ikigai-cli carries the same drivers and nothing that draws, both held by tests, the drawing one with a control that points the same rule at the window and requires it to find the toolkit there (ADR-0161). Six verbs: query, export, import, save, diff, deploy. Everything below the flags is the application's own — the drivers, the comparison, the export writers, the loader — because what a pipeline needs is not different work, it is different manners. A pipeline cannot answer a dialog, so nothing is asked: where the window would put up a dialog this refuses and names the flag that would have answered it. It reads statuses rather than sentences, so there are four: 0 done, 1 failed, 2 the arguments could not be acted on, 3 there is a difference — and 3 is not a failure, because a gate wants to tell "they differ" from "it broke". Rows go to one stream and every count, warning and refusal to the other, so a pipeline redirecting rows into a file does not find "3 rows" among them; a file is written under another name and moved into place, so a reader finds a whole file or none. A password is never a flag: IKIGAI_PASSWORD, or IKIGAI_URL for a whole connection string, because a command line is readable by everything else on the machine. --connection opens through the application's own Connections, so a tunnel, a cloud token and the keychain all work without being reimplemented, and --read-only there tightens the guard on the connection this process opens without writing anything to the file. A sealed vault is refused rather than asked about in the environment, which would undo the sealing for every process on the machine. deploy prints its statements and stops: ADR-0115's reading, done earlier by whoever wrote the pipeline, and --allow-drops on top of --apply for anything that removes an object, because a model that lost a table by accident would otherwise take the table with it. save is here although FR-16.1 does not list it, because the list does not work without it — deploying a model and comparing against one both need a model to have been written, and until now only the window could write one. The tests run against SQLite, which is a real database in a file: every verb but deploy runs for real in the ordinary suite, and deploy is refused there because SQLite renders no DDL, which is asserted too so that the day it grows a generator the test fails and the limit comes out; deploying for real is J6 against PostgreSQL in internal/e2e. Building it found a defect in the application, not the CLI: app.Snapshot read a database by asking for the children of a database reference, which SQLite never answers — it has one database and no node above its class folders — so every snapshot of a SQLite database was empty, two different SQLite databases compared equal, a model saved from one held nothing, and all three looked like success. The command line is 69.8 MB against the application's 86.3, so the toolkit is about 16 and the drivers are the rest (T4.30); CI measures both and fails if the command line ever grows past the application, which would mean something that must not be imported has arrived*
 - [ ] **T5.10** Plugin SDK for third-party sources and formats → FR-16.2
 - [ ] **T5.11** Map view for geo columns → FR-11.5
 - [ ] **T5.12** Mongo change streams / Redis pub-sub live tail → FR-12.5
