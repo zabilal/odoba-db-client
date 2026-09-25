@@ -49,6 +49,9 @@ func (s *redisSource) Browse(ctx context.Context, ref model.ObjectRef, opt sourc
 	if ref.Kind == model.KindKey {
 		return s.browseValue(ctx, ref, opt)
 	}
+	if ref.Kind == model.KindChannel {
+		return s.listen(ctx, ref, opt)
+	}
 	db, err := databaseOf(ref)
 	if err != nil {
 		return nil, err
@@ -100,6 +103,11 @@ func (s *redisSource) Count(ctx context.Context, ref model.ObjectRef, opt source
 	defer panics.Recover(&err, "counting the keys")
 	if ref.Kind == model.KindKey {
 		return s.countValue(ctx, ref, opt)
+	}
+	if ref.Kind == model.KindChannel {
+		// Nothing is kept on a channel, and that is an answer rather than a
+		// failure to count: the grid draws an empty log with a Follow above it.
+		return 0, nil
 	}
 	db, err := databaseOf(ref)
 	if err != nil {

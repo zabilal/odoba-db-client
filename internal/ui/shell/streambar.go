@@ -15,6 +15,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 )
 
 // Following a log, and starting somewhere in it (FR-13.5, FR-13.6).
@@ -56,20 +57,33 @@ type streamBar struct {
 
 // canFollow reports whether the tab in front is showing something that can be
 // followed.
-func (s *Shell) canFollow() bool {
-	t := s.activeTab()
+func (s *Shell) canFollow() bool { return s.canFollowTab(s.activeTab()) }
+
+// canFollowTab is the same question about a named tab, which is what the bar
+// asks: the grid is attached to a tab whether or not it is the one in front.
+func (s *Shell) canFollowTab(t *tab) bool {
 	// A tab with rows has a grid: both are set together when the grid is
 	// attached, so asking about both would be asking twice.
 	if t == nil || t.browse == nil || t.top == nil {
 		return false
 	}
 	live, ok := s.d.WS.Get(t.connID)
-	return ok && live.Source.Capabilities().Stream.Follow
+	if !ok || !live.Source.Capabilities().Stream.Follow {
+		return false
+	}
+	// Which of a server's objects has a stream behind it is the source's own
+	// answer: a Redis channel can be listened to where a key cannot, and a
+	// Follow above a string key would be a control that could only fail.
+	if f, ok := live.Source.(source.Followable); ok {
+		return f.CanFollow(t.ref)
+	}
+	return true
 }
 
 // canSeek reports whether it can be told where to start.
-func (s *Shell) canSeek() bool {
-	t := s.activeTab()
+func (s *Shell) canSeek() bool { return s.canSeekTab(s.activeTab()) }
+
+func (s *Shell) canSeekTab(t *tab) bool {
 	if t == nil || t.browse == nil || t.top == nil {
 		return false
 	}
@@ -77,7 +91,15 @@ func (s *Shell) canSeek() bool {
 	if !ok {
 		return false
 	}
-	return live.Source.Capabilities().Stream.Consume
+	caps := live.Source.Capabilities().Stream
+	if caps.Consume {
+		// A log that is kept has places in it to start reading from.
+		return true
+	}
+	// Where nothing is kept there is one position — a time — and it is not a
+	// page to read but where following begins, so it is offered only where
+	// following is (startAt).
+	return caps.SeekTimestamp && s.canFollowTab(t)
 }
 
 // streamControls is the bar for a tab, made when it is first wanted.
@@ -90,14 +112,24 @@ func (s *Shell) streamControls(t *tab) *streamBar {
 	b.pause = widget.NewButton("Pause", b.togglePause)
 	b.pause.Disable()
 	b.seek = widget.NewButton("Start at…", b.askSeek)
-	b.box = container.NewHBox(widget.NewLabel("Records"), b.follow, b.pause, b.seek)
+	// Only the controls this object has: a log that can be read from a position
+	// and not followed is a real thing (a source may refuse to follow this one
+	// object), and a Follow beside it would be a button that could only fail.
+	in := []fyne.CanvasObject{widget.NewLabel("Records")}
+	if s.canFollowTab(t) {
+		in = append(in, b.follow, b.pause)
+	}
+	if s.canSeekTab(t) {
+		in = append(in, b.seek)
+	}
+	b.box = container.NewHBox(in...)
 	t.stream = b
 	return b
 }
 
 // showStreamBar puts the controls above the grid of a tab that has a log in it.
 func (s *Shell) showStreamBar(t *tab) {
-	if !s.canFollow() && !s.canSeek() {
+	if !s.canFollowTab(t) && !s.canSeekTab(t) {
 		return
 	}
 	b := s.streamControls(t)
@@ -129,12 +161,21 @@ func (b *streamBar) toggleFollow() {
 		b.unfollow()
 		return
 	}
+	b.startFollowing(nil)
+}
+
+// startFollowing begins a tail, from seek where one was asked for and from the
+// end otherwise.
+func (b *streamBar) startFollowing(seek *source.Seek) {
 	live, ok := b.s.d.WS.Get(b.t.connID)
 	if !ok {
 		b.t.footer.SetText("That connection is not open.")
 		return
 	}
 	opt := b.t.browse.Options()
+	if seek != nil {
+		opt.Seek = seek
+	}
 	// From now on, which is what following means: a tail that replayed the
 	// whole log to reach the present would be a different request, and one
 	// that can still be made by starting somewhere and then following.
@@ -308,6 +349,17 @@ var seekModes = []struct {
 	{"A time", source.SeekTimestamp},
 }
 
+// offered reports whether a way of saying where to start is one this source can
+// answer.
+func offered(m source.SeekMode, caps capability.Stream) bool {
+	if m == source.SeekTimestamp {
+		return caps.SeekTimestamp
+	}
+	// The beginning, the last few and an offset are places in a log that is
+	// kept. A stream that keeps nothing has one position, which is a time.
+	return caps.Consume
+}
+
 func (b *streamBar) askSeek() {
 	live, ok := b.s.d.WS.Get(b.t.connID)
 	if !ok {
@@ -317,7 +369,7 @@ func (b *streamBar) askSeek() {
 	caps := live.Source.Capabilities().Stream
 	names := make([]string, 0, len(seekModes))
 	for _, m := range seekModes {
-		if m.mode == source.SeekTimestamp && !caps.SeekTimestamp {
+		if !offered(m.mode, caps) {
 			// Not offered where the source cannot answer it: a choice that
 			// fails when it is taken is worse than one that is not there.
 			continue
@@ -420,9 +472,16 @@ func (b *streamBar) startAt(seek *source.Seek, said string) {
 		// is asking for a read, so the tail ends first.
 		b.unfollow()
 	}
+	b.seeking = said
+	if live, ok := b.s.d.WS.Get(b.t.connID); ok && !live.Source.Capabilities().Stream.Consume {
+		// Nothing is kept to read, so the position is not a page to fetch but
+		// where following begins: a change stream's start time. Reading again
+		// would read the same page and say it came from somewhere else.
+		b.startFollowing(seek)
+		return
+	}
 	opt := b.t.browse.Options()
 	opt.Seek = seek
-	b.seeking = said
 	b.s.rebrowse(b.t, opt, b.t.applied, "Reading from "+said+"…",
 		"The records could not be read from "+said+": ")
 }
