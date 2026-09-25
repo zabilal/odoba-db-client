@@ -3,7 +3,7 @@
 **Version:** 0.2 (revised after toolkit and engine decisions)
 **Date:** 2026-09-09
 **Status:** Requirements gathering — pre-implementation
-**Owner:** globaltrustmortgage@gmail.com
+**Owner:** zakariyyaraji@gmail.com
 
 **Decisions locked in v0.2:**
 - UI toolkit: **pure Go — Fyne** (§8)

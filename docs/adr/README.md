@@ -166,3 +166,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0159](0159-two-wires-and-four-switches.md) | Two wires and four switches | Accepted |
 | [0160](0160-a-question-and-the-two-switches-that-let-it-be-asked.md) | A question, and the two switches that let it be asked | Accepted |
 | [0161](0161-a-second-binary-and-a-status-a-build-can-read.md) | A second binary, and a status a build can read | Accepted |
+| [0162](0162-a-plugin-is-a-program.md) | A plugin is a program | Accepted |

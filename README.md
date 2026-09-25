@@ -87,6 +87,17 @@ stops, and dropping anything needs `--allow-drops` as well as `--apply`. The exi
 status is 0 for done, 1 for failed, 2 for arguments it could not act on, and 3
 for "there is a difference", which is what a build gate reads.
 
+## Adding a source it does not have
+
+A plugin is a program that speaks JSON lines on its standard input and output, so
+it can be written in any language and cannot take the application down with it.
+`examples/csvdir` is a worked one — a folder of CSV files, browsed as a database —
+and `docs/PLUGINS.md` is the protocol.
+
+Plugins are off until you turn them on, and a plugin you open a connection with
+is sent that connection's password: it is code you are trusting, in the way
+anything that can read your credentials is.
+
 ## Building it
 
 Go 1.26 or later, and a C toolchain, which the graphics layer needs:
@@ -122,4 +133,5 @@ password in a file beside the application is worth keeping only sealed.
 - `docs/adr/` — every architectural decision, with what was rejected and why.
 - `docs/SECURITY-REVIEW.md` — NFR-S1 to NFR-S6, what enforces each and what is
   left open.
+- `docs/PLUGINS.md` — the plugin protocol, and what a plugin is trusted with.
 - `CLEANROOM.md` — why no DBGate source has been read, and what was used instead.

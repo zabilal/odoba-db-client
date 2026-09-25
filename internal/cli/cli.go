@@ -131,6 +131,11 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 		fmt.Fprintln(out, "ikigai", version)
 		return OK
 	}
+	// The plugins somebody turned on, before a command asks for a driver: a
+	// plugin source has to be in the registry by the time a connection names
+	// it (FR-16.2). They are closed when the command ends, whatever it did.
+	defer loadPlugins(ctx, e).Close()
+
 	cmd, ok := commands()[args[0]]
 	if !ok {
 		e.sayf("ikigai: %q is not a command", args[0])
