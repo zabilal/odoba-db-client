@@ -176,7 +176,7 @@ jobs:
 
   # NFR-P8: the binary is measured on every platform, on every push.
   #
-  # It does not meet its budget. A stripped macOS build is 80.2 MB against
+  # It does not meet its budget. A stripped macOS build is 81.0 MB against
   # 60 MB, and two dependencies are most of the gap: go-ora, the Oracle
   # driver, is 14.8 MB of it, and franz-go, the Kafka driver, 10.4 MB — a
   # build without either is 55.8 MB. What to do about that is a product

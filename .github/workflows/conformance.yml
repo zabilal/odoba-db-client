@@ -82,6 +82,36 @@ jobs:
         image: apache/kafka:3.9.0
         ports: ["9092:9092"]
 
+      # libSQL is SQLite over a wire (T4.3): one container, told that it is
+      # the primary, and no fixture beyond what the suite writes itself.
+      libsql:
+        image: ghcr.io/tursodatabase/libsql-server:latest
+        ports: ["8080:8080"]
+        env:
+          SQLD_NODE: primary
+
+      firebird:
+        image: firebirdsql/firebird:5
+        ports: ["3050:3050"]
+        env:
+          FIREBIRD_ROOT_PASSWORD: ikigai
+          FIREBIRD_DATABASE: ikigai.fdb
+          FIREBIRD_USER: ikigai
+          FIREBIRD_PASSWORD: ikigai
+
+      # A second Firebird, configured to refuse wire encryption, so that
+      # encryption being this driver's default can be proved against a server
+      # that will not do it rather than asserted (ADR-0156, NFR-S3).
+      firebird-plain:
+        image: firebirdsql/firebird:5
+        ports: ["3051:3050"]
+        env:
+          FIREBIRD_ROOT_PASSWORD: ikigai
+          FIREBIRD_DATABASE: plain.fdb
+          FIREBIRD_USER: ikigai
+          FIREBIRD_PASSWORD: ikigai
+          FIREBIRD_CONF_WireCrypt: Disabled
+
       schema-registry:
         image: confluentinc/cp-schema-registry:7.7.0
         ports: ["8081:8081"]
@@ -118,4 +148,9 @@ jobs:
           IKIGAI_REDIS_PORT: "6379"
           IKIGAI_REQUIRE_REDIS_JSON: "1"
           IKIGAI_REDIS_JSON_PORT: "6380"
+          IKIGAI_REQUIRE_LIBSQL: "1"
+          IKIGAI_LIBSQL_URL: "http://127.0.0.1:8080"
+          IKIGAI_REQUIRE_FIREBIRD: "1"
+          IKIGAI_FIREBIRD_PORT: "3050"
+          IKIGAI_FIREBIRD_PLAIN_PORT: "3051"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
