@@ -250,6 +250,9 @@ type tab struct {
 	designer *designerPanel
 	// chart is the chart of a result, where this tab is one (chartview.go).
 	chart *chartPanel
+	// geomap is the map of a result's places, where this tab is one
+	// (mapview.go).
+	geomap *mapPanel
 	// plan is a query plan, where this tab is one (explain.go).
 	plan *planPanel
 	// stats is the column figures last asked for (colstats.go), kept so
@@ -750,6 +753,10 @@ func (s *Shell) registerCommands() {
 		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
 			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
 			Enabled:  s.canChart, Run: s.chartActive},
+		{ID: cmdMap, Category: "Data", Title: "Map the Result",
+			Keywords: []string{"map", "geometry", "geography", "postgis", "geojson", "latitude",
+				"longitude", "coordinates", "places", "where"},
+			Enabled: s.canMap, Run: s.mapActive},
 		{ID: cmdFind, Category: "Edit", Title: "Find…", Keywords: []string{"search", "look for"},
 			Shortcut: sc("F", commands.ModShortcut), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(false) }) }},
 		{ID: cmdFindReplace, Category: "Edit", Title: "Find and Replace…", Keywords: []string{"substitute", "change"},
