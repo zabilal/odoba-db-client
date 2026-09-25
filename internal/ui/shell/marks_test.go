@@ -183,9 +183,7 @@ func TestABatchNeedsItsConnectionOpen(t *testing.T) {
 	if fx.s.menuItems[cmdMarksSelect].Disabled {
 		t.Fatal("an open connection is not offered a script")
 	}
-	if err := fx.ws.Disconnect(c); err != nil {
-		t.Fatal(err)
-	}
+	disconnected(t, fx, c)
 	fx.s.sync()
 	if !fx.s.menuItems[cmdMarksSelect].Disabled || !fx.s.menuItems[cmdMarksExport].Disabled {
 		t.Error("a connection that is not open was offered a batch")

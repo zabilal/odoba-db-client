@@ -47,6 +47,39 @@ type Settings struct {
 	// there is none (NFR-S7). It holds what recognises a passphrase and
 	// nothing that could be used to work one out.
 	Vault *VaultLock `json:"vault,omitempty"`
+	// Assistant is the AI assistant's settings, or nil where nobody has
+	// turned it on — which is how it ships and what "off by default" means in
+	// a file (FR-14.4). A settings file with no assistant section is a
+	// settings file with no assistant.
+	Assistant *Assistant `json:"assistant,omitempty"`
+}
+
+// Assistant is how the AI assistant is set up (FR-14.5).
+//
+// No key lives here. The key is in the keychain under the name the provider
+// gives, as a connection's password is, and this file is written in plain
+// sight (FR-1.5, NFR-S1).
+type Assistant struct {
+	// Enabled is the application's own switch. A section that exists with
+	// this false is somebody who configured a provider and turned it off,
+	// which is worth keeping: turning it on again should not mean setting it
+	// up again.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Provider is the provider's ID, as internal/assistant writes it.
+	Provider string `json:"provider,omitempty"`
+
+	// Model is the model to ask, which is never guessed: a model nobody
+	// chose is a bill nobody expected (FR-14.5).
+	Model string `json:"model,omitempty"`
+
+	// Endpoint overrides the provider's own address, which is what a gateway
+	// of one's own and a model on one's own machine both need.
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// Header is the name of the header the key goes in, for a gateway that
+	// differs from the provider it stands in front of.
+	Header string `json:"header,omitempty"`
 }
 
 // VaultLock is what is kept of an app-level lock: the salt the key is
@@ -105,6 +138,25 @@ type SavedConnection struct {
 	Folder      string            `json:"folder,omitempty"`
 	Color       string            `json:"color,omitempty"`
 	Secrets     []string          `json:"secrets,omitempty"`
+	// Assistant is what this connection has agreed the assistant may see, or
+	// nil for one that has agreed nothing — which is every connection until
+	// somebody says otherwise (FR-14.4).
+	Assistant *ConnectionAssistant `json:"assistant,omitempty"`
+}
+
+// ConnectionAssistant is one connection's opt-in (FR-14.4).
+//
+// Per connection on purpose: a person may be happy to ask about a scratch
+// database and not about their employer's. There is deliberately nothing here
+// about production consent — that is given for a session and asked again next
+// time, so writing it would be writing a consent nobody gave.
+type ConnectionAssistant struct {
+	// Enabled is the opt-in: the assistant may be asked about this
+	// connection's schema.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Data is the second switch: its rows may be sent too (FR-14.3).
+	Data bool `json:"data,omitempty"`
 }
 
 // TLS is a connection's transport-security settings: paths, never key material.

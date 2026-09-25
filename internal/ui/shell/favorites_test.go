@@ -3,6 +3,7 @@ package shell
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 
@@ -12,6 +13,32 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
+
+// disconnected closes a connection and makes the closing stick.
+//
+// A tree load left in flight reconnects when it lands -- the explorer's loader
+// calls Connect for any node under a connection -- so one Disconnect can leave
+// the window open on a connection a test has just closed, and a test that then
+// reads what the window offers reads it in the wrong state. Each pass drains the
+// queue and closes again, so what is waited for is the window settling rather
+// than a length of time.
+func disconnected(t *testing.T, fx *fixture, id string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := fx.ws.Disconnect(id); err != nil {
+			t.Fatal(err)
+		}
+		for fx.q.Flush() > 0 {
+		}
+		if _, open := fx.ws.Get(id); !open {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the connection reopens as fast as it is closed")
+		}
+	}
+}
 
 // loaded asks the explorer for a node's children and waits for them.
 func loaded(t *testing.T, fx *fixture, id string) {
