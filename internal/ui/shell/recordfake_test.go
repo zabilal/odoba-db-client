@@ -22,6 +22,9 @@ import (
 // headers with a name that repeats.
 
 var topicRef = model.NewRef(model.KindTopic, "cluster", "events")
+
+// partitionRef is one of that topic's logs.
+var partitionRef = model.NewRef(model.KindPartition, "cluster", "events", "0")
 var groupRef = model.NewRef(model.KindConsumerGroup, "cluster", "readers")
 
 // recordFake is a stream source: a cluster of one topic, whose rows are
@@ -42,7 +45,15 @@ func (recordFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.S
 	// and can only be followed, and "shy" says nothing of its can be followed
 	// at all.
 	return &recordSource{live: make(chan model.Row, 16),
-		noTime:       strings.Contains(cfg.Host, "notime"),
+		noTime:    strings.Contains(cfg.Host, "notime"),
+		unmanaged: strings.Contains(cfg.Host, "unmanaged"),
+		noACLs:    strings.Contains(cfg.Host, "noacl"),
+		noRates:   strings.Contains(cfg.Host, "norate"),
+		// "nosize" is a cluster that counts records and will not say how much
+		// room the logs take, which some managed Kafka is.
+		carried: model.TopicTotals{At: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
+			Sized: !strings.Contains(cfg.Host, "nosize")},
+		perRead: 100, bytesPer: 2048,
 		keepsNothing: strings.Contains(cfg.Host, "keepsnothing"),
 		shy:          strings.Contains(cfg.Host, "shy")}, nil
 }
@@ -86,6 +97,33 @@ type recordSource struct {
 	// shy is a source that claims following and then says this object is not
 	// one of the ones it can follow.
 	shy bool
+
+	// The cluster's permissions: what it holds, every filter it was asked for,
+	// what it says instead of answering, and what it was told to change.
+	acls      []model.ACL
+	aclsAsked []model.ACLFilter
+	aclErr    error
+	granted   []model.ACL
+	revoked   []model.ACL
+	// unmanaged is a cluster whose permissions can be read and not changed,
+	// which is a real thing: a connection may be allowed to see them and not
+	// to write them. noACLs is a cluster that keeps none at all.
+	unmanaged bool
+	noACLs    bool
+
+	// How much the topic has carried, and how much more it carries at every
+	// reading. The readings are stamped a second apart whatever this machine's
+	// own pace, so the rates a test reads are exact. noRates is a cluster that
+	// cannot say.
+	carried  model.TopicTotals
+	perRead  int64
+	bytesPer int64
+	readings int
+	noRates  bool
+	// ratesFail is what every reading after the first says instead of
+	// answering, so that a test can break the measuring of a topic it has
+	// already measured.
+	ratesFail error
 	// gone is what a followed log says once the test has taken it away, and
 	// closes counts the following reads that were let go of.
 	gone   error
@@ -178,7 +216,9 @@ func (r *recordSource) Capabilities() capability.Capabilities {
 	return capability.Capabilities{
 		Paradigm: model.ParadigmStream,
 		Stream: capability.Stream{Consume: !r.keepsNothing, SeekTimestamp: !r.noTime, Follow: true,
-			Produce: true, TopicAdmin: true, ResetOffsets: true},
+			Produce: true, TopicAdmin: true, ResetOffsets: true,
+			ACLs: !r.noACLs, ManageACLs: !r.noACLs && !r.unmanaged,
+			Throughput: !r.noRates},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true, model.KindConsumerGroup: true,
 		},
@@ -199,13 +239,18 @@ func (*recordSource) Root(context.Context) ([]model.Node, error) {
 }
 
 func (*recordSource) Children(_ context.Context, ref model.ObjectRef) ([]model.Node, error) {
-	if ref.Kind == model.KindCluster {
+	switch ref.Kind {
+	case model.KindCluster:
 		return []model.Node{
-			{Ref: topicRef, Label: "events", Browsable: true},
+			{Ref: topicRef, Label: "events", HasChildren: true, Browsable: true},
 			// A group: described, never browsed, and the one thing here
 			// whose offsets can be moved (ADR-0106).
 			{Ref: groupRef, Label: "readers", Describable: true},
 		}, nil
+	case model.KindTopic:
+		// Its partitions, as a real cluster's topic has: in the tree, and
+		// nothing a permission or a record is about.
+		return []model.Node{{Ref: partitionRef, Label: "0", Describable: true}}, nil
 	}
 	return nil, nil
 }
@@ -249,6 +294,88 @@ var fakeRecords = []model.Row{
 	{int64(0), int64(11), recordWhen, []byte("order-2"), []byte("plain words"), nil},
 	// No key at all, and bytes that are not text: a producer may send either.
 	{int64(3), int64(12), recordWhen, nil, []byte{0xff, 0xfe, 0x00}, nil},
+}
+
+// ACLs are the permissions this cluster holds, and every filter it was asked
+// for: what the window asked about is half of what these controls do.
+func (r *recordSource) ACLs(_ context.Context, of model.ACLFilter) ([]model.ACL, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.aclsAsked = append(r.aclsAsked, of)
+	if r.aclErr != nil {
+		return nil, r.aclErr
+	}
+	return append([]model.ACL(nil), r.acls...), nil
+}
+
+// aclAsks is every filter the permissions were read with.
+func (r *recordSource) aclAsks() []model.ACLFilter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]model.ACLFilter(nil), r.aclsAsked...)
+}
+
+func (r *recordSource) GrantACL(_ context.Context, acl model.ACL, confirmed bool) error {
+	if r.refuse != nil && !confirmed {
+		return r.refuse
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.granted = append(r.granted, acl)
+	r.acls = append(r.acls, acl)
+	return nil
+}
+
+func (r *recordSource) RevokeACL(_ context.Context, acl model.ACL, confirmed bool) error {
+	if r.refuse != nil && !confirmed {
+		return r.refuse
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.revoked = append(r.revoked, acl)
+	kept := r.acls[:0]
+	for _, held := range r.acls {
+		if held != acl {
+			kept = append(kept, held)
+		}
+	}
+	r.acls = kept
+	return nil
+}
+
+// TopicTotals is how much the topic has carried, a second later every time it
+// is asked: what a rate is measured from.
+func (r *recordSource) TopicTotals(_ context.Context, topic string) (model.TopicTotals, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.noRates {
+		return model.TopicTotals{}, errors.New("recordfake: this cluster keeps no totals")
+	}
+	if topic != topicRef.Name() {
+		return model.TopicTotals{}, errors.New("recordfake: no such topic")
+	}
+	if r.ratesFail != nil {
+		return model.TopicTotals{}, r.ratesFail
+	}
+	r.readings++
+	r.carried.At = r.carried.At.Add(time.Second)
+	r.carried.Records += r.perRead
+	r.carried.Bytes += r.bytesPer
+	return r.carried, nil
+}
+
+// breakRates makes every reading from now on fail.
+func (r *recordSource) breakRates(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ratesFail = err
+}
+
+// read is how many readings of the totals this source was asked for.
+func (r *recordSource) read() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.readings
 }
 
 // CanFollow is what this source says can be followed, which is every topic

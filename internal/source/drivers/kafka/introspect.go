@@ -421,7 +421,7 @@ func (s *kafkaSource) logs(ctx context.Context, name string) ([]model.Partition,
 	}
 	d, ok := md.Topics[name]
 	if !ok {
-		return nil, kadm.TopicDetail{}, fmt.Errorf("kafka: this cluster has no topic %q", name)
+		return nil, kadm.TopicDetail{}, errNoSuchTopic(name)
 	}
 	if d.Err != nil {
 		return nil, kadm.TopicDetail{}, d.Err
