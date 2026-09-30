@@ -340,9 +340,17 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.ACLAdmin); !ok {
 		t.Error("claims Stream.ManageACLs but does not implement ACLAdmin")
 	}
+	// And how much a topic carries is measured now (T5.14), which is a claim
+	// about reading totals: the cluster keeps no rate to read.
+	if !caps.Stream.Throughput {
+		t.Error("a topic's totals are read and measuring it is not claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.TopicMeter); !ok {
+		t.Error("claims Stream.Throughput but does not implement TopicMeter")
+	}
 	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
 		ConsumerGroups: true, Produce: true, TopicAdmin: true, ResetOffsets: true,
-		ACLs: true, ManageACLs: true}
+		ACLs: true, ManageACLs: true, Throughput: true}
 	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}

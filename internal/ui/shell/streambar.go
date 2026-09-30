@@ -16,6 +16,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
+	"github.com/ikigai-db/ikigai-db/internal/ui/spark"
 )
 
 // Following a log, and starting somewhere in it (FR-13.5, FR-13.6).
@@ -53,6 +54,14 @@ type streamBar struct {
 	// seeking is where a browse was told to start, kept so that the footer can
 	// say it and a refresh can keep it.
 	seeking string
+
+	// The picture of how busy the log is, and what is measuring it (rates.go).
+	meter *app.Meter
+	spark *spark.Widget
+	rate  *widget.Label
+	// measured is how many rates had been measured when the picture was last
+	// drawn, so that a quiet topic costs nothing.
+	measured int64
 }
 
 // canFollow reports whether the tab in front is showing something that can be
@@ -136,6 +145,10 @@ func (s *Shell) showStreamBar(t *tab) {
 	if t.top == nil {
 		return
 	}
+	// How busy the log is, where the cluster can say (FR-13.17). Asked for on
+	// every read, because a bar that is already there is a bar that may not
+	// have had a meter when it was made.
+	b.measure()
 	for _, o := range t.top.Objects {
 		if o == b.box {
 			return // already there
