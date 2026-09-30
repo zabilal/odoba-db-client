@@ -599,8 +599,18 @@ func TestGivingUpOnARequestTellsThePlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	if _, err := rs.Next(ctx); !errors.Is(err, context.Canceled) {
-		t.Errorf("it said %v", err)
+	// Rows already in hand are still rows: the read gives up when it runs out
+	// of what it was holding, not by throwing away what it had. So the
+	// cancellation is what it comes back with, not necessarily on the next call
+	// — which is the same bargain a paused tail strikes (app.Tail).
+	var gave error
+	for i := 0; i < 100; i++ {
+		if _, gave = rs.Next(ctx); gave != nil {
+			break
+		}
+	}
+	if !errors.Is(gave, context.Canceled) {
+		t.Errorf("it said %v", gave)
 	}
 	rs.Close()
 	select {

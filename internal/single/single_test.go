@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +29,16 @@ func TestASecondCopyGivesWayAndTheFirstComesForward(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi, err := os.Stat(socketPath(dir)); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Errorf("the socket should be the user's alone: %v, %v", fi, err)
+	fi, err := os.Stat(socketPath(dir))
+	switch {
+	case err != nil:
+		t.Errorf("there is no socket: %v", err)
+	case runtime.GOOS == "windows":
+		// Windows has no mode to set: what protects a socket there is the ACL of
+		// the directory it is in, which is the user's own profile. Asserting a
+		// mode would be asserting something the operating system does not mean.
+	case fi.Mode().Perm() != 0o600:
+		t.Errorf("the socket should be the user's alone, and is %04o", fi.Mode().Perm())
 	}
 	if _, err := Acquire(dir, nil); !errors.Is(err, ErrRunning) {
 		t.Fatalf("a second copy got %v, want ErrRunning", err)

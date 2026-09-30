@@ -53,9 +53,28 @@ func Parse(s string) (Result, error) {
 	return Result{}, errors.New("connstr: not a URL (scheme://...) or a key=value connection string")
 }
 
+// schemeOf is the part before "://". Everything reaching here has one: Parse
+// only calls this where the string holds "://". It is not lowercased, because
+// LookupScheme folds case itself and a refusal reads better naming the scheme as
+// somebody wrote it.
+func schemeOf(s string) string {
+	scheme, _, _ := strings.Cut(s, "://")
+	return scheme
+}
+
 func parseURL(s string, jdbc bool) (Result, error) {
 	if jdbc && strings.Contains(s, ";") && !strings.Contains(s, "?") {
 		return Result{}, errors.New("connstr: semicolon-delimited JDBC URLs (SQL Server style) are not supported yet")
+	}
+	// The scheme is read before the rest is parsed, because a scheme nobody
+	// handles is a clearer thing to say than a malformed URL — and because the
+	// rest may well not parse. A Windows path in a sqlite:// URL is the case
+	// that showed it: backslashes and a drive letter's colon make the URL
+	// unparseable, and "malformed URL" sent somebody looking at their password
+	// when what was wrong was that SQLite opens files rather than dialling them.
+	desc, ok := source.LookupScheme(schemeOf(s))
+	if !ok {
+		return Result{}, fmt.Errorf("connstr: no installed driver handles %q connection strings", schemeOf(s))
 	}
 	u, err := url.Parse(s)
 	if err != nil {
@@ -63,10 +82,6 @@ func parseURL(s string, jdbc bool) (Result, error) {
 		// error, and even its inner error echoes the offending fragment — which
 		// is, as often as not, part of the password.
 		return Result{}, errors.New("connstr: malformed URL; check for unescaped @ : / % characters in the user name or password")
-	}
-	desc, ok := source.LookupScheme(u.Scheme)
-	if !ok {
-		return Result{}, fmt.Errorf("connstr: no installed driver handles %q connection strings", u.Scheme)
 	}
 	if strings.Contains(u.Host, ",") {
 		return Result{}, errors.New("connstr: multiple hosts in one connection string are not supported yet")

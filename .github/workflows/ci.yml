@@ -42,8 +42,12 @@ jobs:
       # detector slows execution 5-20x, so a budget measured under it measures
       # the detector, not the code. They run in the performance job below,
       # without -race. Do not add -race there.
+      # -timeout because the default is ten minutes per package and the window's
+      # own suite takes over eight of them under the detector on this machine —
+      # on a hosted runner it went past ten and was killed, which reads as a
+      # failure and is a clock.
       - name: Test
-        run: go test -race ./...
+        run: go test -race -timeout 30m ./...
 
   lint:
     name: Lint
