@@ -136,14 +136,15 @@ func TestAQuietTopicsPictureIsNotDrawnAgain(t *testing.T) {
 	was := meterFast(t)
 	defer was()
 	_, _, bar, _ := measuredTopic(t, "kafka1", 2)
+	// The measuring is stopped before anything is asserted, because a rate
+	// arriving between two draws would make a redraw the right answer. Then one
+	// draw to settle what is on the screen, and what is on it is marked so that
+	// drawing over it would show.
+	bar.meter.Close()
 	bar.drawRates()
 	held := bar.measured
 	before := bar.spark.Spark().Values
 
-	// Asked again with nothing new, it touches nothing: the measuring is stopped
-	// first, so no rate can arrive between the two, and what is on the screen is
-	// marked so that drawing over it would show.
-	bar.meter.Close()
 	bar.rate.SetText("left alone")
 	bar.drawRates()
 	if bar.rate.Text != "left alone" {

@@ -107,7 +107,7 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 		t.Fatal("the connection is not open")
 	}
 	src := live.Source.(*recordSource)
-	src.refuse = fmt.Errorf("%w: a structural change on a production connection", source.ErrConfirmationRequired)
+	src.refuses(fmt.Errorf("%w: a structural change on a production connection", source.ErrConfirmationRequired))
 
 	deleting := func(s source.Source, confirmed bool) error {
 		return app.DeleteTopic(context.Background(), s, "events", confirmed)
@@ -119,14 +119,14 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 		!strings.Contains(text, "Nothing has happened yet") {
 		t.Errorf("a structural change on production asks first, and says nothing has happened: %q", text)
 	}
-	if len(src.changed) != 0 {
-		t.Fatalf("something changed before the question was answered: %v", src.changed)
+	if len(src.changes()) != 0 {
+		t.Fatalf("something changed before the question was answered: %v", src.changes())
 	}
 
 	// Saying no changes nothing at all.
 	tapOnTop(t, fx, "Cancel")
-	if len(src.changed) != 0 {
-		t.Errorf("saying no changed %v", src.changed)
+	if len(src.changes()) != 0 {
+		t.Errorf("saying no changed %v", src.changes())
 	}
 
 	// Saying yes does it once, with the consent given for it.
@@ -134,9 +134,9 @@ func TestChangingTopicsOnProductionAsksAndDoesNothingUntilAnswered(t *testing.T)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
 	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Continue")
-	pump(t, fx.q, func() bool { return len(src.changed) == 1 })
-	if src.changed[0] != "delete events" {
-		t.Errorf("what happened was %v", src.changed)
+	pump(t, fx.q, func() bool { return len(src.changes()) == 1 })
+	if src.changes()[0] != "delete events" {
+		t.Errorf("what happened was %v", src.changes())
 	}
 }
 
@@ -147,14 +147,14 @@ func TestAReadOnlyConnectionChangesNoTopics(t *testing.T) {
 		t.Fatal("the connection is not open")
 	}
 	src := live.Source.(*recordSource)
-	src.refuse = fmt.Errorf("%w: structural change refused", source.ErrReadOnly)
+	src.refuses(fmt.Errorf("%w: structural change refused", source.ErrReadOnly))
 
 	fx.s.changeCluster(tb.connID, "delete events", func(s source.Source, confirmed bool) error {
 		return app.DeleteTopic(context.Background(), s, "events", confirmed)
 	})
 	pump(t, fx.q, func() bool { return strings.Contains(fx.s.errors.text, "read-only") })
-	if len(src.changed) != 0 {
-		t.Errorf("a read-only connection changed %v", src.changed)
+	if len(src.changes()) != 0 {
+		t.Errorf("a read-only connection changed %v", src.changes())
 	}
 	// And it does not ask: read-only is a decision already made.
 	if fx.s.win.Canvas().Overlays().Top() != nil {

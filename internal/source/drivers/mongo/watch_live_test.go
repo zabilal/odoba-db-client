@@ -9,6 +9,11 @@ package mongo
 // kept apart from the standalone every other test here uses, so that nothing
 // already proven against a standalone is changed by proving this.
 //
+// IKIGAI_REQUIRE_MONGO_RS makes a missing one a failure. It is its own flag
+// because it is its own server: the port has to be the same inside the
+// container as outside, since a replica set advertises its members' addresses
+// and a member reachable only through a port map is one the driver abandons.
+//
 // The standalone's refusal is worth a test of its own, and is below: a person
 // browsing a collection is not thinking about replica sets, so what they are
 // told has to say what to do about it.
@@ -45,7 +50,9 @@ func openReplica(t *testing.T, db string) source.Source {
 	defer cancel()
 	src, err := Driver{}.Open(ctx, cfg)
 	if err != nil {
-		if os.Getenv("IKIGAI_REQUIRE_MONGO") != "" {
+		// A flag of its own: a replica set is a second server, and requiring
+		// "a MongoDB" said nothing about whether one was standing.
+		if os.Getenv("IKIGAI_REQUIRE_MONGO_RS") != "" {
 			t.Fatalf("a mongodb replica set is required but unavailable: %v", err)
 		}
 		t.Skipf("no mongodb replica set on port %d (docker start ikigai-mongo-rs): %v",

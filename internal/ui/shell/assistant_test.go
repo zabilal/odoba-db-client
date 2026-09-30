@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -33,8 +34,25 @@ import (
 // produces, and would be reading the transport rather than the prompt.
 type modelStub struct {
 	*httptest.Server
+
+	// mu guards both: the handler runs on the server's goroutine and the test
+	// reads what it recorded on its own.
+	mu     sync.Mutex
 	asked  string
 	answer string
+}
+
+// prompt is what the model was asked, and answers sets what it will reply.
+func (m *modelStub) prompt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.asked
+}
+
+func (m *modelStub) answers(with string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.answer = with
 }
 
 func newModel(t *testing.T) *modelStub {
@@ -42,10 +60,13 @@ func newModel(t *testing.T) *modelStub {
 	m := &modelStub{answer: "SELECT count(*) FROM main.items"}
 	m.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
+		m.mu.Lock()
 		m.asked = promptIn(raw)
+		answer := m.answer
+		m.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{{"message": map[string]string{"content": m.answer}}}})
+			"choices": []map[string]any{{"message": map[string]string{"content": answer}}}})
 	}))
 	t.Cleanup(m.Close)
 	return m
@@ -185,11 +206,11 @@ func TestAQuestionLandsInTheEditorUnrun(t *testing.T) {
 	}
 	// And the schema went with the question, because a model that is not told it
 	// invents table names (FR-14.1).
-	if !strings.Contains(m.asked, "items") {
-		t.Errorf("what was asked does not carry the schema:\n%s", m.asked)
+	if !strings.Contains(m.prompt(), "items") {
+		t.Errorf("what was asked does not carry the schema:\n%s", m.prompt())
 	}
-	if !strings.Contains(m.asked, "how many items") {
-		t.Errorf("what was asked does not carry the question:\n%s", m.asked)
+	if !strings.Contains(m.prompt(), "how many items") {
+		t.Errorf("what was asked does not carry the question:\n%s", m.prompt())
 	}
 }
 
@@ -206,7 +227,7 @@ func providerOf(t *testing.T, fx *fixture) assistant.Provider {
 // is rather than put in an editor.
 func TestAnAnswerInWordsIsShownAsWords(t *testing.T) {
 	fx, m, c := withAssistant(t, false)
-	m.answer = "There is no table of orders in this schema, so I cannot count them."
+	m.answers("There is no table of orders in this schema, so I cannot count them.")
 	before := len(fx.s.open)
 	fx.s.runAsk(&c, providerOf(t, fx), assistant.KindQuery, "how many orders", false)
 	// On anything happening, rather than on the dialog: waiting for the dialog
@@ -242,21 +263,21 @@ func TestRowsAreSentOnlyWhereTheyAreAllowedAndAskedFor(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fx, m, conn := withAssistant(t, c.data)
 			fx.s.runAsk(&conn, providerOf(t, fx), assistant.KindQuery, "how many", c.asked)
-			pump(t, fx.q, func() bool { return m.asked != "" || fx.s.errors.shown() })
+			pump(t, fx.q, func() bool { return m.prompt() != "" || fx.s.errors.shown() })
 			if c.sends {
-				if !strings.Contains(m.asked, "Some rows of") {
-					t.Errorf("no rows were sent:\n%s", m.asked)
+				if !strings.Contains(m.prompt(), "Some rows of") {
+					t.Errorf("no rows were sent:\n%s", m.prompt())
 				}
 				return
 			}
-			if strings.Contains(m.asked, "Some rows of") {
-				t.Errorf("rows were sent:\n%s", m.asked)
+			if strings.Contains(m.prompt(), "Some rows of") {
+				t.Errorf("rows were sent:\n%s", m.prompt())
 			}
 			// Not asked for is not a refusal: the schema still goes, and the
 			// question is still answered.
 			if !c.asked || c.data {
-				if !strings.Contains(m.asked, "items") {
-					t.Errorf("the schema was not sent either:\n%s", m.asked)
+				if !strings.Contains(m.prompt(), "items") {
+					t.Errorf("the schema was not sent either:\n%s", m.prompt())
 				}
 			}
 		})
@@ -286,17 +307,17 @@ func TestExplainingAStatement(t *testing.T) {
 	if !fx.s.canExplainWithAssistant() {
 		t.Fatal("it is not offered with a statement in the editor")
 	}
-	m.answer = "It reads every column of items for the rows whose id is over one."
+	m.answers("It reads every column of items for the rows whose id is over one.")
 	fx.s.explainWithAssistant()
-	pump(t, fx.q, func() bool { return m.asked != "" })
-	if !strings.Contains(m.asked, "Explain this statement") {
-		t.Errorf("it asked\n%s", m.asked)
+	pump(t, fx.q, func() bool { return m.prompt() != "" })
+	if !strings.Contains(m.prompt(), "Explain this statement") {
+		t.Errorf("it asked\n%s", m.prompt())
 	}
-	if !strings.Contains(m.asked, "id > 1") {
-		t.Errorf("it did not send the statement:\n%s", m.asked)
+	if !strings.Contains(m.prompt(), "id > 1") {
+		t.Errorf("it did not send the statement:\n%s", m.prompt())
 	}
-	if strings.Contains(m.asked, "Some rows of") {
-		t.Errorf("explaining sent rows:\n%s", m.asked)
+	if strings.Contains(m.prompt(), "Some rows of") {
+		t.Errorf("explaining sent rows:\n%s", m.prompt())
 	}
 }
 
@@ -315,12 +336,12 @@ func TestExplainingExplainsTheSelection(t *testing.T) {
 	doc.SetCaret(editor.Pos{Line: 1, Col: 26}, true)
 	fx.s.sync()
 	fx.s.explainWithAssistant()
-	pump(t, fx.q, func() bool { return m.asked != "" })
-	if !strings.Contains(m.asked, "SELECT count(*) FROM items") {
-		t.Errorf("it did not send the selection:\n%s", m.asked)
+	pump(t, fx.q, func() bool { return m.prompt() != "" })
+	if !strings.Contains(m.prompt(), "SELECT count(*) FROM items") {
+		t.Errorf("it did not send the selection:\n%s", m.prompt())
 	}
-	if strings.Contains(m.asked, "DELETE FROM items") {
-		t.Errorf("it sent what was not selected:\n%s", m.asked)
+	if strings.Contains(m.prompt(), "DELETE FROM items") {
+		t.Errorf("it sent what was not selected:\n%s", m.prompt())
 	}
 }
 
@@ -385,12 +406,12 @@ func TestTheQuestionBoxSaysWhatItMaySee(t *testing.T) {
 			// would have been allowed.
 			entriesIn(top)[0].SetText("how many items")
 			test.Tap(findButton(top, "Ask"))
-			pump(t, fx.q, func() bool { return m.asked != "" || fx.s.errors.shown() })
-			if strings.Contains(m.asked, "Some rows of") {
-				t.Errorf("rows went with a question that did not ask for them:\n%s", m.asked)
+			pump(t, fx.q, func() bool { return m.prompt() != "" || fx.s.errors.shown() })
+			if strings.Contains(m.prompt(), "Some rows of") {
+				t.Errorf("rows went with a question that did not ask for them:\n%s", m.prompt())
 			}
-			if !strings.Contains(m.asked, "how many items") {
-				t.Errorf("the question did not go:\n%s", m.asked)
+			if !strings.Contains(m.prompt(), "how many items") {
+				t.Errorf("the question did not go:\n%s", m.prompt())
 			}
 		})
 	}

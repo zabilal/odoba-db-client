@@ -38,9 +38,9 @@ func (s *Shell) canUseWorkspaces() bool { return s.d.Workspaces != nil }
 // is over, and widens it again when there is none.
 func (s *Shell) scopeToWorkspace() {
 	if s.workspace.ID == "" {
-		s.loader.Shows = nil
+		s.loader.Show(nil)
 	} else {
-		s.loader.Shows = s.workspace.Holds
+		s.loader.Show(s.workspace.Holds)
 	}
 	s.Explorer.Refresh(explorer.RootID)
 	// Two windows in two workspaces are otherwise the same window.

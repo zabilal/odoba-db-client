@@ -38,9 +38,22 @@ STATUS:    Phase 4's application work is done. T4.2, T4.3, T4.6,
            driver packages are now held against what the binary
            depends on.
 NEXT TASK: T5.15: more sources — Snowflake, BigQuery,
-           Elasticsearch/OpenSearch, Trino. Each needs an account or a
-           cluster, so the first question is which of them can be run
-           locally at all.
+           Elasticsearch/OpenSearch, Trino. OpenSearch runs here and
+           has been proven to; Trino needs the room the larger VM now
+           has; Snowflake and BigQuery need accounts.
+           CI was found running and red, which this line had said for
+           weeks it had never done: the Linux build could not compile
+           (glfw wants Wayland headers), the macOS job's -race run
+           found six data races — five in test fakes and one real one
+           in the explorer's loader — four plugin tests were failing
+           on deadlines that measure the detector, and the nightly
+           conformance run had no replica set for T5.12's change
+           streams. All four are fixed. The owner settled two open
+           decisions: every driver ships (so NFR-P8 is 120 MB and a
+           gate again, catching accidental growth rather than
+           forbidding the product), and the licence is Apache 2.0.
+           The Docker VM went from 8 GB to 12 GB, which is what makes
+           the rest of Phase 5's servers possible at all.
            T5.14 is done: a topic's tab says how busy it is, in a
            picture and two numbers measured while it is open, because
            a cluster keeps no rate to read — Kafka publishes its own
@@ -823,8 +836,8 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ### ✅ Phase 0 exit criteria
 - [~] G0-2, G0-3, G0-4 PASSED. G0-1 provisionally passed on CPU evidence; closes with one interactive run (owner action)
 - [~] Theme gallery builds and compiles; not yet viewed on a display — the build session had no window server
-- [!] Conformance suite and CI written but never run — the repository has no remote
-- [~] `fyne package` proven on macOS arm64 (16MB .app); Linux and Windows unproven until CI runs
+- [x] Conformance suite and CI **run**, and were red — *the remote arrived with the first pull request and nothing said so, so this line went on claiming CI had never run while it had been running and failing on every push for four days. Three faults, none of them in the application. The Linux build could not compile at all: glfw builds its Wayland backend and the apt list had only the X11 headers, so `wayland-client-core.h` was missing — which took down the Linux build job and the performance job with it, since that one runs on Linux. The macOS job runs the suite under `-race` and found six data races: five in test fakes read by the test goroutine while the window wrote them from its own, and one real one in the explorer's loader, where a workspace narrowing the tree wrote `Shows` on the goroutine that draws the window while tree-loading goroutines read it (now a mutex and a `Show` method). And four plugin tests failed on deadlines that measure the detector rather than the code: a handshake given five seconds gets a fifth of a second's worth of work under instrumentation, so deadlines that are statements about what should have happened now scale with `race.Slower` while the budgets go on declining to run at all. The nightly conformance run failed for a fourth reason: T5.12's change-stream tests need a replica set, `IKIGAI_REQUIRE_MONGO` made a missing one fatal, and CI had no replica set to give — it has one now, started in a step rather than as a service container because it must be initiated after it starts, and required through a flag of its own*
+- [~] `fyne package` proven on macOS arm64 (16MB .app); Linux and Windows build in CI on every push now, but `fyne package` itself is not run there — packaging is T4.24 to T4.26
 
 ---
 
@@ -1204,7 +1217,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T4.33** **Security review covering NFR-S1…S6** → DoD-6 — *docs/SECURITY-REVIEW.md: each requirement, what enforces it, what test holds it, and what is left open, with every claim naming something a reader can go and check. It found one real gap and closed it: three drivers asserted for themselves that a value shaped like a statement never reaches the SQL and six did not, so the check moved into the conformance suite — a browse whose filter value is `'"'"'; DROP TABLE orders --`, and again one shaped like a quoted name, failing if either reaches the statement text or is not among the bound arguments. Nine SQL drivers take it and all nine pass. It is scoped to the relational paradigm on purpose: MongoDB hands its driver a bson.D and what its dialect renders is a preview, so a value in a preview is not a value reaching a server. The residual risks are named rather than rounded off — a secret typed for one session is in this process's memory in the clear, ClickHouse builds one TLS config of its own rather than going through tlsconf, and the binding check is at the rendering boundary, so a driver that rendered one statement and executed another would pass it*
 - [x] **T4.34** Verify offline operation → NFR-D6 — *held by two rules rather than remembered. What is kept, what is read and written, and what text is made of cannot reach net/http, net/smtp or net/rpc at all, checked through the import graph with a control pointed at internal/cloud so that a rule looking for the wrong thing fails rather than passing everywhere; and no file of this application outside internal/cloud's four token fetchers imports net/http, so a new one has to be added to the list on purpose and say why. The packages that draw are deliberately not in the first rule and cannot be: fyne.io/fyne/v2 reaches net/http itself for its own URI handling, so the graph says nothing about anything that draws — the file rule is what covers those, and it is the stronger statement. The network is used in three places, each of them something a person asked for: a driver connecting to a server they configured, an SSH tunnel they configured, and a cloud IAM token a connection asked for. There is no telemetry, no update check, nothing fetched on start, and nothing that contacts a host belonging to this project*
 - [x] **T4.35** Zero open `M`-severity data-loss or credential defects → DoD-7 — *docs/KNOWN-DEFECTS.md, because a claim like that is only worth something beside the list it was made against. Nothing open can lose data or mishandle a credential; what is open is named anyway, in two tables — what a person may notice (the screen reader, the binary size, Cassandra's unset int reading as 0, ClickHouse refusing a table with an AggregateFunction column, the features each driver does not have and says so) and what only a developer notices (G0-1's interactive run, the theme gallery never seen on a display, no remote for CI, fyne package proven on one platform). Each says why it is the severity it is. The two defects of DoD-7's kind that were found in Phase 4 are named with their fixes rather than quietly closed: the vault lock's data race, and rows decoded in a caller's memory*
-- [ ] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5
+- [x] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5 — *Apache 2.0, by the owner's decision: permissive, so it can be used inside a company without the licence reaching their own code, and with a patent grant, which a tool speaking fifteen database protocols is worth having. LICENSE is the canonical text, copied verbatim from a dependency that ships it rather than transcribed, because a licence with a typo in it is a different licence. NOTICE carries the project's own copyright and says in one line that no code came from DBGate or any other client, with CLEANROOM.md for what was used instead. The README says which licence and why. Dependencies keep their own, named in the bill of materials CI publishes with every build (NFR-S9)*
 - [x] **T4.37** User documentation + known-gaps page → DoD-8 — *a README written for somebody deciding whether to use this rather than for us: what it does in the words of what it is for, what it does not do with the screen reader first and a pointer to the page that says why, how to build it, where it keeps things, and how to make it portable. The known-gaps page is docs/KNOWN-DEFECTS.md (T4.35) and the accessibility one is docs/ACCESSIBILITY.md (T4.23); the licence line says plainly that there is not one yet, which is the first thing a reader needs and the one thing nobody but the owner can settle*
 
 ### ✅ Phase 4 exit: v1.0 GA

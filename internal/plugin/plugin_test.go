@@ -17,6 +17,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/plugin"
 )
 
@@ -36,7 +37,7 @@ import (
 // hanging the suite until the test binary gives up.
 func ctx(t *testing.T) context.Context {
 	t.Helper()
-	c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	c, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	t.Cleanup(cancel)
 	return c
 }
@@ -61,7 +62,7 @@ func serve(t *testing.T, src plugin.Source) *hosted {
 		fromPlugin.Close()
 		<-served
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -269,7 +270,7 @@ func TestAProgramThatCannotSayWhatItIsIsNotUsed(t *testing.T) {
 			}()
 			p := newProcess("test", hostWrites, answers, nil, nil)
 			defer p.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 			defer cancel()
 			_, err := p.hello(ctx)
 			if err == nil {
@@ -604,7 +605,7 @@ func TestGivingUpOnARequestTellsThePlugin(t *testing.T) {
 	rs.Close()
 	select {
 	case <-f.held:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Error("the plugin was never told to stop")
 	}
 }
@@ -661,7 +662,7 @@ func TestStrayLinesAreDropped(t *testing.T) {
 		fmt.Fprintln(fromPlugin, "this is not JSON")
 		fmt.Fprintln(fromPlugin, `{"id":999,"done":true}`)
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -843,7 +844,7 @@ func TestAProgramThatIsNotAPluginIsRefused(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("IKIGAI_TEST_PLUGIN", mode)
 			dir := buildTestPlug(t, "bad")
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 			defer cancel()
 			set, err := Load(ctx, dir, nil)
 			if err != nil {
@@ -888,7 +889,7 @@ func TestAPluginThatWillNotStopIsKilled(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(shutdown + 5*time.Second):
+	case <-time.After(race.Slower(shutdown + 5*time.Second)):
 		t.Fatal("closing a plugin that will not stop did not end")
 	}
 }
@@ -1002,7 +1003,7 @@ func TestAPluginWithNoNameIsCalledByItsDriverName(t *testing.T) {
 	}()
 	p := newProcess("test", hostWrites, answers, nil, nil)
 	defer p.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -1067,7 +1068,14 @@ func TestAPluginThatEndsOnItsOwnSaysSo(t *testing.T) {
 	if err2 == nil {
 		t.Fatal("a plugin that has gone answered a request")
 	}
-	if !strings.Contains(err2.Error(), "stopped answering") {
+	// Either of the two things a gone plugin is: its output ended, or its input
+	// broke. Both are true of a process that has exited, and which one arrives
+	// is a race between this host's next read and its next write — the detector
+	// shifts it, and so would a slow machine. They are two messages because they
+	// are two different faults in a plugin that is still running: one that
+	// stopped answering and one that stopped reading.
+	if said := err2.Error(); !strings.Contains(said, "stopped answering") &&
+		!strings.Contains(said, "stopped listening") {
 		t.Errorf("it said %v", err2)
 	}
 }
@@ -1137,7 +1145,7 @@ func TestAnAnswerInFlightIsFinishedBeforeThePluginEnds(t *testing.T) {
 	}
 	select {
 	case <-f.helloEntered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the handshake never started")
 	}
 	host.Close()           // the host has finished with it, mid-answer
@@ -1147,7 +1155,7 @@ func TestAnAnswerInFlightIsFinishedBeforeThePluginEnds(t *testing.T) {
 		if err != nil {
 			t.Errorf("serving ended with %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("serving never ended")
 	}
 	if got := out.String(); !strings.Contains(got, "testplug") {
@@ -1191,7 +1199,7 @@ func TestWorkInFlightIsGivenUpOnWhenTheInputEnds(t *testing.T) {
 	}
 	select {
 	case <-f.started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the browse never started")
 	}
 	host.Close() // the host has finished with it
@@ -1200,7 +1208,7 @@ func TestWorkInFlightIsGivenUpOnWhenTheInputEnds(t *testing.T) {
 		if err != nil {
 			t.Errorf("serving ended with %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("a plugin with work in flight never ended")
 	}
 	select {
