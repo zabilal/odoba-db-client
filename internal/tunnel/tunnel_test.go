@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -443,10 +444,16 @@ func split(t *testing.T, addr string) (string, int) {
 //
 // The socket goes under /tmp rather than the test's own directory: a unix
 // socket path has about a hundred characters to play with, and a temporary
-// directory named after a test uses most of them.
+// directory named after a test uses most of them. That limit is sun_path's and
+// so is Unix's, and Windows has no /tmp to put it in, so there the socket goes
+// wherever the system keeps temporary files.
 func agentAt(t *testing.T, key ed25519.PrivateKey) ssh.PublicKey {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "ikigai-agent")
+	short := "/tmp"
+	if runtime.GOOS == "windows" {
+		short = ""
+	}
+	dir, err := os.MkdirTemp(short, "ikigai-agent")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package filedlg
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -50,11 +51,18 @@ type uriCloser interface {
 // closed is the path of the file Fyne's dialog handed back, or "" for a
 // cancel. The file is closed at once: the caller opens it as it needs to, as
 // it does a path from a native dialog.
+//
+// The path comes back in this platform's own spelling. A URI holds forward
+// slashes whatever the system uses, so on Windows Fyne's answer for
+// C:\Users\ada\a.csv is C:/Users/ada/a.csv — which opens, because Windows
+// accepts either, but which is then shown to somebody, remembered as a recent
+// file and joined with other paths as though it were native. Every path this
+// program hands about is native, and this is where one stops being a URI.
 func closed(c uriCloser, err error) (string, error) {
 	if err != nil || c == nil {
 		return "", err
 	}
-	path := c.URI().Path()
+	path := filepath.FromSlash(c.URI().Path())
 	return path, c.Close()
 }
 

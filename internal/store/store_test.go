@@ -45,8 +45,11 @@ func TestPathsFollowEachPlatformsConvention(t *testing.T) {
 }
 
 func TestXDGOverridesAreHonouredOnlyWhenAbsolute(t *testing.T) {
-	home := filepath.Join("/", "home", "ada")
-	abs := filepath.Join("/", "xdg", "config")
+	// Spelled as a Unix path, because that is what these rules are about: this
+	// asks pathsFor for Linux's answer, and filepath.Join would spell the
+	// question in whatever the machine running the test happens to use.
+	home := "/home/ada"
+	abs := "/xdg/config"
 	p := pathsFor("linux", home, env(map[string]string{"XDG_CONFIG_HOME": abs, "XDG_DATA_HOME": "relative/data"}))
 	if p.Config != filepath.Join(abs, "ikigai-db") {
 		t.Errorf("absolute XDG_CONFIG_HOME ignored: %s", p.Config)
@@ -54,6 +57,16 @@ func TestXDGOverridesAreHonouredOnlyWhenAbsolute(t *testing.T) {
 	// The spec says a relative value is invalid and must be ignored.
 	if p.Data != filepath.Join(home, ".local", "share", "ikigai-db") {
 		t.Errorf("relative XDG_DATA_HOME was used: %s", p.Data)
+	}
+	// Absolute means the spec's absolute and not this machine's. These are Unix
+	// rules, and a Windows path is not a value they can honour — which matters
+	// because the check used to be filepath.IsAbs, whose answer depends on the
+	// machine asking rather than on the platform being asked about.
+	for _, odd := range []string{`C:\Users\ada`, `\\server\share`, "~/config", "config"} {
+		p := pathsFor("linux", home, env(map[string]string{"XDG_CONFIG_HOME": odd}))
+		if p.Config != filepath.Join(home, ".config", "ikigai-db") {
+			t.Errorf("XDG_CONFIG_HOME=%q was used: %s", odd, p.Config)
+		}
 	}
 }
 

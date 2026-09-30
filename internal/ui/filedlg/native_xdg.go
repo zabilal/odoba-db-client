@@ -51,11 +51,11 @@ func show(w fyne.Window, o Options, save bool, done Done) {
 func askPortal(parent string, o Options, save bool) (string, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", errNoPortal, err)
+		return "", fmt.Errorf("%w: %w", errNoPortal, err)
 	}
 	defer conn.Close()
 	if err := conn.AddMatchSignal(dbus.WithMatchInterface(portalRequest), dbus.WithMatchMember("Response")); err != nil {
-		return "", fmt.Errorf("%w: %v", errNoPortal, err)
+		return "", fmt.Errorf("%w: %w", errNoPortal, err)
 	}
 	signals := make(chan *dbus.Signal, 8)
 	conn.Signal(signals)
@@ -68,7 +68,7 @@ func askPortal(parent string, o Options, save bool) (string, error) {
 	}
 	var handle dbus.ObjectPath
 	if err := conn.Object(portalName, portalPath).Call(method, 0, parent, title, portalOptions(o, save)).Store(&handle); err != nil {
-		return "", fmt.Errorf("%w: %v", errNoPortal, err)
+		return "", fmt.Errorf("%w: %w", errNoPortal, err)
 	}
 	for sig := range signals {
 		if sig.Path != handle || sig.Name != portalRequest+".Response" || len(sig.Body) < 2 {
