@@ -394,7 +394,10 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 			// when it is asked. That is an answer rather than a reason not to
 			// ask: which brokers have one is not something a client knows
 			// before it tries (acls.go).
-			ACLs: true, ManageACLs: true},
+			ACLs: true, ManageACLs: true,
+			// No rate is read from the cluster: there is none to read, so it is
+			// measured from two readings of the totals (meter.go, FR-13.17).
+			Throughput: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,

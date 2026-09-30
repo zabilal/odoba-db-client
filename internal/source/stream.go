@@ -85,6 +85,18 @@ type ACLAdmin interface {
 	RevokeACL(ctx context.Context, acl model.ACL, confirmed bool) error
 }
 
+// TopicMeter reads how much a topic has carried (FR-13.17).
+//
+// A rate is not among what it answers. A cluster keeps totals and publishes its
+// own rates over a channel a client does not speak, so a rate here is two
+// readings and the time between them — which is the caller's arithmetic
+// (model.RateBetween) rather than something a driver should invent.
+type TopicMeter interface {
+	// TopicTotals reads how much has been written to a topic and how much room
+	// its logs take.
+	TopicTotals(ctx context.Context, topic string) (model.TopicTotals, error)
+}
+
 // StreamAdmin is the whole of it: reading groups, administering topics, and
 // moving offsets. A driver that does all three satisfies it, and one that
 // does some of them implements those and says so in its capabilities.

@@ -1171,6 +1171,11 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 				s.forgetScratch(t)
 			}
 			t.cancel()
+			if t.stream != nil {
+				// The context ends the reading; it does not close what was
+				// being read or stop what was measuring it (rates.go).
+				t.stream.close()
+			}
 			if q := t.query; q != nil {
 				if q.unschema != nil {
 					q.unschema()
@@ -1421,6 +1426,9 @@ func (s *Shell) recolour() {
 	for _, t := range s.open {
 		if t.grid != nil {
 			t.grid.SetPalette(p)
+		}
+		if t.stream != nil {
+			t.stream.recolour(p)
 		}
 		if q := t.query; q != nil {
 			q.editor.SetPalette(p)

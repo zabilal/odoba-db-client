@@ -211,4 +211,8 @@ type Stream struct {
 	// connection change it.
 	ACLs       bool
 	ManageACLs bool
+
+	// Throughput reports that how much a topic has carried can be read, so
+	// that a rate can be worked out from two readings (FR-13.17).
+	Throughput bool
 }

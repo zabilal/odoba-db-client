@@ -239,7 +239,7 @@ func checkCapabilities(t *testing.T, target Target) {
 				"the grid would offer to open a row that names nothing")
 		}
 	}
-	for _, p := range permissionClaims(caps.Stream, src) {
+	for _, p := range streamClaims(caps.Stream, src) {
 		t.Error(p)
 	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
@@ -354,14 +354,18 @@ func nodeProblems(caps capability.Capabilities, n model.Node) []string {
 	return out
 }
 
-// permissionClaims is what a source's claims about permissions promise that it
-// does not keep (FR-13.15).
+// streamClaims is what a source's claims about a stream's permissions and its
+// throughput promise that it does not keep (FR-13.15, FR-13.17).
 //
 // Returned rather than reported, so that the checks can themselves be checked
 // against a source built to break them: no real driver can fail them, which
 // makes a test against real drivers no test of the checks at all.
-func permissionClaims(caps capability.Stream, src any) []string {
+func streamClaims(caps capability.Stream, src any) []string {
 	var out []string
+	if _, ok := src.(source.TopicMeter); caps.Throughput && !ok {
+		out = append(out, "claims Stream.Throughput but does not implement TopicMeter; "+
+			"the window would offer a rate nothing can measure")
+	}
 	if _, ok := src.(source.ACLInspector); caps.ACLs && !ok {
 		out = append(out, "claims Stream.ACLs but does not implement ACLInspector; "+
 			"the window would offer to show permissions nothing can read")

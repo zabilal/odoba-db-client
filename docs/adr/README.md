@@ -171,3 +171,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0164](0164-the-same-grid-following.md) | The same grid, following | Accepted |
 | [0165](0165-a-change-is-not-a-document-and-a-channel-is-not-a-key.md) | A change is not a document, and a channel is not a key | Accepted |
 | [0166](0166-a-permission-is-a-sentence.md) | A permission is a sentence | Accepted |
+| [0167](0167-a-rate-nobody-keeps.md) | A rate nobody keeps | Accepted |

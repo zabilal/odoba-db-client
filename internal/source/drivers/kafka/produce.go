@@ -69,7 +69,7 @@ func (s *kafkaSource) addressed(ctx context.Context, rec source.ProduceRequest) 
 	}
 	d, ok := md.Topics[rec.Topic]
 	if !ok {
-		return fmt.Errorf("kafka: this cluster has no topic %q", rec.Topic)
+		return errNoSuchTopic(rec.Topic)
 	}
 	if d.Err != nil {
 		return d.Err

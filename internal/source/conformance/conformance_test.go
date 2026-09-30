@@ -107,10 +107,10 @@ func TestTheWalkGoesFourLevelsDownAndFourNodesAcross(t *testing.T) {
 	}
 }
 
-// The permission claims are checked against sources built to break them: no
-// real driver can fail them, so running them against real drivers proves
-// nothing about the checks (FR-13.15).
-func TestPermissionClaimsAreHeldToWhatASourceImplements(t *testing.T) {
+// A stream's claims are checked against sources built to break them: no real
+// driver can fail them, so running them against real drivers proves nothing
+// about the checks (FR-13.15, FR-13.17).
+func TestStreamClaimsAreHeldToWhatASourceImplements(t *testing.T) {
 	both := aclBoth{}
 	reads := aclReads{}
 	neither := struct{}{}
@@ -135,8 +135,12 @@ func TestPermissionClaimsAreHeldToWhatASourceImplements(t *testing.T) {
 		{"claiming both and implementing neither",
 			capability.Stream{ACLs: true, ManageACLs: true}, neither,
 			[]string{"ACLInspector", "ACLAdmin"}},
+		{"claiming a throughput it cannot measure",
+			capability.Stream{Throughput: true}, both, []string{"TopicMeter"}},
+		{"claiming a throughput it can measure",
+			capability.Stream{Throughput: true}, aclBothAndMeter{}, nil},
 	} {
-		found := strings.Join(permissionClaims(c.caps, c.src), "; ")
+		found := strings.Join(streamClaims(c.caps, c.src), "; ")
 		if len(c.finds) == 0 {
 			if found != "" {
 				t.Errorf("%s is said to be wrong: %s", c.what, found)
@@ -160,5 +164,12 @@ func (aclBoth) GrantACL(context.Context, model.ACL, bool) error            { ret
 func (aclBoth) RevokeACL(context.Context, model.ACL, bool) error           { return nil }
 
 type aclReads struct{}
+
+// aclBothAndMeter also says how much a topic has carried.
+type aclBothAndMeter struct{ aclBoth }
+
+func (aclBothAndMeter) TopicTotals(context.Context, string) (model.TopicTotals, error) {
+	return model.TopicTotals{}, nil
+}
 
 func (aclReads) ACLs(context.Context, model.ACLFilter) ([]model.ACL, error) { return nil, nil }

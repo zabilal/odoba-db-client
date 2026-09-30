@@ -45,9 +45,15 @@ func (recordFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.S
 	// and can only be followed, and "shy" says nothing of its can be followed
 	// at all.
 	return &recordSource{live: make(chan model.Row, 16),
-		noTime:       strings.Contains(cfg.Host, "notime"),
-		unmanaged:    strings.Contains(cfg.Host, "unmanaged"),
-		noACLs:       strings.Contains(cfg.Host, "noacl"),
+		noTime:    strings.Contains(cfg.Host, "notime"),
+		unmanaged: strings.Contains(cfg.Host, "unmanaged"),
+		noACLs:    strings.Contains(cfg.Host, "noacl"),
+		noRates:   strings.Contains(cfg.Host, "norate"),
+		// "nosize" is a cluster that counts records and will not say how much
+		// room the logs take, which some managed Kafka is.
+		carried: model.TopicTotals{At: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
+			Sized: !strings.Contains(cfg.Host, "nosize")},
+		perRead: 100, bytesPer: 2048,
 		keepsNothing: strings.Contains(cfg.Host, "keepsnothing"),
 		shy:          strings.Contains(cfg.Host, "shy")}, nil
 }
@@ -104,6 +110,20 @@ type recordSource struct {
 	// to write them. noACLs is a cluster that keeps none at all.
 	unmanaged bool
 	noACLs    bool
+
+	// How much the topic has carried, and how much more it carries at every
+	// reading. The readings are stamped a second apart whatever this machine's
+	// own pace, so the rates a test reads are exact. noRates is a cluster that
+	// cannot say.
+	carried  model.TopicTotals
+	perRead  int64
+	bytesPer int64
+	readings int
+	noRates  bool
+	// ratesFail is what every reading after the first says instead of
+	// answering, so that a test can break the measuring of a topic it has
+	// already measured.
+	ratesFail error
 	// gone is what a followed log says once the test has taken it away, and
 	// closes counts the following reads that were let go of.
 	gone   error
@@ -197,7 +217,8 @@ func (r *recordSource) Capabilities() capability.Capabilities {
 		Paradigm: model.ParadigmStream,
 		Stream: capability.Stream{Consume: !r.keepsNothing, SeekTimestamp: !r.noTime, Follow: true,
 			Produce: true, TopicAdmin: true, ResetOffsets: true,
-			ACLs: !r.noACLs, ManageACLs: !r.noACLs && !r.unmanaged},
+			ACLs: !r.noACLs, ManageACLs: !r.noACLs && !r.unmanaged,
+			Throughput: !r.noRates},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindTopic: true, model.KindConsumerGroup: true,
 		},
@@ -320,6 +341,41 @@ func (r *recordSource) RevokeACL(_ context.Context, acl model.ACL, confirmed boo
 	}
 	r.acls = kept
 	return nil
+}
+
+// TopicTotals is how much the topic has carried, a second later every time it
+// is asked: what a rate is measured from.
+func (r *recordSource) TopicTotals(_ context.Context, topic string) (model.TopicTotals, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.noRates {
+		return model.TopicTotals{}, errors.New("recordfake: this cluster keeps no totals")
+	}
+	if topic != topicRef.Name() {
+		return model.TopicTotals{}, errors.New("recordfake: no such topic")
+	}
+	if r.ratesFail != nil {
+		return model.TopicTotals{}, r.ratesFail
+	}
+	r.readings++
+	r.carried.At = r.carried.At.Add(time.Second)
+	r.carried.Records += r.perRead
+	r.carried.Bytes += r.bytesPer
+	return r.carried, nil
+}
+
+// breakRates makes every reading from now on fail.
+func (r *recordSource) breakRates(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ratesFail = err
+}
+
+// read is how many readings of the totals this source was asked for.
+func (r *recordSource) read() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.readings
 }
 
 // CanFollow is what this source says can be followed, which is every topic
