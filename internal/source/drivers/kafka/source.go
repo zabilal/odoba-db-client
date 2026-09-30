@@ -389,7 +389,12 @@ func (s *kafkaSource) Capabilities() capability.Capabilities {
 		// claimed separately and are not written yet (ADR-0107).
 		Stream: capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
 			ConsumerGroups: true, Produce: true, TopicAdmin: true, ResetOffsets: true,
-			SchemaRegistry: s.registry != nil},
+			SchemaRegistry: s.registry != nil,
+			// A cluster with no authorizer keeps no permissions, and says so
+			// when it is asked. That is an answer rather than a reason not to
+			// ask: which brokers have one is not something a client knows
+			// before it tries (acls.go).
+			ACLs: true, ManageACLs: true},
 		Objects: map[model.ObjectKind]bool{
 			model.KindCluster: true, model.KindFolder: true, model.KindTopic: true,
 			model.KindPartition: true, model.KindConsumerGroup: true,
