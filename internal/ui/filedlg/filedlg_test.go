@@ -82,6 +82,45 @@ func TestFynesAnswerIsAPathWithTheFileClosed(t *testing.T) {
 	}
 }
 
+// slashed is a URI that holds its path the way URIs hold paths: with forward
+// slashes, whatever the machine uses. Fyne's own file URI does this on Windows.
+type slashed struct{ fyne.URI }
+
+func (slashed) Path() string { return "C:/Users/ada/Documents/a.csv" }
+
+// The path handed back is spelled in this platform's own separator and no
+// other.
+//
+// A URI holds forward slashes everywhere, so on Windows Fyne's answer for
+// C:\Users\ada\a.csv comes back as C:/Users/ada/a.csv. Windows opens either,
+// so nothing fails at once — but that path is then shown to somebody, kept as a
+// recent file and joined with other paths as though it were native. Every path
+// this program passes about is native, and this is where one stops being a URI.
+//
+// The claim holds on any platform, which is what makes it testable on one: what
+// comes back carries this system's separator and not the other one.
+func TestThePathHandedBackIsSpelledThisPlatformsWay(t *testing.T) {
+	got, err := closed(&handed{uri: slashed{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := '/'
+	if filepath.Separator == '/' {
+		other = '\\'
+	}
+	if strings.ContainsRune(got, other) {
+		t.Errorf("%q carries %q, which is not this platform's separator %q",
+			got, string(other), string(filepath.Separator))
+	}
+	if !strings.ContainsRune(got, filepath.Separator) {
+		t.Errorf("%q carries no separator at all", got)
+	}
+	// And nothing else about it changed: the same path, spelled differently.
+	if want := filepath.FromSlash(slashed{}.Path()); got != want {
+		t.Errorf("it came back as %q, want %q", got, want)
+	}
+}
+
 func TestFynesDialogStandsInWithTheOptions(t *testing.T) {
 	test.NewTempApp(t)
 	dir := t.TempDir()

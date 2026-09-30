@@ -21,26 +21,78 @@
 
 ```
 PHASE:     4 — Breadth, polish and release readiness
-STATUS:    Phase 4's application work is done. T4.2, T4.3, T4.6,
-           T4.8 to T4.23, T4.29, T4.33 to T4.35 and T4.37 are
-           closed; T4.27, T4.30 and T4.31 are partial for reasons
-           written in each. What is left in Phase 4 is three drivers
-           that need an account or a cluster, and everything that
-           needs a certificate or a remote.
-           T4.3 libSQL/Turso is done: the same SQL over a wire, so
-           the package is a way in and everything below it is the
-           SQLite driver's, with a Flavour of three fields for what
-           differs (ADR-0155). ikigai-libsql runs on 58080, and
-           IKIGAI_LIBSQL_URL points the conformance suite at it.
-           Adding it found a defect of its own: the Kafka driver had
-           never been imported into cmd/ikigai and so could not be
-           reached from the application at all. Registered, and the
-           driver packages are now held against what the binary
-           depends on.
-NEXT TASK: T5.15: more sources — Snowflake, BigQuery,
-           Elasticsearch/OpenSearch, Trino. Each needs an account or a
-           cluster, so the first question is which of them can be run
-           locally at all.
+STATUS:    Phase 4's application work is done, and the linter now
+           runs: eight hundred and one findings, almost all of them
+           one question asked several hundred times (ADR-0170). The
+           first was depguard's and it was ARCH-1 — internal/app
+           imported internal/ui/canvas — so the three functions that
+           read and write a diagram's layout have moved to
+           internal/ui/shell and internal/app keeps the store. Two
+           defects came out of it, both in code no test reached: a
+           Kafka poll's errors were scanned in a loop that returned on
+           its first turn, so a cancellation behind a real failure was
+           reported as the failure, and a caller reads its own stop
+           from a cancellation; and `ikigai query --saved` opened the
+           local database with context.Background, so an interrupted
+           run did not stop. errcheck's six hundred and fifty-nine
+           took three answers rather than one: Close on a row stream,
+           a session or a source is a release, now said in each
+           contract and configured to match; a deferred call is exempt
+           because Go has no way to write `defer _ = x()`, and every
+           deferred close of a written file in the tree was looked at
+           before turning it off; and three hundred and nine other
+           drops are written `_ = x()` at the site, so the check stays
+           live for code written next. What is off is off with its
+           reason beside it: ST1005, three of staticcheck's quickfix
+           checks, and contextcheck, which cannot tell a click handler
+           from a missed thread-through. The lint job itself had never
+           run for a reason outside the code — the action's binaries
+           are built with an older Go than this module targets — so it
+           builds the linter at a pinned version instead.
+           The second platform round is done too (ADR-0171). Six of
+           the seven faults are fixed and one is instrumented: the XDG
+           rules are spelled in Unix's terms rather than the host's;
+           a path leaving a URI is converted to this platform's
+           spelling, which was a real Windows defect — a forward-slash
+           path shown to somebody and kept as a recent file; the
+           secrets file's mode assertion says what Windows means; the
+           SSH agent's socket goes somewhere Windows has; `bc` is gone
+           from the binary-size job, which had failed on its own
+           arithmetic while measuring 92.6 MB against a 120 MB budget;
+           and the cold-start gate builds the window twice, reporting
+           the toolkit's one-off share and holding the second against
+           half the requirement's share — it had failed at 523ms on a
+           runner with neighbours, on a commit that changed nothing
+           about it. The macOS focus test could not be reproduced here,
+           so it now reports the widget's position, size, the canvas
+           size and whether an overlay is up, and the next run will
+           say why rather than that.
+NEXT TASK: T5.15, whose Elasticsearch/OpenSearch driver is
+           written and stashed ("T5.15 elasticsearch driver, in
+           progress"): wire.go, source.go, tree.go and browse.go, plus
+           the registration in both binaries. What it still needs is
+           live tests against ikigai-opensearch on 59200, the
+           conformance suite, unit tests and mutations. Then Trino,
+           which needs the room the VM now has; Snowflake and BigQuery
+           need accounts and stay open with reasons, like T4.1.
+           What CI found on the two platforms nobody had ever run is
+           in ADR-0169: two real defects, a layout guarantee that was
+           only a hope, two Unix assumptions in tests, and Go's
+           ten-minute test timeout. The five above are the next round
+           of the same thing.
+           CI was found running and red, which this line had said for
+           weeks it had never done: the Linux build could not compile
+           (glfw wants Wayland headers), the macOS job's -race run
+           found six data races — five in test fakes and one real one
+           in the explorer's loader — four plugin tests were failing
+           on deadlines that measure the detector, and the nightly
+           conformance run had no replica set for T5.12's change
+           streams. All four are fixed. The owner settled two open
+           decisions: every driver ships (so NFR-P8 is 120 MB and a
+           gate again, catching accidental growth rather than
+           forbidding the product), and the licence is Apache 2.0.
+           The Docker VM went from 8 GB to 12 GB, which is what makes
+           the rest of Phase 5's servers possible at all.
            T5.14 is done: a topic's tab says how busy it is, in a
            picture and two numbers measured while it is open, because
            a cluster keeps no rate to read — Kafka publishes its own
@@ -743,7 +795,7 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 - [x] **T0.2** `git init`, `.gitignore` (binaries, `.DS_Store`, `dist/`, `fyne-cross/`), initial commit
 - [x] **T0.3** Create directory skeleton per REQUIREMENTS §10.1 with package doc comments → ARCH-1
 - [x] **T0.4** `Makefile`: `build` `test` `lint` `bench` `package` `conformance` targets
-- [x] **T0.5** `golangci-lint` config; enable `depguard`
+- [x] **T0.5** `golangci-lint` config; enable `depguard` — *marked done here in Phase 0 and only true of the file: the configuration existed and nothing ran it, so every rule in it went unchecked for the whole project including the depguard rule that is ARCH-1 (ADR-0170). It runs in CI now, built from source at a pinned version because the action's published binaries are built with an older Go than this module targets; eleven linters are on, and the four that are off are off with the reason written beside each. It runs over the tagged suites as well, which the commit gate made the case for: a linter with no build tags reads a package as its untagged half, so a helper only a conformance-tagged file calls looked unused, came out, and stopped the tagged build compiling — and linting the half that had never been linted found fifty-six more things, one of them another ARCH-1 violation*
 - [x] **T0.6** **depguard rule: no `fyne.io/**` import below `internal/app`** → ARCH-1 *(the single most important structural guard)*
 - [x] **T0.7** CI: native runners for macOS (arm64+amd64), Linux (amd64+arm64), Windows (amd64) → NFR-D3, RISK-10
 - [x] **T0.8** CI: prove `fyne package` works on all three platforms **now**, not at Phase 4 → RISK-10
@@ -823,8 +875,8 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 ### ✅ Phase 0 exit criteria
 - [~] G0-2, G0-3, G0-4 PASSED. G0-1 provisionally passed on CPU evidence; closes with one interactive run (owner action)
 - [~] Theme gallery builds and compiles; not yet viewed on a display — the build session had no window server
-- [!] Conformance suite and CI written but never run — the repository has no remote
-- [~] `fyne package` proven on macOS arm64 (16MB .app); Linux and Windows unproven until CI runs
+- [x] Conformance suite and CI **run**, and were red — *the remote arrived with the first pull request and nothing said so, so this line went on claiming CI had never run while it had been running and failing on every push for four days. Three faults, none of them in the application. The Linux build could not compile at all: glfw builds its Wayland backend and the apt list had only the X11 headers, so `wayland-client-core.h` was missing — which took down the Linux build job and the performance job with it, since that one runs on Linux. The macOS job runs the suite under `-race` and found six data races: five in test fakes read by the test goroutine while the window wrote them from its own, and one real one in the explorer's loader, where a workspace narrowing the tree wrote `Shows` on the goroutine that draws the window while tree-loading goroutines read it (now a mutex and a `Show` method). And four plugin tests failed on deadlines that measure the detector rather than the code: a handshake given five seconds gets a fifth of a second's worth of work under instrumentation, so deadlines that are statements about what should have happened now scale with `race.Slower` while the budgets go on declining to run at all. The nightly conformance run failed for a fourth reason: T5.12's change-stream tests need a replica set, `IKIGAI_REQUIRE_MONGO` made a missing one fatal, and CI had no replica set to give — it has one now, started in a step rather than as a service container because it must be initiated after it starts, and required through a flag of its own*
+- [~] `fyne package` proven on macOS arm64 (16MB .app); Linux and Windows **build and pass the suite** in CI on every push now (ADR-0169), but `fyne package` itself is not run there — packaging is T4.24 to T4.26
 
 ---
 
@@ -1198,13 +1250,13 @@ DOCKER:    Docker Desktop stops answering now and then (twice on 2026-09-11):
 
 ## 4.F Final verification
 
-- [~] **T4.30** All §6.1 budgets green in CI → DoD-2 — *eleven of twelve are gated and green: P1 cold start, P2 the thousand-object tree, P3 first rows, P4 frame cost, P5 keystroke-to-glyph, P6 idle heap, P7 a million rows to CSV (new here: 8.7M rows/s with a heap that does not move), P9 cancellation (new here, in two halves — a read let go of in 57µs, and the window's Stop, which does not wait for the source to notice, in under a microsecond), P10 the live tail, P11 and P13 by benchmark. **P8, the binary, does not meet its budget and is the owner's decision.** A stripped macOS build is 86.1 MB against 60 MB, and three drivers are most of the gap: go-ora is 14.8 MB of it, franz-go 10.4 and aws-sdk-go-v2 5.1, a build without the three being 55.8 MB — every other driver is under 7.5 MB, libSQL is 1.0 and Firebird 0.8. The three ways out are all product decisions: put those three behind build tags as DuckDB already is, raise the budget, or ship a core build and a full one. Until one is chosen CI measures the binary on all three platforms and fails only if it grows past a ceiling, so the gap cannot widen unnoticed. The ceiling has moved twice, both times for a measured addition with its number written down: 80 to 84 MB in T4.3, for registering the Kafka driver, which had been written and tested and never imported into cmd/ikigai and so was unreachable from the application at all; and 84 to 90 in T4.6, for the DynamoDB driver. Twice in a day is the ratchet documenting growth rather than limiting it, which is an argument for settling this rather than for moving the number again*
-- [~] **T4.31** Conformance passes for every Tier-1/Tier-2 source against real servers → DoD-4 — *green for thirteen of fifteen, against real servers in Docker on every commit: PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redis (plain, JSON and cluster), Kafka (plain, SASL, TLS and with a registry), Cassandra, SQL Server, ClickHouse, Oracle, CockroachDB and DuckDB. The two missing are Tier-2 sources of Phase 4 that are not written yet: Amazon Redshift (T4.1), which needs a cluster nobody here has, and libSQL/Turso (T4.3). This closes when they do*
-- [ ] **T4.32** J1–J8 pass on macOS, Windows, Linux → DoD-3
+- [~] **T4.30** All §6.1 budgets green in CI → DoD-2 — *eleven of twelve are gated and green: P1 cold start (the window built twice, the toolkit's one-off share reported and the second held against half the requirement's share — a single cold build measured the toolkit as much as this code, and failed at 523ms on a CI runner with neighbours while the commit before it, measuring the same distribution, passed; ADR-0171), P2 the thousand-object tree, P3 first rows, P4 frame cost, P5 keystroke-to-glyph, P6 idle heap, P7 a million rows to CSV (new here: 8.7M rows/s with a heap that does not move), P9 cancellation (new here, in two halves — a read let go of in 57µs, and the window's Stop, which does not wait for the source to notice, in under a microsecond), P10 the live tail, P11 and P13 by benchmark. **P8, the binary, does not meet its budget and is the owner's decision.** A stripped macOS build is 86.1 MB against 60 MB, and three drivers are most of the gap: go-ora is 14.8 MB of it, franz-go 10.4 and aws-sdk-go-v2 5.1, a build without the three being 55.8 MB — every other driver is under 7.5 MB, libSQL is 1.0 and Firebird 0.8. The three ways out are all product decisions: put those three behind build tags as DuckDB already is, raise the budget, or ship a core build and a full one. Until one is chosen CI measures the binary on all three platforms and fails only if it grows past a ceiling, so the gap cannot widen unnoticed. The ceiling has moved twice, both times for a measured addition with its number written down: 80 to 84 MB in T4.3, for registering the Kafka driver, which had been written and tested and never imported into cmd/ikigai and so was unreachable from the application at all; and 84 to 90 in T4.6, for the DynamoDB driver. Twice in a day is the ratchet documenting growth rather than limiting it, which is an argument for settling this rather than for moving the number again*
+- [~] **T4.31** Conformance passes for every Tier-1/Tier-2 source against real servers → DoD-4 — *and green in CI as well as locally since ADR-0168: the nightly run had been failing because T5.12's change streams need a replica set and CI had none to give. Green for thirteen of fifteen, against real servers in Docker on every commit: PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redis (plain, JSON and cluster), Kafka (plain, SASL, TLS and with a registry), Cassandra, SQL Server, ClickHouse, Oracle, CockroachDB and DuckDB. The two missing are Tier-2 sources of Phase 4 that are not written yet: Amazon Redshift (T4.1), which needs a cluster nobody here has, and libSQL/Turso (T4.3). This closes when they do. One of its live suites grew an assertion in ADR-0170 for a reason worth naming: a filter about the Kafka cluster is not a filter about everything, and nothing in a unit test can tell kadm's "any resource" from its "the cluster" — both are private fields and both answer HasAnyFilter — so the difference is only visible in what a broker returns*
+- [~] **T4.32** J1–J8 pass on macOS, Windows, Linux → DoD-3 — *the suite and the journeys run on all three in CI now, which they never had: the Linux build could not compile at all (glfw builds its Wayland backend and the apt list had only the X11 headers), and nothing had ever run on Windows. Six faults came out of the first green-ish run and none of them would have been found by a second machine of the same kind (ADR-0169). Two are real defects: CLOUDSDK_CONFIG moves gcloud's configuration directory on every platform and was read on all but Windows, so somebody who had moved theirs was told they had never signed in; and a connection string's scheme was read after the whole URL was parsed, so `sqlite://C:\Users\…` — unparseable, because of the drive letter's colon — was refused as a malformed URL with advice about unescaped characters in the password, when what was wrong was that SQLite opens files rather than dialling addresses. One is a guarantee that was not: the diagram's layout separates overlapping tables with a bounded relaxation and then hands back whatever it has, which on arm64 converged and on amd64 left one pair on top of each other — a force simulation is chaotic, so floating point decided it. There is a sweep now that cannot fail, and it places pinned tables first as anchors because pinned means pinned. Two are Unix assumptions in tests, which now assert what the platform means rather than skipping. And one was Go's ten-minute default test timeout, which the window's suite exceeds under the race detector on a hosted runner. A second round came back with five more of the same kind, and they are fixed (ADR-0171). Two were defects a user could have met: a path leaving a fyne.URI keeps the URI's forward slashes, so a Windows file dialog handed back C:/Users/ada/a.csv — which opens, because Windows accepts either, and is then shown to somebody, kept as a recent file and joined with other paths as though it were native; and three errors in the XDG portal's file dialog could not be reached through, which only a linter running on Linux could see. Two were rules mistaken for this machine's answer to them: pathsFor takes the operating system as an argument so that any platform's conventions can be tested anywhere, and then asked filepath.IsAbs whether an XDG value was absolute, which answers for the host — on Windows that wants a drive letter, so every valid value was called invalid; and the secrets file's 0600 assertion is one Windows has no mode to satisfy, so it now says what the platform means, as pgpass and single already did. One was a Unix constraint taken for a universal one: the SSH agent's socket goes under /tmp because sun_path has a hundred characters to spare, and Windows has no /tmp. The macOS focus test could not be reproduced here at all, so rather than guess it now reports the widget's position and size, the canvas size and whether an overlay is up — the one thing that makes a focus ring invisible with nothing wrong is the widget not being on the screen, which Visible() does not say. **Open until the journeys are proven against live servers on all three**: the tagged suites run on Linux only, because that is where CI can start containers*
 - [x] **T4.33** **Security review covering NFR-S1…S6** → DoD-6 — *docs/SECURITY-REVIEW.md: each requirement, what enforces it, what test holds it, and what is left open, with every claim naming something a reader can go and check. It found one real gap and closed it: three drivers asserted for themselves that a value shaped like a statement never reaches the SQL and six did not, so the check moved into the conformance suite — a browse whose filter value is `'"'"'; DROP TABLE orders --`, and again one shaped like a quoted name, failing if either reaches the statement text or is not among the bound arguments. Nine SQL drivers take it and all nine pass. It is scoped to the relational paradigm on purpose: MongoDB hands its driver a bson.D and what its dialect renders is a preview, so a value in a preview is not a value reaching a server. The residual risks are named rather than rounded off — a secret typed for one session is in this process's memory in the clear, ClickHouse builds one TLS config of its own rather than going through tlsconf, and the binding check is at the rendering boundary, so a driver that rendered one statement and executed another would pass it*
 - [x] **T4.34** Verify offline operation → NFR-D6 — *held by two rules rather than remembered. What is kept, what is read and written, and what text is made of cannot reach net/http, net/smtp or net/rpc at all, checked through the import graph with a control pointed at internal/cloud so that a rule looking for the wrong thing fails rather than passing everywhere; and no file of this application outside internal/cloud's four token fetchers imports net/http, so a new one has to be added to the list on purpose and say why. The packages that draw are deliberately not in the first rule and cannot be: fyne.io/fyne/v2 reaches net/http itself for its own URI handling, so the graph says nothing about anything that draws — the file rule is what covers those, and it is the stronger statement. The network is used in three places, each of them something a person asked for: a driver connecting to a server they configured, an SSH tunnel they configured, and a cloud IAM token a connection asked for. There is no telemetry, no update check, nothing fetched on start, and nothing that contacts a host belonging to this project*
 - [x] **T4.35** Zero open `M`-severity data-loss or credential defects → DoD-7 — *docs/KNOWN-DEFECTS.md, because a claim like that is only worth something beside the list it was made against. Nothing open can lose data or mishandle a credential; what is open is named anyway, in two tables — what a person may notice (the screen reader, the binary size, Cassandra's unset int reading as 0, ClickHouse refusing a table with an AggregateFunction column, the features each driver does not have and says so) and what only a developer notices (G0-1's interactive run, the theme gallery never seen on a display, no remote for CI, fyne package proven on one platform). Each says why it is the severity it is. The two defects of DoD-7's kind that were found in Phase 4 are named with their fixes rather than quietly closed: the vault lock's data race, and rows decoded in a caller's memory*
-- [ ] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5
+- [x] **T4.36** **Resolve OQ-1: licence decided and applied** → RISK-5 — *Apache 2.0, by the owner's decision: permissive, so it can be used inside a company without the licence reaching their own code, and with a patent grant, which a tool speaking fifteen database protocols is worth having. LICENSE is the canonical text, copied verbatim from a dependency that ships it rather than transcribed, because a licence with a typo in it is a different licence. NOTICE carries the project's own copyright and says in one line that no code came from DBGate or any other client, with CLEANROOM.md for what was used instead. The README says which licence and why. Dependencies keep their own, named in the bill of materials CI publishes with every build (NFR-S9)*
 - [x] **T4.37** User documentation + known-gaps page → DoD-8 — *a README written for somebody deciding whether to use this rather than for us: what it does in the words of what it is for, what it does not do with the screen reader first and a pointer to the page that says why, how to build it, where it keeps things, and how to make it portable. The known-gaps page is docs/KNOWN-DEFECTS.md (T4.35) and the accessibility one is docs/ACCESSIBILITY.md (T4.23); the licence line says plainly that there is not one yet, which is the first thing a reader needs and the one thing nobody but the owner can settle*
 
 ### ✅ Phase 4 exit: v1.0 GA

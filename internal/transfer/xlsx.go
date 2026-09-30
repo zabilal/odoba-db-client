@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -115,11 +116,11 @@ func openSheet(r io.ReaderAt, size int64, opt Options) (*sheet, error) {
 	}
 	sh.dec = xml.NewDecoder(sh.rc)
 	first, err := sh.next()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return sh, nil // an empty sheet: no columns, no rows
 	}
 	if err != nil {
-		sh.rc.Close()
+		_ = sh.rc.Close()
 		return nil, err
 	}
 	sh.width = max(sh.width, len(first))
@@ -169,7 +170,7 @@ func sharedStrings(files map[string]*zip.File) ([]string, error) {
 	dec := xml.NewDecoder(rc)
 	for {
 		t, err := dec.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return out, nil
 		}
 		if err != nil {

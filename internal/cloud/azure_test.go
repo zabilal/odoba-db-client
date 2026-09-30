@@ -2,6 +2,8 @@ package cloud
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -32,9 +34,9 @@ func TestARegisteredApplicationSignsInWithItsSecret(t *testing.T) {
 	var path string
 	var form url.Values
 	entra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		_ = r.ParseForm()
 		path, form = r.URL.Path, r.Form
-		w.Write([]byte(`{"access_token":"an-entra-token","token_type":"Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token":"an-entra-token","token_type":"Bearer"}`))
 	}))
 	defer entra.Close()
 
@@ -80,7 +82,7 @@ func TestAHostWithAManagedIdentityOfItsOwn(t *testing.T) {
 		header = r.Header.Get("X-IDENTITY-HEADER")
 		resource = r.URL.Query().Get("resource")
 		which = r.URL.Query().Get("client_id")
-		w.Write([]byte(`{"access_token":"the-hosts-token"}`))
+		_, _ = w.Write([]byte(`{"access_token":"the-hosts-token"}`))
 	}))
 	defer identity.Close()
 	t.Setenv("IDENTITY_ENDPOINT", identity.URL)
@@ -103,6 +105,51 @@ func TestAHostWithAManagedIdentityOfItsOwn(t *testing.T) {
 	// A host may hold more than one, and then which one has to be said.
 	if which != "the-second-identity" {
 		t.Errorf("it did not say which identity: %q", which)
+	}
+}
+
+// An identity endpoint that answers with something else is two things at once,
+// and both have to survive.
+//
+// It is "no managed identity", because Token reads that to mean it should try
+// the CLI next: a host that is not the kind of host this asks is the ordinary
+// case, not a failure. And it is whatever the endpoint actually did, because
+// that is the only clue anybody gets when the host was supposed to answer and
+// something in front of it — a proxy, a sign-in page — answered instead.
+func TestAnIdentityEndpointAnsweringSomethingElseSaysBoth(t *testing.T) {
+	noAmbientIdentity(t)
+	identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html>Sign in to continue</html>"))
+	}))
+	defer identity.Close()
+	t.Setenv("IDENTITY_ENDPOINT", identity.URL)
+	t.Setenv("IDENTITY_HEADER", "a-shared-secret")
+
+	_, err := azureManagedIdentity(context.Background(), nil, azureDefaultResource)
+	if err == nil {
+		t.Fatal("a sign-in page was read as a token")
+	}
+	if !errors.Is(err, errNoManagedIdentity) {
+		t.Errorf("it does not read as no managed identity, so Token would stop here: %v", err)
+	}
+	var syn *json.SyntaxError
+	if !errors.As(err, &syn) {
+		t.Errorf("what the endpoint answered is not reachable through it: %v", err)
+	}
+
+	// An endpoint that answers properly but with no token in it is the first
+	// without the second: there is nothing underneath to reach.
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer empty.Close()
+	t.Setenv("IDENTITY_ENDPOINT", empty.URL)
+	_, err = azureManagedIdentity(context.Background(), nil, azureDefaultResource)
+	if !errors.Is(err, errNoManagedIdentity) {
+		t.Errorf("an answer with no token in it reads as %v", err)
+	}
+	if !strings.Contains(err.Error(), "without an access token") {
+		t.Errorf("it says %q", err)
 	}
 }
 

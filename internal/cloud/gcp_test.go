@@ -48,11 +48,11 @@ func TestAServiceAccountSignsAClaimItNeverSends(t *testing.T) {
 
 	var assertion, grant string
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		_ = r.ParseForm()
 		grant = r.Form.Get("grant_type")
 		assertion = r.Form.Get("assertion")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"an-access-token","expires_in":3600}`))
+		_, _ = w.Write([]byte(`{"access_token":"an-access-token","expires_in":3600}`))
 	}))
 	defer issuer.Close()
 
@@ -139,11 +139,11 @@ func TestAnAskedForScopeIsTheOneSigned(t *testing.T) {
 	_, keyPEM := serviceAccountKey(t)
 	var scope string
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		_ = r.ParseForm()
 		var claims map[string]any
 		unpack(t, strings.Split(r.Form.Get("assertion"), ".")[1], &claims)
 		scope, _ = claims["scope"].(string)
-		w.Write([]byte(`{"access_token":"t"}`))
+		_, _ = w.Write([]byte(`{"access_token":"t"}`))
 	}))
 	defer issuer.Close()
 
@@ -168,12 +168,12 @@ func TestASignedInUserSpendsTheRefreshTokenGcloudLeft(t *testing.T) {
 	noAmbientIdentity(t)
 	var form map[string]string
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		_ = r.ParseForm()
 		form = map[string]string{}
 		for k := range r.Form {
 			form[k] = r.Form.Get(k)
 		}
-		w.Write([]byte(`{"access_token":"a-users-token"}`))
+		_, _ = w.Write([]byte(`{"access_token":"a-users-token"}`))
 	}))
 	defer issuer.Close()
 
@@ -208,7 +208,7 @@ func TestAMachineWithAGoogleIdentityOfItsOwn(t *testing.T) {
 	metadata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flavor = r.Header.Get("Metadata-Flavor")
 		scopes = r.URL.Query().Get("scopes")
-		w.Write([]byte(`{"access_token":"the-machines-token","expires_in":3599}`))
+		_, _ = w.Write([]byte(`{"access_token":"the-machines-token","expires_in":3599}`))
 	}))
 	defer metadata.Close()
 	t.Setenv("GCE_METADATA_HOST", strings.TrimPrefix(metadata.URL, "http://"))

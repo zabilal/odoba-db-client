@@ -132,7 +132,7 @@ func TestMovingAGroupOnProductionAsksAndMovesNothingUntilAnswered(t *testing.T) 
 		t.Fatal("the connection is not open")
 	}
 	src := live.Source.(*recordSource)
-	src.refuse = fmt.Errorf("%w: moving offsets on a production connection", source.ErrConfirmationRequired)
+	src.refuses(fmt.Errorf("%w: moving offsets on a production connection", source.ErrConfirmationRequired))
 
 	moving := func(s source.Source, confirmed bool) error {
 		return app.ResetOffsets(fx.s.ctx, s, source.ResetRequest{
@@ -147,21 +147,21 @@ func TestMovingAGroupOnProductionAsksAndMovesNothingUntilAnswered(t *testing.T) 
 		!strings.Contains(text, "move readers to the beginning of each log") {
 		t.Errorf("moving a group on production asks: %q", text)
 	}
-	if len(src.changed) != 0 {
-		t.Fatalf("a group moved before the question was answered: %v", src.changed)
+	if len(src.changes()) != 0 {
+		t.Fatalf("a group moved before the question was answered: %v", src.changes())
 	}
 
 	tapOnTop(t, fx, "Cancel")
-	if len(src.changed) != 0 {
-		t.Errorf("saying no moved %v", src.changed)
+	if len(src.changes()) != 0 {
+		t.Errorf("saying no moved %v", src.changes())
 	}
 
 	fx.s.changeCluster(tb.connID, "move readers to the beginning of each log", moving)
 	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
 	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Continue")
-	pump(t, fx.q, func() bool { return len(src.changed) == 1 })
-	if src.changed[0] != "move readers" {
-		t.Errorf("what happened was %v", src.changed)
+	pump(t, fx.q, func() bool { return len(src.changes()) == 1 })
+	if src.changes()[0] != "move readers" {
+		t.Errorf("what happened was %v", src.changes())
 	}
 }

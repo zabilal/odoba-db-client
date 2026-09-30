@@ -28,7 +28,7 @@ func noAmbientIdentity(t *testing.T) {
 		"AZURE_AUTHORITY_HOST", "IDENTITY_ENDPOINT", "IDENTITY_HEADER",
 	} {
 		t.Setenv(k, "")
-		os.Unsetenv(k)
+		_ = os.Unsetenv(k)
 	}
 	// The shared credentials file is looked for under the home directory,
 	// and a developer running this has one.
@@ -310,7 +310,7 @@ func TestAnInstanceIsAskedWithASessionAndNotWithout(t *testing.T) {
 			if r.Header.Get("X-aws-ec2-metadata-token-ttl-seconds") == "" {
 				t.Error("a session was asked for without saying how long it should last")
 			}
-			w.Write([]byte("a-session"))
+			_, _ = w.Write([]byte("a-session"))
 			return
 		}
 		// Version 1 is not enough: without the session header this is the
@@ -321,9 +321,9 @@ func TestAnInstanceIsAskedWithASessionAndNotWithout(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/latest/meta-data/iam/security-credentials/":
-			w.Write([]byte("the-role"))
+			_, _ = w.Write([]byte("the-role"))
 		case "/latest/meta-data/iam/security-credentials/the-role":
-			w.Write([]byte(`{"AccessKeyId":"AKIAROLE","SecretAccessKey":"role-secret","Token":"role-session"}`))
+			_, _ = w.Write([]byte(`{"AccessKeyId":"AKIAROLE","SecretAccessKey":"role-secret","Token":"role-session"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -352,7 +352,7 @@ func TestATaskBorrowsItsContainersIdentity(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		w.Write([]byte(`{"AccessKeyId":"AKIATASK","SecretAccessKey":"task-secret","Token":"task-session"}`))
+		_, _ = w.Write([]byte(`{"AccessKeyId":"AKIATASK","SecretAccessKey":"task-secret","Token":"task-session"}`))
 	}))
 	defer ecs.Close()
 

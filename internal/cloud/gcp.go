@@ -123,14 +123,18 @@ func gcpCredentialsFile(params map[string]string) (string, error) {
 // `gcloud auth application-default login`.
 func gcpWellKnownFile() string {
 	const name = "application_default_credentials.json"
+	// CLOUDSDK_CONFIG moves gcloud's whole configuration directory, and it does
+	// so on every platform gcloud runs on — this looked for it on all but
+	// Windows, where somebody who had moved their configuration would have been
+	// told they had never signed in.
+	if dir := os.Getenv("CLOUDSDK_CONFIG"); dir != "" {
+		return filepath.Join(dir, name)
+	}
 	if runtime.GOOS == "windows" {
 		if dir := os.Getenv("APPDATA"); dir != "" {
 			return filepath.Join(dir, "gcloud", name)
 		}
 		return ""
-	}
-	if dir := os.Getenv("CLOUDSDK_CONFIG"); dir != "" {
-		return filepath.Join(dir, name)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

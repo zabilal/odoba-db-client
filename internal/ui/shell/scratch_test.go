@@ -97,7 +97,7 @@ func TestDeletingTheConnectionForgetsTheText(t *testing.T) {
 
 func TestTextWhoseConnectionIsGoneReopensWithoutConnecting(t *testing.T) {
 	fx := newFixture(t)
-	fx.hist.PutScratch(context.Background(),
+	_ = fx.hist.PutScratch(context.Background(),
 		localdb.Scratch{ID: "orphan", ConnectionID: "gone", Body: "select 1;", Opened: time.Now()})
 	s := fx.relaunch(t)
 	pump(t, fx.q, func() bool { return len(s.open) == 1 })

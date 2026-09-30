@@ -65,7 +65,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	// each becomes what it is rather than "could not connect".
 	var one int
 	if err := db.QueryRowContext(ctx, `SELECT 1`).Scan(&one); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classify(err, t.noToken)
 	}
 	addr := t.addr

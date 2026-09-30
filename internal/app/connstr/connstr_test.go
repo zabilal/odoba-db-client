@@ -257,3 +257,36 @@ func TestParseSchemeThatMeansEncryption(t *testing.T) {
 		t.Errorf("TLS %q, want the parameter to have the last word", off.Conn.TLS.Mode)
 	}
 }
+
+// A scheme nobody handles is said as that, whatever follows it.
+//
+// The scheme is read before the rest is parsed, because the rest may well not
+// parse — and then the refusal would be about the wrong thing. A Windows path in
+// a sqlite:// string is the case that showed it: the drive letter's colon and the
+// backslashes make it an unparseable URL, and "malformed URL; check for
+// unescaped characters in the password" sent somebody looking at a password when
+// what was wrong was that SQLite opens a file rather than dialling an address.
+func TestASchemeNobodyHandlesIsSaidWhateverFollowsIt(t *testing.T) {
+	for _, s := range []string{
+		`sqlite://C:\Users\someone\App Data\ikigai.db`,
+		"sqlite:///home/someone/ikigai.db",
+		"wormhole://somewhere",
+		"SQLITE://x", // the scheme is read whatever case it is written in
+	} {
+		_, err := Parse(s)
+		if err == nil {
+			t.Errorf("%q was accepted", s)
+			continue
+		}
+		if !strings.Contains(err.Error(), "no installed driver handles") {
+			t.Errorf("%q is refused with %q, which does not say the scheme is the problem", s, err)
+		}
+	}
+	// And a scheme somebody does handle, with a password that cannot be parsed,
+	// is still the malformed URL it is: this changed which check comes first, not
+	// what either of them says.
+	if _, err := Parse("postgres://user:pa%ss@host/db"); err == nil ||
+		!strings.Contains(err.Error(), "malformed URL") {
+		t.Errorf("an unparseable URL on a known scheme is refused with %v", err)
+	}
+}

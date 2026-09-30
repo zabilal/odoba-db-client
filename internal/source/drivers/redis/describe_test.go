@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -69,10 +70,10 @@ func TestTheFiguresWorthShowing(t *testing.T) {
 
 func TestWhatIsCountedByKind(t *testing.T) {
 	// Nothing counts a kind nobody here counts, and -1 is what says so.
-	if got := lengthOf(nil, nil, "ReJSON-RL", "doc"); got != -1 {
+	if got := lengthOf(context.TODO(), nil, "ReJSON-RL", "doc"); got != -1 {
 		t.Errorf("a document is %d long", got)
 	}
-	if got := lengthOf(nil, nil, "timeseries", "ts"); got != -1 {
+	if got := lengthOf(context.TODO(), nil, "timeseries", "ts"); got != -1 {
 		t.Errorf("a time series is %d long", got)
 	}
 }
@@ -84,7 +85,7 @@ func TestADatabaseAndAKeyAreWhatThisDescribes(t *testing.T) {
 		model.NewRef(model.KindCollection, "db0", "people"),
 		{},
 	} {
-		if _, err := s.Describe(nil, ref); err == nil {
+		if _, err := s.Describe(context.TODO(), ref); err == nil {
 			t.Errorf("%v was described", ref)
 		}
 	}

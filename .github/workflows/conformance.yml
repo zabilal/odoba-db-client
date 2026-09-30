@@ -134,10 +134,38 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      # A replica set cannot be a service container: it has to be initiated after
+      # it starts, and a service container has nowhere to say that. It is also
+      # published on the same port inside and out, because a replica set
+      # advertises its members' addresses and a member reachable only through a
+      # port map is one the driver abandons after discovery (T5.12).
+      - name: Start a MongoDB replica set
+        run: |
+          docker run -d --name mongo-rs -p 57018:57018 mongo:7 \
+            --replSet rs0 --bind_ip_all --port 57018
+          for i in $(seq 1 30); do
+            if docker exec mongo-rs mongosh --port 57018 --quiet \
+                 --eval 'db.runCommand("ping").ok' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec mongo-rs mongosh --port 57018 --quiet \
+            --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:57018"}]})'
+          for i in $(seq 1 30); do
+            if docker exec mongo-rs mongosh --port 57018 --quiet \
+                 --eval 'rs.status().myState' 2>/dev/null | grep -q '^1$'; then
+              echo "the replica set has a primary"
+              break
+            fi
+            sleep 2
+          done
+
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
 
       # IKIGAI_REQUIRE_* turn a missing server into a failure. Locally the
       # suites skip when no server is running; in CI a skip would be a silent
@@ -151,6 +179,8 @@ jobs:
           IKIGAI_MARIADB_PORT: "3307"
           IKIGAI_REQUIRE_MONGO: "1"
           IKIGAI_MONGO_PORT: "27017"
+          IKIGAI_REQUIRE_MONGO_RS: "1"
+          IKIGAI_MONGO_RS_PORT: "57018"
           IKIGAI_REQUIRE_REDIS: "1"
           IKIGAI_REDIS_PORT: "6379"
           IKIGAI_REQUIRE_REDIS_JSON: "1"

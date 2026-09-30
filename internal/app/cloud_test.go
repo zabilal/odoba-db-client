@@ -138,7 +138,7 @@ func TestTheConnectContextEndingDoesNotStopALaterReconnectMinting(t *testing.T) 
 	// a cancelled context actually decides something.
 	noGoogleCredentialsFile(t)
 	metadata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"access_token":"a-token-for-the-reconnection"}`))
+		_, _ = w.Write([]byte(`{"access_token":"a-token-for-the-reconnection"}`))
 	}))
 	defer metadata.Close()
 	t.Setenv("GCE_METADATA_HOST", strings.TrimPrefix(metadata.URL, "http://"))
@@ -168,6 +168,6 @@ func TestTheConnectContextEndingDoesNotStopALaterReconnectMinting(t *testing.T) 
 func noGoogleCredentialsFile(t *testing.T) {
 	t.Helper()
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-	os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
+	_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
 	t.Setenv("CLOUDSDK_CONFIG", t.TempDir())
 }

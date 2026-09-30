@@ -66,7 +66,7 @@ func seed(t *testing.T, src source.Source, db string) {
 	if err := d.Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.client.Database(db).Drop(context.Background()) })
+	t.Cleanup(func() { _ = s.client.Database(db).Drop(context.Background()) })
 	people := d.Collection("people")
 	// Each document holds a field the others do not, so what the columns
 	// are cannot be read from any one of them.

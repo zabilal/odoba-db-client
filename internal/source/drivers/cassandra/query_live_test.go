@@ -60,7 +60,7 @@ func TestLiveRunsAStatement(t *testing.T) {
 		t.Fatalf("an insert: %v", err)
 	}
 	t.Cleanup(func() {
-		c.Query(context.Background(), source.Statement{SQL: "DELETE FROM people WHERE country = 'GB' AND id = 1"})
+		_, _ = c.Query(context.Background(), source.Statement{SQL: "DELETE FROM people WHERE country = 'GB' AND id = 1"})
 	})
 	res, err := c.Query(ctx, source.Statement{SQL: "SELECT country, id, name, score, tags, seen FROM people WHERE country = 'GB' AND id = 1"})
 	if err != nil {
@@ -104,7 +104,7 @@ func TestLiveRunsAStatement(t *testing.T) {
 		t.Errorf("an insert answered %+v: %v", res, err)
 	}
 	t.Cleanup(func() {
-		c.Query(context.Background(), source.Statement{SQL: "DELETE FROM orders WHERE id = 1"})
+		_, _ = c.Query(context.Background(), source.Statement{SQL: "DELETE FROM orders WHERE id = 1"})
 	})
 }
 
@@ -224,7 +224,7 @@ func TestLiveRefusesStatementsWhereItMayNot(t *testing.T) {
 	write.Confirmed = true
 	tidy := session(t, src)
 	t.Cleanup(func() {
-		tidy.Query(context.Background(), source.Statement{SQL: "DELETE FROM orders WHERE id = 2"})
+		_, _ = tidy.Query(context.Background(), source.Statement{SQL: "DELETE FROM orders WHERE id = 2"})
 	})
 	if _, err := production.Query(ctx, write); err != nil {
 		t.Errorf("production with consent: %v", err)

@@ -76,8 +76,8 @@ func TestTheFilterFindsAConnectionInAFolderNotOpened(t *testing.T) {
 func TestAFolderRowShowsItsColourAsADot(t *testing.T) {
 	newApp(t)
 	l, _ := setup(t, "a")
-	l.Conns.CreateFolder("Live", "red")
-	l.Conns.CreateFolder("Plain", "")
+	_, _ = l.Conns.CreateFolder("Live", "red")
+	_, _ = l.Conns.CreateFolder("Plain", "")
 	e := New(l, (&uithread.Queue{}).Run, 0)
 	e.Model.Children(explorer.RootID)
 	root := waitReal(t, e.Model, explorer.RootID)

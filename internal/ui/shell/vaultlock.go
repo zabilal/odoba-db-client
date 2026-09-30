@@ -62,7 +62,7 @@ func (s *Shell) lockVault() {
 		}
 		return nil
 	}
-	pass.OnChanged = func(string) { again.Validate() }
+	pass.OnChanged = func(string) { _ = again.Validate() }
 	note := quiet(said)
 	d := dialog.NewForm(title, act, "Cancel", []*widget.FormItem{
 		{Text: "Passphrase", Widget: pass},

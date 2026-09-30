@@ -149,7 +149,7 @@ func (p *diagramPanel) draw() {
 	// a table keeps its place when the picture narrows around it.
 	kept, ok := p.arrangement()
 	if ok {
-		app.ApplyLayout(d.Graph, kept)
+		ApplyLayout(d.Graph, kept)
 	}
 	canvas.Layout(d.Graph, canvas.DefaultLayout())
 
@@ -161,7 +161,7 @@ func (p *diagramPanel) draw() {
 		container.NewBorder(p.toolbar(), nil, nil, nil, p.w),
 	}
 	t.body.Refresh()
-	if p.focus != "" || !ok || !app.RestoreView(p.w.View(), kept) {
+	if p.focus != "" || !ok || !RestoreView(p.w.View(), kept) {
 		// A narrowed diagram is fitted: the view kept was of a larger
 		// picture, and showing a corner of it would look like a failure.
 		p.w.Fit()
@@ -284,7 +284,7 @@ func (p *diagramPanel) keep() {
 	if p.s.d.Layouts == nil {
 		return
 	}
-	l := app.LayoutOf(p.w.Graph(), p.w.View())
+	l := LayoutOf(p.w.Graph(), p.w.View())
 	go func() {
 		ctx, cancel := context.WithTimeout(p.s.ctx, storeTimeout)
 		defer cancel()

@@ -1,6 +1,8 @@
 package rowfilter
 
 import (
+	"errors"
+	"regexp/syntax"
 	"testing"
 	"time"
 
@@ -194,9 +196,17 @@ func TestWhatCannotBeAnsweredIsNotPretendedTo(t *testing.T) {
 	if matches(t, row, f("nosuch", source.OpEqual, "x")) {
 		t.Error("a filter on a column that is not there matched")
 	}
-	// A pattern that is not a pattern is said now, not left to match nothing.
-	if _, err := Compile(cols, []source.Filter{f("key", source.OpRegex, "(")}); err == nil {
+	// A pattern that is not a pattern is said now, not left to match nothing,
+	// and what regexp said about it is reachable through the refusal: a caller
+	// that wants to point at the character it stopped on can.
+	var bad *syntax.Error
+	switch _, err := Compile(cols, []source.Filter{f("key", source.OpRegex, "(")}); {
+	case err == nil:
 		t.Error("a broken regular expression compiled")
+	case !errors.As(err, &bad):
+		t.Errorf("the refusal does not carry what regexp said: %v", err)
+	case bad.Expr != "(":
+		t.Errorf("it carries %q as the expression", bad.Expr)
 	}
 	// Negate inverts the whole predicate.
 	m, err := Compile(cols, []source.Filter{{Column: "key", Op: source.OpContains, Values: []any{"k"}, Negate: true}})

@@ -139,3 +139,12 @@ password in a file beside the application is worth keeping only sealed.
   left open.
 - `docs/PLUGINS.md` — the plugin protocol, and what a plugin is trusted with.
 - `CLEANROOM.md` — why no DBGate source has been read, and what was used instead.
+
+## Licence
+
+Apache License 2.0 — `LICENSE`, with the project's own notice in `NOTICE`.
+
+Permissive, so it can be used inside a company without the licence reaching
+their own code, and with a patent grant, which a tool that speaks fifteen
+database protocols is worth having. Every dependency keeps its own licence: the
+bill of materials CI publishes with each build names them (NFR-S9).

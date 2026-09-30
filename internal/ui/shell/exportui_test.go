@@ -247,7 +247,7 @@ func TestAWorkbookIsOfferedWithItsHeader(t *testing.T) {
 				t.Fatal(err)
 			}
 			b, _ := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			workbook = string(b)
 		}
 	}

@@ -189,7 +189,7 @@ func (f *findBar) next(backward bool) {
 }
 
 func (f *findBar) replaceOne() {
-	f.edit(func(doc *editor.Document) { doc.ReplaceSelection(f.search(), f.with.Text) })
+	f.edit(func(doc *editor.Document) { _, _ = doc.ReplaceSelection(f.search(), f.with.Text) })
 }
 
 func (f *findBar) replaceAll() int {
