@@ -134,7 +134,7 @@ func setup(t *testing.T, hosts ...string) (*Loader, []store.SavedConnection) {
 		saved = append(saved, c)
 	}
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
-	t.Cleanup(func() { ws.CloseAll() })
+	t.Cleanup(func() { _ = ws.CloseAll() })
 	return &Loader{Conns: conns, WS: ws}, saved
 }
 
@@ -193,9 +193,8 @@ func TestUnreachableConnectionBecomesAnErrorRow(t *testing.T) {
 	newApp(t)
 	l, saved := setup(t, "down")
 	e := New(l, (&uithread.Queue{}).Run, 0)
-	root := e.Model.Children(explorer.RootID)
 	waitReal(t, e.Model, explorer.RootID)
-	root = e.Model.Children(explorer.RootID)
+	root := e.Model.Children(explorer.RootID)
 	e.Model.Children(root[0])
 	kids := waitReal(t, e.Model, ConnectionID(saved[0].ID))
 	it, st, err := e.Model.Item(kids[0])

@@ -45,7 +45,7 @@ func TestSecretsNeverReachTheLogFile(t *testing.T) {
 	log.Info("grouped", slog.Group("conn", slog.String("dsn", "mysql://root:"+pw+"@h/d")))
 	log.With("dsn", "postgres://ada:"+pw+"@db.local/x").Info("later line")
 	log.Info("stringer", "value", stringer("token="+pw))
-	closer.Close()
+	_ = closer.Close()
 
 	out := readAll(t, dir)
 	if strings.Contains(out, pw) {
@@ -76,7 +76,7 @@ func TestRotationBoundsDiskUse(t *testing.T) {
 	for i := 0; i < 500; i++ {
 		log.Info("line", "n", i, "pad", strings.Repeat("x", 40))
 	}
-	closer.Close()
+	_ = closer.Close()
 
 	entries, _ := os.ReadDir(dir)
 	var names []string
@@ -107,7 +107,7 @@ func TestReopeningAppends(t *testing.T) {
 			t.Fatal(err)
 		}
 		log.Info(fmt.Sprintf("run %d", i))
-		closer.Close()
+		_ = closer.Close()
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, FileName))
 	if !strings.Contains(string(out), "run 0") || !strings.Contains(string(out), "run 1") {
@@ -120,7 +120,7 @@ func TestLevelFilters(t *testing.T) {
 	log, closer, _ := New(dir, Options{Level: slog.LevelWarn})
 	log.Info("quiet")
 	log.Warn("loud")
-	closer.Close()
+	_ = closer.Close()
 	out := readAll(t, dir)
 	if strings.Contains(out, "quiet") || !strings.Contains(out, "loud") {
 		t.Errorf("level filtering wrong: %s", out)
@@ -134,7 +134,7 @@ func TestLogFileIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	log, closer, _ := New(dir, Options{})
 	log.Info("x")
-	closer.Close()
+	_ = closer.Close()
 	st, _ := os.Stat(filepath.Join(dir, FileName))
 	if st.Mode().Perm() != 0o600 {
 		t.Errorf("log mode %v, want 0600", st.Mode().Perm())
@@ -144,7 +144,7 @@ func TestLogFileIsPrivate(t *testing.T) {
 func TestWriteAfterCloseFailsCleanly(t *testing.T) {
 	dir := t.TempDir()
 	_, closer, _ := New(dir, Options{})
-	closer.Close()
+	_ = closer.Close()
 	if err := closer.Close(); err != nil {
 		t.Errorf("second Close: %v", err)
 	}

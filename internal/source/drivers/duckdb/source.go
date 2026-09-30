@@ -113,7 +113,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	s := &duckSource{cfg: cfg, db: db, path: path}
 	if err := db.QueryRowContext(ctx,
 		`SELECT version(), current_database()`).Scan(&s.version, &s.primary); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil

@@ -404,7 +404,7 @@ func TestLiveAnAttachedFileIsReadTheSameWay(t *testing.T) {
 		INSERT INTO only_here VALUES (1, 'over here')`); err != nil {
 		t.Fatal(err)
 	}
-	plain.Close()
+	_ = plain.Close()
 
 	if _, err := src.Query(ctx, source.Statement{
 		SQL: `ATTACH '` + other + `' AS elsewhere (READ_ONLY)`, Confirmed: true}); err != nil {

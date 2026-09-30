@@ -2,6 +2,8 @@ package transfer
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -155,5 +157,48 @@ func TestOnlyTheFilesStartIsRead(t *testing.T) {
 	data := []byte(b.String())
 	if got := detect(t, data, "big.csv"); got.Comma != ';' || !got.Header {
 		t.Errorf("%+v", got)
+	}
+}
+
+// shortReaderAt is an io.ReaderAt that reports the end of the file by wrapping
+// io.EOF rather than returning it bare, which the interface permits and a
+// reader over a network or an archive does.
+//
+// It says so on a read that ends exactly at the end of the data as well as on
+// one that falls short. io.ReaderAt allows either — "when ReadAt returns n <
+// len(p), it may return either err == EOF or err == nil" — and this is the
+// reading a file smaller than the bytes Detect asks for gets.
+type shortReaderAt struct{ data []byte }
+
+func (r shortReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	if off >= int64(len(r.data)) {
+		return 0, fmt.Errorf("at %d: %w", off, io.EOF)
+	}
+	n := copy(p, r.data[off:])
+	if off+int64(n) >= int64(len(r.data)) {
+		return n, fmt.Errorf("at %d: %w", off, io.EOF)
+	}
+	return n, nil
+}
+
+// The end of a file is the end of a file however it is said.
+//
+// Detect asks for more bytes than a short file has, so every short file reaches
+// the end while sniffing. A reader that wraps io.EOF instead of returning it
+// bare is one Detect used to refuse: the file was reported as unreadable rather
+// than read.
+func TestAFileThatSaysItsEndThroughAWrapperIsStillRead(t *testing.T) {
+	data := []byte("id,name\n1,Ada\n")
+	opt, err := Detect(shortReaderAt{data}, int64(len(data)), "people.csv")
+	if err != nil {
+		t.Fatalf("a wrapped end of file was read as a failure: %v", err)
+	}
+	if opt.Format != CSV || opt.Comma != ',' || !opt.Header {
+		t.Errorf("it read as %+v", opt)
+	}
+	// And the same file read through a reader that returns io.EOF bare says the
+	// same thing, so this is about the wrapper and nothing else.
+	if plain := detect(t, data, "people.csv"); !reflect.DeepEqual(plain, opt) {
+		t.Errorf("through a wrapper it reads as %+v, plainly as %+v", opt, plain)
 	}
 }

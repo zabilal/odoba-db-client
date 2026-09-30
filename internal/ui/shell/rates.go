@@ -203,10 +203,10 @@ func (b *streamBar) close() {
 	}
 	if tail := b.tail; tail != nil {
 		b.tail = nil
-		go tail.Close()
+		go func() { _ = tail.Close() }()
 	}
 	if m := b.meter; m != nil {
 		b.meter = nil
-		go m.Close()
+		go func() { _ = m.Close() }()
 	}
 }

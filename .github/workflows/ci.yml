@@ -63,9 +63,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
             libwayland-dev wayland-protocols libdecor-0-dev
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      # golangci-lint is built here rather than downloaded. Its published
+      # binaries are built with an older Go than this module targets, and a
+      # linter cannot load a configuration for a language version it cannot
+      # parse: "the Go language version (go1.24) used to build golangci-lint is
+      # lower than the targeted Go version (1.26.6)". Building it with the Go
+      # this job already has takes our language version out of somebody else's
+      # release schedule.
+      #
+      # The version is pinned rather than latest, so that a linter release
+      # cannot turn this red on a morning nobody changed anything: moving it is
+      # a commit, with whatever the new checks find dealt with in that commit.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.2
+      - name: Lint
+        run: golangci-lint run --timeout 10m
 
   coverage:
     name: Core coverage (NFR-Q2)

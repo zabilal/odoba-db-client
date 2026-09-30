@@ -65,12 +65,12 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	s := &clickhouseSource{cfg: cfg, db: ch.OpenDB(opt), keys: map[string][]string{}}
 	s.db.SetConnMaxIdleTime(5 * time.Minute)
 	if err := s.db.PingContext(ctx); err != nil {
-		s.db.Close()
+		_ = s.db.Close()
 		return nil, classifyConnectError(err)
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT version(), currentDatabase()`).
 		Scan(&s.version, &s.primary); err != nil {
-		s.db.Close()
+		_ = s.db.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil

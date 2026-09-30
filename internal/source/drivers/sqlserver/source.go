@@ -69,7 +69,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 		  CAST(SERVERPROPERTY('Edition') AS nvarchar(128)),
 		  CAST(SERVERPROPERTY('EngineEdition') AS int), DB_NAME()`).
 		Scan(&s.version, &s.edition, &s.engine, &s.primary); err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil
@@ -192,7 +192,7 @@ func (s *sqlServerSource) open(ctx context.Context, database string) (*sql.DB, e
 	db := sql.OpenDB(c)
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	s.pools[database] = db

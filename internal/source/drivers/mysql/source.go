@@ -74,14 +74,14 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	}
 	var version string
 	if err := db.QueryRowContext(ctx, `SELECT VERSION()`).Scan(&version); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	fl := flavor{mariadb: strings.Contains(strings.ToLower(version), "mariadb"), version: version}
 	if cfg.Guard.ReadOnly {
 		// The second defence: every pooled connection starts read-only, so the
 		// server itself refuses a write the classifier missed (NFR-S4).
-		db.Close()
+		_ = db.Close()
 		mc.Params[fl.readOnlyVar()] = "1"
 		if db, err = openDB(ctx, mc); err != nil {
 			return nil, err
@@ -131,7 +131,7 @@ func openDB(ctx context.Context, mc *mysql.Config) (*sql.DB, error) {
 	db := sql.OpenDB(conn)
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	return db, nil
@@ -253,7 +253,7 @@ func (s *mysqlSource) Session(ctx context.Context) (source.Session, error) {
 	}
 	var id int64
 	if err := c.QueryRowContext(ctx, `SELECT CONNECTION_ID()`).Scan(&id); err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, err
 	}
 	return &session{src: s, conn: c, connID: id}, nil

@@ -5,6 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -255,7 +256,7 @@ func (s *duckSource) Badge(ctx context.Context, ref model.ObjectRef) (model.Badg
 	err = db.QueryRowContext(ctx, `SELECT estimated_size FROM duckdb_tables()
 		WHERE database_name = ? AND schema_name = ? AND table_name = ?`,
 		ref.Path[0], ref.Path[1], ref.Path[2]).Scan(&estimate)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return model.Badge{}, false, nil
 	}
 	if err != nil {

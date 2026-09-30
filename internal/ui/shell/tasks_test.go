@@ -218,7 +218,7 @@ func TestQuittingStopsTasksAndWaitsForThemToCleanUp(t *testing.T) {
 	if took := time.Since(start); took > shutdownWait/2 {
 		t.Errorf("quitting took %v: it should wait for the export only until it has cleaned up", took)
 	}
-	if !(fx.s.ctx.Err() != nil) || !discarded.Load() {
+	if fx.s.ctx.Err() == nil || !discarded.Load() {
 		t.Errorf("stopped %v, partial file removed %v: quitting must wait for the export to clean up",
 			(fx.s.ctx.Err() != nil), discarded.Load())
 	}
@@ -226,7 +226,7 @@ func TestQuittingStopsTasksAndWaitsForThemToCleanUp(t *testing.T) {
 
 	idle := newFixture(t)
 	idle.s.requestQuit()
-	if !(idle.s.ctx.Err() != nil) || idle.s.win.Canvas().Overlays().Top() != nil {
+	if idle.s.ctx.Err() == nil || idle.s.win.Canvas().Overlays().Top() != nil {
 		t.Error("with nothing running, quitting does not ask")
 	}
 }

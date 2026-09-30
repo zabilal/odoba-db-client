@@ -34,7 +34,7 @@ func TestGateP1ColdStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	sf, _, err := store.OpenSettings(filepath.Join(dir, "settings.json"))
 	if err != nil {
 		t.Fatal(err)

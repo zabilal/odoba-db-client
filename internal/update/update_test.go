@@ -35,7 +35,7 @@ func TestAFeedWithANewerVersion(t *testing.T) {
 		if got := r.Header.Get("Accept"); got != "application/json" {
 			t.Errorf("it asked for %q", got)
 		}
-		w.Write([]byte(`{"version":"1.4.2","notes":"Faster grids.","url":"https://example.test/r/1.4.2",
+		_, _ = w.Write([]byte(`{"version":"1.4.2","notes":"Faster grids.","url":"https://example.test/r/1.4.2",
 			"published":"2026-09-01T00:00:00Z"}`))
 	}))
 	defer srv.Close()
@@ -67,7 +67,7 @@ func TestAFeedThatAnswersNonsense(t *testing.T) {
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(c.code)
-			w.Write([]byte(c.body))
+			_, _ = w.Write([]byte(c.body))
 		}))
 		_, newer, err := Check(context.Background(), srv.Client(), srv.URL, "1.0.0")
 		srv.Close()
@@ -87,7 +87,7 @@ func TestAFeedLongerThanTheLimitIsRefused(t *testing.T) {
 	// rather than the end of the bytes.
 	long := `{"version":"2.0.0","notes":"` + strings.Repeat("a", feedLimit+1024) + `"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(long))
+		_, _ = w.Write([]byte(long))
 	}))
 	defer srv.Close()
 	if _, _, err := Check(context.Background(), srv.Client(), srv.URL, "1.0.0"); err == nil {
@@ -96,7 +96,7 @@ func TestAFeedLongerThanTheLimitIsRefused(t *testing.T) {
 	// And one just inside it is read.
 	short := `{"version":"2.0.0","notes":"` + strings.Repeat("a", 1024) + `"}`
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(short))
+		_, _ = w.Write([]byte(short))
 	}))
 	defer srv2.Close()
 	if _, newer, err := Check(context.Background(), srv2.Client(), srv2.URL, "1.0.0"); err != nil || !newer {

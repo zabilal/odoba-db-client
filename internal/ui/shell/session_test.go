@@ -137,7 +137,7 @@ func TestTheSessionIsKeptWithoutQuitting(t *testing.T) {
 func TestWhatNoLongerFitsIsSaidNotDropped(t *testing.T) {
 	fx := newFixture(t)
 	c := fx.create(t, "db1", nil)
-	fx.hist.PutSession(context.Background(), localdb.Session{Active: 0, Tabs: []localdb.SessionTab{{
+	_ = fx.hist.PutSession(context.Background(), localdb.Session{Active: 0, Tabs: []localdb.SessionTab{{
 		Kind: localdb.SessionObject, ConnectionID: c.ID, RefKind: string(model.KindTable),
 		RefPath: []string{"main", "items"}, Label: "items",
 		Filters: map[string]string{"name": "item", "nick": "x", "id": ">abc"},
@@ -158,7 +158,7 @@ func TestWhatNoLongerFitsIsSaidNotDropped(t *testing.T) {
 func TestAnObjectOnADeletedConnectionStaysClosed(t *testing.T) {
 	fx := newFixture(t)
 	c := fx.create(t, "db1", nil)
-	fx.hist.PutSession(context.Background(), localdb.Session{Active: 1, Tabs: []localdb.SessionTab{
+	_ = fx.hist.PutSession(context.Background(), localdb.Session{Active: 1, Tabs: []localdb.SessionTab{
 		{Kind: localdb.SessionObject, ConnectionID: "gone", RefKind: string(model.KindTable), RefPath: []string{"main", "x"}, Label: "x"},
 		{Kind: localdb.SessionObject, ConnectionID: c.ID, RefKind: string(model.KindTable), RefPath: []string{"main", "items"}, Label: "items"},
 	}})
@@ -235,7 +235,7 @@ func TestAColumnAddedSinceAppearsLast(t *testing.T) {
 	fx := newFixture(t)
 	c := fx.create(t, "db1", nil)
 	// Saved when the table had name and a column since dropped; id is new.
-	fx.hist.PutSession(context.Background(), localdb.Session{Tabs: []localdb.SessionTab{{
+	_ = fx.hist.PutSession(context.Background(), localdb.Session{Tabs: []localdb.SessionTab{{
 		Kind: localdb.SessionObject, ConnectionID: c.ID, RefKind: string(model.KindTable),
 		RefPath: []string{"main", "items"}, Label: "items",
 		Columns: []localdb.SessionColumn{{Name: "name", Width: 90}, {Name: "dropped"}},

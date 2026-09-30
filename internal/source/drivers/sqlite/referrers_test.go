@@ -22,7 +22,7 @@ func TestReferrersListTheKeysThatReferToATable(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE notes (person_id INTEGER REFERENCES People, body TEXT)`); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 	s := open(t, path, source.Guard{})
 	r, ok := any(s).(source.Referrer)
 	if !ok {

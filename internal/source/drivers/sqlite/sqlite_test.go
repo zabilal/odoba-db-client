@@ -86,7 +86,7 @@ func TestConformance(t *testing.T) {
 func TestOpenRefusesWhatIsNotADatabase(t *testing.T) {
 	dir := t.TempDir()
 	notDB := filepath.Join(dir, "notes.txt")
-	os.WriteFile(notDB, []byte("hello, this is not a database file at all, not even close"), 0o600)
+	_ = os.WriteFile(notDB, []byte("hello, this is not a database file at all, not even close"), 0o600)
 	for name, c := range map[string]struct {
 		path string
 		kind source.ConnectKind
@@ -377,7 +377,7 @@ func TestReadOnlyIsRefusedTwice(t *testing.T) {
 	}
 	// The engine refuses too, even when classification is fooled.
 	var n int
-	s.db.QueryRow(`PRAGMA query_only`).Scan(&n)
+	_ = s.db.QueryRow(`PRAGMA query_only`).Scan(&n)
 	if n != 1 {
 		t.Error("a read-only connection should have query_only set")
 	}
@@ -513,7 +513,7 @@ func TestTheTreeListsEachClassWithItsObjects(t *testing.T) {
 	path := fixture(t)
 	db, _ := sql.Open("sqlite", "file:"+path)
 	_, err := db.Exec(`CREATE TRIGGER people_seen AFTER UPDATE ON people BEGIN SELECT 1; END`)
-	db.Close()
+	_ = db.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,8 +551,8 @@ func TestTheTreeListsEachClassWithItsObjects(t *testing.T) {
 func TestAnEmptyDatabaseStillShowsItsTablesFolder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.db")
 	db, _ := sql.Open("sqlite", "file:"+path)
-	db.Exec(`PRAGMA user_version = 1`) // writes the header: an SQLite file with no objects
-	db.Close()
+	_, _ = db.Exec(`PRAGMA user_version = 1`) // writes the header: an SQLite file with no objects
+	_ = db.Close()
 	roots, err := open(t, path, source.Guard{}).Root(context.Background())
 	if err != nil || len(roots) != 1 || roots[0].Label != "Tables" || roots[0].HasChildren {
 		t.Errorf("%+v, %v", roots, err)

@@ -3,10 +3,8 @@ package e2e
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -105,7 +103,7 @@ func start(t *testing.T, j journey) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	sf, _, err := store.OpenSettings(filepath.Join(dir, "settings.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +114,7 @@ func start(t *testing.T, j journey) *harness {
 		t.Fatal(err)
 	}
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
-	t.Cleanup(func() { ws.CloseAll() })
+	t.Cleanup(func() { _ = ws.CloseAll() })
 	q := &uithread.Queue{}
 	files := &chooser{}
 	s := shell.New(a, shell.Deps{Conns: conns, WS: ws, History: db, Saved: db, Run: q.Run, Files: files})
@@ -736,9 +734,6 @@ func selected(o fyne.CanvasObject) []string {
 // gridCell names a cell, so that the Kafka journey need not import the grid
 // package for one type.
 func gridCell(row, col int) grid.CellID { return grid.CellID{Row: row, Col: col} }
-
-// jsonDecode reads JSON from a reader, which the registry answers in.
-func jsonDecode(r io.Reader, into any) error { return json.NewDecoder(r).Decode(into) }
 
 // first is the opening of a file, for an error message.
 func first(b []byte) string {

@@ -38,7 +38,7 @@ func queryCommand() command {
 			rows.flags(fs, true)
 			fs.Var(&param, "param", "a value for a :name parameter, as name=value; repeatable")
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai query — run a script and write what it returns
+				_, _ = fmt.Fprint(fs.Output(), `ikigai query — run a script and write what it returns
 
   ikigai query --sql "SELECT * FROM items" --format json
   ikigai query --file report.sql --out report.csv
@@ -53,7 +53,7 @@ Flags:
 				fs.PrintDefaults()
 			}
 			return func(ctx context.Context, e *env, fs *flag.FlagSet) int {
-				script, code := scriptFrom(e, *file, *sql, *saved, t)
+				script, code := scriptFrom(ctx, e, *file, *sql, *saved, t)
 				if code != OK {
 					return code
 				}
@@ -91,7 +91,7 @@ func (p *params) Set(v string) error {
 }
 
 // scriptFrom reads the script, from wherever it was said to be.
-func scriptFrom(e *env, file, sql, saved string, t target) (string, int) {
+func scriptFrom(ctx context.Context, e *env, file, sql, saved string, t target) (string, int) {
 	given := 0
 	for _, s := range []string{file, sql, saved} {
 		if strings.TrimSpace(s) != "" {
@@ -114,7 +114,7 @@ func scriptFrom(e *env, file, sql, saved string, t target) (string, int) {
 		}
 		return text, OK
 	}
-	text, err := savedQuery(saved)
+	text, err := savedQuery(ctx, saved)
 	if err != nil {
 		return "", e.fail(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -53,7 +54,7 @@ const (
 func Detect(r io.ReaderAt, size int64, name string) (Options, error) {
 	head := make([]byte, min(size, sniffBytes))
 	n, err := r.ReadAt(head, 0)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return Options{}, err
 	}
 	head, cut := head[:n], int64(n) < size
@@ -62,7 +63,7 @@ func Detect(r io.ReaderAt, size int64, name string) (Options, error) {
 	}
 	enc := detectEncoding(head)
 	b, err := io.ReadAll(textOf(bytes.NewReader(head), enc))
-	if err != nil && err != io.ErrUnexpectedEOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return Options{}, err
 	}
 	text := string(b)

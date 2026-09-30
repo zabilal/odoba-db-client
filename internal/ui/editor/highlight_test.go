@@ -35,6 +35,11 @@ func TestBufferInsertAndDelete(t *testing.T) {
 	if b.LineCount() != 4 {
 		t.Fatalf("multi-line insert gave %d lines, want 4: %q", b.LineCount(), b.Text())
 	}
+	// The caret follows the text: it ends in front of what the insert pushed
+	// down, which is the start of the last line the insert wrote.
+	if line != 2 || col != 0 {
+		t.Errorf("multi-line insert left the caret at (%d,%d), want (2,0)", line, col)
+	}
 	if e.LinesInserted != 3 {
 		t.Errorf("LinesInserted = %d, want 3", e.LinesInserted)
 	}

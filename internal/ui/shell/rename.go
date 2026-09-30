@@ -67,10 +67,10 @@ func (s *Shell) askToRename(connID string, ref model.ObjectRef) {
 	entry := widget.NewEntry()
 	entry.SetText(was)
 	entry.Validator = func(text string) error {
-		switch text = strings.TrimSpace(text); {
-		case text == "":
+		switch text = strings.TrimSpace(text); text {
+		case "":
 			return errors.New("a rename needs a name")
-		case text == was:
+		case was:
 			return errors.New("that is the name it already has")
 		}
 		return nil

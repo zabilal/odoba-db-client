@@ -123,7 +123,7 @@ func TestFailedUpdateRestoresThePreviousSecret(t *testing.T) {
 func TestDuplicateCopiesSecretsAndPlacesAfterOriginal(t *testing.T) {
 	f := setup(t)
 	a, _ := f.c.Create(draft("A"), map[string]string{"password": "pa"})
-	f.c.Create(draft("B"), nil)
+	_, _ = f.c.Create(draft("B"), nil)
 	dup, err := f.c.Duplicate(a.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestDuplicateCopiesSecretsAndPlacesAfterOriginal(t *testing.T) {
 		t.Error("secret not copied")
 	}
 	// Changing the copy's secret must not change the original's.
-	f.c.Update(dup, SecretEdit{Set: map[string]string{"password": "pdup"}})
+	_ = f.c.Update(dup, SecretEdit{Set: map[string]string{"password": "pdup"}})
 	if v, _ := f.kc.Get(a.ID, "password"); v != "pa" {
 		t.Error("the copy shares the original's secret")
 	}
@@ -288,12 +288,12 @@ func TestSessionOnlyVaultAsksAgainAfterRestart(t *testing.T) {
 	if _, err := c2.Open(context.Background(), conn.ID, MonitorConfig{}); !errors.As(err, &mse) {
 		t.Errorf("Open should ask for the password first, got %v", err)
 	}
-	c2.Vault().SetSession(conn.ID, "password", "p")
+	_ = c2.Vault().SetSession(conn.ID, "password", "p")
 	live, err := c2.Open(context.Background(), conn.ID, MonitorConfig{})
 	if err != nil {
 		t.Fatalf("Open after supplying the password: %v", err)
 	}
-	live.Close()
+	_ = live.Close()
 }
 
 func TestSavedConnectionWithoutPasswordOpens(t *testing.T) {
@@ -309,7 +309,7 @@ func TestSavedConnectionWithoutPasswordOpens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a connection with no password failed to open: %v", err)
 	}
-	live.Close()
+	_ = live.Close()
 	if lastPassword.Load() != "" {
 		t.Errorf("driver received %q, want an empty password", lastPassword.Load())
 	}

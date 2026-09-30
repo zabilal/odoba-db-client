@@ -94,7 +94,7 @@ func Open(ctx context.Context, cfg Config) (*Tunnel, error) {
 	var hops []*ssh.Client
 	drop := func() {
 		for i := len(hops) - 1; i >= 0; i-- {
-			hops[i].Close()
+			_ = hops[i].Close()
 		}
 	}
 	// Each hop is dialled from the one before it; the first is dialled from
@@ -155,7 +155,7 @@ func hop(dial func(string) (net.Conn, error), addr, user string,
 	sc, chans, reqs, err := ssh.NewClientConn(c, addr,
 		&ssh.ClientConfig{User: user, Auth: auth, HostKeyCallback: known})
 	if err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, err
 	}
 	return ssh.NewClient(sc, chans, reqs), nil
@@ -217,8 +217,8 @@ func (t *Tunnel) carry(local net.Conn) {
 	// Either direction ending ends the pair: a half-closed tunnel would leave
 	// a driver waiting on a connection that has nothing behind it.
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(remote, local); done <- struct{}{} }()
-	go func() { io.Copy(local, remote); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(remote, local); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(local, remote); done <- struct{}{} }()
 	<-done
 }
 
