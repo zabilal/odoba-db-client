@@ -32,7 +32,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+            gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
 
       - name: Build
         run: go build ./...
@@ -56,7 +57,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
@@ -91,7 +93,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       # The Phase 0 gates, as budget assertions that fail the build. Without
       # -race on purpose — see internal/testutil/race. -count=1 defeats the
       # test cache, which would otherwise report a stale pass.
@@ -121,7 +124,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Scan
         shell: bash
         run: |
@@ -163,7 +167,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Write the SBOM
         run: |
           go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0 \
@@ -176,26 +181,24 @@ jobs:
 
   # NFR-P8: the binary is measured on every platform, on every push.
   #
-  # It does not meet its budget. A stripped macOS build is 86.1 MB against
-  # 60 MB, and three drivers are most of the gap: go-ora (Oracle) is 14.8 MB
-  # of it, franz-go (Kafka) 10.4, and aws-sdk-go-v2 (DynamoDB) 5.1 — a build
-  # without the three is 55.8 MB. What to do about that is a product decision,
-  # not a build one: put them behind build tags as DuckDB already is, raise the
-  # budget, or ship a core build and a full one. TASKS.md T4.30 records it as
-  # the owner's call.
+  # The budget was 60 MB and could only be met by shipping some drivers and not
+  # others: a stripped build is 86.6 MB, of which go-ora (Oracle) is 14.8 MB,
+  # franz-go (Kafka) 10.4 and aws-sdk-go-v2 (DynamoDB) 5.1, and without those
+  # three it is 55.8. That was settled in favour of including every driver, so
+  # that installing the application is the whole of installing support for the
+  # databases it speaks. The binary therefore *is* the drivers, and a budget
+  # forbidding their size would be a budget forbidding the product.
   #
-  # Until then this job is a ratchet rather than a gate: it prints the size
-  # against the budget and fails only if the binary grows past the ceiling
-  # below, so that the gap cannot widen unnoticed while the decision is open.
-  # The ceiling moves only when a deliberate, measured addition moves it, and
-  # the commit that moves it says what it bought: 80 to 84 MB was Kafka
-  # becoming reachable from the application at all (T4.3, 10.4 MB, written and
-  # unregistered until then), and 84 to 90 was the DynamoDB driver (T4.6,
-  # 5.1 MB). Twice in a day is the ratchet documenting growth rather than
-  # limiting it, which is the argument for settling NFR-P8 rather than for
-  # moving this number again.
-  # The ceiling is one number for three platforms because only macOS has been
-  # measured; the print is what tells us the others.
+  # So this is a gate again, at a number that catches accidental growth rather
+  # than deliberate: a stray dependency, a driver linked twice, an asset
+  # embedded by mistake. What keeps it honest is the other half of NFR-P8 —
+  # every source added says in TASKS.md what it measured, so the total is an
+  # accumulation of named decisions rather than a number nobody can account
+  # for. A build that grew without one of those is what this finds.
+  #
+  # One number for three platforms, because the drivers are the same on all of
+  # them and the toolkit links its assets the same way; the print is what says
+  # whether that holds.
   binary-size:
     name: Binary size (NFR-P8)
     runs-on: ${{ matrix.os }}
@@ -213,22 +216,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Build and measure
         shell: bash
         run: |
           go build -ldflags="-s -w" -trimpath -o ikigai-release ./cmd/ikigai
           size=$(wc -c < ikigai-release | tr -d " ")
-          budget=$((60 * 1024 * 1024))
-          ceiling=$((90 * 1024 * 1024))
+          budget=$((120 * 1024 * 1024))
           printf "binary: %s bytes (%.1f MB)\n" "$size" "$(echo "$size / 1048576" | bc -l)"
-          printf "budget (NFR-P8): %s bytes; ceiling while the decision is open: %s\n" "$budget" "$ceiling"
-          if [ "$size" -gt "$ceiling" ]; then
-            echo "::error::the binary has grown past the ceiling; see NFR-P8 in TASKS.md T4.30"
-            exit 1
-          fi
+          printf "budget (NFR-P8): %s bytes\n" "$budget"
           if [ "$size" -gt "$budget" ]; then
-            echo "::warning::the binary is over its NFR-P8 budget by $((size - budget)) bytes"
+            echo "::error::the binary is over its NFR-P8 budget; a source that grew it says what it cost in TASKS.md, and one that did not is the thing to look for"
+            exit 1
           fi
           # The command line is the same drivers without the toolkit, so it is
           # measured beside the application rather than on its own: whichever

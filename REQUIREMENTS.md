@@ -446,7 +446,7 @@ than being forced into the relational model (see REQ-DB-3).
 | NFR-P5 | Keystroke-to-glyph in the query editor | < 16 ms |
 | NFR-P6 | Idle RSS: 5 connections, 3 open result sets | < 300 MB |
 | NFR-P7 | Export 1 M rows to CSV | memory flat; ≥ 100 k rows/s on local Postgres |
-| NFR-P8 | Binary size per platform | < 60 MB |
+| NFR-P8 | Binary size per platform, every driver included | < 120 MB, and each driver's contribution measured and recorded when it is added |
 | NFR-P9 | Query / consume cancellation takes effect | < 200 ms |
 | NFR-P10 | Kafka live tail, 10 k msg/s topic | UI responsive, memory bounded by the ring buffer |
 
@@ -460,6 +460,17 @@ than being forced into the relational model (see REQ-DB-3).
 > NFR-P4 and NFR-P8 were adjusted in v0.2. The 60 fps target is retained but a 30 fps hard floor is
 > introduced because grid rendering is now our own code rather than a browser compositor. Binary
 > budget rose to 60 MB because Fyne statically links font and graphics assets.
+>
+> NFR-P8 was adjusted again in v0.3, and this time the shape of it changed rather than the number.
+> The 60 MB budget could only be met by shipping some drivers and not others: a stripped build
+> measured 86.6 MB, of which go-ora is 14.8, franz-go 10.4 and aws-sdk-go-v2 5.1, and without those
+> three it is 55.8. The decision was to include every driver, so that installing the application is
+> the whole of installing support for the databases it speaks — which means the binary *is* the
+> drivers, and a budget that forbade their size would be a budget forbidding the product. So the
+> number is now a ceiling against accidental growth rather than a target: a stray dependency, a
+> driver pulled in twice, an asset embedded by mistake. What keeps it honest is the second half of
+> the requirement — every source that is added says in TASKS.md what it cost, measured, so that the
+> total is an accumulation of named decisions rather than a number nobody can account for.
 
 ### 6.2 Reliability
 
