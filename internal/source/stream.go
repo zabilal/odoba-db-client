@@ -57,6 +57,34 @@ type OffsetResetter interface {
 	ResetOffsets(ctx context.Context, req ResetRequest) error
 }
 
+// ACLInspector reads a cluster's permissions (FR-13.15).
+//
+// It is the half of them that changes nothing, and it is an interface of its
+// own for the reason the group reader is: showing who may do what is worth
+// offering long before anything can change it, and one interface for both
+// would make offering the first a promise to do the second (ADR-0107).
+type ACLInspector interface {
+	// ACLs are the permissions matching of. The zero filter asks for every
+	// permission the cluster holds.
+	//
+	// A cluster with no authorizer configured keeps no permissions at all, and
+	// says so rather than answering an empty list: an empty list would read as
+	// "nobody may do anything", which is the opposite of what it means.
+	ACLs(ctx context.Context, of model.ACLFilter) ([]model.ACL, error)
+}
+
+// ACLAdmin grants and revokes permissions (FR-13.15).
+type ACLAdmin interface {
+	// GrantACL and RevokeACL are AccessAdmin: a permission is what stands
+	// between a cluster and everybody who is not supposed to be reading it, so
+	// both are guarded without exception (FR-4.9, FR-13.21).
+	//
+	// Both take one permission exactly as it is written, never a pattern: a
+	// revoke by pattern would take away permissions nobody named.
+	GrantACL(ctx context.Context, acl model.ACL, confirmed bool) error
+	RevokeACL(ctx context.Context, acl model.ACL, confirmed bool) error
+}
+
 // StreamAdmin is the whole of it: reading groups, administering topics, and
 // moving offsets. A driver that does all three satisfies it, and one that
 // does some of them implements those and says so in its capabilities.

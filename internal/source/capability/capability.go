@@ -204,4 +204,11 @@ type Stream struct {
 	// TopicAdmin reports topic creation, deletion and reconfiguration
 	// (FR-13.12).
 	TopicAdmin bool
+
+	// ACLs reports that the cluster's permissions can be read, and ManageACLs
+	// that they can be changed (FR-13.15). Two flags because they are two
+	// claims: a cluster that will show who may do what need not let this
+	// connection change it.
+	ACLs       bool
+	ManageACLs bool
 }
