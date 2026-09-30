@@ -106,7 +106,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("localdb: %w", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Pragmas go in the DSN, not an Exec after opening, because database/sql
 	// pools connections and busy_timeout and foreign_keys are per connection.
@@ -125,7 +125,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 
 	d := &DB{db: db, maxHistory: MaxHistory}
 	if err := d.migrate(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return d, nil
@@ -217,7 +217,7 @@ func (d *DB) AddHistory(ctx context.Context, e HistoryEntry) (int64, error) {
 	}
 	id, _ := res.LastInsertId()
 	if id%pruneEvery == 0 {
-		d.PruneHistory(ctx, d.maxHistory)
+		_, _ = d.PruneHistory(ctx, d.maxHistory)
 	}
 	return id, nil
 }

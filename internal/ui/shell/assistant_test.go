@@ -65,7 +65,7 @@ func newModel(t *testing.T) *modelStub {
 		answer := m.answer
 		m.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{{"message": map[string]string{"content": answer}}}})
 	}))
 	t.Cleanup(m.Close)

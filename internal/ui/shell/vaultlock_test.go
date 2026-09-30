@@ -209,7 +209,7 @@ func portableFixture(t *testing.T) *fixture {
 	d := fx.deps
 	d.Conns = conns
 	d.WS = app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
-	t.Cleanup(func() { d.WS.CloseAll() })
+	t.Cleanup(func() { _ = d.WS.CloseAll() })
 	s := New(fx.s.app, d)
 	t.Cleanup(s.shutdown)
 	fx.s, fx.conns, fx.deps = s, conns, d

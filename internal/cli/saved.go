@@ -18,19 +18,21 @@ import (
 // Read-only, and never written: a run from here changes nothing about the query
 // and records no history. History is the window's account of what somebody did.
 
-// savedQuery is the body of the saved query with that name.
-func savedQuery(name string) (string, error) {
+// savedQuery is the body of the saved query with that name. It takes the
+// command's context so that a run somebody interrupted stops here too: the
+// local database is a file on a disk that can be slow or busy.
+func savedQuery(ctx context.Context, name string) (string, error) {
 	want := strings.TrimSpace(name)
 	paths, err := store.Resolve()
 	if err != nil {
 		return "", err
 	}
-	db, err := localdb.Open(context.Background(), paths.DatabaseFile())
+	db, err := localdb.Open(ctx, paths.DatabaseFile())
 	if err != nil {
 		return "", fmt.Errorf("the saved queries could not be read: %w", err)
 	}
 	defer db.Close()
-	queries, err := db.SavedQueries(context.Background())
+	queries, err := db.SavedQueries(ctx)
 	if err != nil {
 		return "", err
 	}

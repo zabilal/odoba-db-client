@@ -94,7 +94,7 @@ func (ss *pgSession) Close() error {
 	}
 	ss.closed = true
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	if ss.tx != nil {
 		// A connection going back to the pool with a transaction open on it
@@ -127,7 +127,7 @@ func (ss *pgSession) Query(ctx context.Context, stmt source.Statement) (*source.
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close() // a connection holds one result; the new run supersedes it
+		_ = ss.open.Close() // a connection holds one result; the new run supersedes it
 		ss.open = nil
 	}
 	ss.sink.drain()
@@ -238,7 +238,7 @@ func (s *pgSource) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	}
 	res, err := ss.Query(ctx, stmt)
 	if err != nil || res.Rows == nil {
-		ss.Close()
+		_ = ss.Close()
 		return res, err
 	}
 	res.Rows = &ownedStream{RowStream: res.Rows, owner: ss}
@@ -254,7 +254,7 @@ func (s *pgSource) QueryMulti(ctx context.Context, script string, opts source.Sc
 	}
 	in, err := ss.QueryMulti(ctx, script, opts)
 	if err != nil {
-		ss.Close()
+		_ = ss.Close()
 		return nil, err
 	}
 	out := make(chan source.ScriptResult, cap(in))
@@ -274,7 +274,7 @@ func (s *pgSource) QueryMulti(ctx context.Context, script string, opts source.Sc
 			out <- r
 		}
 		if !owned {
-			ss.Close()
+			_ = ss.Close()
 		}
 	}()
 	return out, nil
@@ -310,7 +310,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

@@ -97,7 +97,7 @@ func (ss *duckSession) Close() error {
 	}
 	ss.closed = true
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	ss.src.sessions.Delete(ss.id)
 	return ss.conn.Close()
@@ -137,7 +137,7 @@ func (ss *duckSession) Query(ctx context.Context, stmt source.Statement) (*sourc
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close() // a connection holds one result; the new run supersedes it
+		_ = ss.open.Close() // a connection holds one result; the new run supersedes it
 		ss.open = nil
 	}
 
@@ -259,7 +259,7 @@ func (s *duckSource) Query(ctx context.Context, stmt source.Statement) (*source.
 	}
 	res, err := ss.Query(ctx, stmt)
 	if err != nil || res.Rows == nil {
-		ss.Close()
+		_ = ss.Close()
 		return res, err
 	}
 	res.Rows = &ownedStream{RowStream: res.Rows, owner: ss}
@@ -275,7 +275,7 @@ func (s *duckSource) QueryMulti(ctx context.Context, script string, opts source.
 	}
 	in, err := ss.QueryMulti(ctx, script, opts)
 	if err != nil {
-		ss.Close()
+		_ = ss.Close()
 		return nil, err
 	}
 	out := make(chan source.ScriptResult, cap(in))
@@ -293,7 +293,7 @@ func (s *duckSource) QueryMulti(ctx context.Context, script string, opts source.
 			out <- r
 		}
 		if !owned {
-			ss.Close()
+			_ = ss.Close()
 		}
 	}()
 	return out, nil
@@ -324,7 +324,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

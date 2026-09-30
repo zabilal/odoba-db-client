@@ -22,7 +22,8 @@ func TestAPanicBecomesAnErrorAndItsStackGoesToTheLog(t *testing.T) {
 	err := func() (err error) {
 		defer Recover(&err, "counting rows")
 		var m map[string]int
-		m["x"]++ // writing to a nil map panics
+		//nolint:staticcheck // SA5000: writing to a nil map is the panic this test is about
+		m["x"]++
 		return nil
 	}()
 	var pe *Error

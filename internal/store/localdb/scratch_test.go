@@ -9,8 +9,8 @@ import (
 func TestScratchBuffers(t *testing.T) {
 	d, _ := open(t)
 	t0 := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
-	d.Put(ctx, "tabs", []byte(`[]`)) // other keys are not scratch buffers
-	d.Put(ctx, "scratch", []byte(`{}`))
+	_ = d.Put(ctx, "tabs", []byte(`[]`)) // other keys are not scratch buffers
+	_ = d.Put(ctx, "scratch", []byte(`{}`))
 	for _, sc := range []Scratch{
 		{ID: "b", ConnectionID: "c1", Body: "second", Opened: t0.Add(time.Minute)},
 		{ID: "a", ConnectionID: "c2", SavedID: "q1", Body: "first", Opened: t0},
@@ -45,8 +45,8 @@ func TestScratchBuffers(t *testing.T) {
 
 func TestAnUnreadableScratchDoesNotHideTheOthers(t *testing.T) {
 	d, _ := open(t)
-	d.PutScratch(ctx, Scratch{ID: "ok", Body: "kept"})
-	d.Put(ctx, "scratch/bad", []byte(`{not json`))
+	_ = d.PutScratch(ctx, Scratch{ID: "ok", Body: "kept"})
+	_ = d.Put(ctx, "scratch/bad", []byte(`{not json`))
 	got, err := d.Scratches(ctx)
 	if len(got) != 1 || got[0].Body != "kept" {
 		t.Errorf("scratches = %+v", got)

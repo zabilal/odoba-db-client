@@ -1,10 +1,15 @@
 package kafka
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -255,5 +260,60 @@ func TestATailIsBoundedByWhatItCannotOutrun(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "readBounds()...") {
 		t.Error("browse.go no longer gives the reader the bounds it works out")
+	}
+}
+
+// Which of a poll's errors is reported.
+//
+// A poll can fail on several partitions at once, and the caller reads its own
+// stop from a cancellation. A cancellation standing behind a real failure would
+// be reported as the failure, which reads to the caller as a broker that had
+// gone rather than as the stop it asked for.
+func TestACancelledPollIsThatBeforeItIsAnyPartitionsFailure(t *testing.T) {
+	gone := errors.New("the broker is not answering")
+	cases := []struct {
+		what string
+		errs []kgo.FetchError
+		want error
+		says string
+	}{
+		{what: "nothing at all"},
+		{
+			what: "a cancellation behind a failure",
+			errs: []kgo.FetchError{{Partition: 0, Err: gone}, {Partition: 1, Err: context.Canceled}},
+			want: context.Canceled,
+		},
+		{
+			what: "a deadline behind a failure",
+			errs: []kgo.FetchError{{Partition: 0, Err: gone}, {Partition: 1, Err: context.DeadlineExceeded}},
+			want: context.DeadlineExceeded,
+		},
+		{
+			what: "a cancellation wrapped by the client",
+			errs: []kgo.FetchError{{Partition: 0, Err: gone},
+				{Partition: 1, Err: fmt.Errorf("fetching: %w", context.Canceled)}},
+			want: context.Canceled,
+		},
+		{
+			what: "failures and nothing else",
+			errs: []kgo.FetchError{{Partition: 3, Err: gone}, {Partition: 4, Err: errors.New("another")}},
+			want: gone,
+			says: "kafka: partition 3: the broker is not answering",
+		},
+	}
+	for _, c := range cases {
+		got := firstFault(c.errs)
+		if c.want == nil {
+			if got != nil {
+				t.Errorf("%s reads as %v", c.what, got)
+			}
+			continue
+		}
+		if !errors.Is(got, c.want) {
+			t.Errorf("%s reads as %v, want %v", c.what, got, c.want)
+		}
+		if c.says != "" && got.Error() != c.says {
+			t.Errorf("%s says %q", c.what, got)
+		}
 	}
 }

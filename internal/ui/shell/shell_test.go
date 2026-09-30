@@ -689,7 +689,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { hist.Close() })
+	t.Cleanup(func() { _ = hist.Close() })
 	path := filepath.Join(t.TempDir(), "settings.json")
 	sf, _, err := store.OpenSettings(path)
 	if err != nil {

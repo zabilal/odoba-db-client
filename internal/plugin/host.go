@@ -86,7 +86,7 @@ func Start(ctx context.Context, path string, log *slog.Logger) (*Process, plugin
 
 	hello, err := p.hello(ctx)
 	if err != nil {
-		p.Close()
+		_ = p.Close()
 		return nil, plugin.Hello{}, err
 	}
 	return p, hello, nil
@@ -345,14 +345,14 @@ func (p *Process) Close() error {
 	p.closed = true
 	p.mu.Unlock()
 
-	p.in.Close()
+	_ = p.in.Close()
 	if p.cmd != nil {
 		gone := make(chan error, 1)
 		go func() { gone <- p.cmd.Wait() }()
 		select {
 		case <-gone:
 		case <-time.After(shutdown):
-			p.cmd.Process.Kill()
+			_ = p.cmd.Process.Kill()
 			<-gone
 		}
 	}

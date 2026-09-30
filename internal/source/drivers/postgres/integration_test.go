@@ -109,7 +109,7 @@ func TestMain(m *testing.M) {
 	conn, err := pgx.Connect(ctx, dsn())
 	if err == nil {
 		_, err = conn.Exec(ctx, fixture)
-		conn.Close(ctx)
+		_ = conn.Close(ctx)
 	}
 	cancel()
 	pgUnavailable = err
@@ -119,8 +119,8 @@ func TestMain(m *testing.M) {
 	if pgUnavailable == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if c, err := pgx.Connect(ctx, dsn()); err == nil {
-			c.Exec(ctx, "DROP SCHEMA IF EXISTS ikigai_it CASCADE")
-			c.Close(ctx)
+			_, _ = c.Exec(ctx, "DROP SCHEMA IF EXISTS ikigai_it CASCADE")
+			_ = c.Close(ctx)
 		}
 		cancel()
 	}
@@ -408,7 +408,7 @@ func TestPgxDefaultCancelDestroysTheConnection(t *testing.T) {
 	}
 	defer conn.Close(context.Background())
 	pid := strconv.FormatUint(uint64(conn.PgConn().PID()), 10)
-	t.Cleanup(func() { src.KillQuery(context.Background(), pid) })
+	t.Cleanup(func() { _ = src.KillQuery(context.Background(), pid) })
 
 	qctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

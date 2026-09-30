@@ -104,7 +104,7 @@ func seed(t *testing.T) {
 		`DROP VIEW ADULTS`, `DROP TABLE ORDERS`, `DROP TABLE CONFORM`,
 		`DROP TABLE WRITES`, `DROP TABLE TAGS`, `DROP TABLE PEOPLE`,
 	} {
-		fb.db.ExecContext(ctx, stmt)
+		_, _ = fb.db.ExecContext(ctx, stmt)
 	}
 	for _, stmt := range []string{
 		`CREATE TABLE PEOPLE (ID INTEGER NOT NULL PRIMARY KEY, NAME VARCHAR(50) NOT NULL,

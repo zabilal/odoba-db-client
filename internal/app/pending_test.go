@@ -68,11 +68,11 @@ func TestAnEditIsTheColumnChangedAndNoMore(t *testing.T) {
 	}
 	// The same row read again, after a sort moved it, is the same row.
 	again := model.Row{int64(1), "ann", 3.5}
-	p.Set(again, 2, 4.0)
+	_ = p.Set(again, 2, 4.0)
 	if got := changes(p.Changeset(false)); got != "[update [1] map[name:anne score:4]]" {
 		t.Errorf("a row read again should find its edits: %s", got)
 	}
-	p.Set(again, 1, "ann") // back to what it was
+	_ = p.Set(again, 1, "ann") // back to what it was
 	p.RevertCell(again, 2)
 	if p.State(ann) != model.RowUnchanged || p.Len() != 0 {
 		t.Errorf("a row set back to what it holds is unchanged: %v, %d", p.State(ann), p.Len())
@@ -81,7 +81,7 @@ func TestAnEditIsTheColumnChangedAndNoMore(t *testing.T) {
 
 func TestAKeyEditedIsWrittenByTheKeyItHad(t *testing.T) {
 	p := newPending(t)
-	p.Set(model.Row{int64(1), "ann", 3.5}, 0, int64(9))
+	_ = p.Set(model.Row{int64(1), "ann", 3.5}, 0, int64(9))
 	if got := changes(p.Changeset(true)); got != "[update [1] map[id:9]]" {
 		t.Errorf("changeset %s", got)
 	}
@@ -93,7 +93,7 @@ func TestAKeyEditedIsWrittenByTheKeyItHad(t *testing.T) {
 func TestADeletedRowLosesItsEditsAndTakesNoMore(t *testing.T) {
 	p := newPending(t)
 	bob := model.Row{int64(2), "bob", 1.0}
-	p.Set(bob, 1, "robert")
+	_ = p.Set(bob, 1, "robert")
 	p.Delete(bob)
 	if p.State(bob) != model.RowDeleted {
 		t.Fatalf("state %v", p.State(bob))
@@ -121,9 +121,9 @@ func TestNewRowsComeAfterTheOtherChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := p.Add()
-	p.SetAdded(second, 0, int64(7))
+	_ = p.SetAdded(second, 0, int64(7))
 	p.Delete(model.Row{int64(3), "dan", 0.0})
-	p.Set(model.Row{int64(1), "ann", 3.5}, 2, 5.0)
+	_ = p.Set(model.Row{int64(1), "ann", 3.5}, 2, 5.0)
 	if got := changes(p.Changeset(false)); got != "[delete [3] map[] update [1] map[score:5] insert [] map[name:cat] insert [] map[id:7]]" {
 		t.Errorf("changeset %s", got)
 	}
@@ -193,7 +193,7 @@ func TestANewRowsColumnGoesBackToNotGiven(t *testing.T) {
 	if err := p.SetAdded(i, 1, "cat"); err != nil {
 		t.Fatal(err)
 	}
-	p.SetAdded(i, 2, 1.5)
+	_ = p.SetAdded(i, 2, 1.5)
 	p.UnsetAdded(i, 1)
 	p.UnsetAdded(9, 1)
 	p.UnsetAdded(-1, 1)
@@ -252,7 +252,7 @@ func TestACellIsNoChangeWhenItsValueIsTheSame(t *testing.T) {
 		t.Error("a column that is not there takes no value")
 	}
 	// SQLite's columns can hold 1 and '1' alike: a key is its values' types too.
-	p.Set(model.Row{int64(1), "ann", 3.5}, 1, "anne")
+	_ = p.Set(model.Row{int64(1), "ann", 3.5}, 1, "anne")
 	if p.State(model.Row{"1", "ann", 3.5}) != model.RowUnchanged {
 		t.Error("a row keyed '1' is not the row keyed 1")
 	}

@@ -61,8 +61,8 @@ func postgresJourney(t *testing.T) journey {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if c, err := pgx.Connect(ctx, dsn); err == nil {
-			c.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgSchema+" CASCADE")
-			c.Close(ctx)
+			_, _ = c.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgSchema+" CASCADE")
+			_ = c.Close(ctx)
 		}
 	})
 	return journey{

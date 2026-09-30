@@ -45,19 +45,19 @@ func newStub(t *testing.T, wire Wire) *stub {
 		s.headers = r.Header.Clone()
 		raw, _ := io.ReadAll(r.Body)
 		s.raw = string(raw)
-		json.Unmarshal(raw, &s.body)
+		_ = json.Unmarshal(raw, &s.body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(s.status)
 		if s.send != "" {
-			io.WriteString(w, s.send)
+			_, _ = io.WriteString(w, s.send)
 			return
 		}
 		switch s.wire {
 		case WireAnthropic:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"content": []map[string]string{{"type": "text", "text": s.answer}}})
 		default:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{{"message": map[string]string{"content": s.answer}}}})
 		}
 	}))
@@ -341,11 +341,11 @@ func TestAnInvalidRequestIsRefusedBeforeAsking(t *testing.T) {
 func TestAnAnswerIsBounded(t *testing.T) {
 	huge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"choices":[{"message":{"content":"`)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"`)
 		for i := 0; i < (maxAnswer/1024)+64; i++ {
-			io.WriteString(w, strings.Repeat("x", 1024))
+			_, _ = io.WriteString(w, strings.Repeat("x", 1024))
 		}
-		io.WriteString(w, `"}}]}`)
+		_, _ = io.WriteString(w, `"}}]}`)
 	}))
 	defer huge.Close()
 	p := Provider{ID: "p", Name: "A stub", Wire: WireOpenAI, Endpoint: huge.URL, Model: "m"}
@@ -476,8 +476,7 @@ func TestAQuestionLetGoOf(t *testing.T) {
 // A redirect is refused: what is in flight carries a schema and is not for
 // anywhere else.
 func TestARedirectIsRefused(t *testing.T) {
-	var elsewhere *httptest.Server
-	elsewhere = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("the prompt was sent to the place it was redirected to")
 		w.WriteHeader(http.StatusOK)
 	}))

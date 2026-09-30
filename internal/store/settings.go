@@ -268,7 +268,7 @@ func OpenSettings(path string) (*SettingsFile, OpenNotice, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		aside := path + ".corrupt-" + time.Now().Format("20060102-150405")
 		if rerr := os.Rename(path, aside); rerr != nil {
-			return nil, OpenNotice{}, fmt.Errorf("store: settings unreadable (%v) and could not be moved aside: %w", err, rerr)
+			return nil, OpenNotice{}, fmt.Errorf("store: settings unreadable (%w) and could not be moved aside: %w", err, rerr)
 		}
 		f.cur = defaultSettings()
 		return f, OpenNotice{Recovered: aside}, nil

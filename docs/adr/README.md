@@ -174,3 +174,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0167](0167-a-rate-nobody-keeps.md) | A rate nobody keeps | Accepted |
 | [0168](0168-what-ships.md) | What ships | Accepted |
 | [0169](0169-what-another-machine-found.md) | What another machine found | Accepted |
+| [0170](0170-a-dropped-error-says-so.md) | A dropped error says so | Accepted |

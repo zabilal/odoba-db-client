@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -101,7 +102,7 @@ func kafkaJourney(t *testing.T) (journey, string) {
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		admin.DeleteTopic(ctx, topic, true)
+		_ = admin.DeleteTopic(ctx, topic, true)
 	})
 
 	// The schema the records are written by, and its id, which goes on the
@@ -177,7 +178,7 @@ func registerSchema(t *testing.T, subject, schema string) int {
 	var out struct {
 		ID int `json:"id"`
 	}
-	if err := jsonDecode(res.Body, &out); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
 		t.Fatalf("reading the id of %s: %v", subject, err)
 	}
 	return out.ID
@@ -269,7 +270,7 @@ func runJ8(t *testing.T, j journey, group string) {
 	// Told where to start: from the beginning of the log, which is a read the
 	// window had no way of asking for until T5.12 (FR-13.5). The topic's own
 	// tab is where the control is, so the journey goes back to it.
-	h.s.Commands().Run("tab.previous")
+	_ = h.s.Commands().Run("tab.previous")
 	walkTo(t, h, j.path)
 	if err := h.s.Commands().Run("object.open"); err != nil {
 		t.Fatalf("Open Data again: %v", err)

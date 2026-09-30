@@ -1,6 +1,9 @@
 package shell
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -106,6 +109,30 @@ func TestDocumentChangesRefuseWhatCannotBeSaved(t *testing.T) {
 		if !strings.Contains(err.Error(), tc.says) {
 			t.Errorf("%s is refused with %q, want it to say %q", tc.text, err, tc.says)
 		}
+	}
+
+	// What the decoder said is reachable through the refusal, so that a caller
+	// that wants to put the caret where the document stopped making sense can.
+	var syn *json.SyntaxError
+	if _, err := documentChanges(c, row, `{"_id":,}`); !errors.As(err, &syn) {
+		t.Errorf("the refusal does not carry where the decoder stopped: %v", err)
+	} else if syn.Offset == 0 {
+		t.Error("it carries an offset of nought")
+	}
+	// A document that stops in the middle is that, and says so as itself.
+	if _, err := documentChanges(c, row, `{"_id":"64b1","name":`); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("a half-written document reads as %v", err)
+	}
+	// A value the store cannot hold is named by its column, and what was wrong
+	// with it is kept rather than flattened into the sentence: the column's
+	// name is the caller's to put in front, and the reason is not the caller's
+	// to rewrite.
+	_, err := documentChanges(c, row, `{"_id":"64b1","name":1e999}`)
+	if err == nil || !strings.Contains(err.Error(), "name: 1e999 is not a number") {
+		t.Fatalf("a number too large for the store says %v", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("what was wrong with the value is not reachable through it: %v", err)
 	}
 }
 

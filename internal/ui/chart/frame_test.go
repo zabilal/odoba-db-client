@@ -1,6 +1,7 @@
 package chart
 
 import (
+	"errors"
 	"image/color"
 	"math"
 	"strconv"
@@ -105,7 +106,7 @@ func TestTheFrameRefusesWhatTheKindRefuses(t *testing.T) {
 	if _, err := Layout(plain(Pie, oneSeries("v", 1, -2)), 600, 400); err == nil {
 		t.Error("a pie of a negative value was laid out")
 	}
-	if _, err := Layout(plain(Line), 600, 400); err != ErrNoData {
+	if _, err := Layout(plain(Line), 600, 400); !errors.Is(err, ErrNoData) {
 		t.Errorf("err %v, want ErrNoData", err)
 	}
 }

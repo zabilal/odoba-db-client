@@ -1181,7 +1181,7 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 					q.unschema()
 				}
 				if q.session != nil {
-					go q.session.Close() // may wait on the network; never on the UI goroutine
+					go func() { _ = q.session.Close() }() // may wait on the network; never on the UI goroutine
 				}
 			}
 			s.open = append(s.open[:i], s.open[i+1:]...)
@@ -1492,7 +1492,7 @@ func (s *Shell) shutdown() {
 func (s *Shell) closeSessions(match func(*tab) bool) {
 	for _, t := range s.open {
 		if q := t.query; q != nil && q.session != nil && match(t) {
-			q.session.Close()
+			_ = q.session.Close()
 		}
 	}
 }

@@ -58,8 +58,8 @@ func serve(t *testing.T, src plugin.Source) *hosted {
 
 	p := newProcess("test", hostWrites, pluginWrites, nil, nil)
 	t.Cleanup(func() {
-		p.Close()
-		fromPlugin.Close()
+		_ = p.Close()
+		_ = fromPlugin.Close()
 		<-served
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
@@ -265,8 +265,8 @@ func TestAProgramThatCannotSayWhatItIsIsNotUsed(t *testing.T) {
 			go func() {
 				// Read the request, then answer it as the case says.
 				buf := make([]byte, 4096)
-				asked.Read(buf)
-				fmt.Fprintln(said, c.answer)
+				_, _ = asked.Read(buf)
+				_, _ = fmt.Fprintln(said, c.answer)
 			}()
 			p := newProcess("test", hostWrites, answers, nil, nil)
 			defer p.Close()
@@ -646,7 +646,7 @@ func TestClosingAConnectionLeavesThePluginRunning(t *testing.T) {
 func TestOnceThePluginHasGoneItSaysSo(t *testing.T) {
 	h := serve(t, newFake())
 	src := h.open(t, source.ConnectionConfig{})
-	h.Process.Close()
+	_ = h.Process.Close()
 	_, err := src.Root(ctx(t))
 	if err == nil {
 		t.Fatal("it answered")
@@ -663,14 +663,14 @@ func TestStrayLinesAreDropped(t *testing.T) {
 	toPlugin, hostWrites := io.Pipe()
 	pluginWrites, fromPlugin := io.Pipe()
 	f := newFake()
-	go plugin.ServeOn(toPlugin, fromPlugin, f)
+	go func() { _ = plugin.ServeOn(toPlugin, fromPlugin, f) }()
 	p := newProcess("test", hostWrites, pluginWrites, nil, nil)
 	defer p.Close()
 
 	// Nonsense from the plugin's side, before anything else.
 	go func() {
-		fmt.Fprintln(fromPlugin, "this is not JSON")
-		fmt.Fprintln(fromPlugin, `{"id":999,"done":true}`)
+		_, _ = fmt.Fprintln(fromPlugin, "this is not JSON")
+		_, _ = fmt.Fprintln(fromPlugin, `{"id":999,"done":true}`)
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
@@ -1008,8 +1008,8 @@ func TestAPluginWithNoNameIsCalledByItsDriverName(t *testing.T) {
 	answers, said := io.Pipe()
 	go func() {
 		buf := make([]byte, 4096)
-		asked.Read(buf)
-		fmt.Fprintln(said, `{"id":1,"hello":{"protocol":1,"kind":"source","id":"nameless"},"done":true}`)
+		_, _ = asked.Read(buf)
+		_, _ = fmt.Fprintln(said, `{"id":1,"hello":{"protocol":1,"kind":"source","id":"nameless"},"done":true}`)
 	}()
 	p := newProcess("test", hostWrites, answers, nil, nil)
 	defer p.Close()
@@ -1158,7 +1158,7 @@ func TestAnAnswerInFlightIsFinishedBeforeThePluginEnds(t *testing.T) {
 	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the handshake never started")
 	}
-	host.Close()           // the host has finished with it, mid-answer
+	_ = host.Close()       // the host has finished with it, mid-answer
 	close(f.helloReleased) // and now the answer can be written
 	select {
 	case err := <-done:
@@ -1202,7 +1202,7 @@ func TestWorkInFlightIsGivenUpOnWhenTheInputEnds(t *testing.T) {
 	answers, said := io.Pipe()
 	done := make(chan error, 1)
 	go func() { done <- plugin.ServeOn(in, said, f) }()
-	go io.Copy(io.Discard, answers) // the answers are read and not looked at
+	go func() { _, _ = io.Copy(io.Discard, answers) }() // the answers are read and not looked at
 
 	if _, err := fmt.Fprintln(host, `{"id":1,"op":"browse","handle":"h","ref":{"kind":"table","path":["db","items"]}}`); err != nil {
 		t.Fatal(err)
@@ -1212,7 +1212,7 @@ func TestWorkInFlightIsGivenUpOnWhenTheInputEnds(t *testing.T) {
 	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the browse never started")
 	}
-	host.Close() // the host has finished with it
+	_ = host.Close() // the host has finished with it
 	select {
 	case err := <-done:
 		if err != nil {
