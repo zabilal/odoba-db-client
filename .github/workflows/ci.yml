@@ -51,7 +51,18 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    # On each platform, because a linter sees only the files this one builds.
+    # The first run of the lint job found three unwrapped errors in the XDG
+    # portal's file dialog, which is Linux-only and which no run on a Mac had
+    # ever looked at; native_windows.go and native_darwin.go are the same
+    # question asked the other way. Cross-linting with GOOS set is not the
+    # answer: DuckDB's bindings are cgo and do not type-check cross-compiled,
+    # so the whole run comes back as one import failure.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -59,6 +70,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
@@ -76,8 +88,13 @@ jobs:
       # a commit, with whatever the new checks find dealt with in that commit.
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.2
+      # --build-tags overrides the configuration's, dropping duckdb: that driver
+      # is behind a tag because it needs a cgo library, and a runner that has not
+      # got one would fail the whole job on an import rather than on anything
+      # about this code. The configuration keeps it, so a local run and the
+      # commit gate lint it where the library is.
       - name: Lint
-        run: golangci-lint run --timeout 10m
+        run: golangci-lint run --timeout 10m --build-tags=conformance
 
   coverage:
     name: Core coverage (NFR-Q2)
@@ -240,7 +257,11 @@ jobs:
           go build -ldflags="-s -w" -trimpath -o ikigai-release ./cmd/ikigai
           size=$(wc -c < ikigai-release | tr -d " ")
           budget=$((120 * 1024 * 1024))
-          printf "binary: %s bytes (%.1f MB)\n" "$size" "$(echo "$size / 1048576" | bc -l)"
+          # awk rather than bc, which Git bash on the Windows runner has not got:
+          # the step ran with -e, so a missing bc failed a job whose measurement
+          # was fine — 97,078,272 bytes, well inside the budget.
+          mb() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
+          printf "binary: %s bytes (%s MB)\n" "$size" "$(mb "$size")"
           printf "budget (NFR-P8): %s bytes\n" "$budget"
           if [ "$size" -gt "$budget" ]; then
             echo "::error::the binary is over its NFR-P8 budget; a source that grew it says what it cost in TASKS.md, and one that did not is the thing to look for"
@@ -251,7 +272,7 @@ jobs:
           # way T4.30 is decided, both move together.
           go build -ldflags="-s -w" -trimpath -o ikigai-cli-release ./cmd/ikigai-cli
           cli=$(wc -c < ikigai-cli-release | tr -d " ")
-          printf "command line: %s bytes (%.1f MB)\n" "$cli" "$(echo "$cli / 1048576" | bc -l)"
+          printf "command line: %s bytes (%s MB)\n" "$cli" "$(mb "$cli")"
           if [ "$cli" -gt "$size" ]; then
             echo "::error::the command line is larger than the application, which draws: something it must not import has arrived"
             exit 1

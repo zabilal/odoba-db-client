@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -111,7 +112,13 @@ func pathsFor(goos, home string, getenv func(string) string) Paths {
 	xdg := func(key, fallback string) string {
 		// The XDG spec says a relative path in these variables is invalid and
 		// must be ignored, not resolved against the working directory.
-		if v := getenv(key); v != "" && filepath.IsAbs(v) {
+		//
+		// Absolute is the spec's meaning of it and not this machine's, which is
+		// why the test is a leading slash rather than filepath.IsAbs: these are
+		// the rules of a Unix system, and this function exists to be asked about
+		// a platform other than the one asking. On Windows filepath.IsAbs wants
+		// a drive letter, so it called every valid value invalid.
+		if v := getenv(key); strings.HasPrefix(v, "/") {
 			return v
 		}
 		return filepath.Join(home, fallback)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -90,7 +91,19 @@ func TestTheFileIsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o600 {
+	switch {
+	case runtime.GOOS == "windows":
+		// Windows has no mode to read. A file's protection there is its ACL,
+		// which it inherits from the directory it is in — the user's own
+		// profile — and os.Chmod can only turn the read-only bit on and off, so
+		// every writable file reads as 0666. Asserting 0600 would be asserting
+		// something the operating system does not mean. What can be asserted is
+		// that the file is not read-only, because a secrets file that cannot be
+		// rewritten is one no secret can be changed in.
+		if st.Mode().Perm()&0o200 == 0 {
+			t.Errorf("the file is read-only: %04o", st.Mode().Perm())
+		}
+	case st.Mode().Perm() != 0o600:
 		t.Errorf("the file has mode %v", st.Mode().Perm())
 	}
 	// Nothing is left beside it: a temporary file with secrets in it is a
