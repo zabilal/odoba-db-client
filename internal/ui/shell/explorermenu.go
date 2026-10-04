@@ -39,11 +39,13 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 		// and taken away. New Topic is here too, because somebody looking at
 		// a topic is already where topics are made.
 		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdProduce, "",
-			cmdTopicNew, cmdTopicConfig, cmdTopicPartition, cmdTopicDelete, "", cmdRefresh}
+			cmdTopicNew, cmdTopicConfig, cmdTopicPartition, cmdTopicDelete, "",
+			cmdPermissions, "", cmdRefresh}
 	case s.selectionIsGroup():
 		// A group holds no rows and is not written to. What can be done to
 		// one is move where it reads from next.
-		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdGroupReset, "", cmdRefresh}
+		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdGroupReset, "",
+			cmdPermissions, "", cmdRefresh}
 	case s.selectionProducible():
 		// A topic is the only thing here that can be written to, and the menu
 		// says so only where that is true. Scripting a SELECT of a log, or a
@@ -53,7 +55,8 @@ func (s *Shell) explorerMenu(id string) *fyne.Menu {
 	case s.selectionTopicAdmin():
 		// A cluster, or the class its topics hang under: nothing to write to
 		// here, but this is where a topic is made.
-		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdTopicNew, "", cmdRefresh}
+		ids = []string{cmdOpen, cmdStructure, cmdFavorite, "", cmdTopicNew, "",
+			cmdPermissions, "", cmdRefresh}
 	}
 	if id == view.ConnectionID(conn) {
 		ids = []string{cmdConnEdit, cmdConnDup, "", cmdRefresh, cmdReconnect, cmdDisconnect, "", cmdConnDelete}

@@ -560,6 +560,9 @@ func (s *Shell) registerCommands() {
 			Enabled: s.selectionIsTopic, Run: s.addPartitionsToSelected},
 		{ID: cmdTopicConfig, Category: "Explorer", Title: "Topic Settings…", Keywords: []string{"config", "retention", "settings", "alter", "kafka"},
 			Enabled: s.selectionIsTopic, Run: s.editTopicSettings},
+		{ID: cmdPermissions, Category: "Explorer", Title: "Permissions…",
+			Keywords: []string{"acl", "acls", "permissions", "grant", "revoke", "principal", "security", "kafka"},
+			Enabled:  s.canReadPermissions, Run: s.showPermissions},
 		{ID: cmdGroupReset, Category: "Explorer", Title: "Move Offsets…", Keywords: []string{"reset", "offsets", "rewind", "replay", "group", "kafka"},
 			Enabled: s.selectionIsGroup, Run: s.resetSelectedGroup},
 		{ID: cmdRefresh, Category: "Explorer", Title: "Refresh", Keywords: []string{"reload", "tree"},
@@ -1168,6 +1171,11 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 				s.forgetScratch(t)
 			}
 			t.cancel()
+			if t.stream != nil {
+				// The context ends the reading; it does not close what was
+				// being read or stop what was measuring it (rates.go).
+				t.stream.close()
+			}
 			if q := t.query; q != nil {
 				if q.unschema != nil {
 					q.unschema()
@@ -1418,6 +1426,9 @@ func (s *Shell) recolour() {
 	for _, t := range s.open {
 		if t.grid != nil {
 			t.grid.SetPalette(p)
+		}
+		if t.stream != nil {
+			t.stream.recolour(p)
 		}
 		if q := t.query; q != nil {
 			q.editor.SetPalette(p)

@@ -177,10 +177,17 @@ type clusterChange func(src source.Source, confirmed bool) error
 // changeCluster makes the change, asks where the connection says to ask, and
 // refreshes the tree where it worked.
 func (s *Shell) changeCluster(connID, what string, change clusterChange) {
-	s.attemptClusterChange(connID, what, change, false)
+	s.attemptClusterChange(connID, what, change, false, nil)
 }
 
-func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, confirmed bool) {
+// changeClusterThen is the same with something to do once it has worked: what
+// is open over the thing that changed reads it again, which the tree's own
+// refresh cannot do for it (acls.go).
+func (s *Shell) changeClusterThen(connID, what string, change clusterChange, then func()) {
+	s.attemptClusterChange(connID, what, change, false, then)
+}
+
+func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, confirmed bool, then func()) {
 	go func() {
 		live, err := s.d.WS.Connect(s.ctx, connID)
 		if err == nil {
@@ -189,13 +196,16 @@ func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, 
 		s.d.Run(func() {
 			switch {
 			case errors.Is(err, source.ErrConfirmationRequired):
-				s.askBeforeChanging(connID, what, change)
+				s.askBeforeChanging(connID, what, change, then)
 			case errors.Is(err, source.ErrReadOnly):
 				s.showError(fmt.Errorf("not done: this connection is read-only, and to %s would change the cluster", what))
 			case err != nil:
 				s.showError(fmt.Errorf("could not %s: %w", what, err))
 			default:
 				s.refreshSelected()
+				if then != nil {
+					then()
+				}
 			}
 		})
 	}()
@@ -203,11 +213,11 @@ func (s *Shell) attemptClusterChange(connID, what string, change clusterChange, 
 
 // askBeforeChanging is the production guardrail. The driver refused
 // before it dialled, so nothing has happened yet and asking is safe (FR-4.9).
-func (s *Shell) askBeforeChanging(connID, what string, change clusterChange) {
+func (s *Shell) askBeforeChanging(connID, what string, change clusterChange, then func()) {
 	s.askToType(connID, "Change This Production Cluster?",
 		productionBody("would "+what+" on", s.connName(connID), "Nothing has happened yet."),
 		"Continue",
-		func() { s.attemptClusterChange(connID, what, change, true) }, nil)
+		func() { s.attemptClusterChange(connID, what, change, true, then) }, nil)
 }
 
 // topicFrom reads what was typed into the topic it describes.

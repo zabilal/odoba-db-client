@@ -328,8 +328,29 @@ func TestNothingIsClaimedThatIsNotWritten(t *testing.T) {
 	if _, ok := any(&kafkaSource{}).(source.OffsetResetter); !ok {
 		t.Error("claims Stream.ResetOffsets but does not implement OffsetResetter")
 	}
+	// Permissions are read and changed now (T5.13), which is two claims
+	// because they are two interfaces: a connection may be allowed to see who
+	// may do what without being allowed to change it (ADR-0107).
+	if !caps.Stream.ACLs || !caps.Stream.ManageACLs {
+		t.Error("permissions are read and changed, and neither is claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.ACLInspector); !ok {
+		t.Error("claims Stream.ACLs but does not implement ACLInspector")
+	}
+	if _, ok := any(&kafkaSource{}).(source.ACLAdmin); !ok {
+		t.Error("claims Stream.ManageACLs but does not implement ACLAdmin")
+	}
+	// And how much a topic carries is measured now (T5.14), which is a claim
+	// about reading totals: the cluster keeps no rate to read.
+	if !caps.Stream.Throughput {
+		t.Error("a topic's totals are read and measuring it is not claimed")
+	}
+	if _, ok := any(&kafkaSource{}).(source.TopicMeter); !ok {
+		t.Error("claims Stream.Throughput but does not implement TopicMeter")
+	}
 	written := capability.Stream{Consume: true, SeekTimestamp: true, Follow: true,
-		ConsumerGroups: true, Produce: true, TopicAdmin: true, ResetOffsets: true}
+		ConsumerGroups: true, Produce: true, TopicAdmin: true, ResetOffsets: true,
+		ACLs: true, ManageACLs: true, Throughput: true}
 	if caps.Stream != written {
 		t.Errorf("a stream operation is claimed before it is written: %+v", caps.Stream)
 	}

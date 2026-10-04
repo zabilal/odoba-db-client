@@ -239,6 +239,9 @@ func checkCapabilities(t *testing.T, target Target) {
 				"the grid would offer to open a row that names nothing")
 		}
 	}
+	for _, p := range streamClaims(caps.Stream, src) {
+		t.Error(p)
+	}
 	if caps.Data.Insert || caps.Data.Update || caps.Data.Delete {
 		if _, ok := src.(source.Writer); !ok {
 			t.Error("claims write support but does not implement Writer")
@@ -347,6 +350,33 @@ func nodeProblems(caps capability.Capabilities, n model.Node) []string {
 		out = append(out, fmt.Sprintf("class %v holds %q, which Capabilities.Objects does not declare", n.Ref, k))
 	case n.Label != model.ClassLabel(k):
 		out = append(out, fmt.Sprintf("class %v is called %q, where the model calls it %q", n.Ref, n.Label, model.ClassLabel(k)))
+	}
+	return out
+}
+
+// streamClaims is what a source's claims about a stream's permissions and its
+// throughput promise that it does not keep (FR-13.15, FR-13.17).
+//
+// Returned rather than reported, so that the checks can themselves be checked
+// against a source built to break them: no real driver can fail them, which
+// makes a test against real drivers no test of the checks at all.
+func streamClaims(caps capability.Stream, src any) []string {
+	var out []string
+	if _, ok := src.(source.TopicMeter); caps.Throughput && !ok {
+		out = append(out, "claims Stream.Throughput but does not implement TopicMeter; "+
+			"the window would offer a rate nothing can measure")
+	}
+	if _, ok := src.(source.ACLInspector); caps.ACLs && !ok {
+		out = append(out, "claims Stream.ACLs but does not implement ACLInspector; "+
+			"the window would offer to show permissions nothing can read")
+	}
+	if _, ok := src.(source.ACLAdmin); caps.ManageACLs && !ok {
+		out = append(out, "claims Stream.ManageACLs but does not implement ACLAdmin; "+
+			"the window would offer to grant a permission nothing can grant")
+	}
+	if caps.ManageACLs && !caps.ACLs {
+		out = append(out, "claims Stream.ManageACLs without Stream.ACLs; a permission "+
+			"granted where none can be read is one nobody can check or take back")
 	}
 	return out
 }

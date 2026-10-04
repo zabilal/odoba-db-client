@@ -106,3 +106,70 @@ func TestTheWalkGoesFourLevelsDownAndFourNodesAcross(t *testing.T) {
 		t.Errorf("expanded %q; four of the six with children, and not the leaf", wide.expanded)
 	}
 }
+
+// A stream's claims are checked against sources built to break them: no real
+// driver can fail them, so running them against real drivers proves nothing
+// about the checks (FR-13.15, FR-13.17).
+func TestStreamClaimsAreHeldToWhatASourceImplements(t *testing.T) {
+	both := aclBoth{}
+	reads := aclReads{}
+	neither := struct{}{}
+	for _, c := range []struct {
+		what  string
+		caps  capability.Stream
+		src   any
+		finds []string
+	}{
+		{"claiming nothing and implementing nothing", capability.Stream{}, neither, nil},
+		{"claiming both and implementing both",
+			capability.Stream{ACLs: true, ManageACLs: true}, both, nil},
+		{"claiming reading only, and implementing it",
+			capability.Stream{ACLs: true}, reads, nil},
+		{"implementing both and claiming neither", capability.Stream{}, both, nil},
+		{"claiming reading it cannot do",
+			capability.Stream{ACLs: true}, neither, []string{"ACLInspector"}},
+		{"claiming changing it cannot do",
+			capability.Stream{ACLs: true, ManageACLs: true}, reads, []string{"ACLAdmin"}},
+		{"claiming changing without reading",
+			capability.Stream{ManageACLs: true}, both, []string{"without Stream.ACLs"}},
+		{"claiming both and implementing neither",
+			capability.Stream{ACLs: true, ManageACLs: true}, neither,
+			[]string{"ACLInspector", "ACLAdmin"}},
+		{"claiming a throughput it cannot measure",
+			capability.Stream{Throughput: true}, both, []string{"TopicMeter"}},
+		{"claiming a throughput it can measure",
+			capability.Stream{Throughput: true}, aclBothAndMeter{}, nil},
+	} {
+		found := strings.Join(streamClaims(c.caps, c.src), "; ")
+		if len(c.finds) == 0 {
+			if found != "" {
+				t.Errorf("%s is said to be wrong: %s", c.what, found)
+			}
+			continue
+		}
+		for _, want := range c.finds {
+			if !strings.Contains(found, want) {
+				t.Errorf("%s: it says %q, which does not mention %q", c.what, found, want)
+			}
+		}
+	}
+}
+
+// aclBoth reads and changes permissions; aclReads only reads them. Neither does
+// anything else: what these checks ask is only which interfaces are there.
+type aclBoth struct{}
+
+func (aclBoth) ACLs(context.Context, model.ACLFilter) ([]model.ACL, error) { return nil, nil }
+func (aclBoth) GrantACL(context.Context, model.ACL, bool) error            { return nil }
+func (aclBoth) RevokeACL(context.Context, model.ACL, bool) error           { return nil }
+
+type aclReads struct{}
+
+// aclBothAndMeter also says how much a topic has carried.
+type aclBothAndMeter struct{ aclBoth }
+
+func (aclBothAndMeter) TopicTotals(context.Context, string) (model.TopicTotals, error) {
+	return model.TopicTotals{}, nil
+}
+
+func (aclReads) ACLs(context.Context, model.ACLFilter) ([]model.ACL, error) { return nil, nil }
