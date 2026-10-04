@@ -32,7 +32,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+            gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
 
       - name: Build
         run: go build ./...
@@ -41,12 +42,27 @@ jobs:
       # detector slows execution 5-20x, so a budget measured under it measures
       # the detector, not the code. They run in the performance job below,
       # without -race. Do not add -race there.
+      # -timeout because the default is ten minutes per package and the window's
+      # own suite takes over eight of them under the detector on this machine —
+      # on a hosted runner it went past ten and was killed, which reads as a
+      # failure and is a clock.
       - name: Test
-        run: go test -race ./...
+        run: go test -race -timeout 30m ./...
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    # On each platform, because a linter sees only the files this one builds.
+    # The first run of the lint job found three unwrapped errors in the XDG
+    # portal's file dialog, which is Linux-only and which no run on a Mac had
+    # ever looked at; native_windows.go and native_darwin.go are the same
+    # question asked the other way. Cross-linting with GOOS set is not the
+    # answer: DuckDB's bindings are cgo and do not type-check cross-compiled,
+    # so the whole run comes back as one import failure.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -54,12 +70,31 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
+      # golangci-lint is built here rather than downloaded. Its published
+      # binaries are built with an older Go than this module targets, and a
+      # linter cannot load a configuration for a language version it cannot
+      # parse: "the Go language version (go1.24) used to build golangci-lint is
+      # lower than the targeted Go version (1.26.6)". Building it with the Go
+      # this job already has takes our language version out of somebody else's
+      # release schedule.
+      #
+      # The version is pinned rather than latest, so that a linter release
+      # cannot turn this red on a morning nobody changed anything: moving it is
+      # a commit, with whatever the new checks find dealt with in that commit.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.2
+      # --build-tags overrides the configuration's, dropping duckdb: that driver
+      # is behind a tag because it needs a cgo library, and a runner that has not
+      # got one would fail the whole job on an import rather than on anything
+      # about this code. The configuration keeps it, so a local run and the
+      # commit gate lint it where the library is.
+      - name: Lint
+        run: golangci-lint run --timeout 10m --build-tags=conformance
 
   coverage:
     name: Core coverage (NFR-Q2)
@@ -91,7 +126,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       # The Phase 0 gates, as budget assertions that fail the build. Without
       # -race on purpose — see internal/testutil/race. -count=1 defeats the
       # test cache, which would otherwise report a stale pass.
@@ -121,7 +157,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Scan
         shell: bash
         run: |
@@ -163,7 +200,8 @@ jobs:
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Write the SBOM
         run: |
           go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0 \
@@ -176,26 +214,24 @@ jobs:
 
   # NFR-P8: the binary is measured on every platform, on every push.
   #
-  # It does not meet its budget. A stripped macOS build is 86.1 MB against
-  # 60 MB, and three drivers are most of the gap: go-ora (Oracle) is 14.8 MB
-  # of it, franz-go (Kafka) 10.4, and aws-sdk-go-v2 (DynamoDB) 5.1 — a build
-  # without the three is 55.8 MB. What to do about that is a product decision,
-  # not a build one: put them behind build tags as DuckDB already is, raise the
-  # budget, or ship a core build and a full one. TASKS.md T4.30 records it as
-  # the owner's call.
+  # The budget was 60 MB and could only be met by shipping some drivers and not
+  # others: a stripped build is 86.6 MB, of which go-ora (Oracle) is 14.8 MB,
+  # franz-go (Kafka) 10.4 and aws-sdk-go-v2 (DynamoDB) 5.1, and without those
+  # three it is 55.8. That was settled in favour of including every driver, so
+  # that installing the application is the whole of installing support for the
+  # databases it speaks. The binary therefore *is* the drivers, and a budget
+  # forbidding their size would be a budget forbidding the product.
   #
-  # Until then this job is a ratchet rather than a gate: it prints the size
-  # against the budget and fails only if the binary grows past the ceiling
-  # below, so that the gap cannot widen unnoticed while the decision is open.
-  # The ceiling moves only when a deliberate, measured addition moves it, and
-  # the commit that moves it says what it bought: 80 to 84 MB was Kafka
-  # becoming reachable from the application at all (T4.3, 10.4 MB, written and
-  # unregistered until then), and 84 to 90 was the DynamoDB driver (T4.6,
-  # 5.1 MB). Twice in a day is the ratchet documenting growth rather than
-  # limiting it, which is the argument for settling NFR-P8 rather than for
-  # moving this number again.
-  # The ceiling is one number for three platforms because only macOS has been
-  # measured; the print is what tells us the others.
+  # So this is a gate again, at a number that catches accidental growth rather
+  # than deliberate: a stray dependency, a driver linked twice, an asset
+  # embedded by mistake. What keeps it honest is the other half of NFR-P8 —
+  # every source added says in TASKS.md what it measured, so the total is an
+  # accumulation of named decisions rather than a number nobody can account
+  # for. A build that grew without one of those is what this finds.
+  #
+  # One number for three platforms, because the drivers are the same on all of
+  # them and the toolkit links its assets the same way; the print is what says
+  # whether that holds.
   binary-size:
     name: Binary size (NFR-P8)
     runs-on: ${{ matrix.os }}
@@ -213,29 +249,30 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
       - name: Build and measure
         shell: bash
         run: |
           go build -ldflags="-s -w" -trimpath -o ikigai-release ./cmd/ikigai
           size=$(wc -c < ikigai-release | tr -d " ")
-          budget=$((60 * 1024 * 1024))
-          ceiling=$((90 * 1024 * 1024))
-          printf "binary: %s bytes (%.1f MB)\n" "$size" "$(echo "$size / 1048576" | bc -l)"
-          printf "budget (NFR-P8): %s bytes; ceiling while the decision is open: %s\n" "$budget" "$ceiling"
-          if [ "$size" -gt "$ceiling" ]; then
-            echo "::error::the binary has grown past the ceiling; see NFR-P8 in TASKS.md T4.30"
-            exit 1
-          fi
+          budget=$((120 * 1024 * 1024))
+          # awk rather than bc, which Git bash on the Windows runner has not got:
+          # the step ran with -e, so a missing bc failed a job whose measurement
+          # was fine — 97,078,272 bytes, well inside the budget.
+          mb() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
+          printf "binary: %s bytes (%s MB)\n" "$size" "$(mb "$size")"
+          printf "budget (NFR-P8): %s bytes\n" "$budget"
           if [ "$size" -gt "$budget" ]; then
-            echo "::warning::the binary is over its NFR-P8 budget by $((size - budget)) bytes"
+            echo "::error::the binary is over its NFR-P8 budget; a source that grew it says what it cost in TASKS.md, and one that did not is the thing to look for"
+            exit 1
           fi
           # The command line is the same drivers without the toolkit, so it is
           # measured beside the application rather than on its own: whichever
           # way T4.30 is decided, both move together.
           go build -ldflags="-s -w" -trimpath -o ikigai-cli-release ./cmd/ikigai-cli
           cli=$(wc -c < ikigai-cli-release | tr -d " ")
-          printf "command line: %s bytes (%.1f MB)\n" "$cli" "$(echo "$cli / 1048576" | bc -l)"
+          printf "command line: %s bytes (%s MB)\n" "$cli" "$(mb "$cli")"
           if [ "$cli" -gt "$size" ]; then
             echo "::error::the command line is larger than the application, which draws: something it must not import has arrived"
             exit 1

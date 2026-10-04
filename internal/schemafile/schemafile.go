@@ -110,7 +110,7 @@ func Write(dir string, db *model.Database) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			os.RemoveAll(staging)
+			_ = os.RemoveAll(staging)
 		}
 	}()
 	// Saving a model again keeps the rules agreed about it: they are an
@@ -185,19 +185,19 @@ func swap(dir, staging string) error {
 	aside := ""
 	if _, err := os.Stat(dir); err == nil {
 		aside = dir + ".replaced"
-		os.RemoveAll(aside)
+		_ = os.RemoveAll(aside)
 		if err := os.Rename(dir, aside); err != nil {
 			return err
 		}
 	}
 	if err := os.Rename(staging, dir); err != nil {
 		if aside != "" {
-			os.Rename(aside, dir) // put back what was there
+			_ = os.Rename(aside, dir) // put back what was there
 		}
 		return err
 	}
 	if aside != "" {
-		os.RemoveAll(aside)
+		_ = os.RemoveAll(aside)
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/source/guardcheck"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // The connection to a Kafka cluster (T2.54).
@@ -444,7 +445,7 @@ func TestAFailureSaysWhatToFix(t *testing.T) {
 
 	// A failure already classified is not classified twice.
 	first := classifyConnectError(errors.New("connection refused"))
-	if got := classifyConnectError(first); got != first {
+	if got := classifyConnectError(first); !errs.Same(got, first) {
 		t.Errorf("a failure classified twice: %v", got)
 	}
 }

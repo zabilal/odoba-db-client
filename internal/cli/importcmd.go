@@ -45,7 +45,7 @@ func importCommand() command {
 			)
 			t.flags(fs)
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai import — read a file into a table
+				_, _ = fmt.Fprint(fs.Output(), `ikigai import — read a file into a table
 
   ikigai import --into main.items --from items.csv
   ikigai import --into main.items --from items.csv --dry-run

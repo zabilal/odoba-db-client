@@ -19,13 +19,13 @@ func open(t *testing.T) (*DB, string) {
 	t.Helper()
 	// A space in the path, because macOS keeps this under "Application Support".
 	dir := filepath.Join(t.TempDir(), "Application Support")
-	os.MkdirAll(dir, 0o700)
+	_ = os.MkdirAll(dir, 0o700)
 	path := filepath.Join(dir, "ikigai.db")
 	d, err := Open(ctx, path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	t.Cleanup(func() { d.Close() })
+	t.Cleanup(func() { _ = d.Close() })
 	return d, path
 }
 
@@ -39,12 +39,12 @@ func TestOpenMigratesAndIsPrivate(t *testing.T) {
 			t.Errorf("database mode %v, want 0600", st.Mode().Perm())
 		}
 	}
-	d.Close()
+	_ = d.Close()
 	d2, err := Open(ctx, path) // reopening is a no-op migration
 	if err != nil {
 		t.Fatal(err)
 	}
-	d2.Close()
+	_ = d2.Close()
 }
 
 func TestFullTextSearchIsCompiledIn(t *testing.T) {
@@ -56,8 +56,8 @@ func TestFullTextSearchIsCompiledIn(t *testing.T) {
 
 func TestNewerSchemaIsRefused(t *testing.T) {
 	d, path := open(t)
-	d.db.ExecContext(ctx, "PRAGMA user_version = 99")
-	d.Close()
+	_, _ = d.db.ExecContext(ctx, "PRAGMA user_version = 99")
+	_ = d.Close()
 	if _, err := Open(ctx, path); !errors.Is(err, ErrNewerSchema) {
 		t.Errorf("want ErrNewerSchema, got %v", err)
 	}
@@ -65,7 +65,7 @@ func TestNewerSchemaIsRefused(t *testing.T) {
 
 func TestFailedMigrationLeavesSchemaUntouched(t *testing.T) {
 	d, path := open(t)
-	d.Close()
+	_ = d.Close()
 
 	orig := migrations
 	migrations = append(append([]string(nil), orig...),
@@ -85,7 +85,7 @@ func TestFailedMigrationLeavesSchemaUntouched(t *testing.T) {
 		t.Errorf("schema version %d after a failed migration, want %d", v, len(orig))
 	}
 	var n int
-	d2.db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name = 'half_done'").Scan(&n)
+	_ = d2.db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name = 'half_done'").Scan(&n)
 	if n != 0 {
 		t.Error("a failed migration left a table behind; migrations are not atomic")
 	}
@@ -210,7 +210,7 @@ func TestConcurrentWritesDoNotLock(t *testing.T) {
 					Statement: fmt.Sprintf("SELECT %d", g*100+i), StartedAt: time.Now()}); err != nil {
 					errs <- err
 				}
-				d.SearchHistory(ctx, HistoryQuery{Text: "select", Limit: 5})
+				_, _ = d.SearchHistory(ctx, HistoryQuery{Text: "select", Limit: 5})
 			}
 		}(g)
 	}
@@ -293,7 +293,7 @@ func TestSavedQueriesAreVerbatim(t *testing.T) {
 	if len(list) != 2 || list[0].Folder != "admin" {
 		t.Errorf("list = %+v", list)
 	}
-	d.DeleteQuery(ctx, q.ID)
+	_ = d.DeleteQuery(ctx, q.ID)
 	if list, _ := d.SavedQueries(ctx); len(list) != 1 {
 		t.Errorf("delete failed: %+v", list)
 	}
@@ -304,12 +304,12 @@ func TestSessionState(t *testing.T) {
 	if _, ok, err := d.Get(ctx, "tabs"); ok || err != nil {
 		t.Errorf("missing key: ok=%v err=%v", ok, err)
 	}
-	d.Put(ctx, "tabs", []byte(`["a"]`))
-	d.Put(ctx, "tabs", []byte(`["a","b"]`))
+	_ = d.Put(ctx, "tabs", []byte(`["a"]`))
+	_ = d.Put(ctx, "tabs", []byte(`["a","b"]`))
 	if v, ok, _ := d.Get(ctx, "tabs"); !ok || string(v) != `["a","b"]` {
 		t.Errorf("got %q", v)
 	}
-	d.Delete(ctx, "tabs")
+	_ = d.Delete(ctx, "tabs")
 	if _, ok, _ := d.Get(ctx, "tabs"); ok {
 		t.Error("deleted key still present")
 	}

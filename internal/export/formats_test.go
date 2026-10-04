@@ -76,7 +76,7 @@ func TestXMLNamesEachFieldAndKeepsEachValue(t *testing.T) {
 	}
 	dec := xml.NewDecoder(strings.NewReader(out))
 	for {
-		if _, err := dec.Token(); err == io.EOF {
+		if _, err := dec.Token(); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			t.Fatalf("not well-formed: %v", err)

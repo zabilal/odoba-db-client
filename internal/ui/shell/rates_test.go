@@ -136,14 +136,15 @@ func TestAQuietTopicsPictureIsNotDrawnAgain(t *testing.T) {
 	was := meterFast(t)
 	defer was()
 	_, _, bar, _ := measuredTopic(t, "kafka1", 2)
+	// The measuring is stopped before anything is asserted, because a rate
+	// arriving between two draws would make a redraw the right answer. Then one
+	// draw to settle what is on the screen, and what is on it is marked so that
+	// drawing over it would show.
+	_ = bar.meter.Close()
 	bar.drawRates()
 	held := bar.measured
 	before := bar.spark.Spark().Values
 
-	// Asked again with nothing new, it touches nothing: the measuring is stopped
-	// first, so no rate can arrive between the two, and what is on the screen is
-	// marked so that drawing over it would show.
-	bar.meter.Close()
 	bar.rate.SetText("left alone")
 	bar.drawRates()
 	if bar.rate.Text != "left alone" {
@@ -283,7 +284,7 @@ func TestWhatIsSaidBeforeAndAfterARate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { quiet.Close() })
+	t.Cleanup(func() { _ = quiet.Close() })
 	if got := rateSaid(quiet); got != "measuring…" {
 		t.Errorf("before a rate it says %q", got)
 	}
@@ -294,7 +295,7 @@ func TestWhatIsSaidBeforeAndAfterARate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _ = m.Close() })
 	pump(t, fx.q, func() bool { return len(m.Rates()) > 0 })
 	if got := rateSaid(m); !strings.Contains(got, "/s") {
 		t.Errorf("with a rate it says %q", got)

@@ -78,13 +78,13 @@ func (ss *session) renew() {
 	}
 	var spid int64
 	if err := c.QueryRowContext(ctx, `SELECT @@SPID`).Scan(&spid); err != nil {
-		c.Close()
+		_ = c.Close()
 		return
 	}
 	old := ss.conn
 	ss.conn = c
 	ss.spid.Store(spid)
-	old.Close()
+	_ = old.Close()
 }
 
 func (ss *session) Close() error {
@@ -95,7 +95,7 @@ func (ss *session) Close() error {
 	}
 	ss.closed = true
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	conn := ss.conn
 	ss.mu.Unlock()
@@ -122,7 +122,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 	if ss.stopped.Swap(false) {
@@ -151,7 +151,8 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		if access == source.AccessWrite {
 			// database/sql hides the count for a statement run as a query.
 			// @@ROWCOUNT on the same connection still holds the last one's.
-			ss.conn.QueryRowContext(ctx, `SELECT @@ROWCOUNT`).Scan(&affected)
+			// A failure leaves it at -1, which is what "not known" is here.
+			_ = ss.conn.QueryRowContext(ctx, `SELECT @@ROWCOUNT`).Scan(&affected)
 		}
 		return &source.Result{Affected: affected, Duration: time.Since(start)}, nil
 	}
@@ -246,7 +247,7 @@ func (s *sqlServerSource) Session(ctx context.Context) (source.Session, error) {
 	}
 	var spid int64
 	if err := c.QueryRowContext(ctx, `SELECT @@SPID`).Scan(&spid); err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, statementError(err, ctx, "")
 	}
 	ss := &session{src: s, conn: c}
@@ -310,7 +311,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

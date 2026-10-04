@@ -89,9 +89,9 @@ func (b *streamBar) measure() {
 // for as long as the tab does: the tab's own context is what ends it, because
 // measuring is not something a person turns off.
 func (b *streamBar) watchRates() {
-	ctx := b.t.ctx
+	ctx, every := b.t.ctx, rateRedraw
 	go func() {
-		tick := time.NewTicker(rateRedraw)
+		tick := time.NewTicker(every)
 		defer tick.Stop()
 		for {
 			select {
@@ -203,10 +203,10 @@ func (b *streamBar) close() {
 	}
 	if tail := b.tail; tail != nil {
 		b.tail = nil
-		go tail.Close()
+		go func() { _ = tail.Close() }()
 	}
 	if m := b.meter; m != nil {
 		b.meter = nil
-		go m.Close()
+		go func() { _ = m.Close() }()
 	}
 }

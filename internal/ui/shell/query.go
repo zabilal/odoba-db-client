@@ -142,7 +142,7 @@ func (s *Shell) connectQuery(t *tab) {
 		s.d.Run(func() {
 			if ctx.Err() != nil {
 				if qs != nil {
-					go qs.Close()
+					go func() { _ = qs.Close() }()
 				}
 				return
 			}

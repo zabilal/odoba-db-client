@@ -132,7 +132,7 @@ func (d *Document) ReplaceSelection(s Search, with string) (bool, error) {
 	d.sealed = true
 	d.replace(from, to, repl, editOther)
 	d.sealed = true
-	d.FindNext(s, false)
+	_, _ = d.FindNext(s, false)
 	return true, nil
 }
 

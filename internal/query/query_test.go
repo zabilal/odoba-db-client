@@ -7,6 +7,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // A design, and the SQL it becomes. Everything here is decided without a
@@ -378,7 +379,7 @@ func TestAConditionThatCannotBeWrittenIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d := &Design{}
 			at := d.Add(ref("public", "people"))
-			if c.want != ErrNoColumn {
+			if !errs.Same(c.want, ErrNoColumn) {
 				c.cond.Column = Column{Table: at, Name: "name"}
 			}
 			d.Where = []Condition{c.cond}

@@ -124,7 +124,7 @@ func (s *redisSource) listen(ctx context.Context, ref model.ObjectRef, opt sourc
 	// stream that quietly missed the beginning would be the one thing a person
 	// following a channel cannot check.
 	if _, err := sub.Receive(ctx); err != nil {
-		sub.Close()
+		_ = sub.Close()
 		return nil, err
 	}
 	// Read on a goroutine of the client's own rather than in Next. The socket

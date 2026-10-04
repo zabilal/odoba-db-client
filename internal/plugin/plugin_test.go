@@ -17,6 +17,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/plugin"
 )
 
@@ -36,7 +37,7 @@ import (
 // hanging the suite until the test binary gives up.
 func ctx(t *testing.T) context.Context {
 	t.Helper()
-	c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	c, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	t.Cleanup(cancel)
 	return c
 }
@@ -57,11 +58,11 @@ func serve(t *testing.T, src plugin.Source) *hosted {
 
 	p := newProcess("test", hostWrites, pluginWrites, nil, nil)
 	t.Cleanup(func() {
-		p.Close()
-		fromPlugin.Close()
+		_ = p.Close()
+		_ = fromPlugin.Close()
 		<-served
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -264,12 +265,12 @@ func TestAProgramThatCannotSayWhatItIsIsNotUsed(t *testing.T) {
 			go func() {
 				// Read the request, then answer it as the case says.
 				buf := make([]byte, 4096)
-				asked.Read(buf)
-				fmt.Fprintln(said, c.answer)
+				_, _ = asked.Read(buf)
+				_, _ = fmt.Fprintln(said, c.answer)
 			}()
 			p := newProcess("test", hostWrites, answers, nil, nil)
 			defer p.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 			defer cancel()
 			_, err := p.hello(ctx)
 			if err == nil {
@@ -598,13 +599,23 @@ func TestGivingUpOnARequestTellsThePlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	if _, err := rs.Next(ctx); !errors.Is(err, context.Canceled) {
-		t.Errorf("it said %v", err)
+	// Rows already in hand are still rows: the read gives up when it runs out
+	// of what it was holding, not by throwing away what it had. So the
+	// cancellation is what it comes back with, not necessarily on the next call
+	// — which is the same bargain a paused tail strikes (app.Tail).
+	var gave error
+	for i := 0; i < 100; i++ {
+		if _, gave = rs.Next(ctx); gave != nil {
+			break
+		}
+	}
+	if !errors.Is(gave, context.Canceled) {
+		t.Errorf("it said %v", gave)
 	}
 	rs.Close()
 	select {
 	case <-f.held:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Error("the plugin was never told to stop")
 	}
 }
@@ -635,7 +646,7 @@ func TestClosingAConnectionLeavesThePluginRunning(t *testing.T) {
 func TestOnceThePluginHasGoneItSaysSo(t *testing.T) {
 	h := serve(t, newFake())
 	src := h.open(t, source.ConnectionConfig{})
-	h.Process.Close()
+	_ = h.Process.Close()
 	_, err := src.Root(ctx(t))
 	if err == nil {
 		t.Fatal("it answered")
@@ -652,16 +663,16 @@ func TestStrayLinesAreDropped(t *testing.T) {
 	toPlugin, hostWrites := io.Pipe()
 	pluginWrites, fromPlugin := io.Pipe()
 	f := newFake()
-	go plugin.ServeOn(toPlugin, fromPlugin, f)
+	go func() { _ = plugin.ServeOn(toPlugin, fromPlugin, f) }()
 	p := newProcess("test", hostWrites, pluginWrites, nil, nil)
 	defer p.Close()
 
 	// Nonsense from the plugin's side, before anything else.
 	go func() {
-		fmt.Fprintln(fromPlugin, "this is not JSON")
-		fmt.Fprintln(fromPlugin, `{"id":999,"done":true}`)
+		_, _ = fmt.Fprintln(fromPlugin, "this is not JSON")
+		_, _ = fmt.Fprintln(fromPlugin, `{"id":999,"done":true}`)
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -843,7 +854,7 @@ func TestAProgramThatIsNotAPluginIsRefused(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("IKIGAI_TEST_PLUGIN", mode)
 			dir := buildTestPlug(t, "bad")
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 			defer cancel()
 			set, err := Load(ctx, dir, nil)
 			if err != nil {
@@ -888,7 +899,7 @@ func TestAPluginThatWillNotStopIsKilled(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(shutdown + 5*time.Second):
+	case <-time.After(race.Slower(shutdown + 5*time.Second)):
 		t.Fatal("closing a plugin that will not stop did not end")
 	}
 }
@@ -997,12 +1008,12 @@ func TestAPluginWithNoNameIsCalledByItsDriverName(t *testing.T) {
 	answers, said := io.Pipe()
 	go func() {
 		buf := make([]byte, 4096)
-		asked.Read(buf)
-		fmt.Fprintln(said, `{"id":1,"hello":{"protocol":1,"kind":"source","id":"nameless"},"done":true}`)
+		_, _ = asked.Read(buf)
+		_, _ = fmt.Fprintln(said, `{"id":1,"hello":{"protocol":1,"kind":"source","id":"nameless"},"done":true}`)
 	}()
 	p := newProcess("test", hostWrites, answers, nil, nil)
 	defer p.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), race.Slower(5*time.Second))
 	defer cancel()
 	hello, err := p.hello(ctx)
 	if err != nil {
@@ -1067,7 +1078,14 @@ func TestAPluginThatEndsOnItsOwnSaysSo(t *testing.T) {
 	if err2 == nil {
 		t.Fatal("a plugin that has gone answered a request")
 	}
-	if !strings.Contains(err2.Error(), "stopped answering") {
+	// Either of the two things a gone plugin is: its output ended, or its input
+	// broke. Both are true of a process that has exited, and which one arrives
+	// is a race between this host's next read and its next write — the detector
+	// shifts it, and so would a slow machine. They are two messages because they
+	// are two different faults in a plugin that is still running: one that
+	// stopped answering and one that stopped reading.
+	if said := err2.Error(); !strings.Contains(said, "stopped answering") &&
+		!strings.Contains(said, "stopped listening") {
 		t.Errorf("it said %v", err2)
 	}
 }
@@ -1137,17 +1155,17 @@ func TestAnAnswerInFlightIsFinishedBeforeThePluginEnds(t *testing.T) {
 	}
 	select {
 	case <-f.helloEntered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the handshake never started")
 	}
-	host.Close()           // the host has finished with it, mid-answer
+	_ = host.Close()       // the host has finished with it, mid-answer
 	close(f.helloReleased) // and now the answer can be written
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Errorf("serving ended with %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("serving never ended")
 	}
 	if got := out.String(); !strings.Contains(got, "testplug") {
@@ -1184,23 +1202,23 @@ func TestWorkInFlightIsGivenUpOnWhenTheInputEnds(t *testing.T) {
 	answers, said := io.Pipe()
 	done := make(chan error, 1)
 	go func() { done <- plugin.ServeOn(in, said, f) }()
-	go io.Copy(io.Discard, answers) // the answers are read and not looked at
+	go func() { _, _ = io.Copy(io.Discard, answers) }() // the answers are read and not looked at
 
 	if _, err := fmt.Fprintln(host, `{"id":1,"op":"browse","handle":"h","ref":{"kind":"table","path":["db","items"]}}`); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-f.started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("the browse never started")
 	}
-	host.Close() // the host has finished with it
+	_ = host.Close() // the host has finished with it
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Errorf("serving ended with %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(race.Slower(5 * time.Second)):
 		t.Fatal("a plugin with work in flight never ended")
 	}
 	select {

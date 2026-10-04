@@ -66,7 +66,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	s := &oracleSource{cfg: cfg, db: db, identities: map[string]identity{}}
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	// One round trip for what a connection has to know about itself: which
@@ -76,7 +76,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 		// A login without rights over v$version still has a schema.
 		if err := db.QueryRowContext(ctx,
 			`SELECT sys_context('userenv', 'current_schema') FROM dual`).Scan(&s.primary); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, classifyConnectError(err)
 		}
 	}
@@ -169,11 +169,11 @@ func (c *utcConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 	ex, ok := conn.(driver.ExecerContext)
 	if !ok {
-		conn.Close()
+		_ = conn.Close()
 		return nil, errors.New("oracle: this connection cannot be put on UTC")
 	}
 	if _, err := ex.ExecContext(ctx, `ALTER SESSION SET TIME_ZONE = '+00:00'`, nil); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 	return conn, nil

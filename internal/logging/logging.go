@@ -146,7 +146,7 @@ func openRotating(path string, max int64, keep int) (*rotating, error) {
 	}
 	st, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	return &rotating{path: path, max: max, keep: keep, f: f, size: st.Size()}, nil
@@ -172,9 +172,9 @@ func (r *rotating) rotate() error {
 	if err := r.f.Close(); err != nil {
 		return err
 	}
-	os.Remove(fmt.Sprintf("%s.%d", r.path, r.keep))
+	_ = os.Remove(fmt.Sprintf("%s.%d", r.path, r.keep))
 	for i := r.keep - 1; i >= 1; i-- {
-		os.Rename(fmt.Sprintf("%s.%d", r.path, i), fmt.Sprintf("%s.%d", r.path, i+1))
+		_ = os.Rename(fmt.Sprintf("%s.%d", r.path, i), fmt.Sprintf("%s.%d", r.path, i+1))
 	}
 	renameErr := os.Rename(r.path, r.path+".1")
 

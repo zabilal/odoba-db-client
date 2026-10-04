@@ -168,7 +168,7 @@ func (s *Shell) importFrom(into *tab, path string, err error) {
 		s.d.Run(func() {
 			if err != nil {
 				if f != nil {
-					f.Close()
+					_ = f.Close()
 				}
 				s.showError(fmt.Errorf("could not read %s: %w", filepath.Base(path), err))
 				return
@@ -183,7 +183,7 @@ func (s *Shell) importFrom(into *tab, path string, err error) {
 func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Options) {
 	key := "import:" + into.key + ":" + f.Name()
 	if t := s.tabFor(key); t != nil {
-		f.Close()
+		_ = f.Close()
 		s.selectTab(t)
 		return
 	}
@@ -202,7 +202,7 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	}
 	p.cols = into.table.Columns
 	t.imp = p
-	go func() { <-ctx.Done(); f.Close() }() // the file is open for as long as its tab is
+	go func() { <-ctx.Done(); _ = f.Close() }() // the file is open for as long as its tab is
 
 	p.format = widget.NewSelect(optionNames(importFormats), nil)
 	p.format.SetSelectedIndex(slices.Index(importFormats, opt.Format))

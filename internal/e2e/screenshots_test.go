@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"errors"
-	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -47,14 +46,14 @@ func TestScreenshots(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		if err := png.Encode(f, img.(image.Image)); err != nil {
+		if err := png.Encode(f, img); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	shot("1-empty")
 
-	h.s.Commands().Run("connection.new")
+	_ = h.s.Commands().Run("connection.new")
 	shot("2-connection-form")
 	for h.w.Canvas().Overlays().Top() != nil {
 		h.w.Canvas().Overlays().Remove(h.w.Canvas().Overlays().Top())
@@ -71,7 +70,7 @@ func TestScreenshots(t *testing.T) {
 		parent = id
 	}
 	h.s.Explorer.Tree.Select(parent)
-	h.s.Commands().Run("object.open")
+	_ = h.s.Commands().Run("object.open")
 	waitFor(t, h.q, "rows", func() bool {
 		h.w.Canvas().Capture()
 		return hasLabel(h.tabs.Selected().Content, "42 rows")
@@ -88,7 +87,7 @@ func TestScreenshots(t *testing.T) {
 
 	tbl.MouseDown(&desktop.MouseEvent{})
 	tbl.Select(widget.TableCellID{Row: 0, Col: 1})
-	h.s.Commands().Run("data.filterValues")
+	_ = h.s.Commands().Run("data.filterValues")
 	values := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
 	waitFor(t, h.q, "the value list", func() bool { return values.Length() > 0 })
 	shot("3b-picklist")
@@ -96,7 +95,7 @@ func TestScreenshots(t *testing.T) {
 		h.w.Canvas().Overlays().Remove(h.w.Canvas().Overlays().Top())
 	}
 
-	h.s.Commands().Run("data.where")
+	_ = h.s.Commands().Run("data.where")
 	test.Type(h.w.Canvas().Focused(), "id > 30")
 	h.w.Canvas().Focused().TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	waitFor(t, h.q, "the WHERE clause", func() bool {
@@ -109,18 +108,18 @@ func TestScreenshots(t *testing.T) {
 		return false
 	})
 	shot("3c-where")
-	h.s.Commands().Run("data.where")
+	_ = h.s.Commands().Run("data.where")
 
 	tbl.MouseDown(&desktop.MouseEvent{})
 	tbl.Select(widget.TableCellID{Row: 2, Col: 1})
-	h.s.Commands().Run("grid.viewer")
+	_ = h.s.Commands().Run("grid.viewer")
 	shot("3d-cell-viewer")
-	h.s.Commands().Run("grid.viewer")
+	_ = h.s.Commands().Run("grid.viewer")
 
-	h.s.Commands().Run("grid.moveRight") // the active cell is in name
+	_ = h.s.Commands().Run("grid.moveRight") // the active cell is in name
 	tbl.MouseDown(&desktop.MouseEvent{})
 	tbl.Select(widget.TableCellID{Row: 2, Col: 0})
-	h.s.Commands().Run("grid.moveRight")
+	_ = h.s.Commands().Run("grid.moveRight")
 	shot("3e-columns")
 
 	h.s.OpenQuery(h.conn.ID)
@@ -131,12 +130,12 @@ func TestScreenshots(t *testing.T) {
 	h.w.Canvas().Capture()
 	shot("4-query-results")
 
-	h.s.Commands().Run("edit.findReplace")
+	_ = h.s.Commands().Run("edit.findReplace")
 	test.Type(h.w.Canvas().Focused(), "id")
 	shot("5-find-bar")
 	h.w.Canvas().Focused().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
 
-	h.s.Commands().Run("query.history")
+	_ = h.s.Commands().Run("query.history")
 	history := find[*widget.List](h.w.Canvas().Overlays().Top())[0]
 	waitFor(t, h.q, "the history list", func() bool { return history.Length() > 0 })
 	shot("6-history")
@@ -144,7 +143,7 @@ func TestScreenshots(t *testing.T) {
 		h.w.Canvas().Overlays().Remove(h.w.Canvas().Overlays().Top())
 	}
 
-	h.s.Commands().Run("appearance.dark")
+	_ = h.s.Commands().Run("appearance.dark")
 	h.q.Flush()
 	h.w.Canvas().Capture()
 	shot("7-dark")
@@ -152,13 +151,13 @@ func TestScreenshots(t *testing.T) {
 	h.s.ShowError(errors.New("The export failed, and the partial file was removed: open /exports/people.csv: permission denied"))
 	shot("8-error")
 
-	h.s.Commands().Run("appearance.light")
-	h.s.Commands().Run("appearance.accent.orange")
+	_ = h.s.Commands().Run("appearance.light")
+	_ = h.s.Commands().Run("appearance.accent.orange")
 	h.q.Flush()
 	h.w.Canvas().Capture()
 	shot("9-accent")
 
-	h.s.Commands().Run("tab.pin") // the query tab, which is in front
+	_ = h.s.Commands().Run("tab.pin") // the query tab, which is in front
 	h.q.Flush()
 	h.w.Canvas().Capture()
 	shot("10-pinned")

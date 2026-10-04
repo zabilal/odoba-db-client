@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
-	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/ui/spark"
@@ -218,7 +217,7 @@ func (b *streamBar) unfollow() {
 		b.stop = nil
 	}
 	if b.tail != nil {
-		b.tail.Close()
+		_ = b.tail.Close()
 		b.tail = nil
 	}
 	b.follow.SetText("Follow")
@@ -315,12 +314,10 @@ func (b *streamBar) say() {
 	if b.t.footer == nil {
 		return
 	}
+	// When not following, nothing is added here: the count line says what the tab
+	// is showing, and where it is reading from is part of that (showCount).
 	var parts []string
-	switch {
-	case b.tail == nil:
-		// Not following: the count line says what the tab is showing, and where
-		// it is reading from is part of that (showCount).
-	default:
+	if b.tail != nil {
 		held, _ := b.tail.Count(context.Background())
 		state := "following"
 		if b.tail.Paused() {
@@ -498,9 +495,6 @@ func (b *streamBar) startAt(seek *source.Seek, said string) {
 	b.s.rebrowse(b.t, opt, b.t.applied, "Reading from "+said+"…",
 		"The records could not be read from "+said+": ")
 }
-
-// tailRef is the object a tab is following, for a test to name.
-func (b *streamBar) tailRef() model.ObjectRef { return b.t.ref }
 
 // canPauseFollowing reports whether there is a tail to hold. Pausing something
 // that is not following is not a command anybody means.

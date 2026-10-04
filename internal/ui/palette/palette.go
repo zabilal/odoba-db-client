@@ -110,7 +110,9 @@ func (p *Palette) runSelected() {
 		return // listed so the user learns it exists; not runnable now
 	}
 	p.Hide()
-	p.reg.Run(m.Command.ID)
+	// Run refuses a command it does not know and one that is disabled, and this
+	// is a command it listed that was enabled a line ago.
+	_ = p.reg.Run(m.Command.ID)
 }
 
 // queryEntry is a single-line entry that hands navigation keys to the palette

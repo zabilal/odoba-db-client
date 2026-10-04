@@ -2,6 +2,7 @@ package shell
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -187,10 +188,10 @@ func documentChanges(cols []model.ColumnDef, row model.Row, text string) (map[st
 	dec := json.NewDecoder(strings.NewReader(text))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("This is not a JSON document: %v", err)
+		return nil, fmt.Errorf("This is not a JSON document: %w", err)
 	}
 	if dec.More() {
-		return nil, fmt.Errorf("This is more than one document; edit one at a time.")
+		return nil, errors.New("This is more than one document; edit one at a time.")
 	}
 	was := make(map[string]any, len(cols))
 	for i, c := range cols {
@@ -203,7 +204,7 @@ func documentChanges(cols []model.ColumnDef, row model.Row, text string) (map[st
 		old, had := was[name]
 		now, err := jsonValue(v, old)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %v", name, err)
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if had && same(old, now) {
 			continue

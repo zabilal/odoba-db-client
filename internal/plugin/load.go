@@ -51,7 +51,7 @@ func (s *Set) Close() {
 		return
 	}
 	for _, p := range s.Plugins {
-		p.Process.Close()
+		_ = p.Process.Close()
 	}
 }
 
@@ -104,7 +104,7 @@ func Load(ctx context.Context, dir string, log *slog.Logger) (*Set, error) {
 			continue
 		}
 		if _, taken := source.Lookup(hello.ID); taken == nil {
-			p.Close()
+			_ = p.Close()
 			set.Failed[name] = fmt.Errorf("the driver name %q is already taken", hello.ID)
 			log.Warn("a plugin did not load", "plugin", name, "err", set.Failed[name])
 			continue

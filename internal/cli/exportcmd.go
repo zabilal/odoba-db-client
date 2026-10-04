@@ -36,7 +36,7 @@ func exportCommand() command {
 			t.flags(fs)
 			rows.flags(fs, true)
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai export — write a table's rows, or a query's, to a file
+				_, _ = fmt.Fprint(fs.Output(), `ikigai export — write a table's rows, or a query's, to a file
 
   ikigai export --table main.items --out items.csv
   ikigai export --table public.orders --where "total > 100" --format json
@@ -67,7 +67,7 @@ Flags:
 					if strings.TrimSpace(*where) != "" || *limit != 0 {
 						return e.usagef("--where and --limit are for --table; put them in the query")
 					}
-					script, code := scriptFrom(e, *file, *sql, "", t)
+					script, code := scriptFrom(ctx, e, *file, *sql, "", t)
 					if code != OK {
 						return code
 					}

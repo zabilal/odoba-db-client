@@ -3,6 +3,16 @@ version: "2"
 run:
   timeout: 5m
 
+  # The tagged suites are linted too, because they are code and because without
+  # this the linter reads a package as only its untagged half. The commit gate
+  # caught what that costs: a helper in an untagged test file, used only from a
+  # conformance-tagged one, is unused in the build the linter was looking at, so
+  # `unused` reported it, it came out, and the tagged build stopped compiling.
+  # Nothing here needs a server to compile.
+  build-tags:
+    - conformance
+    - duckdb
+
 linters:
   enable:
     - depguard
@@ -12,10 +22,32 @@ linters:
     - staticcheck
     - unused
     - bodyclose
-    - contextcheck
     - errorlint
     - misspell
     - revive
+
+  # contextcheck is not run, and the rule it stands for is kept another way.
+  #
+  # ARCH-4 / NFR-P12 say every data-source call carries a context, and that is
+  # enforced where it can be: source.Source's methods all take one, so a driver
+  # that does not thread it does not compile, and the conformance suite proves
+  # each driver stops when the context is cancelled.
+  #
+  # What contextcheck adds to that is a demand this codebase must refuse in two
+  # places. A window's callback fires when somebody clicks, long after the
+  # function that drew the button returned: giving it that function's context
+  # would tie a click to an operation that has already finished. And cleanup
+  # after a cancellation — rolling back a transaction, killing a query left
+  # running on a server — has to make a context that is not the cancelled one,
+  # which is the "non-inherited new context" contextcheck reports. The linter
+  # cannot tell either from a missed thread-through, and its demand is
+  # transitive: threading a context into one function makes it ask for one in
+  # every function that one calls, down to reading a local file.
+  #
+  # It was run once, over the whole tree, and the one real finding it had —
+  # `ikigai query --saved` reading the local database with context.Background,
+  # so an interrupted run did not stop — is fixed. Run it again by hand when
+  # the data layer changes shape; it is a review tool, not a gate.
 
   settings:
     depguard:
@@ -64,12 +96,119 @@ linters:
             - pkg: github.com/ikigai-db/ikigai-db/internal/source/drivers
               desc: "ARCH-2/ARCH-1: UI talks to internal/app, never directly to drivers."
 
-    contextcheck:
-      # ARCH-4 / NFR-P12: every data-source call must carry a context.
+    errcheck:
+      # Close on these three is a release, not an operation: the contract says
+      # so where each is declared, and it says so because there is nothing a
+      # caller could do with the error. Whether a read succeeded is reported by
+      # Next and by Err; whether a write landed is reported by the statement
+      # that made it, or by Commit. A caller that has finished with a stream and
+      # is told that letting it go did not go smoothly has no recourse and
+      # nothing to tell the person using the program.
+      #
+      # This is not a general exemption for Close. A file being written is a
+      # different matter — closing it is when the last of it reaches the disk,
+      # so those are checked, and errcheck still reports them.
+      exclude-functions:
+        - (github.com/ikigai-db/ikigai-db/internal/model.RowStream).Close
+        - (github.com/ikigai-db/ikigai-db/internal/source.Source).Close
+        - (github.com/ikigai-db/ikigai-db/internal/source.Session).Close
+        # database/sql's own results: Rows.Err reports what went wrong reading,
+        # and Close after it adds nothing.
+        - (*database/sql.Rows).Close
+        # bufio.Writer keeps the first error it meets and gives it back from
+        # every write after it and from Flush. The export path writes a whole
+        # file through one of these and checks Flush, so the error is checked
+        # once where it can be reported rather than at each of forty writes.
+        - (*bufio.Writer).Write
+        - (*bufio.Writer).WriteString
+        - (*bufio.Writer).WriteByte
+        - (*bufio.Writer).WriteRune
+        # crypto/rand.Read never returns an error: its documentation says so,
+        # and it stops the program rather than hand back bytes that are not
+        # random. Checking it would be checking for something that cannot
+        # happen.
+        - crypto/rand.Read
+
     revive:
       rules:
         - name: exported
           disabled: true
+
+    staticcheck:
+      # Everything staticcheck finds is wanted except the checks listed here,
+      # each with the reason it is off. The first group is what golangci-lint
+      # leaves off by default and this keeps off: they are about the wording of
+      # doc comments, and this codebase writes comments for a reader rather than
+      # to a template — one comment often introduces three methods at once
+      # (ST1020, ST1022), and a package's comment says what the package is for
+      # rather than repeating its name (ST1000, ST1003, ST1021).
+      checks:
+        - all
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1016"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
+        # ST1005 asks for error text that is a lowercase fragment with no full
+        # stop, because an error is usually wrapped into a longer sentence. Two
+        # kinds of error text here are not. Some name a product — "Entra would
+        # not issue an access token", "Redis removes a list's elements by
+        # value" — and lowercasing a name is simply wrong. Others are the
+        # sentence a person reads in a dialog, written as a sentence on
+        # purpose: "This is more than one document; edit one at a time."
+        # Lowercasing those would change what the window shows.
+        - "-ST1005"
+        # QF1001 offers to expand !(a && b) into its De Morgan form. Where this
+        # codebase writes that, the negation is the intent — "not a legal
+        # character in an identifier" — and expanding it inverts every
+        # comparison in the expression, which is where precedence mistakes
+        # live. The two places where the negation really was a double negative
+        # on one term were fixed and the check turned off; it found nine other
+        # things, all of which read worse its way.
+        - "-QF1001"
+        # QF1003 offers to turn a two-branch if/else into a switch. These sit
+        # inside a case of an outer switch, and a switch nested in a switch arm
+        # is harder to read than the if it replaces.
+        - "-QF1003"
+        # QF1008 offers to drop an embedded type's name from a selector.
+        # Writing c.Column.Position, or h.Process.Close, says which of the two
+        # things in play is meant, and that is worth four characters.
+        - "-QF1008"
+
+  exclusions:
+    rules:
+      # A deferred call releases something; it does not finish anything.
+      #
+      # By the time a deferred call runs, the function has already decided what
+      # it returns, and an error from letting go of a read, a connection, a
+      # session, a lock or a temporary file changes nothing about that decision
+      # and tells the person using the program nothing they can act on. Go has
+      # no way to write `defer _ = x.Close()`, so this is said once here rather
+      # than with four hundred linter exceptions. Everywhere else — including
+      # inside a goroutine, which has its own call stack and can report — a
+      # dropped error is written `_ = x()` at the site, and errcheck still
+      # reports one that is not.
+      #
+      # It is not a licence to defer the close of a file being written, because
+      # closing a written file is when the last of it reaches the disk. Every
+      # such place in the tree was looked at when this was turned off, and each
+      # one already answers for itself: store.writeFileAtomic closes explicitly
+      # and returns the error, internal/export checks Flush on the writer that
+      # buffers the file, and the diagram and chart exports call Sync and check
+      # it before the deferred Close, which makes the data durable while the
+      # error can still be reported. When a new deferred close is added, that is
+      # the question to ask about it.
+      - linters: [errcheck]
+        source: '^\s*defer '
+
+      # SQLite decides a column's affinity by looking for these substrings in
+      # the declared type, and those are the substrings, four characters each:
+      # the algorithm is in SQLite's documentation and "DOUB" is how it is
+      # written there. misspell reads it as a clipped "DOUBT".
+      - path: internal/source/drivers/sqlite/browse.go
+        linters: [misspell]
+        text: "`DOUB` is a misspelling"
 
 issues:
   max-issues-per-linter: 0

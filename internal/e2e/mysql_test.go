@@ -56,8 +56,8 @@ func mysqlJourney(t *testing.T, name, portEnv string, port int) journey {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if c, err := sql.Open("mysql", dsn); err == nil {
-			c.ExecContext(ctx, "DROP DATABASE IF EXISTS "+myDB)
-			c.Close()
+			_, _ = c.ExecContext(ctx, "DROP DATABASE IF EXISTS "+myDB)
+			_ = c.Close()
 		}
 	})
 	return journey{

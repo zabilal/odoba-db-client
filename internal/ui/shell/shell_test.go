@@ -28,6 +28,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -688,7 +689,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { hist.Close() })
+	t.Cleanup(func() { _ = hist.Close() })
 	path := filepath.Join(t.TempDir(), "settings.json")
 	sf, _, err := store.OpenSettings(path)
 	if err != nil {
@@ -729,7 +730,7 @@ func (fx *fixture) onlyTab(t *testing.T) *tab {
 // pump runs queued UI work, as the UI goroutine would, until cond holds.
 func pump(t *testing.T, q *uithread.Queue, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(race.Slower(5 * time.Second))
 	for !cond() {
 		if time.Now().After(deadline) {
 			t.Fatal("condition never held")

@@ -91,7 +91,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 			TRIM(d.MON$OWNER), TRIM(r.RDB$CHARACTER_SET_NAME)
 		FROM MON$DATABASE d CROSS JOIN RDB$DATABASE r`).
 		Scan(&s.version, &s.path, &s.odsMajor, &s.odsMinor, &s.pageSize, &s.owner, &s.charset); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil

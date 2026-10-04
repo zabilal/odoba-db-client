@@ -11,6 +11,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // The driver describes itself well enough for the connection form to be
@@ -75,7 +76,7 @@ func TestAFailedConnectionSaysWhy(t *testing.T) {
 	}
 	// One already classified is not classified again.
 	given := &source.ConnectError{Kind: source.ConnectConfig, Hint: "Choose a database file."}
-	if got := classifyConnectError(given); got != given {
+	if got := classifyConnectError(given); !errs.Same(got, given) {
 		t.Errorf("a classified failure was classified again: %v", got)
 	}
 }

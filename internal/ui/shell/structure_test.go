@@ -710,3 +710,39 @@ func TestATopicSaysNothingAboutSettingsItHasNot(t *testing.T) {
 		t.Errorf("a topic nobody has configured reads as:\n%s", got)
 	}
 }
+
+// How far behind a group is, said in words that fit the number.
+//
+// Each of these is a sentence somebody reads rather than a figure they parse,
+// so "1 records behind" and "1 could not be" are wrong in a way a number
+// never is. Every arm is here because each is one arm away from another.
+func TestHowFarBehindIsSaidInWordsThatFitTheNumber(t *testing.T) {
+	at := func(current, end, lag int64) model.GroupOffset {
+		return model.GroupOffset{Topic: "orders", Current: current, End: end, Lag: lag}
+	}
+	for _, c := range []struct {
+		what    string
+		offsets []model.GroupOffset
+		want    string
+	}{
+		{"nothing behind", []model.GroupOffset{at(50, 50, 0)},
+			"Up to date on every partition that could be measured."},
+		{"one record", []model.GroupOffset{at(49, 50, 1)},
+			"One record behind, across the partitions that could be measured."},
+		{"two records", []model.GroupOffset{at(48, 50, 2)},
+			"2 records behind, across the partitions that could be measured."},
+		{"one partition nobody could read", []model.GroupOffset{at(49, 50, 1), at(-1, 50, -1)},
+			"One record behind, across the partitions that could be measured." +
+				" One could not be, and is not counted."},
+		{"two of them", []model.GroupOffset{at(48, 50, 2), at(-1, 50, -1), at(5, -1, -1)},
+			"2 records behind, across the partitions that could be measured." +
+				" 2 could not be, and are not counted."},
+		{"none of them", []model.GroupOffset{at(-1, 50, -1)},
+			"Up to date on every partition that could be measured." +
+				" One could not be, and is not counted."},
+	} {
+		if got := behindText(&model.ConsumerGroup{ID: "readers", Offsets: c.offsets}); got != c.want {
+			t.Errorf("%s reads as %q,\n                 want %q", c.what, got, c.want)
+		}
+	}
+}
