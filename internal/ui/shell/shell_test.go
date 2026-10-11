@@ -28,6 +28,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/store/secrets"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/fonts"
 	"github.com/ikigai-db/ikigai-db/internal/testutil/race"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -673,6 +674,10 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	// Before the application, because a new one parses the theme's fonts
+	// again and Fyne's shaper would keep the last one's as well: eight
+	// hundred tests of that is four gigabytes (see testutil/fonts).
+	fonts.Forget()
 	a := &notedApp{App: test.NewTempApp(t)}
 	// Opened first so it closes last: history writes finish in the background.
 	// The local database lives in a directory this removes itself, and

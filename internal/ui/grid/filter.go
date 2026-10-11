@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
 	ftheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -45,7 +44,7 @@ func newColumnHeader(g *TableGrid) *columnHeader {
 		title: newHeaderCell(g), handle: newResizeHandle(g)}
 	if g.filterable {
 		h.filter = newFilterField(g)
-		h.field = container.NewThemeOverride(h.filter, compact{})
+		h.field = newSmall(h.filter)
 	}
 	h.ExtendBaseWidget(h)
 	return h

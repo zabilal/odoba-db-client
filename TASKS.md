@@ -67,6 +67,18 @@ STATUS:    Phase 4's application work is done, and the linter now
            so it now reports the widget's position, size, the canvas
            size and whether an overlay is up, and the next run will
            say why rather than that.
+           That run came back red on two jobs and neither was the
+           focus test (ADR-0172). Windows ran out of memory under the
+           race detector, and the cause was here: every filter field
+           in a grid's header and every cell being edited was a Fyne
+           theme override, each override a scope of its own — a new
+           one on every refresh — and Fyne parses and keeps the
+           theme's fonts for each. 6.4 MB and 13ms a time, in the
+           product. They share one scope now. The window's tests kept
+           fonts a second way, through Fyne's shaper, which they now
+           reset: 7.9 GB at the peak became 1.6. macOS failed on a
+           test plugin that answered before it was asked. Whether
+           Windows is green is not known until the branch is pushed.
 NEXT TASK: T5.15, whose Elasticsearch/OpenSearch driver is
            written and stashed ("T5.15 elasticsearch driver, in
            progress"): wire.go, source.go, tree.go and browse.go, plus

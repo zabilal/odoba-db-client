@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
@@ -101,7 +100,7 @@ func (g *TableGrid) EditCell(first string) bool {
 	}
 	e.entry.SetText(text)
 	e.entry.CursorColumn = len([]rune(text))
-	e.box = container.NewThemeOverride(e.entry, compact{})
+	e.box = newSmall(e.entry)
 	g.Table.Refresh()
 	g.focus(e.entry)
 	return true

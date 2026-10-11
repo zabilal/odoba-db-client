@@ -176,3 +176,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0169](0169-what-another-machine-found.md) | What another machine found | Accepted |
 | [0170](0170-a-dropped-error-says-so.md) | A dropped error says so | Accepted |
 | [0171](0171-what-one-machine-cannot-see.md) | What one machine cannot see | Accepted |
+| [0172](0172-fonts-nobody-asked-to-keep.md) | Fonts nobody asked to keep | Accepted |
