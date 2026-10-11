@@ -21,6 +21,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cockroach"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/dynamodb"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/elasticsearch"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/firebird"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/kafka"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/libsql"

@@ -119,6 +119,22 @@ jobs:
         image: amazon/dynamodb-local:latest
         ports: ["8000:8000"]
 
+      # OpenSearch with its security plugin off (T5.15): one node, which is
+      # all a search engine needs to answer everything this asks of it. What
+      # it cannot prove is a refused password or a certificate, which are held
+      # by tests over a server made for the purpose (ADR-0173).
+      opensearch:
+        image: opensearchproject/opensearch:2
+        ports: ["9200:9200"]
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+        options: >-
+          --health-cmd "curl -sf http://localhost:9200/_cluster/health"
+          --health-interval 10s --health-timeout 5s --health-retries 30
+
       schema-registry:
         image: confluentinc/cp-schema-registry:7.7.0
         ports: ["8081:8081"]
@@ -192,4 +208,6 @@ jobs:
           IKIGAI_FIREBIRD_PLAIN_PORT: "3051"
           IKIGAI_REQUIRE_DYNAMODB: "1"
           IKIGAI_DYNAMODB_ENDPOINT: "http://127.0.0.1:8000"
+          IKIGAI_REQUIRE_OPENSEARCH: "1"
+          IKIGAI_OPENSEARCH_PORT: "9200"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
