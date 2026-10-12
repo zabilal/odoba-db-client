@@ -195,6 +195,23 @@ jobs:
             sleep 3
           done
 
+      # Pulsar standalone: broker, bookie and metadata store in one process,
+      # which is a command and so is started by hand (T5.16). It takes most of
+      # a minute to answer.
+      - name: Start Pulsar
+        run: |
+          docker run -d --name pulsar -p 6650:6650 -p 8088:8080 --memory 1400m \
+            -e PULSAR_MEM="-Xms256m -Xmx512m -XX:MaxDirectMemorySize=384m" \
+            -e PULSAR_STANDALONE_USE_ZOOKEEPER=0 \
+            apachepulsar/pulsar:4.0.6 bin/pulsar standalone --no-functions-worker --no-stream-storage
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8088/admin/v2/namespaces/public 2>/dev/null | grep -q default; then
+              echo "pulsar is up"
+              break
+            fi
+            sleep 2
+          done
+
       # NATS with JetStream on, which is an argument and so is started by hand
       # (T5.16). Kept in memory: the suite makes and removes its own streams.
       - name: Start NATS
@@ -264,6 +281,9 @@ jobs:
           IKIGAI_TRINO_PORT: "8085"
           IKIGAI_REQUIRE_NATS: "1"
           IKIGAI_NATS_PORT: "4222"
+          IKIGAI_REQUIRE_PULSAR: "1"
+          IKIGAI_PULSAR_PORT: "6650"
+          IKIGAI_PULSAR_ADMIN_PORT: "8088"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
 
       # The Kafka driver's whole suite again, against Redpanda. The same driver
