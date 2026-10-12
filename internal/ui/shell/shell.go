@@ -262,6 +262,9 @@ type tab struct {
 	// stats is the column figures last asked for (colstats.go), kept so
 	// that a second asking replaces the first rather than stacking on it.
 	stats *statsPanel
+	// heated is the columns shaded as a heat map, by name, so that they
+	// are measured again when the rows shown change (heat.go).
+	heated map[string]bool
 	// agg is the line under the grid that adds up what is selected
 	// (aggbar.go), while it is shown.
 	agg *aggBar
@@ -627,6 +630,9 @@ func (s *Shell) registerCommands() {
 		{ID: cmdUnfreeze, Category: l10n.T("View"), Title: l10n.T("Unfreeze Columns"), Keywords: []string{"unpin"},
 			Enabled: func() bool { g := s.activeGrid(); return g != nil && g.Frozen() > 0 },
 			Run:     func() { s.onGrid((*grid.TableGrid).Unfreeze) }},
+		{ID: cmdHeatMap, Category: l10n.T("View"), Title: l10n.T("Heat Map"),
+			Keywords: []string{"conditional", "formatting", "colour", "color", "shade", "gradient", "largest", "smallest"},
+			Enabled:  s.canHeat, Run: s.toggleHeat},
 		{ID: cmdCopyCells, Category: l10n.T("Edit"), Title: l10n.T("Copy Cells"), Keywords: []string{"clipboard", "tsv", "selection"},
 			Enabled: s.hasSelection, Run: s.copyActive},
 		{ID: cmdCopyCSV, Category: l10n.T("Edit"), Title: l10n.T("Copy as CSV"), Keywords: []string{"clipboard", "comma"},

@@ -57,7 +57,12 @@ func Aggregates(values []any) Aggregate {
 //
 // Neither an infinity nor a not-a-number is added up. A total that came back
 // as "NaN" because one row held one would say nothing about the rest.
-func number(v any) (float64, bool) {
+func number(v any) (float64, bool) { return Number(v) }
+
+// Number is a value as the number it is, where it is one that can be
+// counted with: what a total adds up, and what a heat map places along a
+// column's range.
+func Number(v any) (float64, bool) {
 	switch n := v.(type) {
 	case int:
 		return float64(n), true

@@ -143,6 +143,7 @@ const (
 	cmdMoveRight        = "grid.moveRight"
 	cmdFreeze           = "grid.freeze"
 	cmdUnfreeze         = "grid.unfreeze"
+	cmdHeatMap          = "grid.heatMap"
 	cmdFind             = "edit.find"
 	cmdFindReplace      = "edit.findReplace"
 	cmdFindNext         = "edit.findNext"
@@ -204,7 +205,7 @@ var menuBar = []struct {
 		item(cmdSidebar), item(cmdFilterObjects), item(cmdSearchStructure), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), item(cmdMap), separator,
 		item(cmdSeek), item(cmdFollow), item(cmdPause), separator,
 		item(cmdSaveView), item(cmdViews),
-		submenu(l10n.N("Columns"), cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
+		submenu(l10n.N("Columns"), cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze, cmdHeatMap), separator,
 		submenu(l10n.N("Appearance"), cmdAppearSystem, cmdAppearLight, cmdAppearDark),
 		submenu(l10n.N("Accent Colour"), accentIDs()...),
 		submenu(l10n.N("Text Size"), textSizeIDs()...),

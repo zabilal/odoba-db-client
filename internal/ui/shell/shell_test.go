@@ -331,6 +331,9 @@ func (f fakeSource) ColumnStats(ctx context.Context, _ model.ObjectRef, def mode
 	if source.Ordered(def) {
 		out.Min, out.Max = int64(0), rows-1
 	}
+	if statsOneValue.Load() {
+		out.Min, out.Max = int64(7), int64(7)
+	}
 	if source.Numeric(def) {
 		out.Mean, out.HasMean = float64(rows)/2, true
 		out.Sum, out.HasSum = float64(rows)*float64(rows-1)/2, true
@@ -344,6 +347,8 @@ var (
 	statsFails atomic.Bool
 	statsGate  chan struct{}
 	statsAsked atomic.Int64
+	// statsOneValue makes every column hold one value, whatever it is.
+	statsOneValue atomic.Bool
 )
 
 // InsertRows writes each row as a statement naming what it was given.

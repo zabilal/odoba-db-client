@@ -53,6 +53,10 @@ type TableGrid struct {
 	sel   Selection
 	table *gridTable
 
+	// heat is the columns shaded by how large each value is, each with the
+	// range its values are placed along (FR-3.17). See heat.go.
+	heat map[int]heatRange
+
 	// order is the model's columns in the order they are shown, which hiding
 	// and moving change; frozen is how many of them, from the left, stay in
 	// view as the rest scroll (FR-3.2). See columns.go.
@@ -356,6 +360,14 @@ func (g *TableGrid) UpdateCell(id widget.TableCellID, o fyne.CanvasObject) {
 
 	fg := g.foreground(c.Kind)
 	var tint color.Color
+	if h, ok := g.heat[mc]; ok {
+		// How large the value is, among its column's (FR-3.17). A change's
+		// own tint, below, takes its place: what is about to be written
+		// matters more than how big it is.
+		if frac, ok := h.along(val); ok {
+			tint = g.palette.Heat(frac)
+		}
+	}
 
 	align := fyne.TextAlignLeading
 	if c.Kind.RightAligned() {

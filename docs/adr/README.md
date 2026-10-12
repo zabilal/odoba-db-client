@@ -188,3 +188,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0181](0181-a-job-is-a-commands-flags.md) | A job is a command's flags | Accepted |
 | [0182](0182-english-is-the-key.md) | English is the key | Accepted |
 | [0183](0183-read-again-before-writing.md) | Read again before writing | Accepted |
+| [0184](0184-a-column-shaded-by-size.md) | A column shaded by size | Accepted |

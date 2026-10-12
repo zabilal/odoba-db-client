@@ -129,6 +129,7 @@ func (s *Shell) rebrowse(t *tab, opt source.BrowseOptions, keys []grid.SortKey, 
 			t.grid.ScheduleRefresh()
 			s.count(t)
 			s.browsed(t)
+			s.reheat(t)
 		})
 	}()
 }

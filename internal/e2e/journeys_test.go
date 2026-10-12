@@ -564,6 +564,25 @@ func runJ2(t *testing.T, j journey) {
 		n, final := g.Model().Extent()
 		return final && n == fixtureRows
 	})
+
+	// And where the large ones are: the key's column shaded between the
+	// smallest and largest it holds, which are this engine's to say, in
+	// this engine's own type for a number (FR-3.17).
+	h.q.Run(func() { g.GoTo(gridCell(0, 0)) })
+	waitFor(t, h.q, "Heat Map to be offered", func() bool {
+		h.w.Canvas().Capture()
+		return offered(h, "grid.heatMap")
+	})
+	if err := h.s.Commands().Run("grid.heatMap"); err != nil {
+		t.Fatalf("Heat Map: %v", err)
+	}
+	waitFor(t, h.q, "the column to be shaded", func() bool {
+		h.w.Canvas().Capture()
+		return g.Heated(0)
+	})
+	if lo, hi, _ := g.HeatRange(0); lo != 1 || hi != fixtureRows {
+		t.Errorf("ids from 1 to %d are shaded between %v and %v", fixtureRows, lo, hi)
+	}
 }
 
 // runJ5 is journey J5: move data. Export a filtered result to a file, then
