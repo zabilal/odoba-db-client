@@ -180,3 +180,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0173](0173-a-search-engine-is-read.md) | A search engine is read | Accepted |
 | [0174](0174-a-query-engine-keeps-nothing.md) | A query engine keeps nothing | Accepted |
 | [0175](0175-the-same-driver-asked-twice.md) | The same driver, asked twice | Accepted |
+| [0176](0176-a-stream-is-a-log.md) | A stream is a log | Accepted |

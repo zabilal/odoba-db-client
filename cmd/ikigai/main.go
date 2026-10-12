@@ -36,6 +36,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/libsql"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mongo"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/mysql"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/nats"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/oracle"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"

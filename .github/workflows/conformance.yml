@@ -195,6 +195,19 @@ jobs:
             sleep 3
           done
 
+      # NATS with JetStream on, which is an argument and so is started by hand
+      # (T5.16). Kept in memory: the suite makes and removes its own streams.
+      - name: Start NATS
+        run: |
+          docker run -d --name nats -p 4222:4222 -p 8222:8222 nats:2.12 -js -m 8222
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8222/healthz >/dev/null; then
+              echo "nats is up"
+              break
+            fi
+            sleep 1
+          done
+
       # Redpanda, which speaks Kafka's protocol and is asked everything the
       # Kafka driver is asked (T5.16). By hand because it is started with
       # arguments, which a service container cannot be given, and on the port
@@ -249,6 +262,8 @@ jobs:
           IKIGAI_OPENSEARCH_PORT: "9200"
           IKIGAI_REQUIRE_TRINO: "1"
           IKIGAI_TRINO_PORT: "8085"
+          IKIGAI_REQUIRE_NATS: "1"
+          IKIGAI_NATS_PORT: "4222"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
 
       # The Kafka driver's whole suite again, against Redpanda. The same driver
