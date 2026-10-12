@@ -177,6 +177,24 @@ jobs:
             sleep 2
           done
 
+      # Started by hand, like the replica set: Trino's test server wants one
+      # catalog the image does not bring, and a catalog is a file in a
+      # directory, which a service container cannot be given from a checkout
+      # that has not happened yet (T5.15). The memory limit is what the JVM
+      # sizes itself from.
+      - name: Start Trino
+        run: |
+          docker run -d --name trino -p 8085:8080 --memory 1536m \
+            -v "$PWD/internal/source/drivers/trino/testdata/blackhole.properties:/etc/trino/catalog/blackhole.properties:ro" \
+            trinodb/trino:483
+          for i in $(seq 1 60); do
+            if curl -s http://127.0.0.1:8085/v1/info | grep -q '"starting":false'; then
+              echo "trino is up"
+              break
+            fi
+            sleep 3
+          done
+
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
@@ -210,4 +228,6 @@ jobs:
           IKIGAI_DYNAMODB_ENDPOINT: "http://127.0.0.1:8000"
           IKIGAI_REQUIRE_OPENSEARCH: "1"
           IKIGAI_OPENSEARCH_PORT: "9200"
+          IKIGAI_REQUIRE_TRINO: "1"
+          IKIGAI_TRINO_PORT: "8085"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/

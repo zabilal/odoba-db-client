@@ -178,3 +178,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0171](0171-what-one-machine-cannot-see.md) | What one machine cannot see | Accepted |
 | [0172](0172-fonts-nobody-asked-to-keep.md) | Fonts nobody asked to keep | Accepted |
 | [0173](0173-a-search-engine-is-read.md) | A search engine is read | Accepted |
+| [0174](0174-a-query-engine-keeps-nothing.md) | A query engine keeps nothing | Accepted |

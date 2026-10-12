@@ -6,6 +6,7 @@ func TestKnown(t *testing.T) {
 	for name, want := range map[string]bool{
 		"postgresql": true, "PostgreSQL": true, "mysql": true, "cql": true,
 		"clickhouse": true, "ClickHouse": true, "sqlserver": true, "oracle": true,
+		"trino": true, "Trino": true,
 		"sql": false, "": false, "postgre": false,
 	} {
 		if got := Known(name); got != want {

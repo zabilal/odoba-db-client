@@ -32,6 +32,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlite"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlserver"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/trino"
 )
 
 func main() {
