@@ -123,7 +123,7 @@ func (v *Vault) Set(id, key, value string) error {
 func (v *Vault) SetSession(id, key, value string) error { return v.session.Set(id, key, value) }
 
 func (v *Vault) Delete(id, key string) error {
-	v.session.Delete(id, key)
+	_ = v.session.Delete(id, key)
 	if v.Persistent() {
 		return v.os.Delete(id, key)
 	}
@@ -140,7 +140,7 @@ func (v *Vault) setAll(id string, m map[string]string) error {
 		}
 		if err := v.Set(id, k, m[k]); err != nil {
 			for _, d := range done {
-				v.Delete(id, d)
+				_ = v.Delete(id, d)
 			}
 			return err
 		}

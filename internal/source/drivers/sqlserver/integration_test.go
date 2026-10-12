@@ -60,7 +60,7 @@ func admin(t *testing.T, database string) *sql.DB {
 	}
 	if err != nil {
 		if db != nil {
-			db.Close()
+			_ = db.Close()
 		}
 		if os.Getenv("IKIGAI_REQUIRE_MSSQL") != "" {
 			t.Fatalf("SQL Server required but unavailable: %v", err)
@@ -1284,7 +1284,7 @@ func TestLiveTheSessionsNameIsReadableWhileItIsBusy(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ss.Query(ctx, source.Statement{SQL: `WAITFOR DELAY '00:00:10'`})
+		_, _ = ss.Query(ctx, source.Statement{SQL: `WAITFOR DELAY '00:00:10'`})
 	}()
 	// Long enough for the statement to be under way, and far short of the
 	// ten seconds it waits.

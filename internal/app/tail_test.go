@@ -63,7 +63,7 @@ func followed(t *testing.T, keeps int) (*Tail, *feed) {
 	if err != nil {
 		t.Fatalf("following: %v", err)
 	}
-	t.Cleanup(func() { tail.Close() })
+	t.Cleanup(func() { _ = tail.Close() })
 	return tail, f
 }
 

@@ -154,18 +154,75 @@ func (r *recordSource) goesAway(err error) {
 // allowed refuses the way the guard does: a read-only connection refuses
 // whatever anybody consents to, and a production one asks once and then
 // accepts.
+//
+// Every field of this fake is read behind the mutex, because the window asks it
+// things on goroutines of its own while the test that set it up reads what it
+// recorded. Without that the race detector is right about all of it.
 func (r *recordSource) allowed(confirmed bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.refuse != nil && (!confirmed || errors.Is(r.refuse, source.ErrReadOnly)) {
 		return r.refuse
 	}
 	return nil
 }
 
+// refuses is what this source says when it is asked to change anything, set by
+// a test before it asks.
+func (r *recordSource) refuses(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.refuse = err
+}
+
+// refusal is what it says when asked to change something without consent.
+func (r *recordSource) refusal(confirmed bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.refuse != nil && !confirmed {
+		return r.refuse
+	}
+	return nil
+}
+
+// did records a change, and changes is what was recorded.
+func (r *recordSource) did(what string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.changed = append(r.changed, what)
+}
+
+func (r *recordSource) changes() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.changed...)
+}
+
+// writes is every record this source was asked to write.
+func (r *recordSource) writes() []source.ProduceRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]source.ProduceRequest(nil), r.produced...)
+}
+
+// grants and revokes are the permissions it was told to add and take away.
+func (r *recordSource) grants() []model.ACL {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]model.ACL(nil), r.granted...)
+}
+
+func (r *recordSource) revokes() []model.ACL {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]model.ACL(nil), r.revoked...)
+}
+
 func (r *recordSource) CreateTopic(_ context.Context, spec source.TopicSpec) error {
 	if err := r.allowed(spec.Confirmed); err != nil {
 		return err
 	}
-	r.changed = append(r.changed, "create "+spec.Name)
+	r.did("create " + spec.Name)
 	return nil
 }
 
@@ -173,7 +230,7 @@ func (r *recordSource) DeleteTopic(_ context.Context, topic string, confirmed bo
 	if err := r.allowed(confirmed); err != nil {
 		return err
 	}
-	r.changed = append(r.changed, "delete "+topic)
+	r.did("delete " + topic)
 	return nil
 }
 
@@ -181,7 +238,7 @@ func (r *recordSource) AddPartitions(_ context.Context, topic string, count int3
 	if err := r.allowed(confirmed); err != nil {
 		return err
 	}
-	r.changed = append(r.changed, fmt.Sprintf("add %d to %s", count, topic))
+	r.did(fmt.Sprintf("add %d to %s", count, topic))
 	return nil
 }
 
@@ -189,7 +246,7 @@ func (r *recordSource) ResetOffsets(_ context.Context, req source.ResetRequest) 
 	if err := r.allowed(req.Confirmed); err != nil {
 		return err
 	}
-	r.changed = append(r.changed, "move "+req.GroupID)
+	r.did("move " + req.GroupID)
 	return nil
 }
 
@@ -197,7 +254,7 @@ func (r *recordSource) AlterTopicConfig(_ context.Context, topic string, _ map[s
 	if err := r.allowed(confirmed); err != nil {
 		return err
 	}
-	r.changed = append(r.changed, "configure "+topic)
+	r.did("configure " + topic)
 	return nil
 }
 
@@ -208,6 +265,8 @@ func (r *recordSource) Produce(_ context.Context, rec source.ProduceRequest) (mo
 	if err := r.allowed(rec.Confirmed); err != nil {
 		return model.TopicPartition{}, 0, err
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.produced = append(r.produced, rec)
 	return model.TopicPartition{Topic: rec.Topic, Partition: 1}, 42, nil
 }
@@ -316,8 +375,8 @@ func (r *recordSource) aclAsks() []model.ACLFilter {
 }
 
 func (r *recordSource) GrantACL(_ context.Context, acl model.ACL, confirmed bool) error {
-	if r.refuse != nil && !confirmed {
-		return r.refuse
+	if r.refusal(confirmed) != nil {
+		return r.refusal(confirmed)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -327,8 +386,8 @@ func (r *recordSource) GrantACL(_ context.Context, acl model.ACL, confirmed bool
 }
 
 func (r *recordSource) RevokeACL(_ context.Context, acl model.ACL, confirmed bool) error {
-	if r.refuse != nil && !confirmed {
-		return r.refuse
+	if r.refusal(confirmed) != nil {
+		return r.refusal(confirmed)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -9,6 +9,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 func config(host string, port int, params map[string]string) source.ConnectionConfig {
@@ -190,7 +191,7 @@ func TestClassifyConnectErrorSaysWhatToFix(t *testing.T) {
 	}
 	// One already classified is left as it is.
 	in := &source.ConnectError{Kind: source.ConnectConfig, Hint: "no"}
-	if got := classifyConnectError(in); got != error(in) {
+	if got := classifyConnectError(in); !errs.Same(got, in) {
 		t.Errorf("a classified error was classified again as %v", got)
 	}
 }

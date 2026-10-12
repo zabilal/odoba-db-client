@@ -1,6 +1,7 @@
 package sqlfmt
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -372,14 +373,7 @@ func TestAWordThatIsAClauseOnlyWhereItIsOne(t *testing.T) {
 	}
 }
 
-// as is errors.As, named so the test reads as a sentence.
-func as(err error, target **ErrChanged) bool {
-	for err != nil {
-		if e, ok := err.(*ErrChanged); ok {
-			*target = e
-			return true
-		}
-		break
-	}
-	return false
-}
+// as is errors.As, named so the test reads as a sentence. It was written out by
+// hand and looked at the outermost error only, which is not what errors.As does
+// and not what a wrapped error needs.
+func as(err error, target **ErrChanged) bool { return errors.As(err, target) }

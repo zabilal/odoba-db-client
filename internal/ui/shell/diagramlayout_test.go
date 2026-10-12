@@ -1,4 +1,4 @@
-package app
+package shell
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/ui/canvas"
 )
 
-// Keeping a diagram as somebody arranged it (FR-8.2).
+// Putting a diagram back as somebody arranged it (FR-8.2).
 
 func laidOut() *canvas.Graph {
 	g := canvas.NewGraph([]canvas.Node{

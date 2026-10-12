@@ -20,7 +20,7 @@ func workspace(t *testing.T, host string) (*Workspace, string) {
 		t.Fatal(err)
 	}
 	w := NewWorkspace(f.c, fast)
-	t.Cleanup(func() { w.CloseAll() })
+	t.Cleanup(func() { _ = w.CloseAll() })
 	return w, conn.ID
 }
 
@@ -68,7 +68,7 @@ func TestFailedConnectIsRetriedNotRemembered(t *testing.T) {
 		t.Fatal("expected a failure")
 	}
 	before := fakeOpens.Load()
-	w.Connect(context.Background(), id)
+	_, _ = w.Connect(context.Background(), id)
 	if fakeOpens.Load() == before {
 		t.Error("the failure was cached; a server that recovers would stay unreachable")
 	}

@@ -710,10 +710,10 @@ func behindText(g *model.ConsumerGroup) string {
 		}
 	}
 	var text string
-	switch n := g.TotalLag(); {
-	case n == 0:
+	switch n := g.TotalLag(); n {
+	case 0:
 		text = "Up to date on every partition that could be measured."
-	case n == 1:
+	case 1:
 		text = "One record behind, across the partitions that could be measured."
 	default:
 		text = fmt.Sprintf("%d records behind, across the partitions that could be measured.", n)

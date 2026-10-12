@@ -63,7 +63,7 @@ func admin(t *testing.T) *sql.DB {
 	}
 	if err != nil {
 		if db != nil {
-			db.Close()
+			_ = db.Close()
 		}
 		if os.Getenv("IKIGAI_REQUIRE_ORACLE") != "" {
 			t.Fatalf("Oracle required but unavailable: %v", err)

@@ -30,6 +30,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/clickhouse"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/cockroach"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/dynamodb"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/elasticsearch"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/firebird"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/kafka"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/libsql"
@@ -40,6 +41,7 @@ import (
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/redis"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlite"
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/sqlserver"
+	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/trino"
 )
 
 // version is set at build time via -ldflags.

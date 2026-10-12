@@ -92,11 +92,11 @@ func (r *rowsOut) writer(e *env) (io.Writer, func(ok bool) error, error) {
 	}
 	return f, func(ok bool) error {
 		if cerr := f.Close(); cerr != nil && ok {
-			os.Remove(tmp)
+			_ = os.Remove(tmp)
 			return cerr
 		}
 		if !ok {
-			os.Remove(tmp)
+			_ = os.Remove(tmp)
 			return nil
 		}
 		return os.Rename(tmp, r.out)

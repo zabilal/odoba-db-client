@@ -5,6 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -111,7 +112,7 @@ func (s *duckSource) keyColumns(ctx context.Context, ref model.ObjectRef) ([]str
 		WHERE database_name = ? AND schema_name = ? AND table_name = ?
 		  AND constraint_type = 'PRIMARY KEY'`,
 		ref.Path[0], ref.Path[1], ref.Path[2]).Scan(&names)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -339,7 +340,7 @@ func (r *rowStream) Next(ctx context.Context) (model.Row, error) {
 	}
 	if !r.rows.Next() {
 		err := r.rows.Err()
-		r.Close()
+		_ = r.Close()
 		if err != nil {
 			return nil, statementError(err, ctx)
 		}

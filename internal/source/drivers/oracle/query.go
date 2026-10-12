@@ -56,7 +56,7 @@ func (ss *session) Close() error {
 	}
 	ss.closed = true
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	conn := ss.conn
 	ss.mu.Unlock()
@@ -93,7 +93,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 
@@ -200,7 +200,7 @@ func (s *oracleSource) Session(ctx context.Context) (source.Session, error) {
 	var sid string
 	if err := c.QueryRowContext(ctx,
 		`SELECT sys_context('userenv', 'sid') FROM dual`).Scan(&sid); err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, statementError(err, ctx)
 	}
 	return &session{src: s, conn: c, sid: sid}, nil
@@ -262,7 +262,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

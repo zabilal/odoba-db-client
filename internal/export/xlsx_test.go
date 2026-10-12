@@ -29,7 +29,7 @@ func unzipped(t *testing.T, data string) map[string]string {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		out[f.Name] = string(b)
 	}
 	return out

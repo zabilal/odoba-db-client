@@ -119,6 +119,22 @@ jobs:
         image: amazon/dynamodb-local:latest
         ports: ["8000:8000"]
 
+      # OpenSearch with its security plugin off (T5.15): one node, which is
+      # all a search engine needs to answer everything this asks of it. What
+      # it cannot prove is a refused password or a certificate, which are held
+      # by tests over a server made for the purpose (ADR-0173).
+      opensearch:
+        image: opensearchproject/opensearch:2
+        ports: ["9200:9200"]
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+        options: >-
+          --health-cmd "curl -sf http://localhost:9200/_cluster/health"
+          --health-interval 10s --health-timeout 5s --health-retries 30
+
       schema-registry:
         image: confluentinc/cp-schema-registry:7.7.0
         ports: ["8081:8081"]
@@ -131,13 +147,59 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache: true
+
+      # A replica set cannot be a service container: it has to be initiated after
+      # it starts, and a service container has nowhere to say that. It is also
+      # published on the same port inside and out, because a replica set
+      # advertises its members' addresses and a member reachable only through a
+      # port map is one the driver abandons after discovery (T5.12).
+      - name: Start a MongoDB replica set
+        run: |
+          docker run -d --name mongo-rs -p 57018:57018 mongo:7 \
+            --replSet rs0 --bind_ip_all --port 57018
+          for i in $(seq 1 30); do
+            if docker exec mongo-rs mongosh --port 57018 --quiet \
+                 --eval 'db.runCommand("ping").ok' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec mongo-rs mongosh --port 57018 --quiet \
+            --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:57018"}]})'
+          for i in $(seq 1 30); do
+            if docker exec mongo-rs mongosh --port 57018 --quiet \
+                 --eval 'rs.status().myState' 2>/dev/null | grep -q '^1$'; then
+              echo "the replica set has a primary"
+              break
+            fi
+            sleep 2
+          done
+
+      # Started by hand, like the replica set: Trino's test server wants one
+      # catalog the image does not bring, and a catalog is a file in a
+      # directory, which a service container cannot be given from a checkout
+      # that has not happened yet (T5.15). The memory limit is what the JVM
+      # sizes itself from.
+      - name: Start Trino
+        run: |
+          docker run -d --name trino -p 8085:8080 --memory 1536m \
+            -v "$PWD/internal/source/drivers/trino/testdata/blackhole.properties:/etc/trino/catalog/blackhole.properties:ro" \
+            trinodb/trino:483
+          for i in $(seq 1 60); do
+            if curl -s http://127.0.0.1:8085/v1/info | grep -q '"starting":false'; then
+              echo "trino is up"
+              break
+            fi
+            sleep 3
+          done
 
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev
 
       # IKIGAI_REQUIRE_* turn a missing server into a failure. Locally the
       # suites skip when no server is running; in CI a skip would be a silent
@@ -151,6 +213,8 @@ jobs:
           IKIGAI_MARIADB_PORT: "3307"
           IKIGAI_REQUIRE_MONGO: "1"
           IKIGAI_MONGO_PORT: "27017"
+          IKIGAI_REQUIRE_MONGO_RS: "1"
+          IKIGAI_MONGO_RS_PORT: "57018"
           IKIGAI_REQUIRE_REDIS: "1"
           IKIGAI_REDIS_PORT: "6379"
           IKIGAI_REQUIRE_REDIS_JSON: "1"
@@ -162,4 +226,8 @@ jobs:
           IKIGAI_FIREBIRD_PLAIN_PORT: "3051"
           IKIGAI_REQUIRE_DYNAMODB: "1"
           IKIGAI_DYNAMODB_ENDPOINT: "http://127.0.0.1:8000"
+          IKIGAI_REQUIRE_OPENSEARCH: "1"
+          IKIGAI_OPENSEARCH_PORT: "9200"
+          IKIGAI_REQUIRE_TRINO: "1"
+          IKIGAI_TRINO_PORT: "8085"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/

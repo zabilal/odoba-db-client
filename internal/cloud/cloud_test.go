@@ -34,7 +34,7 @@ func TestEveryConnectionMintsItsOwnToken(t *testing.T) {
 	asked := 0
 	metadata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked++
-		w.Write([]byte(`{"access_token":"a-token"}`))
+		_, _ = w.Write([]byte(`{"access_token":"a-token"}`))
 	}))
 	defer metadata.Close()
 	t.Setenv("GCE_METADATA_HOST", strings.TrimPrefix(metadata.URL, "http://"))
@@ -55,7 +55,7 @@ func TestEveryConnectionMintsItsOwnToken(t *testing.T) {
 func TestCredentialsAreNotFollowedToWhereverARedirectPoints(t *testing.T) {
 	noAmbientIdentity(t)
 	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"access_token":"a-token-from-somewhere-else"}`))
+		_, _ = w.Write([]byte(`{"access_token":"a-token-from-somewhere-else"}`))
 	}))
 	defer elsewhere.Close()
 	metadata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func TestARefusalIsKeptToOneLine(t *testing.T) {
 	noAmbientIdentity(t)
 	metadata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("<html>\n<head><title>403</title></head>\n<body>the page goes on</body>\n</html>"))
+		_, _ = w.Write([]byte("<html>\n<head><title>403</title></head>\n<body>the page goes on</body>\n</html>"))
 	}))
 	defer metadata.Close()
 	t.Setenv("GCE_METADATA_HOST", strings.TrimPrefix(metadata.URL, "http://"))

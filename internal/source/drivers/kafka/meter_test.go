@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"context"
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -112,7 +113,7 @@ func TestWhichBrokerLeadsWhichPartition(t *testing.T) {
 // A topic to measure needs a name, said before a cluster is asked anything.
 func TestATopicToMeasureNeedsAName(t *testing.T) {
 	var s kafkaSource
-	_, err := s.TopicTotals(nil, "")
+	_, err := s.TopicTotals(context.TODO(), "")
 	if err == nil {
 		t.Fatal("a topic with no name was measured")
 	}

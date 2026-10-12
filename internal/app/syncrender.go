@@ -28,15 +28,15 @@ func (s *chosenSet) render(gen source.DDLGenerator, live, wanted *model.Database
 				continue
 			}
 			ref := model.NewRef(c.kind, live.Name, c.schema, c.name)
-			switch {
-			case c.status == diff.Removed:
+			switch c.status {
+			case diff.Removed:
 				st, err := gen.DropObject(ref, false)
 				if err != nil {
 					return nil, err
 				}
 				drops = append(drops, st...)
 
-			case c.status == diff.Added:
+			case diff.Added:
 				obj, ok := objectIn(wanted, c.schema, c.kind, c.name)
 				if !ok {
 					return nil, fmt.Errorf("app: %s %s is not in the model it was compared against",

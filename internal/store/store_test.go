@@ -45,8 +45,11 @@ func TestPathsFollowEachPlatformsConvention(t *testing.T) {
 }
 
 func TestXDGOverridesAreHonouredOnlyWhenAbsolute(t *testing.T) {
-	home := filepath.Join("/", "home", "ada")
-	abs := filepath.Join("/", "xdg", "config")
+	// Spelled as a Unix path, because that is what these rules are about: this
+	// asks pathsFor for Linux's answer, and filepath.Join would spell the
+	// question in whatever the machine running the test happens to use.
+	home := "/home/ada"
+	abs := "/xdg/config"
 	p := pathsFor("linux", home, env(map[string]string{"XDG_CONFIG_HOME": abs, "XDG_DATA_HOME": "relative/data"}))
 	if p.Config != filepath.Join(abs, "ikigai-db") {
 		t.Errorf("absolute XDG_CONFIG_HOME ignored: %s", p.Config)
@@ -54,6 +57,16 @@ func TestXDGOverridesAreHonouredOnlyWhenAbsolute(t *testing.T) {
 	// The spec says a relative value is invalid and must be ignored.
 	if p.Data != filepath.Join(home, ".local", "share", "ikigai-db") {
 		t.Errorf("relative XDG_DATA_HOME was used: %s", p.Data)
+	}
+	// Absolute means the spec's absolute and not this machine's. These are Unix
+	// rules, and a Windows path is not a value they can honour — which matters
+	// because the check used to be filepath.IsAbs, whose answer depends on the
+	// machine asking rather than on the platform being asked about.
+	for _, odd := range []string{`C:\Users\ada`, `\\server\share`, "~/config", "config"} {
+		p := pathsFor("linux", home, env(map[string]string{"XDG_CONFIG_HOME": odd}))
+		if p.Config != filepath.Join(home, ".config", "ikigai-db") {
+			t.Errorf("XDG_CONFIG_HOME=%q was used: %s", odd, p.Config)
+		}
 	}
 }
 
@@ -164,7 +177,7 @@ func TestSettingsFileIsPrivateAndLeavesNoTempFiles(t *testing.T) {
 func TestCorruptFileIsMovedAsideNotOverwritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	original := []byte(`{"version": 1, "connections": [ {"id": "c1", "name": "Pro`) // truncated
-	os.WriteFile(path, original, 0o600)
+	_ = os.WriteFile(path, original, 0o600)
 
 	f, notice, err := OpenSettings(path)
 	if err != nil {
@@ -190,10 +203,45 @@ func TestCorruptFileIsMovedAsideNotOverwritten(t *testing.T) {
 	}
 }
 
+// When the settings cannot be read and cannot be moved aside either, both
+// reasons are in the refusal.
+//
+// Somebody looking at this has two separate problems — a file that is not JSON
+// and a directory that will not let it be renamed — and fixing either one is
+// enough. Naming only the second would send them after a permission that is not
+// the reason the application will not start.
+func TestSettingsThatCannotBeReadOrMovedAsideSayBoth(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a directory's write permission does not stop a rename here")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, []byte(`{"version": 1, "conn`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil { // readable, not writable
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	_, _, err := OpenSettings(path)
+	if err == nil {
+		t.Fatal("unreadable settings in a directory that will not budge opened")
+	}
+	var syn *json.SyntaxError
+	if !errors.As(err, &syn) {
+		t.Errorf("why the file could not be read is not reachable: %v", err)
+	}
+	var perr *os.LinkError
+	if !errors.As(err, &perr) {
+		t.Errorf("why it could not be moved aside is not reachable: %v", err)
+	}
+}
+
 func TestNewerVersionIsNeverOverwritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	future := []byte(`{"version": 99, "connections": [], "hologram_mode": true}`)
-	os.WriteFile(path, future, 0o600)
+	_ = os.WriteFile(path, future, 0o600)
 
 	f, notice, err := OpenSettings(path)
 	if err != nil {
@@ -233,7 +281,7 @@ func TestSecretsCannotBeSaved(t *testing.T) {
 
 func TestHandEditedSecretFreezesRatherThanSilentlyStripping(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
-	os.WriteFile(path, []byte(`{"version":1,"connections":[{"id":"a","name":"A","driver":"postgres",
+	_ = os.WriteFile(path, []byte(`{"version":1,"connections":[{"id":"a","name":"A","driver":"postgres",
 		"params":{"password":"hunter2"},"tls":{}}]}`), 0o600)
 	f, notice, err := OpenSettings(path)
 	if err != nil {
@@ -275,7 +323,7 @@ func TestValidationRejectsBrokenConnections(t *testing.T) {
 
 func TestFailedUpdateChangesNothing(t *testing.T) {
 	f, path := openAt(t)
-	f.Update(func(s *Settings) error { s.Appearance = "light"; return nil })
+	_ = f.Update(func(s *Settings) error { s.Appearance = "light"; return nil })
 	before, _ := os.ReadFile(path)
 
 	boom := errors.New("boom")
@@ -292,7 +340,7 @@ func TestFailedUpdateChangesNothing(t *testing.T) {
 
 func TestGetReturnsACopy(t *testing.T) {
 	f, _ := openAt(t)
-	f.Update(func(s *Settings) error { s.Connections = []SavedConnection{conn("a", "A")}; return nil })
+	_ = f.Update(func(s *Settings) error { s.Connections = []SavedConnection{conn("a", "A")}; return nil })
 	s := f.Get()
 	s.Connections[0].Name = "mutated"
 	s.Connections[0].Secrets[0] = "mutated"

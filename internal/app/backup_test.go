@@ -31,7 +31,7 @@ func kept(t *testing.T) (Backup, *Connections, *secrets.Memory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	keys := secrets.NewMemory()
 	conns := NewConnections(sf, NewVault(keys, nil), nil)
 	if _, err := conns.Create(draft("Orders"), map[string]string{"password": "hunter2"}); err != nil {
@@ -179,8 +179,8 @@ func TestWhatIsNotAnArchiveIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Write([]byte("hello"))
-	z.Close()
+	_, _ = w.Write([]byte("hello"))
+	_ = z.Close()
 	r := bytes.NewReader(buf.Bytes())
 	if _, err := b.Restore(r, r.Size()); err == nil || !strings.Contains(err.Error(), "not written by this application") {
 		t.Errorf("it said %v", err)
@@ -198,7 +198,7 @@ func TestAnArchiveFromLaterIsRefused(t *testing.T) {
 	if err := writeJSON(z, manifestName, Manifest{Application: "Ikigai DB", Version: backupVersion + 1}); err != nil {
 		t.Fatal(err)
 	}
-	z.Close()
+	_ = z.Close()
 	r := bytes.NewReader(buf.Bytes())
 	if _, err := b.Restore(r, r.Size()); err == nil || !strings.Contains(err.Error(), "later version") {
 		t.Errorf("it said %v", err)

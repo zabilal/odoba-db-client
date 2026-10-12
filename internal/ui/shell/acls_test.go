@@ -291,8 +291,8 @@ func TestGrantingShowsTheSentenceAndReadsAgain(t *testing.T) {
 		t.Errorf("it asks %q", text)
 	}
 	tapOnTop(t, fx, "Cancel")
-	if len(src.granted) != 0 {
-		t.Fatalf("saying no granted %v", src.granted)
+	if len(src.grants()) != 0 {
+		t.Fatalf("saying no granted %v", src.grants())
 	}
 
 	p.confirm("Grant This Permission?", acl.String()+".", "Grant", acl,
@@ -301,7 +301,7 @@ func TestGrantingShowsTheSentenceAndReadsAgain(t *testing.T) {
 		})
 	pump(t, fx.q, func() bool { return stacked(fx) > open })
 	tapOnTop(t, fx, "Grant")
-	pump(t, fx.q, func() bool { return len(src.granted) == 1 })
+	pump(t, fx.q, func() bool { return len(src.grants()) == 1 })
 	// And the list was read again, so what is on the screen is what happened.
 	pump(t, fx.q, func() bool { return len(p.acls) == 1 })
 	if p.acls[0] != acl {
@@ -341,9 +341,9 @@ func TestRevokingTakesTheChosenOne(t *testing.T) {
 		t.Errorf("it asks about revoking %q", text)
 	}
 	tapOnTop(t, fx, "Revoke")
-	pump(t, fx.q, func() bool { return len(src.revoked) == 1 })
-	if src.revoked[0] != readable("User:bob", "events") {
-		t.Errorf("it revoked %+v", src.revoked[0])
+	pump(t, fx.q, func() bool { return len(src.revokes()) == 1 })
+	if src.revokes()[0] != readable("User:bob", "events") {
+		t.Errorf("it revoked %+v", src.revokes()[0])
 	}
 	// The list was read again and holds what is left, with nothing selected:
 	// the row numbers have moved, and a selection that survived would point at
@@ -362,8 +362,8 @@ func TestRevokingTakesTheChosenOne(t *testing.T) {
 func TestChangingAPermissionOnProductionAsksFirst(t *testing.T) {
 	fx, src := aclFixture(t, "kafka1", topicRef)
 	p := openPermissions(t, fx)
-	src.refuse = fmt.Errorf("%w: changing permissions on a production connection",
-		source.ErrConfirmationRequired)
+	src.refuses(fmt.Errorf("%w: changing permissions on a production connection",
+		source.ErrConfirmationRequired))
 	acl := readable("User:alice", "events")
 
 	open := stacked(fx)
@@ -375,12 +375,12 @@ func TestChangingAPermissionOnProductionAsksFirst(t *testing.T) {
 		!strings.Contains(text, acl.String()) {
 		t.Errorf("it asks %q", text)
 	}
-	if len(src.granted) != 0 {
-		t.Fatalf("it granted %v before asking", src.granted)
+	if len(src.grants()) != 0 {
+		t.Fatalf("it granted %v before asking", src.grants())
 	}
 	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Continue")
-	pump(t, fx.q, func() bool { return len(src.granted) == 1 })
+	pump(t, fx.q, func() bool { return len(src.grants()) == 1 })
 }
 
 // The menu offers permissions on the things that have them, and the command is
@@ -492,8 +492,8 @@ func TestGrantingFromTheFormSaysWhatItWouldGrant(t *testing.T) {
 		t.Errorf("it asks %q,\n     want it to say %q", text, want)
 	}
 	tapOnTop(t, fx, "Grant")
-	pump(t, fx.q, func() bool { return len(src.granted) == 1 })
-	if got := src.granted[0].String(); got != want {
+	pump(t, fx.q, func() bool { return len(src.grants()) == 1 })
+	if got := src.grants()[0].String(); got != want {
 		t.Errorf("it granted %q", got)
 	}
 	// And the list read itself again, so the screen shows what happened.

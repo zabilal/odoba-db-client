@@ -37,19 +37,19 @@ func TestCaseAndWholeWords(t *testing.T) {
 func TestFindNextWrapsBothWays(t *testing.T) {
 	d := doc(t, "a x a x |a")
 	s := Search{Text: "a"}
-	d.FindNext(s, false)
+	_, _ = d.FindNext(s, false)
 	if from, _, _ := d.Selection(); from != (Pos{0, 8}) {
 		t.Errorf("next → %v", from)
 	}
-	d.FindNext(s, false)
+	_, _ = d.FindNext(s, false)
 	if from, _, _ := d.Selection(); from != (Pos{0, 0}) {
 		t.Errorf("wrap forward → %v", from)
 	}
-	d.FindNext(s, true)
+	_, _ = d.FindNext(s, true)
 	if from, _, _ := d.Selection(); from != (Pos{0, 8}) {
 		t.Errorf("wrap backward → %v", from)
 	}
-	d.FindNext(s, true)
+	_, _ = d.FindNext(s, true)
 	if from, _, _ := d.Selection(); from != (Pos{0, 4}) {
 		t.Errorf("back → %v", from)
 	}
@@ -66,7 +66,7 @@ func TestMatchesAcrossNonASCIIText(t *testing.T) {
 func TestReplaceSelectionThenMovesOn(t *testing.T) {
 	d := doc(t, "|a b a")
 	s := Search{Text: "a"}
-	d.FindNext(s, false) // selects the first a
+	_, _ = d.FindNext(s, false) // selects the first a
 	if ok, _ := d.ReplaceSelection(s, "z"); !ok {
 		t.Fatal("did not replace")
 	}
@@ -89,7 +89,7 @@ func TestRegexReplaceAllExpandsGroupsInOneUndo(t *testing.T) {
 
 func TestLiteralReplacementIsTakenAsWritten(t *testing.T) {
 	d := NewDocument("a a", sqllex.PostgreSQL)
-	d.ReplaceAll(Search{Text: "a"}, "$1")
+	_, _ = d.ReplaceAll(Search{Text: "a"}, "$1")
 	if d.Text() != "$1 $1" {
 		t.Errorf("%q", d.Text())
 	}

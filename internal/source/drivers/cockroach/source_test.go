@@ -10,6 +10,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // The driver describes itself well enough for the connection form to be
@@ -92,7 +93,7 @@ func TestAFailedConnectionSaysWhy(t *testing.T) {
 	// connection that failed: nothing was dialled and nothing went wrong
 	// with a server.
 	got := classifyConnectError(errClosed)
-	if got != errClosed {
+	if !errs.Same(got, errClosed) {
 		t.Errorf("a closed source reads as %#v", got)
 	}
 	var ce *source.ConnectError

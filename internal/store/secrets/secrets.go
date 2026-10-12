@@ -110,7 +110,7 @@ func translate(err error) error {
 	// A Secret Service that is not running surfaces only as a D-Bus error,
 	// with no sentinel to match against.
 	if m := err.Error(); strings.Contains(m, "org.freedesktop.secrets") || strings.Contains(strings.ToLower(m), "dbus") {
-		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return fmt.Errorf("secrets: %w", err)
 }

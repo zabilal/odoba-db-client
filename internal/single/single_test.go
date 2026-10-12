@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ func shortDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(d) })
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
 
@@ -28,8 +29,16 @@ func TestASecondCopyGivesWayAndTheFirstComesForward(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi, err := os.Stat(socketPath(dir)); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Errorf("the socket should be the user's alone: %v, %v", fi, err)
+	fi, err := os.Stat(socketPath(dir))
+	switch {
+	case err != nil:
+		t.Errorf("there is no socket: %v", err)
+	case runtime.GOOS == "windows":
+		// Windows has no mode to set: what protects a socket there is the ACL of
+		// the directory it is in, which is the user's own profile. Asserting a
+		// mode would be asserting something the operating system does not mean.
+	case fi.Mode().Perm() != 0o600:
+		t.Errorf("the socket should be the user's alone, and is %04o", fi.Mode().Perm())
 	}
 	if _, err := Acquire(dir, nil); !errors.Is(err, ErrRunning) {
 		t.Fatalf("a second copy got %v, want ErrRunning", err)
@@ -46,7 +55,7 @@ func TestASecondCopyGivesWayAndTheFirstComesForward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("once released, the directory should be free: %v", err)
 	}
-	again.Release()
+	_ = again.Release()
 }
 
 func TestASocketLeftByACrashIsTakenOver(t *testing.T) {
@@ -57,7 +66,7 @@ func TestASocketLeftByACrashIsTakenOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	ln.(*net.UnixListener).SetUnlinkOnClose(false)
-	ln.Close() // the socket file stays, and nobody answers: a crashed copy
+	_ = ln.Close() // the socket file stays, and nobody answers: a crashed copy
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("setup: the stale socket should remain: %v", err)
 	}
@@ -65,7 +74,7 @@ func TestASocketLeftByACrashIsTakenOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a crashed copy's socket should be taken over: %v", err)
 	}
-	in.Release()
+	_ = in.Release()
 }
 
 func TestSeparateDataRunsSideBySide(t *testing.T) {
@@ -78,7 +87,7 @@ func TestSeparateDataRunsSideBySide(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a copy with its own data should run beside the first: %v", err)
 	}
-	b.Release()
+	_ = b.Release()
 }
 
 func TestADeepDataDirectoryHasAShortSocket(t *testing.T) {

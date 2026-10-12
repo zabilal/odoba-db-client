@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -64,16 +65,41 @@ func connectionItem(c store.SavedConnection) explorer.Item {
 type Loader struct {
 	Conns *app.Connections
 	WS    *app.Workspace
-	// Shows reports whether a connection belongs in the tree. It is how a
+
+	// mu guards shows, which is set when a workspace is switched — on the
+	// goroutine that draws the window — and read while the tree loads, which
+	// happens on goroutines of its own. The race detector was right about it.
+	mu sync.RWMutex
+	// shows reports whether a connection belongs in the tree. It is how a
 	// workspace narrows the explorer to the connections it is over
 	// (FR-15.9). Nil shows every connection, which is what a window in no
 	// workspace in particular shows.
-	Shows func(connID string) bool
+	shows func(connID string) bool
 }
 
-// shows applies Shows, if there is one.
-func (l *Loader) shows(c store.SavedConnection) bool {
-	return l.Shows == nil || l.Shows(c.ID)
+// Show narrows the tree to the connections something says belong in it, and
+// widens it again when given nothing.
+//
+// What is given is called while the lock is held, so it must not ask the tree
+// anything: a workspace answers from a set it already has (FR-15.9).
+func (l *Loader) Show(belongs func(connID string) bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.shows = belongs
+}
+
+// narrowed reports whether the tree is showing only some connections.
+func (l *Loader) narrowed() bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.shows != nil
+}
+
+// showing applies it, if there is one.
+func (l *Loader) showing(c store.SavedConnection) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.shows == nil || l.shows(c.ID)
 }
 
 var _ explorer.Loader = (*Loader)(nil)
@@ -127,7 +153,7 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 		// The store refuses a connection in a folder that is not there.
 		in := map[string]int{}
 		for _, c := range l.Conns.List() {
-			if l.shows(c) {
+			if l.showing(c) {
 				in[c.Folder]++
 			}
 		}
@@ -137,14 +163,14 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 			// shown opening onto nothing. One that is empty because
 			// nobody has filled it yet stays: it is a shelf somebody just
 			// made, and something is about to go in it.
-			if in[f.ID] == 0 && l.Shows != nil {
+			if in[f.ID] == 0 && l.narrowed() {
 				continue
 			}
 			out = append(out, explorer.Item{ID: FolderID(f.ID), Label: f.Name, HasChildren: in[f.ID] > 0, Eager: true,
 				Data: folderItem{ID: f.ID, Color: f.Color}})
 		}
 		for _, c := range l.Conns.List() {
-			if c.Folder == "" && l.shows(c) {
+			if c.Folder == "" && l.showing(c) {
 				out = append(out, connectionItem(c))
 			}
 		}
@@ -152,7 +178,7 @@ func (l *Loader) Load(ctx context.Context, parent explorer.Item) (_ []explorer.I
 	case folderItem:
 		var out []explorer.Item
 		for _, c := range l.Conns.List() {
-			if c.Folder == d.ID && l.shows(c) {
+			if c.Folder == d.ID && l.showing(c) {
 				out = append(out, connectionItem(c))
 			}
 		}

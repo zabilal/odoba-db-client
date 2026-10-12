@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -24,6 +25,20 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/plugin"
 )
+
+// hello answers the handshake by hand, for the modes that then stop being a
+// plugin. It waits to be asked: an answer written before the question is one
+// the host drops when it arrives before the host is listening for it, which a
+// program that starts quickly on a machine that is busy will manage — and then
+// the test fails on a handshake that timed out, not on what it is about.
+func hello(id, name string) {
+	var req plugin.Request
+	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
+		os.Exit(4)
+	}
+	fmt.Printf(`{"id":%d,"hello":{"protocol":%d,"kind":"source","id":%q,"name":%q},"done":true}`+"\n",
+		req.ID, plugin.Protocol, id, name)
+}
 
 func main() {
 	mode := os.Getenv("IKIGAI_TEST_PLUGIN")
@@ -40,15 +55,13 @@ func main() {
 		// Sleeping rather than blocking on a channel: a program with nothing
 		// but a blocked goroutine is one Go's own runtime ends, and a process
 		// that helpfully dies is not the process being tested for.
-		fmt.Printf(`{"id":1,"hello":{"protocol":%d,"kind":"source","id":"deaf","name":"Deaf"},"done":true}`+"\n",
-			plugin.Protocol)
+		hello("deaf", "Deaf")
 		for {
 			time.Sleep(time.Hour)
 		}
 	case mode == "bye":
 		// Says hello and then ends, which is a plugin that has gone.
-		fmt.Printf(`{"id":1,"hello":{"protocol":%d,"kind":"source","id":"bye","name":"Bye"},"done":true}`+"\n",
-			plugin.Protocol)
+		hello("bye", "Bye")
 		os.Exit(0)
 	case mode == "bydir":
 		// What it does depends on where it was installed, so that one program

@@ -55,7 +55,7 @@ func Compile(cols []model.ColumnDef, filters []source.Filter) (*Matcher, error) 
 			}
 			re, err := regexp.Compile(text(f.Values[0]))
 			if err != nil {
-				return nil, fmt.Errorf("rowfilter: %v", err)
+				return nil, fmt.Errorf("rowfilter: %w", err)
 			}
 			r.re = re
 		case source.OpLike, source.OpNotLike:
@@ -64,7 +64,7 @@ func Compile(cols []model.ColumnDef, filters []source.Filter) (*Matcher, error) 
 			}
 			re, err := regexp.Compile(likeRegex(text(f.Values[0])))
 			if err != nil {
-				return nil, fmt.Errorf("rowfilter: %v", err)
+				return nil, fmt.Errorf("rowfilter: %w", err)
 			}
 			r.re = re
 		}

@@ -216,10 +216,10 @@ func aclFilter(of model.ACLFilter) (*kadm.ACLBuilder, error) {
 	} else {
 		b.Allow(of.Principal).AllowHosts().Deny(of.Principal).DenyHosts()
 	}
-	switch {
-	case of.Kind == "":
+	switch of.Kind {
+	case "":
 		b.AnyResource()
-	case of.Kind == model.ACLClusterItself:
+	case model.ACLClusterItself:
 		b.Clusters()
 	default:
 		wire, err := kindWire(of.Kind)

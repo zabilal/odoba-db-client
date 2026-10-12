@@ -186,7 +186,7 @@ func (c *conn) handle(s Source, req Request) {
 		if errors.As(err, &f) {
 			kind = f.Kind
 		}
-		c.send(Response{ID: req.ID, Error: err.Error(), Kind: kind})
+		_ = c.send(Response{ID: req.ID, Error: err.Error(), Kind: kind})
 	}
 	switch req.Op {
 	case OpHello:
@@ -195,7 +195,7 @@ func (c *conn) handle(s Source, req Request) {
 		if h.Kind == "" {
 			h.Kind = KindSource
 		}
-		c.send(Response{ID: req.ID, Hello: &h, Done: true})
+		_ = c.send(Response{ID: req.ID, Hello: &h, Done: true})
 	case OpOpen:
 		cfg := Config{}
 		if req.Config != nil {
@@ -206,47 +206,47 @@ func (c *conn) handle(s Source, req Request) {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Handle: handle, Done: true})
+		_ = c.send(Response{ID: req.ID, Handle: handle, Done: true})
 	case OpClose:
 		if err := s.Close(req.Handle); err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, OK: true, Done: true})
+		_ = c.send(Response{ID: req.ID, OK: true, Done: true})
 	case OpPing:
 		if err := s.Ping(ctx, req.Handle); err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, OK: true, Done: true})
+		_ = c.send(Response{ID: req.ID, OK: true, Done: true})
 	case OpInfo:
 		info, err := s.Info(ctx, req.Handle)
 		if err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Info: &info, Done: true})
+		_ = c.send(Response{ID: req.ID, Info: &info, Done: true})
 	case OpRoot:
 		nodes, err := s.Root(ctx, req.Handle)
 		if err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Nodes: nodes, Done: true})
+		_ = c.send(Response{ID: req.ID, Nodes: nodes, Done: true})
 	case OpChildren:
 		nodes, err := s.Children(ctx, req.Handle, refOf(req))
 		if err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Nodes: nodes, Done: true})
+		_ = c.send(Response{ID: req.ID, Nodes: nodes, Done: true})
 	case OpDescribe:
 		obj, err := s.Describe(ctx, req.Handle, refOf(req))
 		if err != nil {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Object: &obj, Done: true})
+		_ = c.send(Response{ID: req.ID, Object: &obj, Done: true})
 	case OpBrowse:
 		opt := BrowseOptions{}
 		if req.Browse != nil {
@@ -257,7 +257,7 @@ func (c *conn) handle(s Source, req Request) {
 			fail(err)
 			return
 		}
-		c.send(Response{ID: req.ID, Done: true})
+		_ = c.send(Response{ID: req.ID, Done: true})
 	default:
 		fail(fmt.Errorf("%q is not something this plugin does", req.Op))
 	}

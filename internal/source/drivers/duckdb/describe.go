@@ -5,6 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	strs "strings"
 
@@ -41,7 +42,7 @@ func (s *duckSource) describeTable(ctx context.Context, ref model.ObjectRef) (*m
 	err = db.QueryRowContext(ctx, `SELECT comment, estimated_size FROM duckdb_tables()
 		WHERE database_name = ? AND schema_name = ? AND table_name = ?`,
 		ref.Path[0], ref.Path[1], ref.Path[2]).Scan(&comment, &estimate)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, statementError(err, ctx)
 	}
 	t.Comment = comment.String
@@ -72,7 +73,7 @@ func (s *duckSource) describeView(ctx context.Context, ref model.ObjectRef) (*mo
 	err = db.QueryRowContext(ctx, `SELECT sql, comment FROM duckdb_views()
 		WHERE database_name = ? AND schema_name = ? AND view_name = ?`,
 		ref.Path[0], ref.Path[1], ref.Path[2]).Scan(&definition, &comment)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, statementError(err, ctx)
 	}
 	v.Definition, v.Comment = definition.String, comment.String

@@ -90,7 +90,7 @@ func seed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	for _, name := range []string{"PEOPLE", "WRITES", "EMPTY"} {
-		c.DeleteTable(ctx, &dynamodb.DeleteTableInput{TableName: aws.String(name)})
+		_, _ = c.DeleteTable(ctx, &dynamodb.DeleteTableInput{TableName: aws.String(name)})
 	}
 	mk := func(in *dynamodb.CreateTableInput) {
 		t.Helper()

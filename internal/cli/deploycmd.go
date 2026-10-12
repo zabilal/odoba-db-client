@@ -40,7 +40,7 @@ func deployCommand() command {
 			)
 			t.flags(fs)
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai deploy — make a database match a saved model
+				_, _ = fmt.Fprint(fs.Output(), `ikigai deploy — make a database match a saved model
 
   ikigai deploy --url $URL --model ./schema              # prints what it would run
   ikigai deploy --url $URL --model ./schema --apply      # runs it
@@ -92,7 +92,7 @@ func runDeploy(ctx context.Context, e *env, t *target, dir, database string, app
 		return e.fail(err)
 	}
 	for _, st := range stmts {
-		fmt.Fprintln(e.out, st.SQL)
+		_, _ = fmt.Fprintln(e.out, st.SQL)
 	}
 	e.sayf("%d statements would make %s match the model", len(stmts), conn.name)
 	if removing > 0 && !drops {

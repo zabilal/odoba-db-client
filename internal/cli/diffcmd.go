@@ -41,7 +41,7 @@ func diffCommand() command {
 			fs.StringVar(&other.database, "to-database", "", "the other connection's database or file")
 			fs.StringVar(&other.user, "to-user", "", "the other connection's user")
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai diff — compare a database with a saved model, or with another database
+				_, _ = fmt.Fprint(fs.Output(), `ikigai diff — compare a database with a saved model, or with another database
 
   ikigai diff --url $URL --model ./schema --exit-code
   ikigai diff --url $URL --to-url $OTHER
@@ -126,9 +126,9 @@ func runDiff(ctx context.Context, e *env, t, other *target, dir, database, toDB 
 		// Trimmed, because the database node of a source with one database has
 		// no name to print and a line ending in a space is a line nobody can
 		// grep for reliably.
-		fmt.Fprintln(e.out, strings.TrimRight(fmt.Sprintf("%s %s %s", mark(n.Status), n.Kind, n.Name), " "))
+		_, _ = fmt.Fprintln(e.out, strings.TrimRight(fmt.Sprintf("%s %s %s", mark(n.Status), n.Kind, n.Name), " "))
 		for _, f := range n.Detail {
-			fmt.Fprintf(e.out, "    %s: %s -> %s\n", f.Name, f.From, f.To)
+			_, _ = fmt.Fprintf(e.out, "    %s: %s -> %s\n", f.Name, f.From, f.To)
 		}
 	})
 	if ignored := c.Ignoring; ignored.Any() {

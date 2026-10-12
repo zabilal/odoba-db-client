@@ -194,7 +194,7 @@ func workbook(t *testing.T, parts map[string]string) []byte {
 		if err != nil {
 			t.Fatal(err)
 		}
-		io.WriteString(w, body)
+		_, _ = io.WriteString(w, body)
 	}
 	if err := z.Close(); err != nil {
 		t.Fatal(err)

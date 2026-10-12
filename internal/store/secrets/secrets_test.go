@@ -2,10 +2,13 @@ package secrets
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/zalando/go-keyring"
 )
 
 // contract is the behaviour every Keychain must have. It runs against Memory
@@ -17,7 +20,7 @@ func contract(t *testing.T, k Keychain) {
 	t.Cleanup(func() {
 		for _, c := range []string{id, other} {
 			for _, key := range []string{"password", "ssh_passphrase"} {
-				k.Delete(c, key)
+				_ = k.Delete(c, key)
 			}
 		}
 	})
@@ -47,9 +50,9 @@ func contract(t *testing.T, k Keychain) {
 	}
 
 	// Keys and connections are isolated from one another.
-	k.Set(id, "password", "pw-1")
-	k.Set(id, "ssh_passphrase", "pp-1")
-	k.Set(other, "password", "pw-2")
+	_ = k.Set(id, "password", "pw-1")
+	_ = k.Set(id, "ssh_passphrase", "pp-1")
+	_ = k.Set(other, "password", "pw-2")
 	if v, _ := k.Get(id, "password"); v != "pw-1" {
 		t.Errorf("keys not isolated: %q", v)
 	}
@@ -93,9 +96,9 @@ func TestMemoryIsSafeForConcurrentUse(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			id := "c" + string(rune('a'+i%26))
-			k.Set(id, "password", "v")
-			k.Get(id, "password")
-			k.Delete(id, "password")
+			_ = k.Set(id, "password", "v")
+			_, _ = k.Get(id, "password")
+			_ = k.Delete(id, "password")
 		}(i)
 	}
 	wg.Wait()
@@ -115,4 +118,49 @@ func TestOSKeychain(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 	contract(t, k)
+}
+
+// What translate says, and what it keeps.
+//
+// A refusal it recognises becomes this package's own sentinel, so a caller can
+// match on it. A D-Bus error has no sentinel to match, so it is recognised by
+// what it says — and the recognition is not allowed to lose it: a keychain that
+// will not answer is worth reporting along with the reason a person could look
+// up, and errors.Is must reach both.
+func TestATranslatedRefusalKeepsWhatItCameFrom(t *testing.T) {
+	if got := translate(nil); got != nil {
+		t.Errorf("nothing translated to %v", got)
+	}
+	for _, c := range []struct {
+		from error
+		want error
+	}{
+		{keyring.ErrNotFound, ErrNotFound},
+		{keyring.ErrUnsupportedPlatform, ErrUnavailable},
+		{keyring.ErrSetDataTooBig, ErrTooLarge},
+		{fmt.Errorf("wrapped: %w", keyring.ErrNotFound), ErrNotFound},
+	} {
+		if got := translate(c.from); !errors.Is(got, c.want) {
+			t.Errorf("%v translated to %v, want %v", c.from, got, c.want)
+		}
+	}
+
+	dbus := errors.New("dial unix /run/user/1000/bus: connect: connection refused (org.freedesktop.secrets)")
+	got := translate(dbus)
+	if !errors.Is(got, ErrUnavailable) {
+		t.Errorf("a Secret Service that is not running reads as %v", got)
+	}
+	if !errors.Is(got, dbus) {
+		t.Errorf("the reason it is unavailable was dropped: %v", got)
+	}
+
+	// Anything else is this package's, and still carries what it came from.
+	other := errors.New("the keychain is locked")
+	got = translate(other)
+	if errors.Is(got, ErrUnavailable) || errors.Is(got, ErrNotFound) || errors.Is(got, ErrTooLarge) {
+		t.Errorf("an unrecognised refusal was classified: %v", got)
+	}
+	if !errors.Is(got, other) {
+		t.Errorf("it dropped what it came from: %v", got)
+	}
 }

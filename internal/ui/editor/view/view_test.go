@@ -116,8 +116,8 @@ func TestEveryReservedChordIsHandled(t *testing.T) {
 }
 
 func TestClipboard(t *testing.T) {
-	e, w := setup(t, "SELECT 1")
-	cb := w.Clipboard()
+	e, _ := setup(t, "SELECT 1")
+	cb := fyne.CurrentApp().Clipboard()
 	d := e.Document()
 	d.SelectWord(editor.Pos{Line: 0, Col: 2})
 	e.surface.TypedShortcut(&fyne.ShortcutCopy{Clipboard: cb})

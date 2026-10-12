@@ -139,7 +139,7 @@ func azureManagedIdentity(ctx context.Context, params map[string]string, resourc
 		AccessToken string `json:"access_token"`
 	}
 	if err := fetchJSON(req, &got); err != nil {
-		return "", fmt.Errorf("%w: %v", errNoManagedIdentity, err)
+		return "", fmt.Errorf("%w: %w", errNoManagedIdentity, err)
 	}
 	if got.AccessToken == "" {
 		return "", fmt.Errorf("%w: it answered without an access token in it", errNoManagedIdentity)

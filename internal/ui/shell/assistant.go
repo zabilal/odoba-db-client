@@ -455,12 +455,17 @@ func firstTable(db *model.Database) (model.ObjectRef, bool) {
 		return model.ObjectRef{}, false
 	}
 	for _, sc := range db.Schemas {
-		for _, t := range sc.Tables {
-			if sc.Name == "" {
-				return model.NewRef(model.KindTable, db.Name, t.Name), true
-			}
-			return model.NewRef(model.KindTable, db.Name, sc.Name, t.Name), true
+		// The first table of the first schema that has one. Written as two
+		// loops it read as a search and was not: the inner one always returned
+		// on its first turn, which is what this says.
+		if len(sc.Tables) == 0 {
+			continue
 		}
+		t := sc.Tables[0]
+		if sc.Name == "" {
+			return model.NewRef(model.KindTable, db.Name, t.Name), true
+		}
+		return model.NewRef(model.KindTable, db.Name, sc.Name, t.Name), true
 	}
 	return model.ObjectRef{}, false
 }

@@ -61,7 +61,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	// only when something is read from it, so read the smallest thing.
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema`).Scan(&n); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, &source.ConnectError{Kind: source.ConnectConfig, Hint: "The file is not an SQLite database.", Err: err}
 	}
 	return NewSource(db, cfg, Flavour{Product: "SQLite", Where: path, WhereIs: "file",

@@ -161,7 +161,7 @@ func TestLiveAPermissionIsGrantedReadBackAndRevoked(t *testing.T) {
 	// star whether or not somebody typed one.
 	acl := model.ACL{Principal: "User:ikigai_acl_one", Operation: model.ACLRead,
 		Resource: model.ACLResource{Kind: model.ACLTopic, Name: "ikigai_it_acl"}}
-	t.Cleanup(func() { w.RevokeACL(context.Background(), acl, false) })
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, false) })
 
 	if err := w.GrantACL(ctx, acl, false); err != nil {
 		t.Fatalf("granting: %v", err)
@@ -186,7 +186,7 @@ func TestLiveAPermissionIsGrantedReadBackAndRevoked(t *testing.T) {
 	// wrong thing, and a long one on a real cluster.
 	other := model.ACL{Principal: "User:ikigai_acl_other", Host: "*", Operation: model.ACLRead,
 		Resource: model.ACLResource{Kind: model.ACLTopic, Name: "ikigai_it_acl"}}
-	t.Cleanup(func() { w.RevokeACL(context.Background(), other, false) })
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), other, false) })
 	if err := w.GrantACL(ctx, other, false); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestLiveEverythingThatReachesATopicIsShown(t *testing.T) {
 		Resource: model.ACLResource{Kind: model.ACLTopic}}
 	for _, acl := range []model.ACL{exact, prefix, every} {
 		acl := acl
-		t.Cleanup(func() { w.RevokeACL(context.Background(), acl, false) })
+		t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, false) })
 		if err := w.GrantACL(ctx, acl, false); err != nil {
 			t.Fatalf("granting %s: %v", acl, err)
 		}
@@ -243,7 +243,7 @@ func TestLiveEverythingThatReachesATopicIsShown(t *testing.T) {
 	// "everything of this kind".
 	other := model.ACL{Principal: "User:ikigai_acl_other", Host: "*", Operation: model.ACLRead,
 		Resource: model.ACLResource{Kind: model.ACLTopic, Name: "somethingelse.", Prefixed: true}}
-	t.Cleanup(func() { w.RevokeACL(context.Background(), other, false) })
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), other, false) })
 	if err := w.GrantACL(ctx, other, false); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestLiveADenyIsShownBesideTheAllowItOverrules(t *testing.T) {
 	deny.Deny = true
 	for _, acl := range []model.ACL{allow, deny} {
 		acl := acl
-		t.Cleanup(func() { w.RevokeACL(context.Background(), acl, false) })
+		t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, false) })
 		if err := w.GrantACL(ctx, acl, false); err != nil {
 			t.Fatalf("granting %s: %v", acl, err)
 		}
@@ -293,12 +293,28 @@ func TestLiveAPermissionAboutTheClusterItself(t *testing.T) {
 	ctx := context.Background()
 	acl := model.ACL{Principal: "User:ikigai_acl_cluster", Host: "*", Operation: model.ACLDescribe,
 		Resource: model.ACLResource{Kind: model.ACLClusterItself}}
-	t.Cleanup(func() { w.RevokeACL(context.Background(), acl, false) })
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, false) })
 	if err := w.GrantACL(ctx, acl, false); err != nil {
 		t.Fatalf("granting: %v", err)
 	}
 	want := "User:ikigai_acl_cluster may describe the cluster, from anywhere"
 	waitHas(t, a, model.ACLFilter{Kind: model.ACLClusterItself}, want)
+
+	// A permission about a topic, in place so that its absence from the answer
+	// is an answer: asking about the cluster is not asking about everything,
+	// and a filter that asked about everything would be a superset nothing
+	// positive could tell apart from this one.
+	topic := model.ACL{Principal: "User:ikigai_acl_cluster_topic", Host: "*", Operation: model.ACLRead,
+		Resource: model.ACLResource{Kind: model.ACLTopic, Name: "ikigai_it_acl_cluster"}}
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), topic, false) })
+	if err := w.GrantACL(ctx, topic, false); err != nil {
+		t.Fatal(err)
+	}
+	waitHas(t, a, model.ACLFilter{Kind: model.ACLTopic, Name: topic.Resource.Name}, topic.String())
+	if said := held(t, a, model.ACLFilter{Kind: model.ACLClusterItself}); has(said, topic.String()) {
+		t.Errorf("a topic's permission is shown as the cluster's: %v", said)
+	}
+
 	// The name Kafka keeps for the cluster is not shown as a name a person
 	// gave, because nobody gave it.
 	acls, err := a.ACLs(ctx, model.ACLFilter{Kind: model.ACLClusterItself})
@@ -348,7 +364,7 @@ func TestLiveAProductionConnectionAsksBeforeChangingPermissions(t *testing.T) {
 	ctx := context.Background()
 	acl := model.ACL{Principal: "User:ikigai_acl_prod", Host: "*", Operation: model.ACLRead,
 		Resource: model.ACLResource{Kind: model.ACLTopic, Name: "ikigai_it_acl"}}
-	t.Cleanup(func() { w.RevokeACL(context.Background(), acl, true) })
+	t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, true) })
 
 	if err := w.GrantACL(ctx, acl, false); !errors.Is(err, source.ErrConfirmationRequired) {
 		t.Fatalf("a production connection granted a permission unasked: %v", err)

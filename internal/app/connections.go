@@ -49,7 +49,7 @@ func throughTunnel(ctx context.Context, cfg source.ConnectionConfig) (source.Con
 			return cfg, tn.Close, nil
 		}
 	}
-	tn.Close()
+	_ = tn.Close()
 	return cfg, nil, err
 }
 
@@ -164,7 +164,10 @@ func (c *Connections) Create(conn store.SavedConnection, secretValues map[string
 		s.Connections = append(s.Connections, conn)
 		return nil
 	}); err != nil {
-		c.vault.deleteAll(conn.ID, conn.Secrets)
+		// The connection was not saved, so its secrets are nobody's. What is
+		// returned is why the save failed; a keychain that will not give them
+		// up as well is not a second thing to tell somebody about.
+		_ = c.vault.deleteAll(conn.ID, conn.Secrets)
 		return store.SavedConnection{}, err
 	}
 	return conn, nil
@@ -210,11 +213,13 @@ func (c *Connections) Update(conn store.SavedConnection, edit SecretEdit) error 
 		s.Connections[i] = conn
 		return nil
 	}); err != nil {
+		// Put back what was there, and return why the save failed rather than
+		// why putting it back did not work.
 		for k, old := range previous {
 			if old == nil {
-				c.vault.Delete(conn.ID, k)
+				_ = c.vault.Delete(conn.ID, k)
 			} else {
-				c.vault.Set(conn.ID, k, *old)
+				_ = c.vault.Set(conn.ID, k, *old)
 			}
 		}
 		return err
@@ -262,7 +267,8 @@ func (c *Connections) Duplicate(id string) (store.SavedConnection, error) {
 		s.Connections = append(s.Connections[:i+1], append([]store.SavedConnection{dup}, s.Connections[i+1:]...)...)
 		return nil
 	}); err != nil {
-		c.vault.deleteAll(dup.ID, dup.Secrets)
+		// The copy does not exist, so neither do its secrets (as above).
+		_ = c.vault.deleteAll(dup.ID, dup.Secrets)
 		return store.SavedConnection{}, err
 	}
 	return dup, nil
@@ -554,7 +560,7 @@ func (c *Connections) open(ctx context.Context, id string, mon MonitorConfig, re
 		// The tunnel goes too: a connection that never opened must not leave
 		// one behind it.
 		if closeTunnel != nil {
-			closeTunnel()
+			_ = closeTunnel()
 		}
 		return nil, err
 	}

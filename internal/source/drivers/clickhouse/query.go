@@ -83,7 +83,7 @@ func (ss *session) renew() {
 	}
 	old := ss.conn
 	ss.conn = c
-	old.Close()
+	_ = old.Close()
 }
 
 func (ss *session) Close() error {
@@ -94,7 +94,7 @@ func (ss *session) Close() error {
 	}
 	ss.closed = true
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	ss.mu.Unlock()
 	if err := ss.conn.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
@@ -120,7 +120,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 	if ss.stopped.Swap(false) {
@@ -328,7 +328,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

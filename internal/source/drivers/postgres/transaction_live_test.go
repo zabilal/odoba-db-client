@@ -26,7 +26,7 @@ func session(t *testing.T, readOnly bool) *pgSession {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { ss.Close() })
+	t.Cleanup(func() { _ = ss.Close() })
 	return ss
 }
 
@@ -46,7 +46,7 @@ func run(t *testing.T, ss *pgSession, sql string) error {
 
 func drainRows(t *testing.T, rs interface{ Close() error }) {
 	t.Helper()
-	rs.Close()
+	_ = rs.Close()
 }
 
 func count(t *testing.T, ss *pgSession, sql string) int64 {
@@ -126,7 +126,7 @@ func TestLiveACommitKeepsWhatTheTransactionDid(t *testing.T) {
 	if got := count(t, other, `SELECT count(*) FROM ikigai_it.writes`); got != before+1 {
 		t.Errorf("another connection sees %d rows after the commit, want %d", got, before+1)
 	}
-	t.Cleanup(func() { run(t, ss, `DELETE FROM ikigai_it.writes WHERE name = 'kept'`) })
+	t.Cleanup(func() { _ = run(t, ss, `DELETE FROM ikigai_it.writes WHERE name = 'kept'`) })
 }
 
 // A statement that fails inside a transaction poisons it: from then on every
@@ -311,7 +311,7 @@ func TestLiveAClosedSessionBeginsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ss.Close()
+	_ = ss.Close()
 	if err := ss.Begin(context.Background()); !errors.Is(err, errClosed) {
 		t.Errorf("Begin on a closed session: %v", err)
 	}

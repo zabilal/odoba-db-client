@@ -199,5 +199,5 @@ func (t *target) openSaved(ctx context.Context) (*opened, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &opened{src: live.Source, name: found.Name, close: func() { live.Close() }}, nil
+	return &opened{src: live.Source, name: found.Name, close: func() { _ = live.Close() }}, nil
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 func TestTheFormAsksForWhatACassandraNeeds(t *testing.T) {
@@ -161,7 +162,7 @@ func TestWhatIsWrongWithAConnectionIsSaidInItsOwnWords(t *testing.T) {
 	}
 	// A failure already said in these terms is not said again in others.
 	said := &source.ConnectError{Kind: source.ConnectConfig, Hint: "The port must be between 1 and 65535."}
-	if got := classifyConnectError(said); got != error(said) {
+	if got := classifyConnectError(said); !errs.Same(got, said) {
 		t.Errorf("a failure classified twice: %v", got)
 	}
 }

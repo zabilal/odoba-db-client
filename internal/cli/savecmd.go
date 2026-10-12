@@ -34,7 +34,7 @@ func saveCommand() command {
 			)
 			t.flags(fs)
 			fs.Usage = func() {
-				fmt.Fprint(fs.Output(), `ikigai save — write a database's structure to a directory, as a model
+				_, _ = fmt.Fprint(fs.Output(), `ikigai save — write a database's structure to a directory, as a model
 
   ikigai save --url $URL --model ./schema
 

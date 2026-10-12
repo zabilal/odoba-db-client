@@ -15,7 +15,10 @@
 // detector and skip only their timing assertions; use Enabled for that.
 package race
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // SkipTimingGate skips a test whose assertions are time budgets.
 func SkipTimingGate(tb testing.TB) {
@@ -25,4 +28,19 @@ func SkipTimingGate(tb testing.TB) {
 			"5-20x, so a budget measured under it measures the detector. " +
 			"CI runs the gates in the performance job without -race.")
 	}
+}
+
+// Slower scales a deadline for the detector.
+//
+// A deadline in a test is a statement that something should have happened by
+// now — a plugin answered, a queue drained, a goroutine came back. It is not a
+// budget: the budgets are the gates above, and they decline to run at all. Work
+// under the detector takes 5-20x longer, so a deadline measured against the
+// same wall clock stops meaning what it said and starts failing on the
+// instrumentation. This moves it, and leaves it alone otherwise.
+func Slower(d time.Duration) time.Duration {
+	if Enabled {
+		return 10 * d
+	}
+	return d
 }

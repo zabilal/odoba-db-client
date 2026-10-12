@@ -13,6 +13,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // Reaching a server, and saying what happened when it could not be reached.
@@ -166,7 +167,7 @@ func TestAFailedConnectionSaysWhatToDo(t *testing.T) {
 		}
 	}
 	given := &source.ConnectError{Kind: source.ConnectConfig, Hint: "x"}
-	if got := classifyConnectError(given); got != error(given) {
+	if got := classifyConnectError(given); !errs.Same(got, given) {
 		t.Errorf("a classified failure was classified again: %v", got)
 	}
 }

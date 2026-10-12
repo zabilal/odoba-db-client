@@ -27,7 +27,7 @@ func TestSessionRoundTrips(t *testing.T) {
 
 func TestAnUnreadableSessionIsAnErrorNotAPanic(t *testing.T) {
 	d, _ := open(t)
-	d.Put(ctx, "session", []byte(`{"Tabs": 3}`))
+	_ = d.Put(ctx, "session", []byte(`{"Tabs": 3}`))
 	if _, ok, err := d.Session(ctx); ok || err == nil {
 		t.Errorf("ok=%v err=%v", ok, err)
 	}

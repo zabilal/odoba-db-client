@@ -147,7 +147,7 @@ func TestWritingToProductionAsksAndSendsNothingUntilItIsAnswered(t *testing.T) {
 		t.Fatal("the connection is not open")
 	}
 	src := live.Source.(*recordSource)
-	src.refuse = fmt.Errorf("%w: writing on a production connection", source.ErrConfirmationRequired)
+	src.refuses(fmt.Errorf("%w: writing on a production connection", source.ErrConfirmationRequired))
 
 	req := source.ProduceRequest{Topic: "events", Partition: -1, Value: []byte("a record")}
 	fx.s.writeRecord(tb.connID, req)
@@ -157,14 +157,14 @@ func TestWritingToProductionAsksAndSendsNothingUntilItIsAnswered(t *testing.T) {
 		!strings.Contains(text, "Nothing has been sent yet") {
 		t.Errorf("writing to production asks first, and says nothing has gone: %q", text)
 	}
-	if len(src.produced) != 0 {
-		t.Fatalf("a record was sent before the question was answered: %+v", src.produced)
+	if len(src.writes()) != 0 {
+		t.Fatalf("a record was sent before the question was answered: %+v", src.writes())
 	}
 
 	// Saying no sends nothing at all.
 	tapOnTop(t, fx, "Cancel")
-	if len(src.produced) != 0 {
-		t.Errorf("saying no sent %d records", len(src.produced))
+	if len(src.writes()) != 0 {
+		t.Errorf("saying no sent %d records", len(src.writes()))
 	}
 
 	// Saying yes sends exactly one, with the consent that was given for it.
@@ -177,8 +177,8 @@ func TestWritingToProductionAsksAndSendsNothingUntilItIsAnswered(t *testing.T) {
 	}
 	typeOnTop(t, fx, "kafka1")
 	tapOnTop(t, fx, "Write")
-	pump(t, fx.q, func() bool { return len(src.produced) == 1 })
-	if !src.produced[0].Confirmed {
+	pump(t, fx.q, func() bool { return len(src.writes()) == 1 })
+	if !src.writes()[0].Confirmed {
 		t.Error("the record went without the consent that had just been given for it")
 	}
 	// And that consent belongs to that record: it is not left behind in what
@@ -195,12 +195,12 @@ func TestAReadOnlyConnectionSaysSoAndWritesNothing(t *testing.T) {
 		t.Fatal("the connection is not open")
 	}
 	src := live.Source.(*recordSource)
-	src.refuse = fmt.Errorf("%w: write operation refused", source.ErrReadOnly)
+	src.refuses(fmt.Errorf("%w: write operation refused", source.ErrReadOnly))
 
 	fx.s.writeRecord(tb.connID, source.ProduceRequest{Topic: "events", Partition: -1, Value: []byte("x")})
 	pump(t, fx.q, func() bool { return strings.Contains(fx.s.errors.text, "read-only") })
-	if len(src.produced) != 0 {
-		t.Errorf("a read-only connection wrote %d records", len(src.produced))
+	if len(src.writes()) != 0 {
+		t.Errorf("a read-only connection wrote %d records", len(src.writes()))
 	}
 	// And it does not ask. Read-only is a decision already made, not a
 	// question about this record.

@@ -38,10 +38,6 @@ const (
 	modeStandalone = "standalone"
 	modeSentinel   = "sentinel"
 	modeCluster    = "cluster"
-
-	// databasesWhenRefused is how many logical databases a server has when it
-	// will not say: Redis has had sixteen by default since it had any.
-	databasesWhenRefused = 16
 )
 
 func init() { source.Register(Driver{}) }

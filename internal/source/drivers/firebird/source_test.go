@@ -13,6 +13,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 func kindOf(t *testing.T, err error) source.ConnectKind {
@@ -245,7 +246,7 @@ func TestAFailureToConnectIsCalledWhatItIs(t *testing.T) {
 	// A refusal this driver already made is not classified again: the hint it
 	// carries is more precise than anything read from an error's text.
 	mine := &source.ConnectError{Kind: source.ConnectConfig, Hint: "Name the database."}
-	if got := classifyConnectError(mine); got != error(mine) {
+	if got := classifyConnectError(mine); !errs.Same(got, mine) {
 		t.Errorf("it rewrote its own refusal as %v", got)
 	}
 }

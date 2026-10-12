@@ -24,20 +24,20 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			os.Remove(tmp.Name())
+			_ = os.Remove(tmp.Name())
 		}
 	}()
 
 	if err = tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if _, err = tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err = tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err = tmp.Close(); err != nil {
@@ -54,7 +54,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 // and NTFS journals renames itself, so the error is deliberately ignored.
 func syncDir(dir string) {
 	if d, err := os.Open(dir); err == nil {
-		d.Sync()
-		d.Close()
+		_ = d.Sync()
+		_ = d.Close()
 	}
 }

@@ -59,7 +59,7 @@ func admin(t *testing.T, database string) *sql.DB {
 		Addr: []string{fmt.Sprintf("127.0.0.1:%d", port())},
 		Auth: ch.Auth{Database: database, Username: "default", Password: password()}})
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		if os.Getenv("IKIGAI_REQUIRE_CLICKHOUSE") != "" {
 			t.Fatalf("ClickHouse required but unavailable: %v", err)
 		}

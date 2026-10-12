@@ -87,7 +87,7 @@ func reachesAny(deps, any []string) bool {
 // reach the network are the ones this application means to have, and a new
 // one has to be added here on purpose.
 func TestOnlyTheseFilesSpeakHTTP(t *testing.T) {
-	// The cloud token fetchers, and nothing else of ours. Drivers reach the
+	// The cloud token fetchers, and little else of ours. Drivers reach the
 	// network through their own libraries rather than net/http, and each is
 	// a server somebody configured.
 	allowed := []string{
@@ -106,6 +106,12 @@ func TestOnlyTheseFilesSpeakHTTP(t *testing.T) {
 		// somebody asks it something, and the endpoint is one they gave: there
 		// is no provider compiled in that would be reached by default.
 		filepath.Join("internal", "assistant", "provider.go"),
+		// The one driver that is its own library: Elasticsearch and
+		// OpenSearch are spoken to directly, because the official client of
+		// one refuses the other (ADR-0173). It is a server somebody
+		// configured, like every other driver's, and this is the one file of
+		// it that speaks.
+		filepath.Join("internal", "source", "drivers", "elasticsearch", "wire.go"),
 	}
 	root := moduleRoot(t)
 	out, err := exec.Command("grep", "-rl", "net/http",

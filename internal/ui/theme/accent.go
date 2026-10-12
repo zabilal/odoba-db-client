@@ -109,7 +109,8 @@ func derive(a Accent, p Palette, dark bool) Palette {
 	passes := func(fg color.NRGBA) func(color.NRGBA) bool {
 		return func(bg color.NRGBA) bool { return contrast(fg, bg) >= aa }
 	}
-	fill, on := c, white
+	var fill color.NRGBA
+	on := white
 	if darker, t := towards(c, black, passes(white)); t <= 0.35 {
 		fill = darker
 	} else {

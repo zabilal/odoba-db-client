@@ -51,7 +51,7 @@ func (s *redisSource) Session(ctx context.Context) (_ source.Session, err error)
 		}
 		conn := client.Conn()
 		if err := conn.Select(ctx, db).Err(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, err
 		}
 		c.conn = conn
@@ -251,16 +251,16 @@ func parseArgs(line string) ([]string, error) {
 	var args []string
 	s := strings.TrimSpace(line)
 	for i := 0; i < len(s); {
-		switch {
-		case s[i] == ' ' || s[i] == '\t':
+		switch s[i] {
+		case ' ', '\t':
 			i++
-		case s[i] == '"':
+		case '"':
 			arg, next, err := doubleQuoted(s, i)
 			if err != nil {
 				return nil, err
 			}
 			args, i = append(args, arg), next
-		case s[i] == '\'':
+		case '\'':
 			arg, next, err := singleQuoted(s, i)
 			if err != nil {
 				return nil, err

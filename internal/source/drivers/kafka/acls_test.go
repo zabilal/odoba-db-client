@@ -10,6 +10,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // The permissions a cluster holds, on the way in and out (FR-13.15). What
@@ -279,7 +280,7 @@ func TestAClusterWithNoAuthorizerSaysSo(t *testing.T) {
 	// Anything else is passed along as it was: a refusal this does not
 	// recognise is not one it should rewrite.
 	other := context.Canceled
-	if got := aclError(other); got != other {
+	if got := aclError(other); !errs.Same(got, other) {
 		t.Errorf("it turned %v into %v", other, got)
 	}
 	if aclError(nil) != nil {

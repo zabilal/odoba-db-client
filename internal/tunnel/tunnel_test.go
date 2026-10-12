@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,14 +34,17 @@ func echo(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { l.Close() })
+	t.Cleanup(func() { _ = l.Close() })
 	go func() {
 		for {
 			c, err := l.Accept()
 			if err != nil {
 				return
 			}
-			go func() { defer c.Close(); io.Copy(c, c) }()
+			go func() {
+				defer c.Close()
+				_, _ = io.Copy(c, c)
+			}()
 		}
 	}()
 	return l.Addr().String()
@@ -73,7 +77,7 @@ func server(t *testing.T, cfg *ssh.ServerConfig) (addr, known string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { l.Close() })
+	t.Cleanup(func() { _ = l.Close() })
 	go func() {
 		for {
 			c, err := l.Accept()
@@ -97,19 +101,19 @@ func server(t *testing.T, cfg *ssh.ServerConfig) (addr, known string) {
 func serve(c net.Conn, cfg *ssh.ServerConfig) {
 	conn, chans, reqs, err := ssh.NewServerConn(c, cfg)
 	if err != nil {
-		c.Close()
+		_ = c.Close()
 		return
 	}
 	defer conn.Close()
 	go ssh.DiscardRequests(reqs)
 	for ch := range chans {
 		if ch.ChannelType() != "direct-tcpip" {
-			ch.Reject(ssh.UnknownChannelType, "only forwarding here")
+			_ = ch.Reject(ssh.UnknownChannelType, "only forwarding here")
 			continue
 		}
 		var want forwarded
 		if err := ssh.Unmarshal(ch.ExtraData(), &want); err != nil {
-			ch.Reject(ssh.ConnectionFailed, "unreadable")
+			_ = ch.Reject(ssh.ConnectionFailed, "unreadable")
 			continue
 		}
 		go carryOn(ch, want)
@@ -120,7 +124,7 @@ func carryOn(ch ssh.NewChannel, want forwarded) {
 	target := net.JoinHostPort(want.Host, strconv.Itoa(int(want.Port)))
 	remote, err := net.Dial("tcp", target)
 	if err != nil {
-		ch.Reject(ssh.ConnectionFailed, "nothing there")
+		_ = ch.Reject(ssh.ConnectionFailed, "nothing there")
 		return
 	}
 	defer remote.Close()
@@ -131,8 +135,8 @@ func carryOn(ch ssh.NewChannel, want forwarded) {
 	defer channel.Close()
 	go ssh.DiscardRequests(reqs)
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(remote, channel); done <- struct{}{} }()
-	go func() { io.Copy(channel, remote); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(remote, channel); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(channel, remote); done <- struct{}{} }()
 	<-done
 }
 
@@ -145,7 +149,7 @@ func reaches(t *testing.T, tn *Tunnel, said string) string {
 		t.Fatalf("dialling the tunnel: %v", err)
 	}
 	defer c.Close()
-	c.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	if _, err := io.WriteString(c, said); err != nil {
 		t.Fatalf("writing through the tunnel: %v", err)
 	}
@@ -417,7 +421,7 @@ func TestClosingATunnelTwiceIsNotAnError(t *testing.T) {
 	}
 	// And nothing goes through it afterwards.
 	if c, err := net.DialTimeout("tcp", tn.Addr(), time.Second); err == nil {
-		c.Close()
+		_ = c.Close()
 		t.Error("a closed tunnel still accepts connections")
 	}
 }
@@ -440,20 +444,26 @@ func split(t *testing.T, addr string) (string, int) {
 //
 // The socket goes under /tmp rather than the test's own directory: a unix
 // socket path has about a hundred characters to play with, and a temporary
-// directory named after a test uses most of them.
+// directory named after a test uses most of them. That limit is sun_path's and
+// so is Unix's, and Windows has no /tmp to put it in, so there the socket goes
+// wherever the system keeps temporary files.
 func agentAt(t *testing.T, key ed25519.PrivateKey) ssh.PublicKey {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "ikigai-agent")
+	short := "/tmp"
+	if runtime.GOOS == "windows" {
+		short = ""
+	}
+	dir, err := os.MkdirTemp(short, "ikigai-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	l, err := net.Listen("unix", filepath.Join(dir, "s"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { l.Close() })
+	t.Cleanup(func() { _ = l.Close() })
 
 	ring := agent.NewKeyring()
 	if err := ring.Add(agent.AddedKey{PrivateKey: key}); err != nil {
@@ -465,7 +475,10 @@ func agentAt(t *testing.T, key ed25519.PrivateKey) ssh.PublicKey {
 			if err != nil {
 				return
 			}
-			go func() { defer c.Close(); agent.ServeAgent(ring, c) }()
+			go func() {
+				defer c.Close()
+				_ = agent.ServeAgent(ring, c)
+			}()
 		}
 	}()
 	t.Setenv("SSH_AUTH_SOCK", filepath.Join(dir, "s"))

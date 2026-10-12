@@ -150,7 +150,7 @@ func (b Backup) Restore(r io.ReaderAt, size int64) (Manifest, error) {
 		at, err := stage(z, w.name, w.target)
 		if err != nil {
 			for _, s := range staged {
-				os.Remove(s[1])
+				_ = os.Remove(s[1])
 			}
 			return man, err
 		}
@@ -195,15 +195,15 @@ func stage(z *zip.Reader, name, target string) (string, error) {
 	}
 	defer out.Close()
 	if err := out.Chmod(0o600); err != nil {
-		os.Remove(out.Name())
+		_ = os.Remove(out.Name())
 		return "", err
 	}
 	if _, err := io.Copy(out, f); err != nil {
-		os.Remove(out.Name())
+		_ = os.Remove(out.Name())
 		return "", fmt.Errorf("app: reading %s out of the archive: %w", name, err)
 	}
 	if err := out.Sync(); err != nil {
-		os.Remove(out.Name())
+		_ = os.Remove(out.Name())
 		return "", err
 	}
 	return out.Name(), nil

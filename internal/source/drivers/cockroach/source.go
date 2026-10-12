@@ -128,7 +128,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 	}
 	s.pool = pool
 	if err := pool.QueryRow(ctx, "SELECT version()").Scan(&s.version); err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil

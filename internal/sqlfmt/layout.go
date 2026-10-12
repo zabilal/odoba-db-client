@@ -474,16 +474,6 @@ func split(toks []Tok, at func([]Tok, int) bool) [][]Tok {
 	return out
 }
 
-// firstOpen is where the first bracket of an item opens, or -1.
-func firstOpen(toks []Tok) int {
-	for i, t := range toks {
-		if t.Text == "(" {
-			return i
-		}
-	}
-	return -1
-}
-
 // matching is where the bracket opened at i closes, or -1.
 func matching(toks []Tok, i int) int {
 	depth := 0

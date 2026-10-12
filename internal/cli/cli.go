@@ -56,11 +56,9 @@ type command struct {
 	name string
 	// summary is one line, for the list of commands.
 	summary string
-	// run does the work. Its flags are already parsed; what is left of the
-	// arguments is in fs.Args().
-	run func(ctx context.Context, e *env, fs *flag.FlagSet) int
-	// setup declares the command's flags and returns nothing: the values are
-	// closed over by run.
+	// setup declares the command's flags and returns the function that does
+	// the work: the flag values are closed over by what it returns, so they are
+	// read after parsing rather than before.
 	setup func(fs *flag.FlagSet) func(ctx context.Context, e *env, fs *flag.FlagSet) int
 }
 
@@ -76,11 +74,11 @@ type env struct {
 // when nothing is wrong, because the other stream is where the data is: a
 // pipeline redirecting rows into a file must not find "42 rows" among them.
 func (e *env) sayf(format string, a ...any) {
-	fmt.Fprintf(e.err, format+"\n", a...)
+	_, _ = fmt.Fprintf(e.err, format+"\n", a...)
 }
 
 func (e *env) failf(format string, a ...any) int {
-	fmt.Fprintf(e.err, "ikigai: "+format+"\n", a...)
+	_, _ = fmt.Fprintf(e.err, "ikigai: "+format+"\n", a...)
 	return Failed
 }
 
@@ -110,7 +108,7 @@ type badArgs struct{ error }
 func misusef(format string, a ...any) error { return badArgs{fmt.Errorf(format, a...)} }
 
 func (e *env) usagef(format string, a ...any) int {
-	fmt.Fprintf(e.err, "ikigai: "+format+"\n", a...)
+	_, _ = fmt.Fprintf(e.err, "ikigai: "+format+"\n", a...)
 	return Usage
 }
 
@@ -128,7 +126,7 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 		usage(e)
 		return OK
 	case "-version", "--version", "version":
-		fmt.Fprintln(out, "ikigai", version)
+		_, _ = fmt.Fprintln(out, "ikigai", version)
 		return OK
 	}
 	// The plugins somebody turned on, before a command asks for a driver: a
@@ -165,7 +163,7 @@ func commands() map[string]command {
 }
 
 func usage(e *env) {
-	fmt.Fprint(e.err, `ikigai — the Ikigai DB command line
+	_, _ = fmt.Fprint(e.err, `ikigai — the Ikigai DB command line
 
 Usage:
   ikigai <command> [flags]
@@ -179,9 +177,9 @@ Commands:
 	sort.Strings(names)
 	all := commands()
 	for _, name := range names {
-		fmt.Fprintf(e.err, "  %-8s %s\n", name, all[name].summary)
+		_, _ = fmt.Fprintf(e.err, "  %-8s %s\n", name, all[name].summary)
 	}
-	fmt.Fprint(e.err, `
+	_, _ = fmt.Fprint(e.err, `
 Say which database with one of:
   --url STRING            a connection string, as the application takes them
   --driver ID --database NAME [--host H --port P --user U]

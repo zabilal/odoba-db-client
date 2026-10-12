@@ -379,13 +379,13 @@ func (s *redisSource) nodes(ctx context.Context, db int) ([]scanner, func(), err
 		// next question about the wrong keyspace.
 		conn := c.Conn()
 		if err := conn.Select(ctx, db).Err(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, nil, err
 		}
 		home := c.Options().DB
 		return []scanner{conn}, func() {
 			conn.Select(context.WithoutCancel(ctx), home)
-			conn.Close()
+			_ = conn.Close()
 		}, nil
 	}
 	return nil, nil, fmt.Errorf("redis: %T is not a connection keys can be walked on", s.client)

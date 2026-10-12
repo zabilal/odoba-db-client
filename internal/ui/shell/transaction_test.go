@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"fyne.io/fyne/v2/container"
-
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -227,16 +225,4 @@ func TestATransactionThatWillNotBegin(t *testing.T) {
 	if strings.Contains(tb.item.Text, "⧗") {
 		t.Errorf("the tab is called %q", tb.item.Text)
 	}
-}
-
-// confirmShown reports whether a confirmation is on the window.
-func confirmShown(t *testing.T, fx *fixture) bool {
-	t.Helper()
-	for _, o := range fx.s.win.Canvas().Overlays().List() {
-		if _, ok := o.(*container.Scroll); ok {
-			continue
-		}
-		return true
-	}
-	return false
 }

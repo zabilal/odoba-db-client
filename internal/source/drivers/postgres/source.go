@@ -107,7 +107,7 @@ func (Driver) Open(ctx context.Context, cfg source.ConnectionConfig) (source.Sou
 		return nil, classifyConnectError(err)
 	}
 	if err := p.Ping(ctx); err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, classifyConnectError(err)
 	}
 	return s, nil

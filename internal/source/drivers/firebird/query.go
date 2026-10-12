@@ -129,7 +129,7 @@ func (ss *session) Close() error {
 		ss.tx = nil
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	ss.mu.Unlock()
 	ss.src.forget(ss.id)
@@ -154,7 +154,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 
@@ -250,7 +250,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

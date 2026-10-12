@@ -290,7 +290,7 @@ func TestCloseEndsTheSession(t *testing.T) {
 	qs, _ := newQuerySession(context.Background(), src, "c1", QueryOptions{})
 	ch, _ := qs.Run(context.Background(), "slow 100000", source.ScriptOptions{})
 	rs := collect(t, ch)[0].Rows
-	qs.Close()
+	_ = qs.Close()
 	if !qs.session.(*scriptSession).closed.Load() {
 		t.Error("session left open")
 	}
@@ -430,7 +430,7 @@ func TestAStoppedQueryIsStillRecordedWithoutAnError(t *testing.T) {
 	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{History: h})
 	ch, _ := qs.Run(context.Background(), "slow 100000", source.ScriptOptions{})
 	collect(t, ch)
-	qs.Close()
+	_ = qs.Close()
 	e := h.wait(t, 1)["slow 100000"]
 	if e.Rows >= 100000 || e.Error != "" {
 		t.Errorf("entry %+v; a stop is the user's choice, not a failure", e)
@@ -458,8 +458,8 @@ func TestErrorOffsetPointsAtTheTokenInTheScript(t *testing.T) {
 
 func TestCloseTwiceClosesTheSessionOnce(t *testing.T) {
 	qs, _ := newQuerySession(context.Background(), &scriptSource{}, "c1", QueryOptions{})
-	qs.Close()
-	qs.Close()
+	_ = qs.Close()
+	_ = qs.Close()
 	if n := qs.session.(*scriptSession).closes.Load(); n != 1 {
 		t.Errorf("session closed %d times; a pooled connection released twice panics", n)
 	}

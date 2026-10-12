@@ -354,6 +354,29 @@ func (r *recordRows) Next(ctx context.Context) (model.Row, error) {
 	return rowOf(rec), nil
 }
 
+// firstFault says which of a poll's errors to report, and nothing when a poll
+// had none.
+//
+// A read given up on is that before it is anything else, whichever partition
+// says so: the caller reads its own stop from a cancellation, and a partition's
+// failure standing in front of one would be read as a broker that had gone. So
+// every error is looked at for a cancellation before any of them is reported as
+// a failure. Failing that, the first is reported, named by its partition,
+// because a poll that could not reach one partition has nothing to say about
+// how far the log goes.
+func firstFault(errs []kgo.FetchError) error {
+	for _, e := range errs {
+		if errors.Is(e.Err, context.Canceled) || errors.Is(e.Err, context.DeadlineExceeded) {
+			return e.Err
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	e := errs[0]
+	return fmt.Errorf("kafka: partition %d: %w", e.Partition, e.Err)
+}
+
 // fill reads another batch, and says whether there is nothing left to read.
 func (r *recordRows) fill(ctx context.Context) (bool, error) {
 	if !r.following && len(r.until) == 0 {
@@ -375,13 +398,8 @@ func (r *recordRows) fill(ctx context.Context) (bool, error) {
 	}
 	// A partition that failed is said so, rather than read as a log that
 	// ended: the difference is between nothing more and nothing known.
-	if errs := fetches.Errors(); len(errs) > 0 {
-		for _, e := range errs {
-			if errors.Is(e.Err, context.Canceled) || errors.Is(e.Err, context.DeadlineExceeded) {
-				return false, e.Err
-			}
-			return false, fmt.Errorf("kafka: partition %d: %w", e.Partition, e.Err)
-		}
+	if err := firstFault(fetches.Errors()); err != nil {
+		return false, err
 	}
 	fetches.EachRecord(func(rec *kgo.Record) {
 		if r.following {

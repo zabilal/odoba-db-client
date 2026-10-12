@@ -66,7 +66,7 @@ func (ss *session) endTx(what string, fn func(*sql.Tx) error) error {
 	if ss.open != nil {
 		// A result still streaming belongs to the transaction that is
 		// ending; reading more of it afterwards would read from nothing.
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 	tx := ss.tx

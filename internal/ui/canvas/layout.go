@@ -100,6 +100,22 @@ func Layout(g *Graph, opt LayoutOptions) {
 		boxes[ci] = componentBounds(g, comp)
 	}
 	packComponents(g, comps, boxes, opt)
+
+	// Packing moves a component as a whole and leaves its pinned tables where
+	// they are, so a free table can be carried onto a pinned one — the one
+	// overlap a pass over each component separately cannot see. A sweep over
+	// everything ends it, and where there is nothing to do it costs one
+	// comparison of each pair and moves nothing.
+	sweepApart(g, everyNode(g))
+}
+
+// everyNode is all of a graph's nodes, for a pass that is not about components.
+func everyNode(g *Graph) []int {
+	out := make([]int, len(g.Nodes))
+	for i := range g.Nodes {
+		out[i] = i
+	}
+	return out
 }
 
 // layoutComponent runs the force simulation over one connected component.
@@ -251,6 +267,16 @@ func layoutComponent(g *Graph, comp []int, opt LayoutOptions, salt int64) {
 	resolveOverlaps(g, comp)
 }
 
+// separationPasses is how many times the relaxation tries before the sweep
+// finishes the job. Enough that the sweep is a backstop rather than the usual
+// path: a schema of two hundred tables converges in a few dozen.
+//
+// A variable so that a test can exhaust it deliberately. What happens when a
+// relaxation runs out is the thing worth testing here, and waiting for an
+// arrangement that happens to need more than a hundred and twenty passes would
+// be waiting for a particular machine's floating point.
+var separationPasses = 120
+
 // resolveOverlaps pushes overlapping boxes apart.
 //
 // The force simulation treats nodes as points, so wide boxes routinely end up
@@ -261,10 +287,9 @@ func layoutComponent(g *Graph, comp []int, opt LayoutOptions, salt int64) {
 // The frame exists to bound repulsion, not to bound the picture, and clamping
 // during separation is what leaves nodes piled along its edge.
 func resolveOverlaps(g *Graph, comp []int) {
-	const passes = 120
 	const pad = 16.0
 
-	for p := 0; p < passes; p++ {
+	for p := 0; p < separationPasses; p++ {
 		moved := false
 		for i := 0; i < len(comp); i++ {
 			for j := i + 1; j < len(comp); j++ {
@@ -301,6 +326,69 @@ func resolveOverlaps(g *Graph, comp []int) {
 		}
 		if !moved {
 			return
+		}
+	}
+	// The relaxation is bounded, so a dense pile can run it out of passes
+	// instead of converging — and then it would hand back a diagram with two
+	// tables on top of each other, which is the one thing a diagram cannot have.
+	// On another architecture that is what it did: a force simulation is
+	// chaotic, so the last bits of a float decide where it lands, and the same
+	// schema left an overlap on amd64 that it did not on arm64 (ADR-0169).
+	//
+	// So what the relaxation cannot finish here, a sweep finishes here — inside
+	// the component, before its box is measured and packed. Leaving it to the
+	// sweep at the end of Layout would resolve the same overlaps and spread them
+	// across the whole diagram to do it, which the zoom-1.0 gate sees as a
+	// picture with nothing in it (G0-3).
+	sweepApart(g, comp)
+}
+
+// sweepApart guarantees what the relaxation only attempts.
+//
+// Taken in order, each node that overlaps anything already placed is moved right
+// of all of them. That cannot overlap by construction, so by induction nothing
+// overlaps when it ends — in one pass, with no convergence to wait for. It
+// spreads a pile sideways, which is worse-looking than the arrangement the
+// simulation wanted and better than two tables in the same place.
+//
+// Pinned tables are placed first, because they cannot be moved: a table
+// somebody put somewhere stays there, and what moves is whatever else wanted
+// that space. Taking them last would mean skipping one and leaving the overlap
+// it was in. Two pinned tables on top of each other are left alone, which is
+// what somebody who dragged them there asked for.
+//
+// After those, the order is the arrangement's own — left to right, then top to
+// bottom, then by name — so this is as deterministic as the rest of the layout.
+func sweepApart(g *Graph, comp []int) {
+	const pad = 16.0
+	order := append([]int(nil), comp...)
+	sort.SliceStable(order, func(a, b int) bool {
+		x, y := g.Nodes[order[a]], g.Nodes[order[b]]
+		switch {
+		case x.Pinned != y.Pinned:
+			return x.Pinned
+		case x.Pos.X != y.Pos.X:
+			return x.Pos.X < y.Pos.X
+		case x.Pos.Y != y.Pos.Y:
+			return x.Pos.Y < y.Pos.Y
+		}
+		return x.ID < y.ID
+	})
+	for i := 1; i < len(order); i++ {
+		n := &g.Nodes[order[i]]
+		if n.Pinned {
+			continue
+		}
+		rightmost, over := math.Inf(-1), false
+		for j := 0; j < i; j++ {
+			placed := g.Nodes[order[j]].Bounds()
+			if placed.Expand(pad / 2).Intersects(n.Bounds().Expand(pad / 2)) {
+				over = true
+			}
+			rightmost = math.Max(rightmost, placed.Max.X)
+		}
+		if over {
+			n.Pos.X += rightmost + pad - n.Bounds().Min.X
 		}
 	}
 }

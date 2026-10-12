@@ -218,8 +218,8 @@ func (g Grounding) Describe() string {
 		}
 	}
 	if g.Left > 0 {
-		b.WriteString(fmt.Sprintf("\n%s of this database is not described above; "+
-			"say so if the answer depends on one of them.\n", plural(g.Left, "other table")))
+		fmt.Fprintf(&b, "\n%s of this database is not described above; "+
+			"say so if the answer depends on one of them.\n", plural(g.Left, "other table"))
 	}
 	for _, s := range g.Rows {
 		b.WriteString(s.describe())
@@ -240,7 +240,7 @@ func (t Table) describe() string {
 		}
 	}
 	if t.Left > 0 {
-		b.WriteString(fmt.Sprintf(", and %s not listed", plural(t.Left, "other column")))
+		fmt.Fprintf(&b, ", and %s not listed", plural(t.Left, "other column"))
 	}
 	b.WriteString(")")
 	if len(t.Key) > 0 {

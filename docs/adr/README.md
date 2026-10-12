@@ -172,3 +172,10 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0165](0165-a-change-is-not-a-document-and-a-channel-is-not-a-key.md) | A change is not a document, and a channel is not a key | Accepted |
 | [0166](0166-a-permission-is-a-sentence.md) | A permission is a sentence | Accepted |
 | [0167](0167-a-rate-nobody-keeps.md) | A rate nobody keeps | Accepted |
+| [0168](0168-what-ships.md) | What ships | Accepted |
+| [0169](0169-what-another-machine-found.md) | What another machine found | Accepted |
+| [0170](0170-a-dropped-error-says-so.md) | A dropped error says so | Accepted |
+| [0171](0171-what-one-machine-cannot-see.md) | What one machine cannot see | Accepted |
+| [0172](0172-fonts-nobody-asked-to-keep.md) | Fonts nobody asked to keep | Accepted |
+| [0173](0173-a-search-engine-is-read.md) | A search engine is read | Accepted |
+| [0174](0174-a-query-engine-keeps-nothing.md) | A query engine keeps nothing | Accepted |

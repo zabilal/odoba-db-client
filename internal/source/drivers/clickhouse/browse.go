@@ -196,7 +196,7 @@ func (r *rowStream) Next(ctx context.Context) (model.Row, error) {
 	}
 	if !r.rows.Next() {
 		err := r.rows.Err()
-		r.Close()
+		_ = r.Close()
 		if err != nil {
 			return nil, statementError(err, r.ctx)
 		}

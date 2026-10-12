@@ -32,7 +32,9 @@ func TestInsertRowsRoundTripOnPostgreSQL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(func() { conn.Exec(context.Background(), "DROP TABLE IF EXISTS ikigai_it.rt_src, ikigai_it.rt_dst") })
+	t.Cleanup(func() {
+		_, _ = conn.Exec(context.Background(), "DROP TABLE IF EXISTS ikigai_it.rt_src, ikigai_it.rt_dst")
+	})
 	if _, err := conn.Exec(ctx, `INSERT INTO ikigai_it.rt_src VALUES
 		(1, $$it's "odd" \ fine$$ || E'\nsecond line', 12345678901234567890.1234567890, 1e300, '\x00ff',
 		 '2000-01-02', '2024-05-06 07:08:09.123456', '2024-05-06 07:08:09.123456+02', '{"a": [1, "x\ny"]}',

@@ -16,7 +16,7 @@ import (
 func txSession(t *testing.T, path string, guard source.Guard) *session {
 	t.Helper()
 	src := open(t, path, guard)
-	t.Cleanup(func() { src.Close() })
+	t.Cleanup(func() { _ = src.Close() })
 	ss, err := src.Session(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func TestClosingASessionEndsItsTransaction(t *testing.T) {
 // says so itself rather than leaving the driver to notice.
 func TestAClosedSessionBeginsNothing(t *testing.T) {
 	ss := txSession(t, fixture(t), source.Guard{})
-	ss.Close()
+	_ = ss.Close()
 	if err := ss.Begin(context.Background()); !errors.Is(err, errClosed) {
 		t.Errorf("a closed session said %v", err)
 	}

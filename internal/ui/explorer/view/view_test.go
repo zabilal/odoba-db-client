@@ -134,7 +134,7 @@ func setup(t *testing.T, hosts ...string) (*Loader, []store.SavedConnection) {
 		saved = append(saved, c)
 	}
 	ws := app.NewWorkspace(conns, app.MonitorConfig{Interval: time.Hour})
-	t.Cleanup(func() { ws.CloseAll() })
+	t.Cleanup(func() { _ = ws.CloseAll() })
 	return &Loader{Conns: conns, WS: ws}, saved
 }
 
@@ -193,9 +193,8 @@ func TestUnreachableConnectionBecomesAnErrorRow(t *testing.T) {
 	newApp(t)
 	l, saved := setup(t, "down")
 	e := New(l, (&uithread.Queue{}).Run, 0)
-	root := e.Model.Children(explorer.RootID)
 	waitReal(t, e.Model, explorer.RootID)
-	root = e.Model.Children(explorer.RootID)
+	root := e.Model.Children(explorer.RootID)
 	e.Model.Children(root[0])
 	kids := waitReal(t, e.Model, ConnectionID(saved[0].ID))
 	it, st, err := e.Model.Item(kids[0])
@@ -587,13 +586,13 @@ func TestABadgeThatPanicsIsNoBadge(t *testing.T) {
 // A workspace narrows the tree to the connections it is over (FR-15.9).
 func TestAWorkspaceNarrowsTheTree(t *testing.T) {
 	l, saved := setup(t, "primary", "reporting")
-	l.Shows = func(id string) bool { return id == saved[0].ID }
+	l.Show(func(id string) bool { return id == saved[0].ID })
 	roots := load(t, l, explorer.Item{})
 	if len(roots) != 1 || roots[0].Label != "primary" {
 		t.Fatalf("the tree shows %+v", labelsOf(roots))
 	}
 	// And with no workspace, both are there again.
-	l.Shows = nil
+	l.Show(nil)
 	if roots := load(t, l, explorer.Item{}); len(roots) != 2 {
 		t.Errorf("without a workspace the tree shows %+v", labelsOf(roots))
 	}
@@ -620,7 +619,7 @@ func TestAWorkspaceNarrowsFoldersToo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	l.Shows = func(id string) bool { return id == saved[0].ID }
+	l.Show(func(id string) bool { return id == saved[0].ID })
 	roots := load(t, l, explorer.Item{})
 	if len(roots) != 1 || roots[0].Label != "Billing" {
 		t.Fatalf("the tree shows %+v", labelsOf(roots))
@@ -649,4 +648,35 @@ func labelsOf(items []explorer.Item) []string {
 		out = append(out, it.Label)
 	}
 	return out
+}
+
+// Narrowing the tree happens on the goroutine that draws the window, and the
+// tree loads on goroutines of its own, so both sides of it are behind one lock.
+//
+// Without the lock this is a data race the detector finds at once, and nothing
+// else finds at all: the behaviour is the same either way, which is what makes a
+// race a race. So this test exists for `go test -race` to run, and is cheap
+// enough that it costs the ordinary build nothing.
+func TestNarrowingWhileTheTreeLoads(t *testing.T) {
+	l, saved := setup(t, "primary", "reporting")
+	const rounds = 300
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < rounds; i++ {
+			if i%2 == 0 {
+				l.Show(func(id string) bool { return id == saved[0].ID })
+				continue
+			}
+			l.Show(nil)
+		}
+	}()
+	for i := 0; i < rounds; i++ {
+		// Whatever it answers: a tree narrowed by a workspace being switched
+		// under it is either tree, and both are right.
+		if _, err := l.Load(context.Background(), explorer.Item{}); err != nil {
+			t.Fatalf("loading the root: %v", err)
+		}
+	}
+	<-done
 }

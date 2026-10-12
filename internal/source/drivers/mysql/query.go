@@ -55,7 +55,7 @@ func (ss *session) Close() error {
 		ss.tx = nil
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 	}
 	ss.mu.Unlock()
 	return ss.conn.Close()
@@ -75,7 +75,7 @@ func (ss *session) watch(ctx context.Context) (stop func()) {
 			select {
 			case <-done: // finished just as ctx ended: nothing to stop
 			default:
-				ss.src.kill(ss.connID)
+				_ = ss.src.kill(ss.connID)
 			}
 		case <-done:
 		}
@@ -101,7 +101,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		return nil, errClosed
 	}
 	if ss.open != nil {
-		ss.open.Close()
+		_ = ss.open.Close()
 		ss.open = nil
 	}
 
@@ -138,7 +138,8 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 		if access == source.AccessWrite {
 			// database/sql hides the count for a statement run as a query;
 			// ROW_COUNT() on the same connection has it.
-			ss.where().QueryRowContext(run, `SELECT ROW_COUNT()`).Scan(&affected)
+			// A failure leaves it at -1, which is what "not known" is here.
+			_ = ss.where().QueryRowContext(run, `SELECT ROW_COUNT()`).Scan(&affected)
 		}
 		return &source.Result{Affected: affected, Duration: time.Since(start)}, nil
 	}
@@ -151,7 +152,7 @@ func (ss *session) Query(ctx context.Context, stmt source.Statement) (*source.Re
 	stream.onClose = stop
 	// Closing a half-read result makes the driver read the rest; stopping the
 	// query first makes that immediate however many rows were left.
-	stream.abandon = func() { ss.src.kill(ss.connID) }
+	stream.abandon = func() { _ = ss.src.kill(ss.connID) }
 	ss.open = stream
 	return &source.Result{Rows: stream, Affected: -1, Duration: time.Since(start)}, nil
 }
@@ -227,7 +228,7 @@ type ownedStream struct {
 
 func (o *ownedStream) Close() error {
 	err := o.RowStream.Close()
-	o.owner.Close()
+	_ = o.owner.Close()
 	return err
 }
 

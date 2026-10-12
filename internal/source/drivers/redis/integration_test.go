@@ -111,7 +111,7 @@ func fill(t *testing.T, c goredis.Cmdable) {
 func conn(t *testing.T, src source.Source, db int) *goredis.Conn {
 	t.Helper()
 	c := src.(*redisSource).client.(*goredis.Client).Conn()
-	t.Cleanup(func() { c.Close() })
+	t.Cleanup(func() { _ = c.Close() })
 	if err := c.Select(context.Background(), db).Err(); err != nil {
 		t.Fatal(err)
 	}

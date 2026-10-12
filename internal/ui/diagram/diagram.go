@@ -42,7 +42,6 @@ type Widget struct {
 	// background is being panned.
 	dragging int
 	dragged  bool
-	last     fyne.Position
 	selected string
 
 	// minSize is what the widget claims to need, which is how an exported

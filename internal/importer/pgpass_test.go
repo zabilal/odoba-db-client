@@ -3,6 +3,7 @@ package importer
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -138,6 +139,17 @@ func TestAPasswordFileOthersCanReadIsRefused(t *testing.T) {
 	// of a file PostgreSQL has already judged unsafe, and doing it quietly.
 	path := pgpassAt(t, "db.example.com:5432:orders:jane:p\n", 0o644)
 	_, err := ReadPgpass(path)
+	if runtime.GOOS == "windows" {
+		// Windows has no mode to read: a file's protection there is its ACL,
+		// which a mode bit says nothing about, and libpq makes no permission
+		// check on Windows for that reason. So the file is read — and this says
+		// so rather than skipping, because a check that quietly stopped
+		// happening on a platform is the thing worth catching.
+		if err != nil {
+			t.Errorf("on Windows there is no mode to refuse, and it refused: %v", err)
+		}
+		return
+	}
 	if err == nil {
 		t.Fatal("it read a world-readable password file")
 	}

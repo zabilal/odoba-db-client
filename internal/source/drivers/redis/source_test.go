@@ -11,6 +11,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
+	"github.com/ikigai-db/ikigai-db/internal/testutil/errs"
 )
 
 // cfg is a connection as the settings would hold one.
@@ -271,7 +272,7 @@ func TestAFailureSaysWhatToFix(t *testing.T) {
 	}
 	// An error already classified is left as it was said.
 	already := &source.ConnectError{Kind: source.ConnectConfig, Hint: "The TLS settings are not usable."}
-	if got := classifyConnectError(already); got != error(already) {
+	if got := classifyConnectError(already); !errs.Same(got, already) {
 		t.Errorf("a classified error was classified again: %v", got)
 	}
 }

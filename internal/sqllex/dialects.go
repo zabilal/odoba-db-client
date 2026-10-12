@@ -203,6 +203,44 @@ var Firebird = &Dialect{
 	QuoteIdent: '"',
 }
 
+// Trino's SQL: the standard's, closely, because a query engine over other
+// people's stores has nobody's habits to keep. Names are double-quoted and a
+// string escapes its quote by doubling it; there is no backslash escape, no
+// dollar quoting and no procedural body. What it adds are the words of a
+// distributed query — the catalog a name begins with, UNNEST, TABLESAMPLE —
+// and the session a statement runs in.
+var Trino = &Dialect{
+	Name: "trino",
+	Keywords: words(commonKeywords + `
+		catalog catalogs schemas tables columns functions session stats
+		show describe use reset prepare execute deallocate call input output
+		unnest ordinality tablesample bernoulli system fetch next rows row only ties
+		except intersect qualify match_recognize measures pattern define
+		grouping sets cube rollup filter within ignore respect
+		authorization security definer invoker properties comment refresh
+		work isolation level read write committed uncommitted repeatable serializable
+		format type distributed logical validate io graphviz json verbose
+		true false escape at zone current
+	`),
+	Types: words(commonTypes + `
+		tinyint varbinary ipaddress hyperloglog p4hyperloglog qdigest tdigest
+		setdigest row map array color geometry sphericalgeography variant
+	`),
+	Functions: words(commonFunctions + `
+		approx_distinct approx_percentile arbitrary any_value bool_and bool_or
+		map_agg multimap_agg max_by min_by checksum count_if
+		try try_cast typeof format_datetime date_format date_parse date_add date_diff
+		from_unixtime to_unixtime from_iso8601_timestamp from_iso8601_date at_timezone
+		regexp_like regexp_extract regexp_extract_all regexp_split
+		json_extract json_extract_scalar json_parse json_format json_query json_value json_array json_object
+		element_at cardinality contains transform reduce zip sequence flatten slice
+		map_keys map_values map_entries split split_to_map array_join
+		if nullif coalesce version current_user current_catalog current_schema
+		from_utf8 to_utf8 from_hex to_hex from_base64 to_base64 xxhash64 sha256
+	`),
+	QuoteIdent: '"',
+}
+
 // CQL is Cassandra's query language (FR-12.3, FR-5.1).
 var CQL = &Dialect{
 	Name: "cql",
@@ -289,6 +327,7 @@ var dialects = map[string]*Dialect{
 	"clickhouse":  ClickHouse,
 	"oracle":      Oracle,
 	"firebird":    Firebird,
+	"trino":       Trino,
 	"cql":         CQL,
 	"cassandra":   CQL,
 	"mongosh":     Mongosh,

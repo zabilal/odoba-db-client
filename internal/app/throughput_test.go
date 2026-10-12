@@ -74,7 +74,7 @@ func measured(t *testing.T, keeps int, step int64) (*Meter, *counter) {
 	if err != nil {
 		t.Fatalf("measuring: %v", err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _ = m.Close() })
 	return m, c
 }
 
@@ -135,7 +135,7 @@ func TestAMeterHasNothingToSayAtFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _ = m.Close() })
 	if rates := m.Rates(); len(rates) != 0 {
 		t.Errorf("it measured %v before it had two readings", rates)
 	}
@@ -248,7 +248,7 @@ func TestAMeterTakesTheIntervalItWasGiven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _ = m.Close() })
 	time.Sleep(20 * time.Millisecond)
 	if rates := m.Rates(); len(rates) != 0 {
 		t.Errorf("an hour apart, it measured %v in twenty milliseconds", rates)
@@ -261,7 +261,7 @@ func TestAMeterTakesTheIntervalItWasGiven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { fast.Close() })
+	t.Cleanup(func() { _ = fast.Close() })
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for len(fast.Rates()) < 3 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -277,7 +277,7 @@ func TestAMeterTakesTheIntervalItWasGiven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { d.Close() })
+	t.Cleanup(func() { _ = d.Close() })
 	if len(d.rates) != meterKeeps {
 		t.Errorf("it holds room for %d rates, and its own answer is %d", len(d.rates), meterKeeps)
 	}
@@ -323,7 +323,7 @@ func TestClosingWaitsForTheReadingInFlight(t *testing.T) {
 		t.Fatal("no reading was ever in flight")
 	}
 	closed := make(chan struct{})
-	go func() { m.Close(); close(closed) }()
+	go func() { _ = m.Close(); close(closed) }()
 	select {
 	case <-closed:
 		t.Fatal("closing did not wait for the reading in flight")

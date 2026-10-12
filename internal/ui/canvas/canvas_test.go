@@ -88,26 +88,7 @@ func TestLayoutProducesNoOverlaps(t *testing.T) {
 	g := syntheticSchema(200)
 	Layout(g, DefaultLayout())
 
-	var worst float64
-	overlaps := 0
-	for i := 0; i < len(g.Nodes); i++ {
-		for j := i + 1; j < len(g.Nodes); j++ {
-			a, b := g.Nodes[i].Bounds(), g.Nodes[j].Bounds()
-			if !a.Intersects(b) {
-				continue
-			}
-			ca, cb := a.Center(), b.Center()
-			ox := (a.Width()+b.Width())/2 - math.Abs(ca.X-cb.X)
-			oy := (a.Height()+b.Height())/2 - math.Abs(ca.Y-cb.Y)
-			if ox > 0 && oy > 0 {
-				overlaps++
-				if area := ox * oy; area > worst {
-					worst = area
-				}
-			}
-		}
-	}
-	if overlaps > 0 {
+	if overlaps, worst := overlapping(g); overlaps > 0 {
 		t.Errorf("%d overlapping node pairs (worst overlap area %.0f)", overlaps, worst)
 	}
 }
@@ -497,5 +478,112 @@ func TestPinnedNodesKeepTheirPlaces(t *testing.T) {
 		if got := g.NodeByID("a").Pos; got != put {
 			t.Errorf("%s: it was moved to %+v from %+v", c.what, got, put)
 		}
+	}
+}
+
+// overlapping reports how many pairs of a graph's nodes are on top of one
+// another, and the worst of them.
+func overlapping(g *Graph) (int, float64) {
+	pairs, worst := 0, 0.0
+	for i := 0; i < len(g.Nodes); i++ {
+		for j := i + 1; j < len(g.Nodes); j++ {
+			a, b := g.Nodes[i].Bounds(), g.Nodes[j].Bounds()
+			if !a.Intersects(b) {
+				continue
+			}
+			ca, cb := a.Center(), b.Center()
+			ox := (a.Width()+b.Width())/2 - math.Abs(ca.X-cb.X)
+			oy := (a.Height()+b.Height())/2 - math.Abs(ca.Y-cb.Y)
+			if ox > 0 && oy > 0 {
+				pairs++
+				if area := ox * oy; area > worst {
+					worst = area
+				}
+			}
+		}
+	}
+	return pairs, worst
+}
+
+// exhausted runs the relaxation out of passes, which is what a dense
+// arrangement did on another architecture and what no arrangement does reliably
+// on this one: a force simulation is chaotic, so how many passes it takes is
+// decided by the last bits of a float.
+func exhausted(t *testing.T) {
+	t.Helper()
+	was := separationPasses
+	separationPasses = 1
+	t.Cleanup(func() { separationPasses = was })
+}
+
+// ring is a graph of tables all in one component, so that the simulation has
+// something to do and the relaxation something to undo.
+func ring(n, cols int) *Graph {
+	g := &Graph{}
+	for i := 0; i < n; i++ {
+		g.Nodes = append(g.Nodes, table(fmt.Sprintf("ringed_%03d", i), cols))
+	}
+	for i := range g.Nodes {
+		g.Edges = append(g.Edges, Edge{
+			From: g.Nodes[i].ID, To: g.Nodes[(i+1)%len(g.Nodes)].ID})
+	}
+	return g
+}
+
+// What the relaxation runs out of passes on is pulled apart anyway.
+//
+// A diagram with two tables in the same place is unreadable, and the relaxation
+// is bounded: it tries a fixed number of times and then hands back whatever it
+// has. That was left to chance until an architecture took it — the same schema
+// overlapped on amd64 and did not on arm64 — so the guarantee is made now
+// rather than hoped for (ADR-0169).
+func TestWhatTheRelaxationRunsOutOfPassesOnIsPulledApart(t *testing.T) {
+	exhausted(t)
+	g := ring(40, 6)
+	Layout(g, DefaultLayout())
+	if pairs, worst := overlapping(g); pairs > 0 {
+		t.Errorf("%d overlapping pairs remain (worst area %.0f)", pairs, worst)
+	}
+}
+
+// And a table somebody put somewhere stays there: what moves is whatever else
+// wanted that space.
+func TestAPinnedTableIsNotSweptAside(t *testing.T) {
+	exhausted(t)
+	g := ring(12, 4)
+	g.Nodes[3].Pinned = true
+	g.Nodes[3].Pos = Point{X: 200, Y: 200}
+	where := g.Nodes[3].Pos
+	Layout(g, DefaultLayout())
+	if g.Nodes[3].Pos != where {
+		t.Errorf("a pinned table moved from %v to %v", where, g.Nodes[3].Pos)
+	}
+	if pairs, _ := overlapping(g); pairs > 0 {
+		t.Errorf("%d overlapping pairs remain around a pinned table", pairs)
+	}
+}
+
+// Two pinned tables in the same place stay in the same place. That is what
+// somebody who dragged them there asked for, and moving one of them would be
+// this deciding it knew better — so the overlap they are in is theirs to keep,
+// and everything else still moves out of their way.
+func TestTwoPinnedTablesAreLeftWhereTheyWerePut(t *testing.T) {
+	exhausted(t)
+	g := ring(12, 4)
+	for _, i := range []int{3, 7} {
+		g.Nodes[i].Pinned = true
+		g.Nodes[i].Pos = Point{X: 200, Y: 200}
+	}
+	Layout(g, DefaultLayout())
+	for _, i := range []int{3, 7} {
+		if g.Nodes[i].Pos != (Point{X: 200, Y: 200}) {
+			t.Errorf("pinned table %d moved to %v", i, g.Nodes[i].Pos)
+		}
+	}
+	// Nothing else is on top of either of them: the pair overlap each other and
+	// nothing else overlaps anything.
+	pairs, _ := overlapping(g)
+	if pairs != 1 {
+		t.Errorf("%d overlapping pairs, want only the two pinned ones", pairs)
 	}
 }

@@ -116,5 +116,5 @@ func emptied(t *testing.T, c goredis.UniversalClient) {
 	if err := flush(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { flush() })
+	t.Cleanup(func() { _ = flush() })
 }

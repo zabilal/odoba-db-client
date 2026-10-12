@@ -80,7 +80,7 @@ func writeBackup(ctx context.Context, b app.Backup, path string) error {
 		return err
 	}
 	if err := b.Write(ctx, f); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()
