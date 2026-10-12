@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -41,7 +42,7 @@ func (s *Shell) review(e *edits) {
 		return
 	}
 	cs := e.pending.Changeset(false)
-	d := dialog.NewCustomConfirm("Review Changes", "Commit", "Cancel", reviewBody(plan), func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("Review Changes"), l10n.T("Commit"), l10n.T("Cancel"), reviewBody(plan), func(ok bool) {
 		if ok {
 			s.commit(e, plan, cs)
 		}
@@ -69,13 +70,13 @@ func reviewBody(plan *source.WritePlan) fyne.CanvasObject {
 		if i < len(plan.Descriptions) {
 			desc = plan.Descriptions[i]
 		}
-		what := widget.NewLabelWithStyle(fmt.Sprintf("%d. %s", i+1, desc), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+		what := widget.NewLabelWithStyle(l10n.F("%d. %s", i+1, desc), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 		what.Wrapping = fyne.TextWrapWord
 		sql := widget.NewLabelWithStyle(st.SQL, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
 		sql.Wrapping, sql.Selectable = fyne.TextWrapWord, true
 		items = append(items, what, sql)
 		if len(st.Args) > 0 {
-			vals := widget.NewLabel("Values: " + argsText(st.Args))
+			vals := widget.NewLabel(l10n.F("Values: %s", argsText(st.Args)))
 			vals.Wrapping, vals.Importance = fyne.TextWrapWord, widget.LowImportance
 			items = append(items, vals)
 		}

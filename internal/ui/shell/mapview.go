@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/chart"
 	"github.com/ikigai-db/ikigai-db/internal/ui/geomap"
@@ -117,7 +118,7 @@ func (s *Shell) OpenMap(of *tab) *tab {
 		ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the rows…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Map: "+label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Map: %s", label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -232,12 +233,12 @@ func coordinate(v float64, pos, neg string) string {
 // pick acts on a click: the row it was on, shown in the grid it came from.
 func (p *mapPanel) pick(r geomap.Reading) {
 	if r.Row < 0 || r.Row >= len(p.rows) {
-		p.t.footer.SetText("There is no place there. " + p.src.Describe(p.cols))
+		p.t.footer.SetText(l10n.F("There is no place there. %s", p.src.Describe(p.cols)))
 		return
 	}
 	of := p.s.tabFor(strings.TrimPrefix(p.t.key, "map:"))
 	if of == nil || of.grid == nil {
-		p.t.footer.SetText("The rows this was drawn from are no longer open.")
+		p.t.footer.SetText(l10n.T("The rows this was drawn from are no longer open."))
 		return
 	}
 	of.grid.GoTo(grid.CellID{Row: r.Row, Col: 0})
@@ -278,9 +279,9 @@ func (p *mapPanel) toolbar() fyne.CanvasObject {
 	p.lons.Selected = p.columnName(p.src.Lon)
 
 	return container.NewHBox(
-		widget.NewLabel("Geometry"), p.geoms,
-		widget.NewLabel("or latitude"), p.lats,
-		widget.NewLabel("and longitude"), p.lons,
+		widget.NewLabel(l10n.T("Geometry")), p.geoms,
+		widget.NewLabel(l10n.T("or latitude")), p.lats,
+		widget.NewLabel(l10n.T("and longitude")), p.lons,
 	)
 }
 

@@ -1,13 +1,12 @@
 package shell
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/editor"
 )
 
@@ -60,12 +59,12 @@ func newFindBar(s *Shell, q *queryTab) *findBar {
 	f := &findBar{s: s, q: q, with: widget.NewEntry(), status: widget.NewLabel("")}
 	f.find = &findEntry{bar: f}
 	f.find.ExtendBaseWidget(f.find)
-	f.find.SetPlaceHolder("Find")
+	f.find.SetPlaceHolder(l10n.T("Find"))
 	f.find.OnChanged = func(string) { f.refresh() }
-	f.with.SetPlaceHolder("Replace with")
-	f.match = widget.NewCheck("Match Case", func(bool) { f.refresh() })
-	f.word = widget.NewCheck("Whole Words", func(bool) { f.refresh() })
-	f.regex = widget.NewCheck("Regular Expression", func(bool) { f.refresh() })
+	f.with.SetPlaceHolder(l10n.T("Replace with"))
+	f.match = widget.NewCheck(l10n.T("Match Case"), func(bool) { f.refresh() })
+	f.word = widget.NewCheck(l10n.T("Whole Words"), func(bool) { f.refresh() })
+	f.regex = widget.NewCheck(l10n.T("Regular Expression"), func(bool) { f.refresh() })
 	f.status.Importance = widget.LowImportance
 	f.status.Alignment = fyne.TextAlignTrailing
 	// A fixed width for the count: a label that grows does not make its
@@ -73,12 +72,12 @@ func newFindBar(s *Shell, q *queryTab) *findBar {
 	// width that followed the text would shift the buttons as it changed.
 	count := container.New(layout.NewGridWrapLayout(fyne.NewSize(statusWidth, f.status.MinSize().Height)), f.status)
 
-	prev := widget.NewButton("Previous", func() { f.next(true) })
-	next := widget.NewButton("Next", func() { f.next(false) })
-	done := widget.NewButton("Done", f.hide)
+	prev := widget.NewButton(l10n.T("Previous"), func() { f.next(true) })
+	next := widget.NewButton(l10n.T("Next"), func() { f.next(false) })
+	done := widget.NewButton(l10n.T("Done"), f.hide)
 	findRow := container.NewBorder(nil, nil, nil, container.NewHBox(count, prev, next, done), f.find)
 	f.replace = container.NewBorder(nil, nil, nil, container.NewHBox(
-		widget.NewButton("Replace", f.replaceOne), widget.NewButton("Replace All", func() { f.replaceAll() })), f.with)
+		widget.NewButton(l10n.T("Replace"), f.replaceOne), widget.NewButton(l10n.T("Replace All"), func() { f.replaceAll() })), f.with)
 	f.box = container.NewVBox(findRow, f.replace, container.NewHBox(f.match, f.word, f.regex), widget.NewSeparator())
 	f.box.Hide()
 	return f
@@ -150,7 +149,7 @@ func (f *findBar) refresh() {
 	if err != nil {
 		f.q.editor.SetMatches(nil)
 		f.status.Importance = widget.DangerImportance
-		f.status.SetText("Invalid pattern")
+		f.status.SetText(l10n.T("Invalid pattern"))
 		return
 	}
 	f.q.editor.SetMatches(ms)
@@ -164,15 +163,15 @@ func (f *findBar) refresh() {
 	}
 	switch {
 	case len(ms) == 0:
-		f.status.SetText("No matches")
+		f.status.SetText(l10n.T("No matches"))
 	case len(ms) >= findLimit:
-		f.status.SetText(fmt.Sprintf("%s+ matches", group(findLimit)))
+		f.status.SetText(l10n.F("%s+ matches", group(findLimit)))
 	case current > 0:
-		f.status.SetText(fmt.Sprintf("%d of %d", current, len(ms)))
+		f.status.SetText(l10n.F("%d of %d", current, len(ms)))
 	case len(ms) == 1:
-		f.status.SetText("1 match")
+		f.status.SetText(l10n.T("1 match"))
 	default:
-		f.status.SetText(fmt.Sprintf("%d matches", len(ms)))
+		f.status.SetText(l10n.F("%d matches", len(ms)))
 	}
 }
 
@@ -197,7 +196,7 @@ func (f *findBar) replaceAll() int {
 	f.edit(func(doc *editor.Document) { n, _ = doc.ReplaceAll(f.search(), f.with.Text) })
 	if n > 0 {
 		f.status.Importance = widget.LowImportance
-		f.status.SetText(fmt.Sprintf("Replaced %d", n))
+		f.status.SetText(l10n.F("Replaced %d", n))
 	}
 	return n
 }

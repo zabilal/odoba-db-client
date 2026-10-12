@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -72,7 +73,7 @@ func (s *Shell) OpenDesign(connID string, n model.Node) *tab {
 	t := &tab{key: key, connID: connID, ref: n.Ref, label: n.Label, structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the table…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Design: "+n.Label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Design: %s", n.Label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -134,12 +135,12 @@ func (s *Shell) reopenDesign(t *tab) {
 func (s *Shell) showDesign(t *tab, table *model.Table) {
 	p := &designPanel{s: s, t: t, design: app.NewDesign(t.ref, table), rows: container.NewVBox()}
 	t.design = p
-	p.add = widget.NewButton("Add Column", p.addColumn)
-	p.undo = widget.NewButton("Revert All", func() {
+	p.add = widget.NewButton(l10n.T("Add Column"), p.addColumn)
+	p.undo = widget.NewButton(l10n.T("Revert All"), func() {
 		p.design.RevertAll()
 		p.draw()
 	})
-	p.preview_ = widget.NewButton("Preview…", p.preview)
+	p.preview_ = widget.NewButton(l10n.T("Preview…"), p.preview)
 	head := container.NewHBox(p.add, p.preview_, p.undo)
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(head, nil, nil, nil, container.NewVScroll(p.rows)),
@@ -172,18 +173,18 @@ func (p *designPanel) row(c model.Column) fyne.CanvasObject {
 	kind.SetText(typeText(c.Type))
 	kind.Validator = notBlank("a column needs a type")
 
-	null := widget.NewCheck("Nullable", nil)
+	null := widget.NewCheck(l10n.T("Nullable"), nil)
 	null.SetChecked(c.Type.Nullable)
 
 	def := widget.NewEntry()
-	def.SetPlaceHolder("no default")
+	def.SetPlaceHolder(l10n.T("no default"))
 	def.SetText(c.Default)
 
-	identity := widget.NewCheck("Identity", nil)
+	identity := widget.NewCheck(l10n.T("Identity"), nil)
 	identity.SetChecked(c.Identity || c.AutoIncrement)
 
 	comment := widget.NewEntry()
-	comment.SetPlaceHolder("no comment")
+	comment.SetPlaceHolder(l10n.T("no comment"))
 	comment.SetText(c.Comment)
 
 	was := c.Name
@@ -210,14 +211,14 @@ func (p *designPanel) row(c model.Column) fyne.CanvasObject {
 	null.OnChanged = func(bool) { apply("") }
 	identity.OnChanged = func(bool) { apply("") }
 
-	drop := widget.NewButton("Remove", func() {
+	drop := widget.NewButton(l10n.T("Remove"), func() {
 		if err := p.design.DropColumn(was); err != nil {
 			p.t.footer.SetText(err.Error())
 			return
 		}
 		p.draw()
 	})
-	revert := widget.NewButton("Revert", func() {
+	revert := widget.NewButton(l10n.T("Revert"), func() {
 		if p.design.Revert(was) {
 			p.draw()
 		}
@@ -256,7 +257,7 @@ func (p *designPanel) say() {
 		if p.preview_ != nil {
 			p.preview_.Disable()
 		}
-		p.t.footer.SetText("No changes yet.")
+		p.t.footer.SetText(l10n.T("No changes yet."))
 		return
 	}
 	var said []string
@@ -276,7 +277,7 @@ func (p *designPanel) say() {
 		}
 		said = append(said, fmt.Sprintf("index %s %s", c.Name, c.Change))
 	}
-	p.t.footer.SetText(fmt.Sprintf("%s: %s", nounCount(len(said), "change"), strings.Join(said, ", ")))
+	p.t.footer.SetText(l10n.F("%s: %s", nounCount(len(said), "change"), strings.Join(said, ", ")))
 }
 
 // typeText is a column's type as somebody would type it, which is the

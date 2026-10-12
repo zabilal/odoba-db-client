@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 )
 
@@ -35,11 +36,11 @@ func (s *Shell) backUp() {
 		return
 	}
 	s.d.Files.Save(s.win, filedlg.Options{
-		Message:    "Back up everything Ikigai DB keeps",
+		Message:    l10n.T("Back up everything Ikigai DB keeps"),
 		Name:       "ikigai-backup-" + time.Now().Format("2006-01-02") + ".zip",
 		Extensions: []string{"zip"},
 		Kind:       "backup archive",
-		Accept:     "Back Up",
+		Accept:     l10n.T("Back Up"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -69,7 +70,7 @@ func (s *Shell) backUpTo(path string) {
 				return
 			}
 			s.endTask(k, taskDone, "Backed up")
-			s.status.SetText("Backed up. No passwords are in it: they are in the keychain.")
+			s.status.SetText(l10n.T("Backed up. No passwords are in it: they are in the keychain."))
 		})
 	}()
 }
@@ -96,10 +97,10 @@ func (s *Shell) restoreBackup() {
 		return
 	}
 	s.d.Files.Open(s.win, filedlg.Options{
-		Message:    "Restore everything from a backup",
+		Message:    l10n.T("Restore everything from a backup"),
 		Extensions: []string{"zip"},
 		Kind:       "backup archive",
-		Accept:     "Restore",
+		Accept:     l10n.T("Restore"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -122,13 +123,13 @@ func (s *Shell) confirmRestore(path string) {
 		"saved query and piece of history on this machine with the ones in it, and the application closes so that "+
 		"it starts again from what was restored.\n\nWhat is here now is kept beside it, so this can be undone.\n\n%s",
 		man.Written.Local().Format("2 January 2006 at 15:04"), man.Secrets)
-	d := dialog.NewConfirm("Restore from this backup?", said, func(yes bool) {
+	d := dialog.NewConfirm(l10n.T("Restore from this backup?"), said, func(yes bool) {
 		if yes {
 			s.restoreFrom(path)
 		}
 	}, s.win)
-	d.SetConfirmText("Restore")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Restore"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Resize(fyne.NewSize(520, d.MinSize().Height))
 	d.Show()
@@ -169,7 +170,7 @@ func (s *Shell) restoreFrom(path string) {
 		s.showError(fmt.Errorf("the backup could not be put back: %w", err))
 		return
 	}
-	s.status.SetText("Restored. The application is closing so that it starts again from what was restored.")
+	s.status.SetText(l10n.T("Restored. The application is closing so that it starts again from what was restored."))
 	s.win.Close()
 }
 

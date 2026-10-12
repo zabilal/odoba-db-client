@@ -3,6 +3,7 @@ package shell
 import (
 	"strings"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -57,8 +58,8 @@ func textSizeIDs() []string {
 func (s *Shell) textSizeCommands() []commands.Command {
 	var out []commands.Command
 	for _, size := range uitheme.TextSizes {
-		out = append(out, commands.Command{ID: textSizeID(size.Size), Category: "Text Size",
-			Title: size.Name, Keywords: []string{"text", "size", "larger", "bigger", "font", "accessibility"},
+		out = append(out, commands.Command{ID: textSizeID(size.Size), Category: l10n.T("Text Size"),
+			Title: l10n.T(size.Name), Keywords: []string{"text", "size", "larger", "bigger", "font", "accessibility"},
 			Run: func() { s.setTextSize(size.Size) }})
 	}
 	return out

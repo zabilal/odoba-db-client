@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
@@ -79,11 +80,11 @@ func (s *Shell) askToRename(connID string, ref model.ObjectRef) {
 	// The warning starts as a question, not as silence: an empty space here
 	// would read as "nothing depends on this", which nothing has established
 	// yet.
-	cost := widget.NewLabel("Reading what depends on it…")
+	cost := widget.NewLabel(l10n.T("Reading what depends on it…"))
 	cost.Wrapping = fyne.TextWrapWord
 	costs := container.NewVBox(cost)
 
-	d := dialog.NewForm(renameTitle(ref.Kind), "Rename…", "Cancel",
+	d := dialog.NewForm(renameTitle(ref.Kind), l10n.T("Rename…"), l10n.T("Cancel"),
 		[]*widget.FormItem{
 			{Text: "New name", Widget: entry},
 			{Widget: costs},
@@ -155,7 +156,7 @@ func costOf(deps []model.Dependent, err error, was string) []fyne.CanvasObject {
 func (s *Shell) previewRename(connID string, ref model.ObjectRef, to string) {
 	live, ok := s.d.WS.Get(connID)
 	if !ok {
-		s.status.SetText("This connection is not open.")
+		s.status.SetText(l10n.T("This connection is not open."))
 		return
 	}
 	stmts, err := app.PlanRename(live.Source, ref, to)
@@ -164,7 +165,7 @@ func (s *Shell) previewRename(connID string, ref model.ObjectRef, to string) {
 		return
 	}
 	if len(stmts) == 0 {
-		s.status.SetText("That is the name it already has.")
+		s.status.SetText(l10n.T("That is the name it already has."))
 		return
 	}
 	target := ddlTarget{connID: connID, ctx: s.ctx, say: s.status.SetText}

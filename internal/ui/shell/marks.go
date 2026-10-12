@@ -13,6 +13,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
@@ -121,7 +122,7 @@ func (s *Shell) scriptMarked(kind string, write func(context.Context, source.Sou
 	if !ok {
 		return
 	}
-	s.status.SetText("Writing the " + kind + " script for " + nounCount(len(nodes), "object") + "…")
+	s.status.SetText(l10n.F("Writing the %s script for %s…", kind, nounCount(len(nodes), "object")))
 	go func() {
 		ctx, cancel := context.WithTimeout(s.ctx, scriptTimeout)
 		defer cancel()
@@ -196,7 +197,7 @@ func (s *Shell) exportMarked() {
 		names[i] = f.String()
 	}
 	format := widget.NewSelect(names, nil)
-	header := widget.NewCheck("Column names as the first line", nil)
+	header := widget.NewCheck(l10n.T("Column names as the first line"), nil)
 	header.SetChecked(true)
 	format.OnChanged = func(string) {
 		if headerApplies(formats[format.SelectedIndex()]) {
@@ -206,9 +207,9 @@ func (s *Shell) exportMarked() {
 		header.Disable() // JSON names every value already
 	}
 	format.SetSelectedIndex(0)
-	d := dialog.NewForm("Export "+nounCount(len(nodes), "marked object"), "Choose Where…", "Cancel",
+	d := dialog.NewForm(l10n.F("Export %s", nounCount(len(nodes), "marked object")), l10n.T("Choose Where…"), l10n.T("Cancel"),
 		[]*widget.FormItem{
-			widget.NewFormItem("Format", format),
+			widget.NewFormItem(l10n.T("Format"), format),
 			widget.NewFormItem("", header),
 			widget.NewFormItem("", quiet("One file each, named after the object, all in the directory you choose.")),
 		}, func(ok bool) {
@@ -218,9 +219,9 @@ func (s *Shell) exportMarked() {
 			f := formats[format.SelectedIndex()]
 			ext := f.Extension()
 			s.d.Files.Save(s.win, filedlg.Options{
-				Message:    fmt.Sprintf("Export %s as %s", nounCount(len(nodes), "object"), f),
+				Message:    l10n.F("Export %s as %s", nounCount(len(nodes), "object"), f),
 				Name:       fileName(nodes[0].Node.Label) + "." + ext,
-				Extensions: []string{ext}, Kind: f.String(), Accept: "Export",
+				Extensions: []string{ext}, Kind: f.String(), Accept: l10n.T("Export"),
 			}, func(path string, err error) {
 				switch {
 				case err != nil:
@@ -269,7 +270,7 @@ func (s *Shell) exportObjectTo(connID string, n model.Node, f export.Format, hea
 			// gone rather than how far through it is.
 			file, err := os.Create(path)
 			if err != nil {
-				s.showError(formError("The export could not create its file: " + err.Error()))
+				s.showError(formError(l10n.F("The export could not create its file: %s", err.Error())))
 				return
 			}
 			rows := b.Rows

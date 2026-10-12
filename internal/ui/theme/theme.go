@@ -5,6 +5,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	ftheme "fyne.io/fyne/v2/theme"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // Theme adapts the macOS palette in tokens.go to Fyne's theming interface.
@@ -54,9 +56,9 @@ var TextSizes = []struct {
 	Size TextSize
 	Name string
 }{
-	{TextDefault, "Default"},
-	{TextLarge, "Large"},
-	{TextLarger, "Larger"},
+	{TextDefault, l10n.N("Default")},
+	{TextLarge, l10n.N("Large")},
+	{TextLarger, l10n.N("Larger")},
 }
 
 // Appearance selects light or dark, or defers to the operating system.

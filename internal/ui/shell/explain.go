@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
@@ -105,7 +106,7 @@ func (s *Shell) OpenPlan(of *tab, sql string, analyze, confirmed bool) *tab {
 		t = &tab{key: key, connID: of.connID, label: planLabel(sql), structure: true, ctx: ctx, cancel: cancel,
 			body: container.NewStack(quiet("Asking for the plan…")), footer: widget.NewLabel("")}
 		t.footer.Importance = widget.LowImportance
-		t.item = container.NewTabItem("Plan: "+t.label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+		t.item = container.NewTabItem(l10n.F("Plan: %s", t.label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 		s.open = append(s.open, t)
 		s.addTab(t)
 	} else {
@@ -177,7 +178,7 @@ func (s *Shell) showPlan(t *tab, sql string, analyze bool, plan *source.Plan) {
 	p.raw.Wrapping = fyne.TextWrapOff
 
 	rows := container.NewVScroll(p.body)
-	words := widget.NewAccordion(widget.NewAccordionItem("The server's own words",
+	words := widget.NewAccordion(widget.NewAccordionItem(l10n.T("The server's own words"),
 		container.NewVScroll(p.raw)))
 
 	t.body.Objects = []fyne.CanvasObject{
@@ -189,8 +190,8 @@ func (s *Shell) showPlan(t *tab, sql string, analyze bool, plan *source.Plan) {
 
 // toolbar is the few things a plan can be told to do.
 func (p *planPanel) toolbar() fyne.CanvasObject {
-	again := widget.NewButton("Ask Again", func() { p.s.OpenPlan(p.t, p.sql, p.analyze, false) })
-	measure := widget.NewButton("Run and Measure", func() { p.s.OpenPlan(p.t, p.sql, true, false) })
+	again := widget.NewButton(l10n.T("Ask Again"), func() { p.s.OpenPlan(p.t, p.sql, p.analyze, false) })
+	measure := widget.NewButton(l10n.T("Run and Measure"), func() { p.s.OpenPlan(p.t, p.sql, true, false) })
 	live, open := p.s.d.WS.Get(p.t.connID)
 	if !open || !app.CanAnalyse(live.Source) || p.analyze {
 		measure.Disable()

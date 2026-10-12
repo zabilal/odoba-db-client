@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/sqlcomplete"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
@@ -93,11 +94,11 @@ func (s *Shell) newQueryTab(connID string) *tab {
 	q.messages.Wrapping = fyne.TextWrapWord
 	q.completion = sqlcomplete.New(sqllex.DialectFor(""), nil, nil)
 	q.editor.SetCompleter(q.complete)
-	q.results = container.NewAppTabs(container.NewTabItem("Messages", container.NewVScroll(q.messages)))
+	q.results = container.NewAppTabs(container.NewTabItem(l10n.T("Messages"), container.NewVScroll(q.messages)))
 	q.results.OnSelected = func(*container.TabItem) { s.sync() } // Export follows the result on show
 
 	t := &tab{key: fmt.Sprintf("query:%d", s.queries), connID: connID, ctx: ctx, cancel: cancel,
-		footer: widget.NewLabel("Connecting…"), query: q}
+		footer: widget.NewLabel(l10n.T("Connecting…")), query: q}
 	t.footer.Importance = widget.LowImportance
 	q.find = newFindBar(s, q)
 	top := container.NewBorder(q.find.box, nil, nil, nil, q.editor)
@@ -168,7 +169,7 @@ func (s *Shell) connectQuery(t *tab) {
 				})
 			})
 			q.editor.Refresh()
-			t.footer.SetText("Ready")
+			t.footer.SetText(l10n.T("Ready"))
 			s.sync()
 		})
 	}()
@@ -262,15 +263,15 @@ func (s *Shell) runQuery(all bool) {
 		s.runIn(t, all)
 		return
 	}
-	d := dialog.NewConfirm("Run and Discard Changes?",
-		fmt.Sprintf("The results have %s not committed, which running again discards.", changesText(n)),
+	d := dialog.NewConfirm(l10n.T("Run and Discard Changes?"),
+		l10n.F("The results have %s not committed, which running again discards.", changesText(n)),
 		func(yes bool) {
 			if yes {
 				s.runIn(t, all)
 			}
 		}, s.win)
-	d.SetConfirmText("Run")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Run"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }
@@ -311,7 +312,7 @@ func (s *Shell) execute(t *tab, script string, base int, opts source.ScriptOptio
 	q.runRev = q.editor.Document().Revision()
 	q.named = opts.Named
 	s.clearResults(q)
-	t.footer.SetText("Running…")
+	t.footer.SetText(l10n.T("Running…"))
 	s.sync()
 	start := time.Now()
 	go func() {
@@ -380,7 +381,7 @@ func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOp
 				opts.Confirmed = true
 				s.execute(t, script, base, opts)
 			},
-			func() { t.footer.SetText("Not run") })
+			func() { t.footer.SetText(l10n.T("Not run")) })
 	case errors.Is(err, source.ErrConfirmationRequired):
 		s.askToType(t.connID, "Change Data on Production?",
 			productionBody("script changes data on", s.connName(t.connID), "Nothing has run yet."),
@@ -389,7 +390,7 @@ func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOp
 				opts.Confirmed = true // the values given still go with it
 				s.execute(t, script, base, opts)
 			},
-			func() { t.footer.SetText("Not run") })
+			func() { t.footer.SetText(l10n.T("Not run")) })
 	case errors.Is(err, source.ErrReadOnly):
 		s.note(t.query, "Not run: the script changes data, and this connection is read-only.")
 	default:
@@ -436,7 +437,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	g.OnSpace = func() { s.toggleViewerFor(t, g) }
 	g.OnHeaderMenu = func(col int, at fyne.Position) { s.showHeaderMenu(t, g, col, at) }
 	g.OnLayout = func() { t.viewerFollow(g) } // a form shows the columns shown
-	r := &result{rs: rs, stmt: stmt, named: q.named, count: widget.NewLabel("Loading rows…")}
+	r := &result{rs: rs, stmt: stmt, named: q.named, count: widget.NewLabel(l10n.T("Loading rows…"))}
 	r.count.Importance = widget.LowImportance
 	update := uithread.Coalesce(s.d.Run, s.d.Delay, func() {
 		if t.ctx.Err() == nil {
@@ -448,7 +449,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 		update()
 	}
 	m.OnError = func(err error) {
-		s.d.Run(func() { r.count.SetText("Could not load rows: " + err.Error()) })
+		s.d.Run(func() { r.count.SetText(l10n.F("Could not load rows: %s", err.Error())) })
 	}
 	var foot fyne.CanvasObject = r.count
 	switch {
@@ -460,7 +461,7 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	}
 	holder := container.NewStack(g.View())
 	t.hold(g, holder)
-	item := container.NewTabItem(fmt.Sprintf("Result %d", n), container.NewBorder(nil, foot, nil, nil, holder))
+	item := container.NewTabItem(l10n.F("Result %d", n), container.NewBorder(nil, foot, nil, nil, holder))
 	q.results.Append(item)
 	if len(q.sets) == 0 {
 		q.results.Select(item)

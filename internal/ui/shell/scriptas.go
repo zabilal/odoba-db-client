@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -148,7 +149,7 @@ func schemaHeader(name string) string {
 
 // writeDDL renders off the UI goroutine and opens the result as a script.
 func (s *Shell) writeDDL(connID, label string, render func(context.Context, source.Source) ([]source.Statement, error), header string) {
-	s.status.SetText("Writing the DDL for " + label + "…")
+	s.status.SetText(l10n.F("Writing the DDL for %s…", label))
 	go func() {
 		ctx, cancel := context.WithTimeout(s.ctx, scriptTimeout)
 		defer cancel()
@@ -168,7 +169,7 @@ func (s *Shell) writeDDL(connID, label string, render func(context.Context, sour
 				return
 			}
 			if len(stmts) == 0 {
-				s.status.SetText("There is nothing in " + label + " to write.")
+				s.status.SetText(l10n.F("There is nothing in %s to write.", label))
 				return
 			}
 			// Nothing is said in the status line afterwards: opening the

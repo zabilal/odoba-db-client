@@ -18,6 +18,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/app/connstr"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
@@ -126,7 +127,7 @@ func newConnForm(s *Shell, id string) (*connForm, error) {
 
 func (f *connForm) build() {
 	f.name = widget.NewEntry()
-	f.name.SetPlaceHolder("Defaults to the host and database")
+	f.name.SetPlaceHolder(l10n.T("Defaults to the host and database"))
 	f.name.OnSubmitted = func(string) { f.save() }
 
 	names := make([]string, len(f.drivers))
@@ -146,7 +147,7 @@ func (f *connForm) build() {
 	}
 
 	f.url = widget.NewEntry()
-	f.url.SetPlaceHolder("Paste a connection URL to fill in the fields")
+	f.url.SetPlaceHolder(l10n.T("Paste a connection URL to fill in the fields"))
 	f.url.OnSubmitted = f.applyURL
 
 	tls := make([]string, len(tlsModes))
@@ -166,9 +167,9 @@ func (f *connForm) build() {
 		f.folderIDs = append(f.folderIDs, fo.ID)
 	}
 	f.folder = widget.NewSelect(folders, nil)
-	f.readOnly = widget.NewCheck("Read-only: refuse statements that change data", nil)
-	f.aiData = widget.NewCheck("…and its rows, not only its schema", nil)
-	f.aiSchema = widget.NewCheck("The assistant may be asked about this connection", func(on bool) {
+	f.readOnly = widget.NewCheck(l10n.T("Read-only: refuse statements that change data"), nil)
+	f.aiData = widget.NewCheck(l10n.T("…and its rows, not only its schema"), nil)
+	f.aiSchema = widget.NewCheck(l10n.T("The assistant may be asked about this connection"), func(on bool) {
 		// Sending rows is meaningless without the first switch, so it follows
 		// it: a connection nobody opted in has not opted in to anything.
 		if on {
@@ -185,9 +186,9 @@ func (f *connForm) build() {
 	f.form = &widget.Form{}
 	f.setDriver(f.desc)
 
-	f.testBtn = widget.NewButton("Test Connection", f.test)
-	f.cancelBtn = widget.NewButton("Cancel", f.close)
-	f.saveBtn = widget.NewButton("Save", f.save)
+	f.testBtn = widget.NewButton(l10n.T("Test Connection"), f.test)
+	f.cancelBtn = widget.NewButton(l10n.T("Cancel"), f.close)
+	f.saveBtn = widget.NewButton(l10n.T("Save"), f.save)
 	f.saveBtn.Importance = widget.HighImportance
 }
 
@@ -200,7 +201,7 @@ func (f *connForm) setDriver(d source.Descriptor) {
 	for _, fd := range d.Fields {
 		in := newInput(fd, f.save)
 		if fd.Kind == source.FieldFile {
-			in.choose = widget.NewButton("Choose…", func() { f.chooseFile(in) })
+			in.choose = widget.NewButton(l10n.T("Choose…"), func() { f.chooseFile(in) })
 			in.obj = container.NewBorder(nil, nil, nil, in.choose, in.entry)
 		}
 		if o, ok := old[fd.Key]; ok && o.f.Kind == fd.Kind {
@@ -212,11 +213,11 @@ func (f *connForm) setDriver(d source.Descriptor) {
 }
 
 func (f *connForm) layout() {
-	fill := widget.NewButton("Fill In", func() { f.applyURL(f.url.Text) })
+	fill := widget.NewButton(l10n.T("Fill In"), func() { f.applyURL(f.url.Text) })
 	items := []*widget.FormItem{
-		widget.NewFormItem("Name", f.name),
-		widget.NewFormItem("Type", f.driver),
-		widget.NewFormItem("URL", container.NewBorder(nil, nil, nil, fill, f.url)),
+		widget.NewFormItem(l10n.T("Name"), f.name),
+		widget.NewFormItem(l10n.T("Type"), f.driver),
+		widget.NewFormItem(l10n.T("URL"), container.NewBorder(nil, nil, nil, fill, f.url)),
 	}
 	for _, fd := range f.desc.Fields {
 		it := widget.NewFormItem(fd.Label, f.inputs[fd.Key].obj)
@@ -225,15 +226,15 @@ func (f *connForm) layout() {
 	}
 	// Encryption in transit means nothing to a database that is a file.
 	if f.networked() {
-		items = append(items, widget.NewFormItem("Encryption", f.tls))
+		items = append(items, widget.NewFormItem(l10n.T("Encryption"), f.tls))
 	}
 	if len(f.folderIDs) > 1 { // with no folders, there is nothing to choose
-		items = append(items, widget.NewFormItem("Folder", f.folder))
+		items = append(items, widget.NewFormItem(l10n.T("Folder"), f.folder))
 	}
 	items = append(items,
-		widget.NewFormItem("Environment", f.env),
+		widget.NewFormItem(l10n.T("Environment"), f.env),
 		widget.NewFormItem("", f.readOnly),
-		widget.NewFormItem("Assistant", f.aiSchema),
+		widget.NewFormItem(l10n.T("Assistant"), f.aiSchema),
 		widget.NewFormItem("", f.aiData),
 		widget.NewFormItem("", f.result),
 	)
@@ -329,7 +330,7 @@ func (f *connForm) collect() (store.SavedConnection, map[string]string, error) {
 			v = fd.Default
 		}
 		if v == "" && fd.Required && !(fd.Secret && slices.Contains(f.base.Secrets, fd.Key)) {
-			return c, nil, formError(fd.Label + " is required.")
+			return c, nil, formError(l10n.F("%s is required.", fd.Label))
 		}
 		switch {
 		case fd.Secret:
@@ -342,7 +343,7 @@ func (f *connForm) collect() (store.SavedConnection, map[string]string, error) {
 			if v != "" {
 				p, err := strconv.Atoi(v)
 				if err != nil || p < 1 || p > 65535 {
-					return c, nil, formError(fd.Label + " must be a number from 1 to 65535.")
+					return c, nil, formError(l10n.F("%s must be a number from 1 to 65535.", fd.Label))
 				}
 				c.Port = p
 			}
@@ -520,7 +521,7 @@ func (f *connForm) close() {
 // chooseFile fills a file field from the platform's open dialog (FR-15.5),
 // starting in the folder of the file it names already.
 func (f *connForm) chooseFile(in *input) {
-	o := filedlg.Options{Message: "Choose the " + f.desc.Name + " database file", Accept: "Choose"}
+	o := filedlg.Options{Message: l10n.F("Choose the %s database file", f.desc.Name), Accept: l10n.T("Choose")}
 	if cur := strings.TrimSpace(in.entry.Text); filepath.IsAbs(cur) {
 		o.Directory = filepath.Dir(cur)
 	}

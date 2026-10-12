@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 )
 
@@ -29,9 +30,9 @@ type shortcutsPanel struct {
 
 func (s *Shell) showShortcuts() *shortcutsPanel {
 	p := &shortcutsPanel{s: s, filter: s.newPanelEntry(), status: widget.NewLabel("")}
-	p.filter.SetPlaceHolder("Filter by name or keys")
+	p.filter.SetPlaceHolder(l10n.T("Filter by name or keys"))
 	p.status.Importance = widget.LowImportance
-	p.unset = widget.NewCheck("Show commands without a shortcut", func(bool) { p.reload() })
+	p.unset = widget.NewCheck(l10n.T("Show commands without a shortcut"), func(bool) { p.reload() })
 	p.editor = p.newEditor()
 	p.gather()
 	p.list = widget.NewList(
@@ -42,7 +43,7 @@ func (s *Shell) showShortcuts() *shortcutsPanel {
 			category := widget.NewLabel("")
 			category.Importance = widget.LowImportance
 			keys := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{Monospace: true})
-			change := widget.NewButton("Change…", nil)
+			change := widget.NewButton(l10n.T("Change…"), nil)
 			change.Importance = widget.LowImportance
 			return container.NewBorder(nil, nil, nil, container.NewHBox(keys, change), container.NewVBox(title, category))
 		},
@@ -86,11 +87,11 @@ func (p *shortcutsPanel) apply() {
 	p.list.Refresh()
 	switch len(p.shown) {
 	case 0:
-		p.status.SetText("No shortcuts match.")
+		p.status.SetText(l10n.T("No shortcuts match."))
 	case 1:
-		p.status.SetText("1 shortcut")
+		p.status.SetText(l10n.T("1 shortcut"))
 	default:
-		p.status.SetText(fmt.Sprintf("%d shortcuts", len(p.shown)))
+		p.status.SetText(l10n.F("%d shortcuts", len(p.shown)))
 	}
 }
 
@@ -159,16 +160,16 @@ func (p *shortcutsPanel) newEditor() *shortcutEditor {
 	e.note.Wrapping = fyne.TextWrapWord
 	e.note.Importance = widget.DangerImportance
 	if mac {
-		e.command, e.control = widget.NewCheck("⌘ Command", nil), widget.NewCheck("⌃ Control", nil)
-		e.option, e.shift = widget.NewCheck("⌥ Option", nil), widget.NewCheck("⇧ Shift", nil)
+		e.command, e.control = widget.NewCheck(l10n.T("⌘ Command"), nil), widget.NewCheck(l10n.T("⌃ Control"), nil)
+		e.option, e.shift = widget.NewCheck(l10n.T("⌥ Option"), nil), widget.NewCheck(l10n.T("⇧ Shift"), nil)
 	} else {
-		e.command, e.control = widget.NewCheck("Ctrl", nil), widget.NewCheck("Control", nil)
-		e.option, e.shift = widget.NewCheck("Alt", nil), widget.NewCheck("Shift", nil)
+		e.command, e.control = widget.NewCheck(l10n.T("Ctrl"), nil), widget.NewCheck(l10n.T("Control"), nil)
+		e.option, e.shift = widget.NewCheck(l10n.T("Alt"), nil), widget.NewCheck(l10n.T("Shift"), nil)
 		e.control.Hide()
 	}
 	e.key.PlaceHolder = "Key"
-	buttons := container.NewHBox(widget.NewButton("Save", e.save), widget.NewButton("Default", e.reset),
-		widget.NewButton("No Shortcut", e.clear), widget.NewButton("Cancel", e.close))
+	buttons := container.NewHBox(widget.NewButton(l10n.T("Save"), e.save), widget.NewButton(l10n.T("Default"), e.reset),
+		widget.NewButton(l10n.T("No Shortcut"), e.clear), widget.NewButton(l10n.T("Cancel"), e.close))
 	e.box = container.NewVBox(widget.NewSeparator(), e.title,
 		container.NewHBox(e.command, e.control, e.option, e.shift), e.key, e.note, buttons)
 	e.box.Hide()
@@ -178,7 +179,7 @@ func (p *shortcutsPanel) newEditor() *shortcutEditor {
 // edit opens the editor on a command, filled in with its shortcut.
 func (e *shortcutEditor) edit(c commands.Command) {
 	e.id = c.ID
-	e.title.SetText("Shortcut for " + c.Title)
+	e.title.SetText(l10n.F("Shortcut for %s", c.Title))
 	sc := c.Shortcut
 	e.command.SetChecked(sc.Mods&commands.ModShortcut != 0)
 	e.control.SetChecked(sc.Mods&commands.ModControl != 0)
@@ -223,14 +224,14 @@ func (e *shortcutEditor) save() {
 	sc := e.chosen()
 	switch {
 	case sc.Key == "":
-		e.note.SetText("Choose a key, or No Shortcut to have none.")
+		e.note.SetText(l10n.T("Choose a key, or No Shortcut to have none."))
 		return
 	case typed(sc.Key) && sc.Mods&(commands.ModShortcut|commands.ModControl|commands.ModAlt) == 0:
-		e.note.SetText(sc.Label(e.p.s.d.GOOS) + " would only type: add " + e.command.Text + ", " + e.option.Text + " or Control.")
+		e.note.SetText(l10n.F("%s would only type: add %s, %s or Control.", sc.Label(e.p.s.d.GOOS), e.command.Text, e.option.Text))
 		return
 	}
 	if o, taken := e.p.s.reg.Holder(e.id, sc); taken {
-		e.note.SetText(fmt.Sprintf("%s is %s's shortcut.", sc.Label(e.p.s.d.GOOS), o.Title))
+		e.note.SetText(l10n.F("%s is %s's shortcut.", sc.Label(e.p.s.d.GOOS), o.Title))
 		return
 	}
 	e.apply(sc)
@@ -239,7 +240,7 @@ func (e *shortcutEditor) save() {
 func (e *shortcutEditor) reset() {
 	sc := e.p.s.reg.Default(e.id)
 	if o, taken := e.p.s.reg.Holder(e.id, sc); taken {
-		e.note.SetText(fmt.Sprintf("%s, its default, is now %s's shortcut.", sc.Label(e.p.s.d.GOOS), o.Title))
+		e.note.SetText(l10n.F("%s, its default, is now %s's shortcut.", sc.Label(e.p.s.d.GOOS), o.Title))
 		return
 	}
 	e.apply(sc)

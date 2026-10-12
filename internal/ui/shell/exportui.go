@@ -18,6 +18,7 @@ import (
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/app/decode"
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
@@ -187,7 +188,7 @@ func (s *Shell) showExport() {
 		names[i] = f.String()
 	}
 	format := widget.NewSelect(names, nil)
-	header := widget.NewCheck("Column names as the first line", nil)
+	header := widget.NewCheck(l10n.T("Column names as the first line"), nil)
 	header.SetChecked(true)
 	format.OnChanged = func(string) {
 		if headerApplies(formats[format.SelectedIndex()]) {
@@ -199,10 +200,10 @@ func (s *Shell) showExport() {
 	format.SetSelectedIndex(0)
 	var items []*widget.FormItem
 	if rows != nil {
-		items = append(items, widget.NewFormItem("Rows", rows))
+		items = append(items, widget.NewFormItem(l10n.T("Rows"), rows))
 	}
-	items = append(items, widget.NewFormItem("Format", format), widget.NewFormItem("", header))
-	dialog.NewForm("Export “"+src.name+"”", "Choose File…", "Cancel", items,
+	items = append(items, widget.NewFormItem(l10n.T("Format"), format), widget.NewFormItem("", header))
+	dialog.NewForm(l10n.F("Export “%s”", src.name), l10n.T("Choose File…"), l10n.T("Cancel"), items,
 		func(ok bool) {
 			if !ok {
 				return
@@ -211,8 +212,8 @@ func (s *Shell) showExport() {
 			opt := exportOptions(formats[format.SelectedIndex()], header.Checked, src)
 			ext := opt.Format.Extension()
 			s.d.Files.Save(s.win, filedlg.Options{
-				Message: fmt.Sprintf("Export “%s” as %s", src.name, opt.Format), Name: fileName(src.name) + "." + ext,
-				Extensions: []string{ext}, Kind: opt.Format.String(), Accept: "Export",
+				Message: l10n.F("Export “%s” as %s", src.name, opt.Format), Name: fileName(src.name) + "." + ext,
+				Extensions: []string{ext}, Kind: opt.Format.String(), Accept: l10n.T("Export"),
 			}, func(path string, err error) { s.exportTo(t, src, opt, path, err) })
 		}, s.win).Show()
 }
@@ -250,7 +251,7 @@ func (s *Shell) exportTo(t *tab, src *exportSrc, opt export.Options, path string
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		s.showError(formError("The export could not create its file: " + err.Error()))
+		s.showError(formError(l10n.F("The export could not create its file: %s", err.Error())))
 		return nil
 	}
 	return s.runExport(t, src, opt, f, filepath.Base(path), func() { _ = os.Remove(path) })
@@ -340,7 +341,7 @@ func (s *Shell) runExport(t *tab, src *exportSrc, opt export.Options, w io.Write
 				s.say(t, "Export cancelled; the partial file was removed")
 			default:
 				s.endTask(j.task, taskFailed, "Failed, and the partial file was removed: "+err.Error())
-				s.showError(formError("The export failed, and the partial file was removed: " + err.Error()))
+				s.showError(formError(l10n.F("The export failed, and the partial file was removed: %s", err.Error())))
 			}
 		})
 	}()

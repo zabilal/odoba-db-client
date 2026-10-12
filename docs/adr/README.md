@@ -186,3 +186,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0179](0179-dbf-decided-before-the-first-record.md) | DBF, decided before the first record | Accepted |
 | [0180](0180-parquet-a-column-is-one-type.md) | Parquet, where a column is one type | Accepted |
 | [0181](0181-a-job-is-a-commands-flags.md) | A job is a command's flags | Accepted |
+| [0182](0182-english-is-the-key.md) | English is the key | Accepted |

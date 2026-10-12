@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/update"
 )
 
@@ -42,7 +43,7 @@ func (s *Shell) checkForUpdates() {
 	if !s.canCheckForUpdates() {
 		return
 	}
-	s.status.SetText("Asking about newer versions…")
+	s.status.SetText(l10n.T("Asking about newer versions…"))
 	feed, now := s.d.UpdateFeed, s.d.Version
 	go func() {
 		ctx, cancel := context.WithTimeout(s.ctx, updateTimeout)
@@ -61,12 +62,12 @@ func (s *Shell) checkForUpdates() {
 func (s *Shell) saidAboutUpdates(rel update.Release, newer bool, err error) {
 	switch {
 	case errors.Is(err, update.ErrNoFeed):
-		s.status.SetText("This build has no release feed to ask.")
+		s.status.SetText(l10n.T("This build has no release feed to ask."))
 	case err != nil:
 		s.status.SetText("")
 		s.showError(fmt.Errorf("could not ask about newer versions: %w", err))
 	case !newer:
-		s.status.SetText("This is the newest version there is: " + s.d.Version + ".")
+		s.status.SetText(l10n.F("This is the newest version there is: %s.", s.d.Version))
 	default:
 		s.offerUpdate(rel)
 	}
@@ -75,7 +76,7 @@ func (s *Shell) saidAboutUpdates(rel update.Release, newer bool, err error) {
 // offerUpdate says what is available and what is in it, and offers the page
 // it is published on. Nothing is downloaded here.
 func (s *Shell) offerUpdate(rel update.Release) {
-	s.status.SetText("Version " + rel.Version + " is available.")
+	s.status.SetText(l10n.F("Version %s is available.", rel.Version))
 	notes := widget.NewLabel(rel.Notes)
 	notes.Wrapping = fyne.TextWrapWord
 	when := ""
@@ -83,12 +84,12 @@ func (s *Shell) offerUpdate(rel update.Release) {
 		when = " · " + rel.Published.Local().Format("2 January 2006")
 	}
 	body := container.NewVBox(
-		widget.NewLabelWithStyle("Version "+rel.Version+when, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle(l10n.F("Version %s%s", rel.Version, when), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		notes,
 		quiet("Nothing has been downloaded. Opening the page takes you to where this version is published, "+
 			"and installing it is yours to do."))
 	var d dialog.Dialog
-	open := widget.NewButton("Open the Release Page", func() {
+	open := widget.NewButton(l10n.T("Open the Release Page"), func() {
 		d.Hide()
 		s.openReleasePage(rel.URL)
 	})
@@ -96,8 +97,8 @@ func (s *Shell) offerUpdate(rel update.Release) {
 	if rel.URL == "" {
 		open.Disable()
 	}
-	later := widget.NewButton("Later", func() { d.Hide() })
-	cd := dialog.NewCustomWithoutButtons("A newer version is available", container.NewVScroll(body), s.win)
+	later := widget.NewButton(l10n.T("Later"), func() { d.Hide() })
+	cd := dialog.NewCustomWithoutButtons(l10n.T("A newer version is available"), container.NewVScroll(body), s.win)
 	cd.SetButtons([]fyne.CanvasObject{later, open})
 	cd.Resize(fyne.NewSize(520, 320))
 	d = cd
@@ -110,7 +111,7 @@ func (s *Shell) offerUpdate(rel update.Release) {
 func (s *Shell) openReleasePage(raw string) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		s.showError(formError("That release page is not a web address, so it has not been opened."))
+		s.showError(formError(l10n.T("That release page is not a web address, so it has not been opened.")))
 		return
 	}
 	if err := s.app.OpenURL(u); err != nil {

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -84,10 +85,9 @@ func (s *Shell) chooseKey() {
 		names = append(names, c.Name)
 	}
 	pick := widget.NewCheckGroup(names, nil)
-	note := widget.NewLabel("Each change is written to the row with these columns' values. " +
-		"A change that would write more than one row is refused, and nothing is written.")
+	note := widget.NewLabel(l10n.F("Each change is written to the row with these columns' values. A change that would write more than one row is refused, and nothing is written."))
 	note.Wrapping = fyne.TextWrapWord
-	d := dialog.NewCustomConfirm("Choose a Key", "Edit by These", "Cancel",
+	d := dialog.NewCustomConfirm(l10n.T("Choose a Key"), l10n.T("Edit by These"), l10n.T("Cancel"),
 		container.NewBorder(note, nil, nil, nil, container.NewVScroll(pick)), func(ok bool) {
 			if ok {
 				s.useKey(t, pick.Selected)

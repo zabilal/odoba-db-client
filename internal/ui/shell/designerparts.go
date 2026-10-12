@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/query"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -94,7 +95,7 @@ func (k *picker) chosen(p *designerPanel) (query.Column, bool) {
 func (k *picker) items(label string) []*widget.FormItem {
 	return []*widget.FormItem{
 		widget.NewFormItem(label, k.table),
-		widget.NewFormItem("Column", k.column),
+		widget.NewFormItem(l10n.T("Column"), k.column),
 	}
 }
 
@@ -190,13 +191,13 @@ func newEditList(heading string, count func() int, label func(int) string,
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			o.(*widget.Label).SetText(label(i))
 		})
-	e.add = widget.NewButton("Add…", add)
-	e.change = widget.NewButton("Change…", func() {
+	e.add = widget.NewButton(l10n.T("Add…"), add)
+	e.change = widget.NewButton(l10n.T("Change…"), func() {
 		if e.chosen >= 0 {
 			change(e.chosen)
 		}
 	})
-	e.remove = widget.NewButton("Remove", func() {
+	e.remove = widget.NewButton(l10n.T("Remove"), func() {
 		if e.chosen >= 0 {
 			remove(e.chosen)
 		}
@@ -236,7 +237,7 @@ func (e *editList) refresh() {
 
 // form shows a dialog of items and calls done when it is accepted.
 func (p *designerPanel) form(title, accept string, items []*widget.FormItem, done func()) {
-	d := dialog.NewForm(title, accept, "Cancel", items, func(ok bool) {
+	d := dialog.NewForm(title, accept, l10n.T("Cancel"), items, func(ok bool) {
 		if ok {
 			done()
 		}
@@ -274,7 +275,7 @@ func (p *designerPanel) outputLabel(i int) string {
 // "sum" on most engines and nothing anybody can address on some.
 func (p *designerPanel) editOutput(at int) {
 	if len(p.design.Tables) == 0 {
-		p.s.showError(formError("Add a table before choosing columns from it."))
+		p.s.showError(formError(l10n.T("Add a table before choosing columns from it.")))
 		return
 	}
 	var was query.Output
@@ -295,8 +296,8 @@ func (p *designerPanel) editOutput(at int) {
 
 	items := k.items("Table")
 	items = append(items,
-		widget.NewFormItem("Summarise", agg),
-		widget.NewFormItem("Call it", alias))
+		widget.NewFormItem(l10n.T("Summarise"), agg),
+		widget.NewFormItem(l10n.T("Call it"), alias))
 	p.form(titleFor(at, "Column"), acceptFor(at), items, func() {
 		col, all := k.chosen(p)
 		o := query.Output{All: all, Column: col,
@@ -343,7 +344,7 @@ func conditionLabel(p *designerPanel, list []query.Condition, i int) string {
 // condition on groups, which is the only place an aggregate belongs.
 func (p *designerPanel) editCondition(list *[]query.Condition, at int, grouped bool) {
 	if len(p.design.Tables) == 0 {
-		p.s.showError(formError("Add a table before setting a condition on it."))
+		p.s.showError(formError(l10n.T("Add a table before setting a condition on it.")))
 		return
 	}
 	var was query.Condition
@@ -362,8 +363,8 @@ func (p *designerPanel) editCondition(list *[]query.Condition, at int, grouped b
 	second.SetText(was.Value2)
 	// A value is the person's own SQL, as the filter bar's typed condition is:
 	// so a string needs its quotes, and an expression is allowed.
-	first.SetPlaceHolder("a value or an expression, in this database's SQL")
-	second.SetPlaceHolder("the upper bound")
+	first.SetPlaceHolder(l10n.T("a value or an expression, in this database's SQL"))
+	second.SetPlaceHolder(l10n.T("the upper bound"))
 
 	items := k.items("Table")
 	// An aggregate is offered only on a condition on groups: an aggregate in a
@@ -373,12 +374,12 @@ func (p *designerPanel) editCondition(list *[]query.Condition, at int, grouped b
 	if grouped {
 		agg = widget.NewSelect(aggregateNames, nil)
 		agg.SetSelected(aggregateName(was.Aggregate))
-		items = append(items, widget.NewFormItem("Summarise", agg))
+		items = append(items, widget.NewFormItem(l10n.T("Summarise"), agg))
 	}
 	items = append(items,
-		widget.NewFormItem("Condition", op),
-		widget.NewFormItem("Value", first),
-		widget.NewFormItem("And", second))
+		widget.NewFormItem(l10n.T("Condition"), op),
+		widget.NewFormItem(l10n.T("Value"), first),
+		widget.NewFormItem(l10n.T("And"), second))
 	p.form(titleFor(at, "Condition"), acceptFor(at), items, func() {
 		col, _ := k.chosen(p)
 		c := query.Condition{Column: col, Op: operatorFor(op.Selected),
@@ -424,7 +425,7 @@ func (p *designerPanel) groupLabel(i int) string {
 
 func (p *designerPanel) editGroup(at int) {
 	if len(p.design.Tables) == 0 {
-		p.s.showError(formError("Add a table before grouping by one of its columns."))
+		p.s.showError(formError(l10n.T("Add a table before grouping by one of its columns.")))
 		return
 	}
 	was := query.Column{Table: -1}
@@ -460,7 +461,7 @@ func (p *designerPanel) orderLabel(i int) string {
 
 func (p *designerPanel) editOrder(at int) {
 	if len(p.design.Tables) == 0 {
-		p.s.showError(formError("Add a table before ordering by one of its columns."))
+		p.s.showError(formError(l10n.T("Add a table before ordering by one of its columns.")))
 		return
 	}
 	var was query.Sort
@@ -472,10 +473,10 @@ func (p *designerPanel) editOrder(at int) {
 	k := p.newPicker(was.Column, false)
 	agg := widget.NewSelect(aggregateNames, nil)
 	agg.SetSelected(aggregateName(was.Aggregate))
-	down := widget.NewCheck("Largest first", nil)
+	down := widget.NewCheck(l10n.T("Largest first"), nil)
 	down.SetChecked(was.Descending)
 	items := append(k.items("Table"),
-		widget.NewFormItem("Summarise", agg),
+		widget.NewFormItem(l10n.T("Summarise"), agg),
 		widget.NewFormItem("", down))
 	p.form(titleFor(at, "Ordering"), acceptFor(at), items, func() {
 		col, _ := k.chosen(p)
@@ -514,7 +515,7 @@ func acceptFor(at int) string {
 // not a number is left as it was rather than taken as zero.
 func (p *designerPanel) limitEntry() *widget.Entry {
 	e := widget.NewEntry()
-	e.SetPlaceHolder("all of them")
+	e.SetPlaceHolder(l10n.T("all of them"))
 	if p.design.Limit > 0 {
 		e.SetText(strconv.FormatInt(p.design.Limit, 10))
 	}

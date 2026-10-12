@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -23,7 +24,7 @@ func (p *designPanel) indexRows() fyne.CanvasObject {
 	for _, idx := range p.design.Indexes() {
 		box.Add(p.indexRow(idx))
 	}
-	box.Add(widget.NewButton("Add Index", func() {
+	box.Add(widget.NewButton(l10n.T("Add Index"), func() {
 		if p.did(p.design.AddIndex(model.Index{Columns: indexOn(p.firstColumn())})) {
 			p.draw()
 		}
@@ -37,7 +38,7 @@ func (p *designPanel) indexRow(idx model.Index) fyne.CanvasObject {
 	include := entryWith(strings.Join(idx.Include, ", "), "columns carried but not indexed")
 	method := entryWith(idx.Method, "the engine's default")
 	predicate := entryWith(idx.Predicate, "indexes every row")
-	unique := widget.NewCheck("Unique", nil)
+	unique := widget.NewCheck(l10n.T("Unique"), nil)
 	unique.SetChecked(idx.Unique)
 
 	was := idx.Name
@@ -57,7 +58,7 @@ func (p *designPanel) indexRow(idx model.Index) fyne.CanvasObject {
 	return container.NewVBox(
 		container.NewGridWithColumns(3, cols, name, container.NewHBox(unique)),
 		container.NewGridWithColumns(3, method, predicate, include),
-		container.NewHBox(widget.NewButton("Remove", func() {
+		container.NewHBox(widget.NewButton(l10n.T("Remove"), func() {
 			if p.did(p.design.DropIndex(was)) {
 				p.draw()
 			}

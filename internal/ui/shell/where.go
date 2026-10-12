@@ -10,6 +10,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -70,7 +71,7 @@ func (s *Shell) newWhereBar(t *tab) *whereBar {
 	b.entry = &whereEntry{bar: b}
 	b.entry.ExtendBaseWidget(b.entry)
 	b.entry.TextStyle = fyne.TextStyle{Monospace: true}
-	b.entry.SetPlaceHolder("a condition, such as total > 100 AND status = 'paid'")
+	b.entry.SetPlaceHolder(l10n.T("a condition, such as total > 100 AND status = 'paid'"))
 	b.entry.SetText(t.want.Where)
 	// Neither label wraps. A wrapping label cannot know its height before it
 	// is laid out, so the bar would claim too little room and spill over the
@@ -80,12 +81,12 @@ func (s *Shell) newWhereBar(t *tab) *whereBar {
 	b.note.Importance = widget.DangerImportance
 	b.notes = container.NewHScroll(b.note)
 	b.notes.Hide()
-	keyword := widget.NewLabelWithStyle("WHERE", fyne.TextAlignLeading, fyne.TextStyle{Monospace: true, Bold: true})
-	copyIt := widget.NewButtonWithIcon("Copy", fynetheme.ContentCopyIcon(), b.copySQL)
+	keyword := widget.NewLabelWithStyle(l10n.T("WHERE"), fyne.TextAlignLeading, fyne.TextStyle{Monospace: true, Bold: true})
+	copyIt := widget.NewButtonWithIcon(l10n.T("Copy"), fynetheme.ContentCopyIcon(), b.copySQL)
 	copyIt.Importance = widget.LowImportance
 	b.box = container.NewVBox(
 		container.NewBorder(nil, nil, keyword,
-			container.NewHBox(widget.NewButton("Clear", b.clear), widget.NewButton("Apply", b.apply)), b.entry),
+			container.NewHBox(widget.NewButton(l10n.T("Clear"), b.clear), widget.NewButton(l10n.T("Apply"), b.apply)), b.entry),
 		b.notes,
 		container.NewBorder(nil, nil, nil, copyIt, container.NewHScroll(b.sql)),
 		widget.NewSeparator())

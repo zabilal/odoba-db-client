@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -46,21 +47,21 @@ func (s *Shell) newTopic() {
 		return
 	}
 	name := widget.NewEntry()
-	name.SetPlaceHolder("what the topic is called")
+	name.SetPlaceHolder(l10n.T("what the topic is called"))
 	partitions := widget.NewEntry()
 	partitions.SetText("1")
 	replication := widget.NewEntry()
 	replication.SetText("1")
 	settings := widget.NewMultiLineEntry()
-	settings.SetPlaceHolder("optional; one per line, written as name: value")
+	settings.SetPlaceHolder(l10n.T("optional; one per line, written as name: value"))
 
 	form := widget.NewForm(
-		widget.NewFormItem("Name", name),
-		widget.NewFormItem("Partitions", partitions),
-		widget.NewFormItem("Copies of each", replication),
-		widget.NewFormItem("Settings", settings),
+		widget.NewFormItem(l10n.T("Name"), name),
+		widget.NewFormItem(l10n.T("Partitions"), partitions),
+		widget.NewFormItem(l10n.T("Copies of each"), replication),
+		widget.NewFormItem(l10n.T("Settings"), settings),
 	)
-	d := dialog.NewCustomConfirm("New Topic", "Create", "Cancel", form, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("New Topic"), l10n.T("Create"), l10n.T("Cancel"), form, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -85,8 +86,8 @@ func (s *Shell) deleteSelectedTopic() {
 		return
 	}
 	topic := n.Ref.Name()
-	d := dialog.NewConfirm("Delete This Topic?",
-		fmt.Sprintf("“%s” and every record in it go, and nothing brings them back.", topic),
+	d := dialog.NewConfirm(l10n.T("Delete This Topic?"),
+		l10n.F("“%s” and every record in it go, and nothing brings them back.", topic),
 		func(yes bool) {
 			if !yes {
 				return
@@ -96,8 +97,8 @@ func (s *Shell) deleteSelectedTopic() {
 					return app.DeleteTopic(s.ctx, src, topic, confirmed)
 				})
 		}, s.win)
-	d.SetConfirmText("Delete")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Delete"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }
@@ -110,13 +111,11 @@ func (s *Shell) addPartitionsToSelected() {
 	topic := n.Ref.Name()
 	count := widget.NewEntry()
 	count.SetText("1")
-	note := widget.NewLabel("A topic cannot lose partitions again, and which partition a key lands in " +
-		"changes for every record written afterwards: records already written stay where they are, " +
-		"and new ones with the same key may not join them.")
+	note := widget.NewLabel(l10n.F("A topic cannot lose partitions again, and which partition a key lands in changes for every record written afterwards: records already written stay where they are, and new ones with the same key may not join them."))
 	note.Wrapping = fyne.TextWrapWord
-	body := container.NewVBox(widget.NewForm(widget.NewFormItem("Add", count)), note)
+	body := container.NewVBox(widget.NewForm(widget.NewFormItem(l10n.T("Add"), count)), note)
 
-	d := dialog.NewCustomConfirm("Add Partitions to "+topic, "Add", "Cancel",
+	d := dialog.NewCustomConfirm(l10n.F("Add Partitions to %s", topic), l10n.T("Add"), l10n.T("Cancel"),
 		body, func(ok bool) {
 			if !ok {
 				return
@@ -142,13 +141,12 @@ func (s *Shell) editTopicSettings() {
 	}
 	topic := n.Ref.Name()
 	settings := widget.NewMultiLineEntry()
-	settings.SetPlaceHolder("one per line, written as name: value")
-	note := widget.NewLabel("Only the settings written here change; every other one stays as it is. " +
-		"What this topic is set to now, and which of it somebody chose, is in its structure.")
+	settings.SetPlaceHolder(l10n.T("one per line, written as name: value"))
+	note := widget.NewLabel(l10n.F("Only the settings written here change; every other one stays as it is. What this topic is set to now, and which of it somebody chose, is in its structure."))
 	note.Wrapping = fyne.TextWrapWord
-	body := container.NewVBox(widget.NewForm(widget.NewFormItem("Set", settings)), note)
+	body := container.NewVBox(widget.NewForm(widget.NewFormItem(l10n.T("Set"), settings)), note)
 
-	d := dialog.NewCustomConfirm("Settings for "+topic, "Apply", "Cancel", body, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.F("Settings for %s", topic), l10n.T("Apply"), l10n.T("Cancel"), body, func(ok bool) {
 		if !ok {
 			return
 		}

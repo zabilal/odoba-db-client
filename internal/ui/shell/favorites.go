@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 )
@@ -19,7 +20,7 @@ import (
 // newFavorites builds the sidebar's favourites section, hidden while there
 // are none (UX principle 2).
 func (s *Shell) newFavorites() *fyne.Container {
-	title := widget.NewLabelWithStyle("Favourites", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle(l10n.T("Favourites"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	s.favRows = container.NewVBox()
 	s.favBox = container.NewVBox(title, s.favRows, widget.NewSeparator())
 	s.refreshFavorites()
@@ -41,10 +42,10 @@ func (s *Shell) refreshFavorites() {
 		if c, ok := s.d.Conns.Get(f.ConnectionID); ok {
 			conn = c.Name
 		}
-		open := widget.NewButton(fmt.Sprintf("%s — %s", f.Label, conn), func() { s.openFavorite(f) })
+		open := widget.NewButton(l10n.F("%s — %s", f.Label, conn), func() { s.openFavorite(f) })
 		open.Alignment = widget.ButtonAlignLeading
 		open.Importance = widget.LowImportance
-		remove := widget.NewButton("Remove", func() { s.setFavorite(f, false) })
+		remove := widget.NewButton(l10n.T("Remove"), func() { s.setFavorite(f, false) })
 		remove.Importance = widget.LowImportance
 		rows = append(rows, container.NewBorder(nil, nil, nil, remove, open))
 	}

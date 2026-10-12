@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
@@ -43,7 +44,7 @@ func (s *Shell) saveView() {
 		return
 	}
 	entry := widget.NewEntry()
-	entry.SetPlaceHolder("Open orders, newest first")
+	entry.SetPlaceHolder(l10n.T("Open orders, newest first"))
 	entry.Validator = func(text string) error {
 		if strings.TrimSpace(text) == "" {
 			return errors.New("a view needs a name")
@@ -55,7 +56,7 @@ func (s *Shell) saveView() {
 	said := widget.NewLabel(describeArrangement(sessionTab(t)))
 	said.Wrapping = fyne.TextWrapWord
 
-	d := dialog.NewForm("Save this view of "+t.ref.Name(), "Save", "Cancel",
+	d := dialog.NewForm(l10n.F("Save this view of %s", t.ref.Name()), l10n.T("Save"), l10n.T("Cancel"),
 		[]*widget.FormItem{{Text: "Name", Widget: entry}, {Widget: said}},
 		func(ok bool) {
 			if ok {
@@ -174,7 +175,7 @@ func (s *Shell) offerViews(t *tab, saved []localdb.View) {
 		rows.Refresh()
 	}
 	redraw()
-	d = dialog.NewCustom("Saved views of "+t.ref.Name(), "Close",
+	d = dialog.NewCustom(l10n.F("Saved views of %s", t.ref.Name()), l10n.T("Close"),
 		container.NewVScroll(rows), s.win)
 	d.Resize(fyne.NewSize(460, 360))
 	d.Show()

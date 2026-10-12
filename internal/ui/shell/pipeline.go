@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -63,15 +64,15 @@ func (s *Shell) newPipelineBar(t *tab) *pipelineBar {
 	b.entry = widget.NewMultiLineEntry()
 	b.entry.TextStyle = fyne.TextStyle{Monospace: true}
 	b.entry.Wrapping = fyne.TextWrapOff
-	b.entry.SetPlaceHolder(`[{"$match": {…}}, {"$group": {"_id": "$field", "n": {"$sum": 1}}}]`)
+	b.entry.SetPlaceHolder(l10n.T(`[{"$match": {…}}, {"$group": {"_id": "$field", "n": {"$sum": 1}}}]`))
 	b.note.Importance = widget.DangerImportance
 	b.notes = container.NewHScroll(b.note)
 	b.notes.Hide()
-	b.back = widget.NewButton("Show Documents", b.restore)
+	b.back = widget.NewButton(l10n.T("Show Documents"), b.restore)
 	b.back.Importance = widget.LowImportance
 	b.back.Hide()
-	run := widget.NewButtonWithIcon("Run Pipeline", fynetheme.MediaPlayIcon(), b.run)
-	keyword := widget.NewLabelWithStyle("Pipeline", fyne.TextAlignLeading, fyne.TextStyle{Monospace: true, Bold: true})
+	run := widget.NewButtonWithIcon(l10n.T("Run Pipeline"), fynetheme.MediaPlayIcon(), b.run)
+	keyword := widget.NewLabelWithStyle(l10n.T("Pipeline"), fyne.TextAlignLeading, fyne.TextStyle{Monospace: true, Bold: true})
 	b.box = container.NewVBox(
 		container.NewBorder(nil, nil, keyword, container.NewHBox(b.back, run), b.entry),
 		b.notes,
@@ -120,7 +121,7 @@ func (b *pipelineBar) runWith(confirmed bool) {
 	t := b.t
 	t.browseSeq++
 	seq := t.browseSeq
-	t.footer.SetText("Running the pipeline…")
+	t.footer.SetText(l10n.T("Running the pipeline…"))
 	b.say("")
 	go func() {
 		live, err := b.s.d.WS.Connect(t.ctx, t.connID)

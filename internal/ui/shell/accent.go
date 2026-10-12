@@ -1,8 +1,7 @@
 package shell
 
 import (
-	"strings"
-
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -22,14 +21,21 @@ func accentIDs() []string {
 	return ids
 }
 
+// accentTitles is each accent as a menu names it, by its name in the
+// settings file.
+var accentTitles = map[string]string{
+	"blue": l10n.N("Blue"), "purple": l10n.N("Purple"), "pink": l10n.N("Pink"), "red": l10n.N("Red"),
+	"orange": l10n.N("Orange"), "yellow": l10n.N("Yellow"), "green": l10n.N("Green"), "graphite": l10n.N("Graphite"),
+}
+
 // accentCommands choose the accent colour (FR-15.3), one command a colour,
 // as the Appearance submenu does for light and dark.
 func (s *Shell) accentCommands() []commands.Command {
 	var out []commands.Command
 	for _, a := range uitheme.Accents() {
 		name := a.String()
-		out = append(out, commands.Command{ID: accentID(a), Category: "Accent Colour",
-			Title: strings.ToUpper(name[:1]) + name[1:], Keywords: []string{"theme", "colour", "color"},
+		out = append(out, commands.Command{ID: accentID(a), Category: l10n.T("Accent Colour"),
+			Title: l10n.T(accentTitles[name]), Keywords: []string{"theme", "colour", "color"},
 			Run: func() { s.setAccent(a) }})
 	}
 	return out

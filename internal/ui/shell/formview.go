@@ -10,6 +10,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 	"github.com/ikigai-db/ikigai-db/internal/value"
@@ -77,9 +78,9 @@ func (s *Shell) newForm(t *tab, g *grid.TableGrid, holder *fyne.Container) *form
 	f := &formView{s: s, t: t, g: g, holder: holder, form: widget.NewForm(),
 		where: widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})}
 	f.where.Truncation = fyne.TextTruncateEllipsis
-	f.prev = widget.NewButtonWithIcon("Previous Row", fynetheme.MoveUpIcon(), func() { f.move(-1) })
-	f.next = widget.NewButtonWithIcon("Next Row", fynetheme.MoveDownIcon(), func() { f.move(1) })
-	back := widget.NewButtonWithIcon("Show Grid", fynetheme.CancelIcon(), f.hide)
+	f.prev = widget.NewButtonWithIcon(l10n.T("Previous Row"), fynetheme.MoveUpIcon(), func() { f.move(-1) })
+	f.next = widget.NewButtonWithIcon(l10n.T("Next Row"), fynetheme.MoveDownIcon(), func() { f.move(1) })
+	back := widget.NewButtonWithIcon(l10n.T("Show Grid"), fynetheme.CancelIcon(), f.hide)
 	f.prev.Importance, f.next.Importance, back.Importance = widget.LowImportance, widget.LowImportance, widget.LowImportance
 	head := container.NewBorder(nil, nil, container.NewHBox(f.prev, f.next), back, f.where)
 	f.box = container.NewBorder(head, nil, nil, nil, container.NewVScroll(f.form))
@@ -118,7 +119,7 @@ func (f *formView) follow() {
 	c, ok := f.g.Selection().Active()
 	if !ok {
 		f.has = false
-		f.where.SetText("No row selected")
+		f.where.SetText(l10n.T("No row selected"))
 		return
 	}
 	m := f.g.Model()
@@ -126,7 +127,7 @@ func (f *formView) follow() {
 		f.set(c.Row, row)
 		return
 	}
-	f.where.SetText("Loading…")
+	f.where.SetText(l10n.T("Loading…"))
 	seq := f.seq
 	go func() {
 		rows, err := m.Read(f.t.ctx, int64(c.Row), int64(c.Row)+1)
@@ -134,9 +135,9 @@ func (f *formView) follow() {
 			switch {
 			case seq != f.seq || f.t.ctx.Err() != nil:
 			case err != nil:
-				f.where.SetText("Could not read the row: " + err.Error())
+				f.where.SetText(l10n.F("Could not read the row: %s", err.Error()))
 			case len(rows) == 0:
-				f.where.SetText("No row here")
+				f.where.SetText(l10n.T("No row here"))
 			default:
 				f.set(c.Row, rows[0])
 			}

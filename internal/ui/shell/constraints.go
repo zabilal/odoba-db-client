@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -37,7 +38,7 @@ func (p *designPanel) constraintRows() fyne.CanvasObject {
 	for _, u := range uniques {
 		box.Add(p.uniqueRow(u))
 	}
-	box.Add(widget.NewButton("Add Unique Constraint", func() {
+	box.Add(widget.NewButton(l10n.T("Add Unique Constraint"), func() {
 		if p.did(p.design.AddUnique(model.UniqueConstraint{Columns: p.firstColumn()})) {
 			p.draw()
 		}
@@ -47,7 +48,7 @@ func (p *designPanel) constraintRows() fyne.CanvasObject {
 	for _, f := range keys {
 		box.Add(p.foreignKeyRow(f))
 	}
-	box.Add(widget.NewButton("Add Foreign Key", func() {
+	box.Add(widget.NewButton(l10n.T("Add Foreign Key"), func() {
 		if p.did(p.design.AddForeignKey(model.ForeignKey{Columns: p.firstColumn(),
 			RefTable: "another_table", RefColumns: []string{"id"}})) {
 			p.draw()
@@ -58,7 +59,7 @@ func (p *designPanel) constraintRows() fyne.CanvasObject {
 	for _, c := range checks {
 		box.Add(p.checkRow(c))
 	}
-	box.Add(widget.NewButton("Add Check Constraint", func() {
+	box.Add(widget.NewButton(l10n.T("Add Check Constraint"), func() {
 		if p.did(p.design.AddCheck(model.CheckConstraint{Expression: "true"})) {
 			p.draw()
 		}
@@ -70,8 +71,8 @@ func (p *designPanel) constraintRows() fyne.CanvasObject {
 // drawn as itself rather than as a list.
 func (p *designPanel) primaryKeyRow(pk *model.PrimaryKey) fyne.CanvasObject {
 	name, cols := widget.NewEntry(), widget.NewEntry()
-	name.SetPlaceHolder("named by the engine")
-	cols.SetPlaceHolder("no primary key")
+	name.SetPlaceHolder(l10n.T("named by the engine"))
+	cols.SetPlaceHolder(l10n.T("no primary key"))
 	if pk != nil {
 		name.SetText(pk.Name)
 		cols.SetText(strings.Join(pk.Columns, ", "))
@@ -87,7 +88,7 @@ func (p *designPanel) primaryKeyRow(pk *model.PrimaryKey) fyne.CanvasObject {
 	}
 	name.OnChanged, cols.OnChanged = apply, apply
 
-	drop := widget.NewButton("Remove", func() {
+	drop := widget.NewButton(l10n.T("Remove"), func() {
 		if p.design.DropPrimaryKey() {
 			p.draw()
 		}
@@ -106,7 +107,7 @@ func (p *designPanel) uniqueRow(u model.UniqueConstraint) fyne.CanvasObject {
 	}
 	name.OnChanged, cols.OnChanged = apply, apply
 	return container.NewGridWithColumns(3, cols, name,
-		container.NewHBox(widget.NewButton("Remove", func() {
+		container.NewHBox(widget.NewButton(l10n.T("Remove"), func() {
 			if p.did(p.design.DropUnique(was)) {
 				p.draw()
 			}
@@ -142,9 +143,9 @@ func (p *designPanel) foreignKeyRow(f model.ForeignKey) fyne.CanvasObject {
 	return container.NewVBox(
 		container.NewGridWithColumns(3, cols, refTable, refCols),
 		container.NewGridWithColumns(3, name,
-			container.NewHBox(widget.NewLabel("on delete"), onDelete),
-			container.NewHBox(widget.NewLabel("on update"), onUpdate)),
-		container.NewHBox(widget.NewButton("Remove", func() {
+			container.NewHBox(widget.NewLabel(l10n.T("on delete")), onDelete),
+			container.NewHBox(widget.NewLabel(l10n.T("on update")), onUpdate)),
+		container.NewHBox(widget.NewButton(l10n.T("Remove"), func() {
 			if p.did(p.design.DropForeignKey(was)) {
 				p.draw()
 			}
@@ -164,7 +165,7 @@ func (p *designPanel) checkRow(c model.CheckConstraint) fyne.CanvasObject {
 	}
 	name.OnChanged, expr.OnChanged = apply, apply
 	return container.NewGridWithColumns(3, expr, name,
-		container.NewHBox(widget.NewButton("Remove", func() {
+		container.NewHBox(widget.NewButton(l10n.T("Remove"), func() {
 			if p.did(p.design.DropCheck(was)) {
 				p.draw()
 			}

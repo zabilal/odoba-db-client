@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
@@ -68,7 +69,7 @@ func (s *Shell) editResult(t *tab, r *result, g *grid.TableGrid, m *grid.Model, 
 	e := &edits{ctx: t.ctx, connID: t.connID, grid: g, model: m, writes: t.query.session,
 		say: func(text string) { r.said = text }, show: r.show,
 		reload: func() { s.reread(t, r, g, m, update) }}
-	e.review = widget.NewButton("Review Changes…", func() {
+	e.review = widget.NewButton(l10n.T("Review Changes…"), func() {
 		if e.reviewable() {
 			s.review(e)
 		}

@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/spark"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
@@ -77,7 +78,7 @@ func (b *streamBar) measure() {
 	b.meter, b.measured = m, -1
 	pal := b.s.colours()
 	b.spark = spark.New(spark.Spark{Line: pal.ControlAccent, Fill: pal.ControlAccentSubtle})
-	b.rate = widget.NewLabel("measuring…")
+	b.rate = widget.NewLabel(l10n.T("measuring…"))
 	b.rate.Importance = widget.LowImportance
 	b.box.Add(b.spark)
 	b.box.Add(b.rate)

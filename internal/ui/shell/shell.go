@@ -24,6 +24,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -439,366 +440,366 @@ func sc(key string, mods commands.Mod) commands.Shortcut {
 func (s *Shell) registerCommands() {
 	hasConn := func() bool { _, ok := s.selectedConn(); return ok }
 	for _, c := range append([]commands.Command{
-		{ID: cmdShortcuts, Category: "Help", Title: "Keyboard Shortcuts", Keywords: []string{"keys", "bindings", "reference", "cheat sheet"},
+		{ID: cmdShortcuts, Category: l10n.T("Help"), Title: l10n.T("Keyboard Shortcuts"), Keywords: []string{"keys", "bindings", "reference", "cheat sheet"},
 			Shortcut: sc("/", commands.ModShortcut), Run: func() { s.togglePanel(panelShortcuts, func() { s.showShortcuts() }) }},
-		{ID: cmdPalette, Category: "View", Title: "Command Palette…", Keywords: []string{"actions", "commands"},
+		{ID: cmdPalette, Category: l10n.T("View"), Title: l10n.T("Command Palette…"), Keywords: []string{"actions", "commands"},
 			Shortcut: sc("K", commands.ModShortcut), Run: func() { s.pal.Show() }},
-		{ID: cmdConnNew, Category: "Connection", Title: "New Connection…", Keywords: []string{"add", "server", "database"},
+		{ID: cmdConnNew, Category: l10n.T("Connection"), Title: l10n.T("New Connection…"), Keywords: []string{"add", "server", "database"},
 			Shortcut: sc("N", commands.ModShortcut), Run: func() { s.showConnectionForm("") }},
-		{ID: cmdConnEdit, Category: "Connection", Title: "Edit Connection…", Keywords: []string{"password", "settings"},
+		{ID: cmdConnEdit, Category: l10n.T("Connection"), Title: l10n.T("Edit Connection…"), Keywords: []string{"password", "settings"},
 			Enabled: hasConn, Run: func() {
 				if id, ok := s.selectedConn(); ok {
 					s.showConnectionForm(id)
 				}
 			}},
-		{ID: cmdConnDup, Category: "Connection", Title: "Duplicate Connection", Keywords: []string{"copy", "clone"},
+		{ID: cmdConnDup, Category: l10n.T("Connection"), Title: l10n.T("Duplicate Connection"), Keywords: []string{"copy", "clone"},
 			Enabled: hasConn, Run: s.duplicateSelected},
-		{ID: cmdConnDelete, Category: "Connection", Title: "Delete Connection…", Keywords: []string{"remove"},
+		{ID: cmdConnDelete, Category: l10n.T("Connection"), Title: l10n.T("Delete Connection…"), Keywords: []string{"remove"},
 			Enabled: hasConn, Run: s.confirmDeleteSelected},
-		{ID: cmdDisconnect, Category: "Connection", Title: "Disconnect", Keywords: []string{"close"},
+		{ID: cmdDisconnect, Category: l10n.T("Connection"), Title: l10n.T("Disconnect"), Keywords: []string{"close"},
 			Enabled: s.selectedConnOpen, Run: func() {
 				if id, ok := s.selectedConn(); ok {
 					s.disconnect(id)
 				}
 			}},
-		{ID: cmdFavorite, Category: "Explorer", Title: "Favourite", Keywords: []string{"pin", "bookmark", "star", "favorite"},
+		{ID: cmdFavorite, Category: l10n.T("Explorer"), Title: l10n.T("Favourite"), Keywords: []string{"pin", "bookmark", "star", "favorite"},
 			Shortcut: sc("D", commands.ModShortcut), Enabled: func() bool { _, ok := s.selectedFavorite(); return ok },
 			Run: s.toggleFavorite},
-		{ID: cmdScriptSelect, Category: "Explorer", Title: "Script as SELECT", Keywords: []string{"query", "template", "sql"},
+		{ID: cmdScriptSelect, Category: l10n.T("Explorer"), Title: l10n.T("Script as SELECT"), Keywords: []string{"query", "template", "sql"},
 			Enabled: s.selectionBrowsable, Run: func() { s.scriptSelected(app.ScriptSelect) }},
-		{ID: cmdScriptInsert, Category: "Explorer", Title: "Script as INSERT", Keywords: []string{"add", "row", "template", "sql"},
+		{ID: cmdScriptInsert, Category: l10n.T("Explorer"), Title: l10n.T("Script as INSERT"), Keywords: []string{"add", "row", "template", "sql"},
 			Enabled: s.selectionIsTable, Run: func() { s.scriptSelected(app.ScriptInsert) }},
-		{ID: cmdScriptUpdate, Category: "Explorer", Title: "Script as UPDATE", Keywords: []string{"change", "row", "template", "sql"},
+		{ID: cmdScriptUpdate, Category: l10n.T("Explorer"), Title: l10n.T("Script as UPDATE"), Keywords: []string{"change", "row", "template", "sql"},
 			Enabled: s.selectionIsTable, Run: func() { s.scriptSelected(app.ScriptUpdate) }},
-		{ID: cmdStructure, Category: "Explorer", Title: "Open Structure", Keywords: []string{"columns", "indexes", "keys", "schema", "describe"},
+		{ID: cmdStructure, Category: l10n.T("Explorer"), Title: l10n.T("Open Structure"), Keywords: []string{"columns", "indexes", "keys", "schema", "describe"},
 			Shortcut: sc("O", commands.ModShortcut|commands.ModAlt), Enabled: s.canOpenStructure, Run: s.openSelectedStructure},
-		{ID: cmdDesign, Category: "Explorer", Title: "Design Columns…",
+		{ID: cmdDesign, Category: l10n.T("Explorer"), Title: l10n.T("Design Columns…"),
 			Keywords: []string{"alter", "column", "ddl", "structure", "table", "designer"},
 			Enabled:  s.canDesign, Run: s.designSelected},
-		{ID: cmdEditSource, Category: "Explorer", Title: "Edit Source…",
+		{ID: cmdEditSource, Category: l10n.T("Explorer"), Title: l10n.T("Edit Source…"),
 			Keywords: []string{"view", "function", "procedure", "trigger", "sequence", "ddl", "definition"},
 			Enabled:  s.canEditSource, Run: s.editSelectedSource},
-		{ID: cmdScriptCreate, Category: "Explorer", Title: "Script as CREATE",
+		{ID: cmdScriptCreate, Category: l10n.T("Explorer"), Title: l10n.T("Script as CREATE"),
 			Keywords: []string{"ddl", "create", "definition", "structure", "export"},
 			Enabled:  s.canScriptCreate, Run: s.scriptSelectedCreate},
-		{ID: cmdCheckUpdates, Category: "Help", Title: "Check for Updates…",
+		{ID: cmdCheckUpdates, Category: l10n.T("Help"), Title: l10n.T("Check for Updates…"),
 			Keywords: []string{"update", "version", "newer", "release", "upgrade"},
 			Enabled:  s.canCheckForUpdates, Run: s.checkForUpdates},
-		{ID: cmdBackUp, Category: "File", Title: "Back Up Everything…",
+		{ID: cmdBackUp, Category: l10n.T("File"), Title: l10n.T("Back Up Everything…"),
 			Keywords: []string{"backup", "archive", "zip", "save", "copy", "export", "migrate"},
 			Enabled:  s.canBackUp, Run: s.backUp},
-		{ID: cmdRestore, Category: "File", Title: "Restore from a Backup…",
+		{ID: cmdRestore, Category: l10n.T("File"), Title: l10n.T("Restore from a Backup…"),
 			Keywords: []string{"restore", "backup", "archive", "zip", "import", "migrate"},
 			Enabled:  s.canRestore, Run: s.restoreBackup},
-		{ID: cmdVaultLock, Category: "Connection", Title: "Lock the Vault…",
+		{ID: cmdVaultLock, Category: l10n.T("Connection"), Title: l10n.T("Lock the Vault…"),
 			Keywords: []string{"vault", "lock", "passphrase", "password", "secret", "seal", "encrypt"},
 			Enabled:  s.canLockVault, Run: s.lockVault},
-		{ID: cmdVaultClose, Category: "Connection", Title: "Shut the Vault Now",
+		{ID: cmdVaultClose, Category: l10n.T("Connection"), Title: l10n.T("Shut the Vault Now"),
 			Keywords: []string{"vault", "lock", "shut", "close", "away", "leave"},
 			Enabled:  s.canCloseVault, Run: s.closeVault},
-		{ID: cmdVaultRemove, Category: "Connection", Title: "Remove the Vault Lock…",
+		{ID: cmdVaultRemove, Category: l10n.T("Connection"), Title: l10n.T("Remove the Vault Lock…"),
 			Keywords: []string{"vault", "lock", "remove", "off", "passphrase"},
 			Enabled:  s.canRemoveVaultLock, Run: s.removeVaultLock},
-		{ID: cmdCopyRows, Category: "Explorer", Title: "Copy Rows To…",
+		{ID: cmdCopyRows, Category: l10n.T("Explorer"), Title: l10n.T("Copy Rows To…"),
 			Keywords: []string{"copy", "rows", "table", "transfer", "move", "another", "connection", "load"},
 			Enabled:  s.canCopyRows, Run: func() { s.copyRowsFrom() }},
-		{ID: cmdMark, Category: "Explorer", Title: "Mark for Batch",
+		{ID: cmdMark, Category: l10n.T("Explorer"), Title: l10n.T("Mark for Batch"),
 			Keywords: []string{"mark", "batch", "multi", "select", "several", "tick"},
 			Enabled:  s.canMark, Run: s.markSelected},
-		{ID: cmdMarksClear, Category: "Explorer", Title: "Clear Marks",
+		{ID: cmdMarksClear, Category: l10n.T("Explorer"), Title: l10n.T("Clear Marks"),
 			Keywords: []string{"mark", "batch", "clear", "none", "unmark"},
 			Enabled:  s.canClearMarks, Run: s.clearMarks},
-		{ID: cmdMarksSelect, Category: "Explorer", Title: "Script Marked as SELECT",
+		{ID: cmdMarksSelect, Category: l10n.T("Explorer"), Title: l10n.T("Script Marked as SELECT"),
 			Keywords: []string{"mark", "batch", "script", "select", "several"},
 			Enabled:  s.canScriptMarked, Run: s.scriptMarkedSelect},
-		{ID: cmdMarksCreate, Category: "Explorer", Title: "Script Marked as CREATE",
+		{ID: cmdMarksCreate, Category: l10n.T("Explorer"), Title: l10n.T("Script Marked as CREATE"),
 			Keywords: []string{"mark", "batch", "script", "create", "ddl", "several"},
 			Enabled:  s.canScriptMarked, Run: s.scriptMarkedCreate},
-		{ID: cmdMarksDrop, Category: "Explorer", Title: "Script Marked as DROP",
+		{ID: cmdMarksDrop, Category: l10n.T("Explorer"), Title: l10n.T("Script Marked as DROP"),
 			Keywords: []string{"mark", "batch", "script", "drop", "delete", "remove", "ddl"},
 			Enabled:  s.canScriptMarked, Run: s.scriptMarkedDrop},
-		{ID: cmdMarksExport, Category: "Explorer", Title: "Export Marked Objects…",
+		{ID: cmdMarksExport, Category: l10n.T("Explorer"), Title: l10n.T("Export Marked Objects…"),
 			Keywords: []string{"mark", "batch", "export", "csv", "json", "several", "files"},
 			Enabled:  s.canExportMarked, Run: s.exportMarked},
-		{ID: cmdScriptSchema, Category: "Explorer", Title: "Script Whole Schema",
+		{ID: cmdScriptSchema, Category: l10n.T("Explorer"), Title: l10n.T("Script Whole Schema"),
 			Keywords: []string{"ddl", "create", "schema", "export", "everything"},
 			Enabled:  s.canScriptSchema, Run: s.scriptSelectedSchema},
-		{ID: cmdDiagram, Category: "Explorer", Title: "Show the Diagram",
+		{ID: cmdDiagram, Category: l10n.T("Explorer"), Title: l10n.T("Show the Diagram"),
 			Keywords: []string{"er", "diagram", "relationships", "map", "picture"},
 			Enabled:  s.canDiagram, Run: s.diagramSelected},
-		{ID: cmdDesignQuery, Category: "Explorer", Title: "Design a Query…",
+		{ID: cmdDesignQuery, Category: l10n.T("Explorer"), Title: l10n.T("Design a Query…"),
 			Keywords: []string{"designer", "visual", "query", "builder", "join", "canvas"},
 			Enabled:  s.canDesignQuery, Run: s.designQuerySelected},
-		{ID: cmdAssistantSetUp, Category: "Assistant", Title: "Assistant…",
+		{ID: cmdAssistantSetUp, Category: l10n.T("Assistant"), Title: l10n.T("Assistant…"),
 			Keywords: []string{"ai", "assistant", "model", "openai", "anthropic", "ollama", "local"},
 			Enabled:  s.canSetUpAssistant, Run: s.setUpAssistant},
-		{ID: cmdAssistantAsk, Category: "Assistant", Title: "Ask the Assistant…",
+		{ID: cmdAssistantAsk, Category: l10n.T("Assistant"), Title: l10n.T("Ask the Assistant…"),
 			Keywords: []string{"ai", "ask", "question", "natural language", "generate", "sql"},
 			Enabled:  s.canAskAssistant, Run: s.askAssistant},
-		{ID: cmdAssistantExplain, Category: "Assistant", Title: "Explain This Statement",
+		{ID: cmdAssistantExplain, Category: l10n.T("Assistant"), Title: l10n.T("Explain This Statement"),
 			Keywords: []string{"ai", "explain", "what does this do", "assistant"},
 			Enabled:  s.canExplainWithAssistant, Run: s.explainWithAssistant},
-		{ID: cmdCompare, Category: "Explorer", Title: "Compare with a Saved Model…",
+		{ID: cmdCompare, Category: l10n.T("Explorer"), Title: l10n.T("Compare with a Saved Model…"),
 			Keywords: []string{"diff", "compare", "schema", "model", "drift"},
 			Enabled:  s.canCompareSelected, Run: s.compareSelected},
-		{ID: cmdSaveModel, Category: "Explorer", Title: "Save as a Model…",
+		{ID: cmdSaveModel, Category: l10n.T("Explorer"), Title: l10n.T("Save as a Model…"),
 			Keywords: []string{"model", "save", "snapshot", "schema", "version control", "vcs", "git"},
 			Enabled:  s.canSaveModelSelected, Run: s.saveModelSelected},
-		{ID: cmdRename, Category: "Explorer", Title: "Rename…",
+		{ID: cmdRename, Category: l10n.T("Explorer"), Title: l10n.T("Rename…"),
 			Keywords: []string{"rename", "name", "alter", "ddl", "dependencies", "depends"},
 			Enabled:  s.canRenameSelected, Run: s.renameSelected},
-		{ID: cmdOpen, Category: "Explorer", Title: "Open Data", Keywords: []string{"browse", "rows", "table"},
+		{ID: cmdOpen, Category: l10n.T("Explorer"), Title: l10n.T("Open Data"), Keywords: []string{"browse", "rows", "table"},
 			Shortcut: sc("O", commands.ModShortcut), Enabled: s.selectionBrowsable,
 			Run: func() { s.Explorer.OpenSelected() }},
-		{ID: cmdProduce, Category: "Explorer", Title: "Write a Record…", Keywords: []string{"produce", "publish", "send", "message", "kafka"},
+		{ID: cmdProduce, Category: l10n.T("Explorer"), Title: l10n.T("Write a Record…"), Keywords: []string{"produce", "publish", "send", "message", "kafka"},
 			Enabled: s.selectionProducible, Run: s.produceToSelected},
-		{ID: cmdTopicNew, Category: "Explorer", Title: "New Topic…", Keywords: []string{"create", "topic", "kafka", "add"},
+		{ID: cmdTopicNew, Category: l10n.T("Explorer"), Title: l10n.T("New Topic…"), Keywords: []string{"create", "topic", "kafka", "add"},
 			Enabled: s.selectionTopicAdmin, Run: s.newTopic},
-		{ID: cmdTopicDelete, Category: "Explorer", Title: "Delete Topic…", Keywords: []string{"drop", "remove", "topic", "kafka"},
+		{ID: cmdTopicDelete, Category: l10n.T("Explorer"), Title: l10n.T("Delete Topic…"), Keywords: []string{"drop", "remove", "topic", "kafka"},
 			Enabled: s.selectionIsTopic, Run: s.deleteSelectedTopic},
-		{ID: cmdTopicPartition, Category: "Explorer", Title: "Add Partitions…", Keywords: []string{"partitions", "grow", "topic", "kafka"},
+		{ID: cmdTopicPartition, Category: l10n.T("Explorer"), Title: l10n.T("Add Partitions…"), Keywords: []string{"partitions", "grow", "topic", "kafka"},
 			Enabled: s.selectionIsTopic, Run: s.addPartitionsToSelected},
-		{ID: cmdTopicConfig, Category: "Explorer", Title: "Topic Settings…", Keywords: []string{"config", "retention", "settings", "alter", "kafka"},
+		{ID: cmdTopicConfig, Category: l10n.T("Explorer"), Title: l10n.T("Topic Settings…"), Keywords: []string{"config", "retention", "settings", "alter", "kafka"},
 			Enabled: s.selectionIsTopic, Run: s.editTopicSettings},
-		{ID: cmdPermissions, Category: "Explorer", Title: "Permissions…",
+		{ID: cmdPermissions, Category: l10n.T("Explorer"), Title: l10n.T("Permissions…"),
 			Keywords: []string{"acl", "acls", "permissions", "grant", "revoke", "principal", "security", "kafka"},
 			Enabled:  s.canReadPermissions, Run: s.showPermissions},
-		{ID: cmdGroupReset, Category: "Explorer", Title: "Move Offsets…", Keywords: []string{"reset", "offsets", "rewind", "replay", "group", "kafka"},
+		{ID: cmdGroupReset, Category: l10n.T("Explorer"), Title: l10n.T("Move Offsets…"), Keywords: []string{"reset", "offsets", "rewind", "replay", "group", "kafka"},
 			Enabled: s.selectionIsGroup, Run: s.resetSelectedGroup},
-		{ID: cmdRefresh, Category: "Explorer", Title: "Refresh", Keywords: []string{"reload", "tree"},
+		{ID: cmdRefresh, Category: l10n.T("Explorer"), Title: l10n.T("Refresh"), Keywords: []string{"reload", "tree"},
 			Shortcut: sc("R", commands.ModShortcut), Run: s.refreshSelected},
-		{ID: cmdReload, Category: "Tab", Title: "Reload Rows", Keywords: []string{"refresh", "data"},
+		{ID: cmdReload, Category: l10n.T("Tab"), Title: l10n.T("Reload Rows"), Keywords: []string{"refresh", "data"},
 			Shortcut: sc("R", commands.ModShortcut|commands.ModShift), Enabled: s.activeTabLoaded, Run: s.reloadTab},
-		{ID: cmdFilterValues, Category: "Data", Title: "Filter by Values…", Keywords: []string{"picklist", "distinct", "filter"},
+		{ID: cmdFilterValues, Category: l10n.T("Data"), Title: l10n.T("Filter by Values…"), Keywords: []string{"picklist", "distinct", "filter"},
 			Enabled: s.canPickValues, Run: func() {
 				if t := s.activeTab(); t != nil && t.grid != nil {
 					s.showPicklist(t, t.grid.SelectedColumn(), s.underHeader(t))
 				}
 			}},
-		{ID: cmdWhere, Category: "Data", Title: "WHERE Clause", Keywords: []string{"sql", "condition", "filter", "statement"},
+		{ID: cmdWhere, Category: l10n.T("Data"), Title: l10n.T("WHERE Clause"), Keywords: []string{"sql", "condition", "filter", "statement"},
 			Enabled: s.canWhere, Run: s.toggleWhere},
-		{ID: cmdCellViewer, Category: "View", Title: "Cell Viewer", Keywords: []string{"value", "inspect", "json", "expand"},
+		{ID: cmdCellViewer, Category: l10n.T("View"), Title: l10n.T("Cell Viewer"), Keywords: []string{"value", "inspect", "json", "expand"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: s.toggleViewer},
-		{ID: cmdFormView, Category: "View", Title: "Form View", Keywords: []string{"record", "row", "vertical", "fields", "wide"},
+		{ID: cmdFormView, Category: l10n.T("View"), Title: l10n.T("Form View"), Keywords: []string{"record", "row", "vertical", "fields", "wide"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleForm},
-		{ID: cmdPipeline, Category: "Data", Title: "Aggregation Pipeline…",
+		{ID: cmdPipeline, Category: l10n.T("Data"), Title: l10n.T("Aggregation Pipeline…"),
 			Keywords: []string{"mongo", "aggregate", "stages", "group", "match", "document"},
 			Enabled:  s.canPipeline, Run: s.togglePipeline},
-		{ID: cmdJSONView, Category: "View", Title: "JSON View", Keywords: []string{"document", "mongo", "nested", "raw", "json"},
+		{ID: cmdJSONView, Category: l10n.T("View"), Title: l10n.T("JSON View"), Keywords: []string{"document", "mongo", "nested", "raw", "json"},
 			Enabled: func() bool { t, g := s.activeTab(), s.activeGrid(); return t != nil && g != nil && t.holders[g] != nil },
 			Run:     s.toggleJSON},
-		{ID: cmdRecordView, Category: "View", Title: "Record View",
+		{ID: cmdRecordView, Category: l10n.T("View"), Title: l10n.T("Record View"),
 			Keywords: []string{"kafka", "message", "record", "headers", "hex", "payload"},
 			Enabled:  s.canShowRecord, Run: s.toggleRecord},
-		{ID: cmdGoToReferenced, Category: "View", Title: "Go to Referenced Row", Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
+		{ID: cmdGoToReferenced, Category: l10n.T("View"), Title: l10n.T("Go to Referenced Row"), Keywords: []string{"foreign key", "fk", "parent", "follow", "jump", "reference"},
 			Enabled: s.canGoToReferenced, Run: s.goToReferenced},
-		{ID: cmdOpenRowObject, Category: "View", Title: "Open What the Row Holds",
+		{ID: cmdOpenRowObject, Category: l10n.T("View"), Title: l10n.T("Open What the Row Holds"),
 			Keywords: []string{"redis", "key", "value", "open", "contents", "drill"},
 			Enabled:  s.canOpenRowObject, Run: s.openRowObject},
-		{ID: cmdShowReferring, Category: "View", Title: "Show Referring Rows", Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
+		{ID: cmdShowReferring, Category: l10n.T("View"), Title: l10n.T("Show Referring Rows"), Keywords: []string{"foreign key", "fk", "children", "child", "referenced by", "what points"},
 			Enabled: s.canShowReferring, Run: s.showReferring},
-		{ID: cmdSaveView, Category: "View", Title: "Save This View…",
+		{ID: cmdSaveView, Category: l10n.T("View"), Title: l10n.T("Save This View…"),
 			Keywords: []string{"view", "save", "named", "filter", "sort", "columns", "arrangement"},
 			Enabled:  s.canSaveView, Run: s.saveView},
-		{ID: cmdWorkspaceSave, Category: "File", Title: "Save Workspace…",
+		{ID: cmdWorkspaceSave, Category: l10n.T("File"), Title: l10n.T("Save Workspace…"),
 			Keywords: []string{"workspace", "project", "group", "save", "connections", "tabs"},
 			Enabled:  s.canUseWorkspaces, Run: s.saveWorkspace},
-		{ID: cmdWorkspaces, Category: "File", Title: "Workspaces…",
+		{ID: cmdWorkspaces, Category: l10n.T("File"), Title: l10n.T("Workspaces…"),
 			Keywords: []string{"workspace", "project", "group", "switch", "open", "connections", "tabs"},
 			Enabled:  s.canUseWorkspaces, Run: s.showWorkspaces},
-		{ID: cmdViews, Category: "View", Title: "Saved Views…",
+		{ID: cmdViews, Category: l10n.T("View"), Title: l10n.T("Saved Views…"),
 			Keywords: []string{"view", "saved", "named", "filter", "sort", "columns", "arrangement"},
 			Enabled:  s.canShowViews, Run: s.showViews},
-		{ID: cmdDetail, Category: "View", Title: "Detail Rows", Keywords: []string{"master", "detail", "children", "child rows", "nested", "related"},
+		{ID: cmdDetail, Category: l10n.T("View"), Title: l10n.T("Detail Rows"), Keywords: []string{"master", "detail", "children", "child rows", "nested", "related"},
 			Enabled: s.canShowDetail, Run: s.toggleDetail},
-		{ID: cmdHideColumn, Category: "View", Title: "Hide Column", Enabled: s.hasColumn,
+		{ID: cmdHideColumn, Category: l10n.T("View"), Title: l10n.T("Hide Column"), Enabled: s.hasColumn,
 			Run: func() { s.onColumn((*grid.TableGrid).HideColumn) }},
-		{ID: cmdShowColumns, Category: "View", Title: "Show All Columns",
+		{ID: cmdShowColumns, Category: l10n.T("View"), Title: l10n.T("Show All Columns"),
 			Enabled: func() bool { g := s.activeGrid(); return g != nil && g.Hidden() },
 			Run:     func() { s.onGrid((*grid.TableGrid).ShowAllColumns) }},
-		{ID: cmdMoveLeft, Category: "View", Title: "Move Column Left", Enabled: s.hasColumn,
+		{ID: cmdMoveLeft, Category: l10n.T("View"), Title: l10n.T("Move Column Left"), Enabled: s.hasColumn,
 			Run: func() { s.onColumn(func(g *grid.TableGrid, c int) { g.MoveColumn(c, -1) }) }},
-		{ID: cmdMoveRight, Category: "View", Title: "Move Column Right", Enabled: s.hasColumn,
+		{ID: cmdMoveRight, Category: l10n.T("View"), Title: l10n.T("Move Column Right"), Enabled: s.hasColumn,
 			Run: func() { s.onColumn(func(g *grid.TableGrid, c int) { g.MoveColumn(c, 1) }) }},
-		{ID: cmdFreeze, Category: "View", Title: "Freeze Columns Through This One", Keywords: []string{"pin", "sticky"},
+		{ID: cmdFreeze, Category: l10n.T("View"), Title: l10n.T("Freeze Columns Through This One"), Keywords: []string{"pin", "sticky"},
 			Enabled: s.hasColumn, Run: func() { s.onColumn((*grid.TableGrid).FreezeThrough) }},
-		{ID: cmdUnfreeze, Category: "View", Title: "Unfreeze Columns", Keywords: []string{"unpin"},
+		{ID: cmdUnfreeze, Category: l10n.T("View"), Title: l10n.T("Unfreeze Columns"), Keywords: []string{"unpin"},
 			Enabled: func() bool { g := s.activeGrid(); return g != nil && g.Frozen() > 0 },
 			Run:     func() { s.onGrid((*grid.TableGrid).Unfreeze) }},
-		{ID: cmdCopyCells, Category: "Edit", Title: "Copy Cells", Keywords: []string{"clipboard", "tsv", "selection"},
+		{ID: cmdCopyCells, Category: l10n.T("Edit"), Title: l10n.T("Copy Cells"), Keywords: []string{"clipboard", "tsv", "selection"},
 			Enabled: s.hasSelection, Run: s.copyActive},
-		{ID: cmdCopyCSV, Category: "Edit", Title: "Copy as CSV", Keywords: []string{"clipboard", "comma"},
+		{ID: cmdCopyCSV, Category: l10n.T("Edit"), Title: l10n.T("Copy as CSV"), Keywords: []string{"clipboard", "comma"},
 			Enabled: s.hasSelection, Run: s.copyCSV},
-		{ID: cmdCopyJSON, Category: "Edit", Title: "Copy as JSON", Keywords: []string{"clipboard", "objects"},
+		{ID: cmdCopyJSON, Category: l10n.T("Edit"), Title: l10n.T("Copy as JSON"), Keywords: []string{"clipboard", "objects"},
 			Enabled: s.hasSelection, Run: s.copyJSON},
-		{ID: cmdCopyMarkdown, Category: "Edit", Title: "Copy as Markdown", Keywords: []string{"clipboard", "table", "md"},
+		{ID: cmdCopyMarkdown, Category: l10n.T("Edit"), Title: l10n.T("Copy as Markdown"), Keywords: []string{"clipboard", "table", "md"},
 			Enabled: s.hasSelection, Run: s.copyMarkdown},
-		{ID: cmdCopyInsert, Category: "Edit", Title: "Copy as INSERT", Keywords: []string{"clipboard", "sql", "statements"},
+		{ID: cmdCopyInsert, Category: l10n.T("Edit"), Title: l10n.T("Copy as INSERT"), Keywords: []string{"clipboard", "sql", "statements"},
 			Enabled: s.canCopyInsert, Run: s.copyInsert},
-		{ID: cmdPasteCells, Category: "Edit", Title: "Paste Cells", Keywords: []string{"clipboard", "tsv", "csv", "spreadsheet", "fill"},
+		{ID: cmdPasteCells, Category: l10n.T("Edit"), Title: l10n.T("Paste Cells"), Keywords: []string{"clipboard", "tsv", "csv", "spreadsheet", "fill"},
 			Enabled: s.canPaste, Run: s.pasteActive},
-		{ID: cmdSelectRow, Category: "Edit", Title: "Select Row", Enabled: s.hasSelection,
+		{ID: cmdSelectRow, Category: l10n.T("Edit"), Title: l10n.T("Select Row"), Enabled: s.hasSelection,
 			Run: func() { s.onGrid((*grid.TableGrid).SelectRow) }},
-		{ID: cmdSelectColumn, Category: "Edit", Title: "Select Column", Enabled: s.hasSelection,
+		{ID: cmdSelectColumn, Category: l10n.T("Edit"), Title: l10n.T("Select Column"), Enabled: s.hasSelection,
 			Run: func() { s.onGrid((*grid.TableGrid).SelectColumn) }},
-		{ID: cmdSelectAllCells, Category: "Edit", Title: "Select All Cells", Keywords: []string{"everything"},
+		{ID: cmdSelectAllCells, Category: l10n.T("Edit"), Title: l10n.T("Select All Cells"), Keywords: []string{"everything"},
 			Enabled: func() bool { return s.activeGrid() != nil }, Run: func() { s.onGrid((*grid.TableGrid).SelectAll) }},
-		{ID: cmdEditCell, Category: "Edit", Title: "Edit Cell", Keywords: []string{"change", "value", "type", "update"},
+		{ID: cmdEditCell, Category: l10n.T("Edit"), Title: l10n.T("Edit Cell"), Keywords: []string{"change", "value", "type", "update"},
 			Enabled: s.canEditCell, Run: func() { s.onGrid(func(g *grid.TableGrid) { g.EditCell("") }) }},
-		{ID: cmdEditValue, Category: "Edit", Title: "Edit in Cell Viewer", Keywords: []string{"long", "json", "date", "calendar", "text", "value"},
+		{ID: cmdEditValue, Category: l10n.T("Edit"), Title: l10n.T("Edit in Cell Viewer"), Keywords: []string{"long", "json", "date", "calendar", "text", "value"},
 			Enabled: s.canEditCell, Run: s.editInViewer},
-		{ID: cmdSetNull, Category: "Edit", Title: "Set to NULL", Keywords: []string{"clear", "empty", "null", "value"},
+		{ID: cmdSetNull, Category: l10n.T("Edit"), Title: l10n.T("Set to NULL"), Keywords: []string{"clear", "empty", "null", "value"},
 			Enabled: s.canChangeRows, Run: s.setNull},
-		{ID: cmdSetValue, Category: "Edit", Title: "Set Value…", Keywords: []string{"bulk", "fill", "column", "many", "same", "update"},
+		{ID: cmdSetValue, Category: l10n.T("Edit"), Title: l10n.T("Set Value…"), Keywords: []string{"bulk", "fill", "column", "many", "same", "update"},
 			Enabled: s.canChangeRows, Run: s.setValue},
-		{ID: cmdInsertRow, Category: "Edit", Title: "Insert Row", Keywords: []string{"add", "new", "row", "record"},
+		{ID: cmdInsertRow, Category: l10n.T("Edit"), Title: l10n.T("Insert Row"), Keywords: []string{"add", "new", "row", "record"},
 			Enabled: s.canInsert, Run: s.insertRow},
-		{ID: cmdDuplicateRows, Category: "Edit", Title: "Duplicate Rows", Keywords: []string{"copy", "clone", "row", "record"},
+		{ID: cmdDuplicateRows, Category: l10n.T("Edit"), Title: l10n.T("Duplicate Rows"), Keywords: []string{"copy", "clone", "row", "record"},
 			Enabled: s.canChangeRows, Run: s.duplicateRows},
-		{ID: cmdDeleteRows, Category: "Edit", Title: "Delete Rows", Keywords: []string{"remove", "row", "record"},
+		{ID: cmdDeleteRows, Category: l10n.T("Edit"), Title: l10n.T("Delete Rows"), Keywords: []string{"remove", "row", "record"},
 			Enabled: s.canChangeRows, Run: s.deleteRows},
-		{ID: cmdReviewChanges, Category: "Edit", Title: "Review Changes…", Keywords: []string{"commit", "save", "write", "apply", "preview", "sql"},
+		{ID: cmdReviewChanges, Category: l10n.T("Edit"), Title: l10n.T("Review Changes…"), Keywords: []string{"commit", "save", "write", "apply", "preview", "sql"},
 			Enabled: s.canReview, Run: s.reviewActive},
-		{ID: cmdRevertCells, Category: "Edit", Title: "Revert Cells", Keywords: []string{"undo", "restore", "cell", "value"},
+		{ID: cmdRevertCells, Category: l10n.T("Edit"), Title: l10n.T("Revert Cells"), Keywords: []string{"undo", "restore", "cell", "value"},
 			Enabled: s.canRevert, Run: s.revertCells},
-		{ID: cmdRevertRows, Category: "Edit", Title: "Revert Rows", Keywords: []string{"undo", "restore", "row", "undelete"},
+		{ID: cmdRevertRows, Category: l10n.T("Edit"), Title: l10n.T("Revert Rows"), Keywords: []string{"undo", "restore", "row", "undelete"},
 			Enabled: s.canRevert, Run: s.revertRows},
-		{ID: cmdDiscardAll, Category: "Edit", Title: "Discard All Changes…", Keywords: []string{"revert", "undo", "throw away", "forget"},
+		{ID: cmdDiscardAll, Category: l10n.T("Edit"), Title: l10n.T("Discard All Changes…"), Keywords: []string{"revert", "undo", "throw away", "forget"},
 			Enabled: s.canReview, Run: s.discardAll},
-		{ID: cmdChooseKey, Category: "Edit", Title: "Choose a Key…", Keywords: []string{"key", "identity", "primary", "unique", "edit"},
+		{ID: cmdChooseKey, Category: l10n.T("Edit"), Title: l10n.T("Choose a Key…"), Keywords: []string{"key", "identity", "primary", "unique", "edit"},
 			Enabled: s.canChooseKey, Run: s.chooseKey},
-		{ID: cmdFilterObjects, Category: "View", Title: "Filter Objects", Keywords: []string{"find", "search", "go to", "table", "jump"},
+		{ID: cmdFilterObjects, Category: l10n.T("View"), Title: l10n.T("Filter Objects"), Keywords: []string{"find", "search", "go to", "table", "jump"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModShift), Run: s.filterObjects},
-		{ID: cmdContextMenu, Category: "View", Title: "Show the Menu for This",
+		{ID: cmdContextMenu, Category: l10n.T("View"), Title: l10n.T("Show the Menu for This"),
 			Keywords: []string{"context", "menu", "right click", "secondary", "actions", "keyboard"},
 			Shortcut: sc("F10", commands.ModShift), Enabled: s.canShowContextMenu, Run: s.showContextMenu},
-		{ID: cmdSearchStructure, Category: "View", Title: "Search Structure…",
+		{ID: cmdSearchStructure, Category: l10n.T("View"), Title: l10n.T("Search Structure…"),
 			Keywords: []string{"find", "search", "definition", "column", "body", "procedure", "view", "grep"},
 			Enabled:  s.canSearchStructure, Run: s.searchStructure},
-		{ID: cmdSidebar, Category: "View", Title: "Toggle Sidebar", Keywords: []string{"explorer", "hide", "show"},
+		{ID: cmdSidebar, Category: l10n.T("View"), Title: l10n.T("Toggle Sidebar"), Keywords: []string{"explorer", "hide", "show"},
 			Shortcut: sc("0", commands.ModShortcut), Run: s.toggleSidebar},
-		{ID: cmdTabClose, Category: "Tab", Title: "Close Tab", Shortcut: sc("W", commands.ModShortcut),
+		{ID: cmdTabClose, Category: l10n.T("Tab"), Title: l10n.T("Close Tab"), Shortcut: sc("W", commands.ModShortcut),
 			Enabled: func() bool { return len(s.open) > 0 }, Run: func() {
 				if it := s.tabs.Selected(); it != nil {
 					s.requestClose(it)
 				}
 			}},
-		{ID: cmdTabNext, Category: "Tab", Title: "Show Next Tab", Shortcut: sc("]", commands.ModShortcut|commands.ModShift),
+		{ID: cmdTabNext, Category: l10n.T("Tab"), Title: l10n.T("Show Next Tab"), Shortcut: sc("]", commands.ModShortcut|commands.ModShift),
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(1) }},
-		{ID: cmdTabPrev, Category: "Tab", Title: "Show Previous Tab", Shortcut: sc("[", commands.ModShortcut|commands.ModShift),
+		{ID: cmdTabPrev, Category: l10n.T("Tab"), Title: l10n.T("Show Previous Tab"), Shortcut: sc("[", commands.ModShortcut|commands.ModShift),
 			Enabled: func() bool { return len(s.open) > 1 }, Run: func() { s.cycleTab(-1) }},
-		{ID: cmdMoveTabLeft, Category: "Tab", Title: "Move Tab Left", Keywords: []string{"reorder"},
+		{ID: cmdMoveTabLeft, Category: l10n.T("Tab"), Title: l10n.T("Move Tab Left"), Keywords: []string{"reorder"},
 			Enabled: func() bool { return s.canMoveTab(-1) }, Run: func() { s.moveTab(-1) }},
-		{ID: cmdMoveTabRight, Category: "Tab", Title: "Move Tab Right", Keywords: []string{"reorder"},
+		{ID: cmdMoveTabRight, Category: l10n.T("Tab"), Title: l10n.T("Move Tab Right"), Keywords: []string{"reorder"},
 			Enabled: func() bool { return s.canMoveTab(1) }, Run: func() { s.moveTab(1) }},
-		{ID: cmdPinTab, Category: "Tab", Title: "Pin Tab", Keywords: []string{"keep", "stick"},
+		{ID: cmdPinTab, Category: l10n.T("Tab"), Title: l10n.T("Pin Tab"), Keywords: []string{"keep", "stick"},
 			Enabled: func() bool { return s.activeTab() != nil }, Run: s.togglePin},
-		{ID: cmdSplitRight, Category: "Window", Title: "Split Right", Keywords: []string{"pane", "side by side", "compare", "two"},
+		{ID: cmdSplitRight, Category: l10n.T("Window"), Title: l10n.T("Split Right"), Keywords: []string{"pane", "side by side", "compare", "two"},
 			Enabled: s.canSplit, Run: func() { s.splitPane(splitRight) }},
-		{ID: cmdSplitDown, Category: "Window", Title: "Split Down", Keywords: []string{"pane", "above", "below", "stack", "two"},
+		{ID: cmdSplitDown, Category: l10n.T("Window"), Title: l10n.T("Split Down"), Keywords: []string{"pane", "above", "below", "stack", "two"},
 			Enabled: s.canSplit, Run: func() { s.splitPane(splitDown) }},
-		{ID: cmdMoveToPane, Category: "Window", Title: "Move Tab to Other Pane", Keywords: []string{"pane", "split", "other side"},
+		{ID: cmdMoveToPane, Category: l10n.T("Window"), Title: l10n.T("Move Tab to Other Pane"), Keywords: []string{"pane", "split", "other side"},
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.moveToOtherPane},
-		{ID: cmdJoinPanes, Category: "Window", Title: "Join Panes", Keywords: []string{"unsplit", "close split", "merge", "one pane"},
+		{ID: cmdJoinPanes, Category: l10n.T("Window"), Title: l10n.T("Join Panes"), Keywords: []string{"unsplit", "close split", "merge", "one pane"},
 			Enabled: func() bool { return len(s.panes) == 2 }, Run: s.joinPanes},
-		{ID: cmdNewWindow, Category: "Window", Title: "New Window",
+		{ID: cmdNewWindow, Category: l10n.T("Window"), Title: l10n.T("New Window"),
 			Keywords: []string{"window", "new", "another", "second"},
 			Shortcut: sc("N", commands.ModShortcut|commands.ModShift),
 			Run:      func() { s.NewWindow() }},
-		{ID: cmdTasks, Category: "Window", Title: "Tasks", Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
+		{ID: cmdTasks, Category: l10n.T("Window"), Title: l10n.T("Tasks"), Keywords: []string{"progress", "export", "background", "running", "cancel", "task centre", "task center"},
 			Run: func() { s.togglePanel(panelTasks, func() { s.showTasks() }) }},
-		{ID: cmdQueryNew, Category: "Query", Title: "New Query", Keywords: []string{"sql", "editor", "script"},
+		{ID: cmdQueryNew, Category: l10n.T("Query"), Title: l10n.T("New Query"), Keywords: []string{"sql", "editor", "script"},
 			Shortcut: sc("T", commands.ModShortcut), Enabled: hasConn, Run: func() {
 				if id, ok := s.selectedConn(); ok {
 					s.OpenQuery(id)
 				}
 			}},
-		{ID: cmdQueryComplete, Category: "Query", Title: "Complete",
+		{ID: cmdQueryComplete, Category: l10n.T("Query"), Title: l10n.T("Complete"),
 			Keywords: []string{"autocomplete", "suggest", "candidates", "intellisense", "column", "table"},
 			Shortcut: sc("Space", commands.ModControl), Enabled: s.canComplete, Run: s.completeQuery},
-		{ID: cmdQueryRun, Category: "Query", Title: "Run", Keywords: []string{"execute", "statement", "selection"},
+		{ID: cmdQueryRun, Category: l10n.T("Query"), Title: l10n.T("Run"), Keywords: []string{"execute", "statement", "selection"},
 			Shortcut: sc("Return", commands.ModShortcut), Enabled: s.canRun, Run: func() { s.runQuery(false) }},
-		{ID: cmdQueryRunAll, Category: "Query", Title: "Run All", Keywords: []string{"execute", "script"},
+		{ID: cmdQueryRunAll, Category: l10n.T("Query"), Title: l10n.T("Run All"), Keywords: []string{"execute", "script"},
 			Shortcut: sc("Return", commands.ModShortcut|commands.ModShift), Enabled: s.canRun, Run: func() { s.runQuery(true) }},
-		{ID: cmdQueryStop, Category: "Query", Title: "Stop", Keywords: []string{"cancel", "abort"},
+		{ID: cmdQueryStop, Category: l10n.T("Query"), Title: l10n.T("Stop"), Keywords: []string{"cancel", "abort"},
 			Shortcut: sc(".", commands.ModShortcut), Enabled: s.running, Run: s.stopQuery},
-		{ID: cmdHistory, Category: "Query", Title: "Query History", Keywords: []string{"recent", "past", "find", "search"},
+		{ID: cmdHistory, Category: l10n.T("Query"), Title: l10n.T("Query History"), Keywords: []string{"recent", "past", "find", "search"},
 			Shortcut: sc("H", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.History != nil },
 			Run: func() { s.togglePanel(panelHistory, func() { s.showHistory() }) }},
-		{ID: cmdQuerySave, Category: "Query", Title: "Save Query", Keywords: []string{"keep", "store"},
+		{ID: cmdQuerySave, Category: l10n.T("Query"), Title: l10n.T("Save Query"), Keywords: []string{"keep", "store"},
 			Shortcut: sc("S", commands.ModShortcut), Enabled: s.canSave, Run: s.saveQuery},
-		{ID: cmdQuerySaveAs, Category: "Query", Title: "Save Query As…", Keywords: []string{"copy", "duplicate"},
+		{ID: cmdQuerySaveAs, Category: l10n.T("Query"), Title: l10n.T("Save Query As…"), Keywords: []string{"copy", "duplicate"},
 			Shortcut: sc("S", commands.ModShortcut|commands.ModShift), Enabled: s.canSave, Run: func() {
 				if t, _ := s.activeQuery(); t != nil {
 					s.promptSave(t, true)
 				}
 			}},
-		{ID: cmdExplain, Category: "Query", Title: "Explain Query Plan",
+		{ID: cmdExplain, Category: l10n.T("Query"), Title: l10n.T("Explain Query Plan"),
 			Keywords: []string{"explain", "plan", "cost", "index", "slow", "analyse", "analyze"},
 			Shortcut: sc("E", commands.ModShortcut|commands.ModAlt),
 			Enabled:  s.canExplain, Run: func() { s.explainActive(false) }},
-		{ID: cmdExplainMeasure, Category: "Query", Title: "Run and Measure the Plan…",
+		{ID: cmdExplainMeasure, Category: l10n.T("Query"), Title: l10n.T("Run and Measure the Plan…"),
 			Keywords: []string{"explain", "analyse", "analyze", "plan", "measure", "timing", "slow"},
 			Enabled:  s.canAnalyse, Run: func() { s.explainActive(true) }},
-		{ID: cmdFormatSQL, Category: "Query", Title: "Lay Out the SQL",
+		{ID: cmdFormatSQL, Category: l10n.T("Query"), Title: l10n.T("Lay Out the SQL"),
 			Keywords: []string{"format", "beautify", "pretty", "tidy", "indent", "lay out"},
 			Shortcut: sc("L", commands.ModShortcut|commands.ModShift),
 			Enabled:  s.canFormat, Run: s.formatQuery},
-		{ID: cmdTxBegin, Category: "Query", Title: "Begin Transaction",
+		{ID: cmdTxBegin, Category: l10n.T("Query"), Title: l10n.T("Begin Transaction"),
 			Keywords: []string{"transaction", "begin", "start", "atomic"},
 			Enabled:  s.canBegin, Run: s.beginTx},
-		{ID: cmdTxCommit, Category: "Query", Title: "Commit",
+		{ID: cmdTxCommit, Category: l10n.T("Query"), Title: l10n.T("Commit"),
 			Keywords: []string{"transaction", "commit", "keep", "save"},
 			Enabled:  s.canCommit, Run: s.commitTx},
-		{ID: cmdTxRollback, Category: "Query", Title: "Roll Back",
+		{ID: cmdTxRollback, Category: l10n.T("Query"), Title: l10n.T("Roll Back"),
 			Keywords: []string{"transaction", "rollback", "roll back", "undo", "abort", "discard"},
 			Enabled:  s.canEndTx, Run: s.rollbackTx},
-		{ID: cmdOpenSaved, Category: "Query", Title: "Saved Queries", Keywords: []string{"saved", "library", "load"},
+		{ID: cmdOpenSaved, Category: l10n.T("Query"), Title: l10n.T("Saved Queries"), Keywords: []string{"saved", "library", "load"},
 			Shortcut: sc("O", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.d.Saved != nil },
 			Run: func() { s.togglePanel(panelSaved, func() { s.showSaved() }) }},
-		{ID: cmdExport, Category: "Data", Title: "Export…", Keywords: []string{"csv", "json", "ndjson", "tsv", "save", "download"},
+		{ID: cmdExport, Category: l10n.T("Data"), Title: l10n.T("Export…"), Keywords: []string{"csv", "json", "ndjson", "tsv", "save", "download"},
 			Shortcut: sc("E", commands.ModShortcut|commands.ModShift), Enabled: func() bool { return s.exportSource() != nil },
 			Run: s.showExport},
-		{ID: cmdImport, Category: "Data", Title: "Import…", Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
+		{ID: cmdImport, Category: l10n.T("Data"), Title: l10n.T("Import…"), Keywords: []string{"csv", "tsv", "json", "ndjson", "excel", "xlsx", "load", "upload"},
 			Enabled: s.canImport, Run: s.showImport},
-		{ID: cmdAggregates, Category: "Data", Title: "Add Up the Selection",
+		{ID: cmdAggregates, Category: l10n.T("Data"), Title: l10n.T("Add Up the Selection"),
 			Keywords: []string{"aggregate", "sum", "total", "average", "count", "min", "max", "footer"},
 			Enabled:  s.canAggregate, Run: s.toggleAggregates},
-		{ID: cmdColumnStats, Category: "Data", Title: "Measure This Column",
+		{ID: cmdColumnStats, Category: l10n.T("Data"), Title: l10n.T("Measure This Column"),
 			Keywords: []string{"statistics", "stats", "distinct", "nulls", "min", "max", "average",
 				"histogram", "profile", "measure"},
 			Enabled: s.canMeasureColumn, Run: s.measureSelectedColumn},
-		{ID: cmdChart, Category: "Data", Title: "Chart the Result",
+		{ID: cmdChart, Category: l10n.T("Data"), Title: l10n.T("Chart the Result"),
 			Keywords: []string{"chart", "graph", "plot", "visualise", "visualize", "picture", "line", "bar", "pie"},
 			Enabled:  s.canChart, Run: s.chartActive},
-		{ID: cmdSeek, Category: "Data", Title: "Start Reading At…",
+		{ID: cmdSeek, Category: l10n.T("Data"), Title: l10n.T("Start Reading At…"),
 			Keywords: []string{"seek", "offset", "timestamp", "beginning", "last", "records",
 				"where to start", "rewind"},
 			Enabled: s.canSeek, Run: s.askSeek},
-		{ID: cmdFollow, Category: "Data", Title: "Follow the Records",
+		{ID: cmdFollow, Category: l10n.T("Data"), Title: l10n.T("Follow the Records"),
 			Keywords: []string{"follow", "tail", "live", "stream", "watch", "records"},
 			Enabled:  s.canFollow, Run: s.toggleFollow},
-		{ID: cmdPause, Category: "Data", Title: "Pause Following",
+		{ID: cmdPause, Category: l10n.T("Data"), Title: l10n.T("Pause Following"),
 			Keywords: []string{"pause", "resume", "hold", "follow", "tail"},
 			Enabled:  s.canPauseFollowing, Run: s.togglePause},
-		{ID: cmdMap, Category: "Data", Title: "Map the Result",
+		{ID: cmdMap, Category: l10n.T("Data"), Title: l10n.T("Map the Result"),
 			Keywords: []string{"map", "geometry", "geography", "postgis", "geojson", "latitude",
 				"longitude", "coordinates", "places", "where"},
 			Enabled: s.canMap, Run: s.mapActive},
-		{ID: cmdFind, Category: "Edit", Title: "Find…", Keywords: []string{"search", "look for"},
+		{ID: cmdFind, Category: l10n.T("Edit"), Title: l10n.T("Find…"), Keywords: []string{"search", "look for"},
 			Shortcut: sc("F", commands.ModShortcut), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(false) }) }},
-		{ID: cmdFindReplace, Category: "Edit", Title: "Find and Replace…", Keywords: []string{"substitute", "change"},
+		{ID: cmdFindReplace, Category: l10n.T("Edit"), Title: l10n.T("Find and Replace…"), Keywords: []string{"substitute", "change"},
 			Shortcut: sc("F", commands.ModShortcut|commands.ModAlt), Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.show(true) }) }},
-		{ID: cmdFindNext, Category: "Edit", Title: "Find Next", Shortcut: sc("G", commands.ModShortcut),
+		{ID: cmdFindNext, Category: l10n.T("Edit"), Title: l10n.T("Find Next"), Shortcut: sc("G", commands.ModShortcut),
 			Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.next(false) }) }},
-		{ID: cmdFindPrev, Category: "Edit", Title: "Find Previous", Shortcut: sc("G", commands.ModShortcut|commands.ModShift),
+		{ID: cmdFindPrev, Category: l10n.T("Edit"), Title: l10n.T("Find Previous"), Shortcut: sc("G", commands.ModShortcut|commands.ModShift),
 			Enabled: s.hasQuery, Run: func() { s.withFind(func(f *findBar) { f.next(true) }) }},
-		{ID: cmdAppearSystem, Category: "Appearance", Title: "Follow System", Keywords: []string{"theme", "auto"},
+		{ID: cmdAppearSystem, Category: l10n.T("Appearance"), Title: l10n.T("Follow System"), Keywords: []string{"theme", "auto"},
 			Run: func() { s.setAppearance(uitheme.AppearanceSystem) }},
-		{ID: cmdAppearLight, Category: "Appearance", Title: "Light", Keywords: []string{"theme"},
+		{ID: cmdAppearLight, Category: l10n.T("Appearance"), Title: l10n.T("Light"), Keywords: []string{"theme"},
 			Run: func() { s.setAppearance(uitheme.AppearanceLight) }},
-		{ID: cmdAppearDark, Category: "Appearance", Title: "Dark", Keywords: []string{"theme", "night"},
+		{ID: cmdAppearDark, Category: l10n.T("Appearance"), Title: l10n.T("Dark"), Keywords: []string{"theme", "night"},
 			Run: func() { s.setAppearance(uitheme.AppearanceDark) }},
 	}, append(append(append(s.accentCommands(), s.textSizeCommands()...), s.folderCommands()...), s.lostCommands()...)...) {
 		s.reg.MustRegister(c)
@@ -806,8 +807,8 @@ func (s *Shell) registerCommands() {
 }
 
 func (s *Shell) buildSidebar() fyne.CanvasObject {
-	title := widget.NewLabelWithStyle("Connections", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	add := widget.NewButtonWithIcon("New", fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
+	title := widget.NewLabelWithStyle(l10n.T("Connections"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	add := widget.NewButtonWithIcon(l10n.T("New"), fynetheme.ContentAddIcon(), func() { s.run(cmdConnNew) })
 	add.Importance = widget.LowImportance
 	return container.NewBorder(container.NewVBox(container.NewBorder(nil, nil, nil, add, title), s.newFavorites()), nil, nil, nil, s.Explorer.View())
 }
@@ -817,8 +818,8 @@ func (s *Shell) emptyState() fyne.CanvasObject {
 		c, _ := s.reg.Get(id)
 		return c.Shortcut.Label(s.d.GOOS)
 	}
-	title := widget.NewLabelWithStyle("No Open Tabs", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	hint := widget.NewLabel(fmt.Sprintf(
+	title := widget.NewLabelWithStyle(l10n.T("No Open Tabs"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	hint := widget.NewLabel(l10n.F(
 		"Double-click a table in the sidebar to see its rows,\nor press %s to write a query.\nPress %s to find any command.",
 		label(cmdQueryNew), label(cmdPalette)))
 	hint.Alignment = fyne.TextAlignCenter
@@ -933,7 +934,7 @@ func (s *Shell) OpenObject(connID string, n model.Node) {
 	t.top = container.NewVBox()
 	t.ed = &edits{ctx: ctx, connID: connID, say: func(text string) { t.said = text },
 		show: func() { s.showCount(t) }, reload: func() { s.reload(t) }}
-	t.ed.review = widget.NewButton("Review Changes…", func() {
+	t.ed.review = widget.NewButton(l10n.T("Review Changes…"), func() {
 		if t.ed.reviewable() {
 			s.review(t.ed)
 		}
@@ -987,7 +988,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 	}
 	m.OnError = func(err error) {
 		s.d.Run(func() {
-			t.footer.SetText("Could not load rows: " + err.Error())
+			t.footer.SetText(l10n.F("Could not load rows: %s", err.Error()))
 			s.crashed(t.connID, err)
 		})
 	}
@@ -1038,7 +1039,7 @@ func (s *Shell) attachGrid(t *tab, bs *app.BrowseSource) {
 // resolves, and for sources that cannot count cheaply it resolves to nothing:
 // the footer then reports what has loaded until the end of the data is found.
 func (s *Shell) count(t *tab) {
-	t.footer.SetText("Counting rows…")
+	t.footer.SetText(l10n.T("Counting rows…"))
 	m, g := t.model, t.grid
 	go func() {
 		err := m.LoadCount(t.ctx)
@@ -1047,7 +1048,7 @@ func (s *Shell) count(t *tab) {
 				return
 			}
 			if err != nil {
-				t.footer.SetText("Row count unavailable: " + err.Error())
+				t.footer.SetText(l10n.F("Row count unavailable: %s", err.Error()))
 				s.crashed(t.connID, err)
 				return
 			}
@@ -1130,9 +1131,9 @@ func (s *Shell) tabFailed(t *tab, err error) {
 	msg.Wrapping = fyne.TextWrapWord
 	objs := []fyne.CanvasObject{msg}
 	if missing := (*app.MissingSecretsError)(nil); errors.As(err, &missing) {
-		msg.SetText("This connection needs a password, and none is saved.")
+		msg.SetText(l10n.T("This connection needs a password, and none is saved."))
 		objs = append(objs, container.NewHBox(
-			widget.NewButton("Edit Connection…", func() { s.showConnectionForm(t.connID) })))
+			widget.NewButton(l10n.T("Edit Connection…"), func() { s.showConnectionForm(t.connID) })))
 	}
 	t.body.Objects = []fyne.CanvasObject{container.NewPadded(container.NewVBox(objs...))}
 	t.body.Refresh()
@@ -1299,15 +1300,15 @@ func (s *Shell) confirmDeleteSelected() {
 		return
 	}
 	c, _ := s.d.Conns.Get(id)
-	d := dialog.NewConfirm(fmt.Sprintf("Delete “%s”?", c.Name),
-		"Its saved password is removed from the keychain and its tabs close. This cannot be undone.",
+	d := dialog.NewConfirm(l10n.F("Delete “%s”?", c.Name),
+		l10n.T("Its saved password is removed from the keychain and its tabs close. This cannot be undone."),
 		func(yes bool) {
 			if yes {
 				s.deleteConnection(id)
 			}
 		}, s.win)
-	d.SetConfirmText("Delete")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Delete"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }

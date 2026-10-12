@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -44,25 +45,25 @@ func (s *Shell) produceToSelected() {
 func (s *Shell) produceTo(connID string, ref model.ObjectRef) {
 	topic := ref.Name()
 	key := widget.NewEntry()
-	key.SetPlaceHolder("optional; decides the partition where none is named")
+	key.SetPlaceHolder(l10n.T("optional; decides the partition where none is named"))
 	value := widget.NewMultiLineEntry()
-	value.SetPlaceHolder("the record itself")
+	value.SetPlaceHolder(l10n.T("the record itself"))
 	value.Wrapping = fyne.TextWrapWord
 	partition := widget.NewEntry()
-	partition.SetPlaceHolder("any; or a number, to send it to one log")
+	partition.SetPlaceHolder(l10n.T("any; or a number, to send it to one log"))
 	headers := widget.NewMultiLineEntry()
-	headers.SetPlaceHolder("one per line, written as name: value")
+	headers.SetPlaceHolder(l10n.T("one per line, written as name: value"))
 	subject := widget.NewEntry()
-	subject.SetPlaceHolder("optional; a registry subject this record must be readable by")
+	subject.SetPlaceHolder(l10n.T("optional; a registry subject this record must be readable by"))
 
 	form := widget.NewForm(
-		widget.NewFormItem("Key", key),
-		widget.NewFormItem("Value", value),
-		widget.NewFormItem("Partition", partition),
-		widget.NewFormItem("Headers", headers),
-		widget.NewFormItem("Check against", subject),
+		widget.NewFormItem(l10n.T("Key"), key),
+		widget.NewFormItem(l10n.T("Value"), value),
+		widget.NewFormItem(l10n.T("Partition"), partition),
+		widget.NewFormItem(l10n.T("Headers"), headers),
+		widget.NewFormItem(l10n.T("Check against"), subject),
 	)
-	d := dialog.NewCustomConfirm("Write a Record to "+topic, "Write", "Cancel", form, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.F("Write a Record to %s", topic), l10n.T("Write"), l10n.T("Cancel"), form, func(ok bool) {
 		if !ok {
 			return
 		}

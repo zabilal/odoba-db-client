@@ -2,13 +2,13 @@ package shell
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
@@ -30,15 +30,15 @@ const (
 func (s *Shell) folderCommands() []commands.Command {
 	hasFolder := func() bool { _, ok := s.selectedFolder(); return ok }
 	return []commands.Command{
-		{ID: cmdFolderNew, Category: "Connection", Title: "New Folder…", Keywords: []string{"group", "organise", "organize"},
+		{ID: cmdFolderNew, Category: l10n.T("Connection"), Title: l10n.T("New Folder…"), Keywords: []string{"group", "organise", "organize"},
 			Run: func() { s.showFolderForm("") }},
-		{ID: cmdFolderEdit, Category: "Connection", Title: "Edit Folder…", Keywords: []string{"rename", "colour", "color"},
+		{ID: cmdFolderEdit, Category: l10n.T("Connection"), Title: l10n.T("Edit Folder…"), Keywords: []string{"rename", "colour", "color"},
 			Enabled: hasFolder, Run: func() {
 				if id, ok := s.selectedFolder(); ok {
 					s.showFolderForm(id)
 				}
 			}},
-		{ID: cmdFolderDelete, Category: "Connection", Title: "Delete Folder…", Keywords: []string{"remove", "ungroup"},
+		{ID: cmdFolderDelete, Category: l10n.T("Connection"), Title: l10n.T("Delete Folder…"), Keywords: []string{"remove", "ungroup"},
 			Enabled: hasFolder, Run: s.confirmDeleteFolder},
 	}
 }
@@ -97,8 +97,8 @@ func (s *Shell) showFolderForm(id string) *folderForm {
 		}
 		return nil
 	}
-	dialog.NewForm(title, confirm, "Cancel",
-		[]*widget.FormItem{widget.NewFormItem("Name", f.name), widget.NewFormItem("Colour", f.colour)},
+	dialog.NewForm(title, confirm, l10n.T("Cancel"),
+		[]*widget.FormItem{widget.NewFormItem(l10n.T("Name"), f.name), widget.NewFormItem(l10n.T("Colour"), f.colour)},
 		func(ok bool) {
 			if ok {
 				f.save()
@@ -139,15 +139,15 @@ func (s *Shell) confirmDeleteFolder() {
 			name = f.Name
 		}
 	}
-	d := dialog.NewConfirm(fmt.Sprintf("Delete “%s”?", name),
-		"Its connections are kept: they move out of it, to the top of the list.",
+	d := dialog.NewConfirm(l10n.F("Delete “%s”?", name),
+		l10n.T("Its connections are kept: they move out of it, to the top of the list."),
 		func(yes bool) {
 			if yes {
 				s.deleteFolder(id)
 			}
 		}, s.win)
-	d.SetConfirmText("Delete")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Delete"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }

@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -71,7 +72,7 @@ func (s *Shell) askTyping(want, title, body, confirmText string, run func(), dec
 		return nil
 	}
 
-	d := dialog.NewForm(title, confirmText, "Cancel", []*widget.FormItem{
+	d := dialog.NewForm(title, confirmText, l10n.T("Cancel"), []*widget.FormItem{
 		{Widget: note},
 		{Text: "Type " + want + " to continue", Widget: typed},
 	}, func(ok bool) {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/assistant"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -86,7 +87,7 @@ func (s *Shell) setUpAssistant() {
 	header := widget.NewEntry()
 	header.SetText(was.Header)
 	key := newSecretEntry()
-	on := widget.NewCheck("Turn the assistant on", nil)
+	on := widget.NewCheck(l10n.T("Turn the assistant on"), nil)
 	on.SetChecked(was.Enabled)
 
 	// The placeholders follow the provider, because the model's name and the
@@ -100,22 +101,22 @@ func (s *Shell) setUpAssistant() {
 		case "anthropic":
 			model.SetPlaceHolder("claude-sonnet-4-5")
 		default:
-			model.SetPlaceHolder("the name your server gives it")
+			model.SetPlaceHolder(l10n.T("the name your server gives it"))
 		}
 		if p.Secret == "" {
-			key.SetPlaceHolder("usually none")
+			key.SetPlaceHolder(l10n.T("usually none"))
 			return
 		}
-		key.SetPlaceHolder("kept in the keychain")
+		key.SetPlaceHolder(l10n.T("kept in the keychain"))
 	}
 	pick.SetSelectedIndex(at)
 
 	items := []*widget.FormItem{
-		widget.NewFormItem("Provider", pick),
-		widget.NewFormItem("Model", model),
-		widget.NewFormItem("Address", endpoint),
-		widget.NewFormItem("Key", key),
-		widget.NewFormItem("Key header", header),
+		widget.NewFormItem(l10n.T("Provider"), pick),
+		widget.NewFormItem(l10n.T("Model"), model),
+		widget.NewFormItem(l10n.T("Address"), endpoint),
+		widget.NewFormItem(l10n.T("Key"), key),
+		widget.NewFormItem(l10n.T("Key header"), header),
 		widget.NewFormItem("", on),
 		widget.NewFormItem("", quiet(
 			"What it may see is set per connection, and is nothing until you say otherwise. "+
@@ -125,7 +126,7 @@ func (s *Shell) setUpAssistant() {
 	items[2].HintText = "Leave empty for the provider's own. A model of your own goes here."
 	items[4].HintText = "Only for a gateway that wants the key in a header of its own."
 
-	d := dialog.NewForm("The Assistant", "Save", "Cancel", items, func(ok bool) {
+	d := dialog.NewForm(l10n.T("The Assistant"), l10n.T("Save"), l10n.T("Cancel"), items, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -175,10 +176,9 @@ func (s *Shell) saveAssistant(p assistant.Provider, want store.Assistant, key st
 	// from the selection, so a message set before it would be replaced by it.
 	s.sync()
 	if want.Enabled {
-		s.status.SetText("The assistant is on, with " + p.Name + " and " + want.Model +
-			". Each connection decides what it may see.")
+		s.status.SetText(l10n.F("The assistant is on, with %s and %s. Each connection decides what it may see.", p.Name, want.Model))
 	} else {
-		s.status.SetText("The assistant is off.")
+		s.status.SetText(l10n.T("The assistant is off."))
 	}
 }
 
@@ -221,13 +221,13 @@ func (s *Shell) assistantConnection() (*store.SavedConnection, bool) {
 func (s *Shell) askAssistant() {
 	c, ok := s.assistantConnection()
 	if !ok {
-		s.showError(formError("Open a connection to ask the assistant about it."))
+		s.showError(formError(l10n.T("Open a connection to ask the assistant about it.")))
 		return
 	}
 	st := s.assistantSettings()
 	p, hasProvider := assistant.ProviderFor(st)
 	if !hasProvider {
-		s.showError(formError("No assistant provider is set up. Choose one in the Assistant settings."))
+		s.showError(formError(l10n.T("No assistant provider is set up. Choose one in the Assistant settings.")))
 		return
 	}
 	consent := assistant.ConsentFor(st, c, false)
@@ -236,20 +236,20 @@ func (s *Shell) askAssistant() {
 		return
 	}
 	question := widget.NewMultiLineEntry()
-	question.SetPlaceHolder("How many orders did each person place last month?")
+	question.SetPlaceHolder(l10n.T("How many orders did each person place last month?"))
 	question.Wrapping = fyne.TextWrapWord
 	// The rows switch is offered only where the connection allows it, and says
 	// what it would do: a tick that did nothing would read as one that did.
-	withRows := widget.NewCheck("Send a few rows as well as the schema", nil)
+	withRows := widget.NewCheck(l10n.T("Send a few rows as well as the schema"), nil)
 	if !consent.Data {
 		withRows.Disable()
 	}
 	items := []*widget.FormItem{
-		widget.NewFormItem("Question", question),
+		widget.NewFormItem(l10n.T("Question"), question),
 		widget.NewFormItem("", withRows),
 		widget.NewFormItem("", quiet(p.Name+" · "+p.Model+" — "+consent.Describe())),
 	}
-	d := dialog.NewForm("Ask the Assistant", "Ask", "Cancel", items, func(ok bool) {
+	d := dialog.NewForm(l10n.T("Ask the Assistant"), l10n.T("Ask"), l10n.T("Cancel"), items, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -280,12 +280,12 @@ func (s *Shell) explainWithAssistant() {
 	}
 	p, hasProvider := assistant.ProviderFor(s.assistantSettings())
 	if !hasProvider {
-		s.showError(formError("No assistant provider is set up. Choose one in the Assistant settings."))
+		s.showError(formError(l10n.T("No assistant provider is set up. Choose one in the Assistant settings.")))
 		return
 	}
 	statement := strings.TrimSpace(statementInEditor(t))
 	if statement == "" {
-		s.showError(formError("There is nothing in the editor to explain."))
+		s.showError(formError(l10n.T("There is nothing in the editor to explain.")))
 		return
 	}
 	s.runAsk(c, p, assistant.KindExplain, statement, false)
@@ -296,7 +296,7 @@ func (s *Shell) explainWithAssistant() {
 func (s *Shell) runAsk(c *store.SavedConnection, p assistant.Provider,
 	kind assistant.Kind, question string, withRows bool) {
 	if question == "" {
-		s.showError(formError("There is no question to ask."))
+		s.showError(formError(l10n.T("There is no question to ask.")))
 		return
 	}
 	k := s.startTask(nil, "Asking "+p.Name, nil)
@@ -384,7 +384,7 @@ func (s *Shell) showAnswer(connID string, a *assistant.Answer) {
 	t := s.openScript(connID, "-- "+a.Summary()+"\n"+
 		"-- Nothing here has run. Read it before you do.\n\n"+statement+"\n")
 	if t != nil {
-		s.status.SetText("The assistant answered with a statement. It has not run — " + a.Summary() + ".")
+		s.status.SetText(l10n.F("The assistant answered with a statement. It has not run — %s.", a.Summary()))
 	}
 }
 
@@ -399,10 +399,10 @@ func (s *Shell) showAnswerText(a *assistant.Answer) {
 	said.Importance = widget.LowImportance
 	content := container.NewBorder(said, nil, nil, nil,
 		container.NewGridWrap(fyne.NewSize(620, 320), body))
-	d := dialog.NewCustom("The Assistant", "Close", content, s.win)
+	d := dialog.NewCustom(l10n.T("The Assistant"), l10n.T("Close"), content, s.win)
 	d.Resize(fyne.NewSize(660, 420))
 	d.Show()
-	s.status.SetText("The assistant answered — " + a.Summary() + ".")
+	s.status.SetText(l10n.F("The assistant answered — %s.", a.Summary()))
 }
 
 // statementInEditor is what a question about "this statement" is about: the

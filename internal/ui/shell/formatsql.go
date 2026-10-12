@@ -1,8 +1,7 @@
 package shell
 
 import (
-	"fmt"
-
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/sqlfmt"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
 )
@@ -65,10 +64,10 @@ func (s *Shell) formatQuery() {
 func (s *Shell) saidFormat(t *tab, err error, changed int) {
 	switch {
 	case err != nil:
-		t.footer.SetText(fmt.Sprintf("Laid out, except: %v", err))
+		t.footer.SetText(l10n.F("Laid out, except: %v", err))
 	case changed == 0:
-		t.footer.SetText("Already laid out.")
+		t.footer.SetText(l10n.T("Already laid out."))
 	default:
-		t.footer.SetText("Laid out.")
+		t.footer.SetText(l10n.T("Laid out."))
 	}
 }

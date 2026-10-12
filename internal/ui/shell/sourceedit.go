@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/sqllex"
@@ -77,7 +78,7 @@ func (s *Shell) OpenSource(connID string, n model.Node) *tab {
 	t := &tab{key: key, connID: connID, ref: n.Ref, label: n.Label, structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the source…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Source: "+n.Label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Source: %s", n.Label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -115,8 +116,8 @@ func (s *Shell) showSource(t *tab, desc any) {
 	p.ed = view.New(editor.NewDocument(text, sqllex.DialectFor(dialectName(s, t.connID))), s.colours())
 	p.ed.OnChanged = func() { p.say() }
 
-	preview := widget.NewButton("Preview…", p.preview)
-	revert := widget.NewButton("Revert", func() {
+	preview := widget.NewButton(l10n.T("Preview…"), p.preview)
+	revert := widget.NewButton(l10n.T("Revert"), func() {
 		p.ed.Document().SetText(p.was)
 		p.say()
 	})
@@ -156,7 +157,7 @@ func sourceOf(s *Shell, t *tab, desc any) (string, error) {
 func (p *sourcePanel) preview() {
 	live, ok := p.s.d.WS.Get(p.t.connID)
 	if !ok {
-		p.t.footer.SetText("This connection is not open.")
+		p.t.footer.SetText(l10n.T("This connection is not open."))
 		return
 	}
 	var stmts []source.Statement
@@ -173,7 +174,7 @@ func (p *sourcePanel) preview() {
 		return
 	}
 	if len(stmts) == 0 {
-		p.t.footer.SetText("There is nothing here to run.")
+		p.t.footer.SetText(l10n.T("There is nothing here to run."))
 		return
 	}
 	p.s.previewDDL(p.t.ddl(), stmts, func() { p.s.reopenSource(p.t) })
@@ -202,10 +203,10 @@ func (p *sourcePanel) edited() any {
 // say tells the footer whether anything has changed.
 func (p *sourcePanel) say() {
 	if p.ed.Document().Text() == p.was {
-		p.t.footer.SetText("No changes yet.")
+		p.t.footer.SetText(l10n.T("No changes yet."))
 		return
 	}
-	p.t.footer.SetText("Changed. Preview to see what would run.")
+	p.t.footer.SetText(l10n.T("Changed. Preview to see what would run."))
 }
 
 // reopenSource reads the object again, after something changed it.

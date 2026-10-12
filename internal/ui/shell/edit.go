@@ -5,6 +5,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
@@ -49,12 +50,11 @@ func (s *Shell) setValue() {
 	}
 	e := s.activeEdits()
 	entry := widget.NewEntry()
-	entry.SetPlaceHolder("Empty is NULL, or empty text in a column of text")
-	note := widget.NewLabel("Written into each selected cell, read as its column's type. " +
-		"Nothing reaches the server until the changes are committed.")
+	entry.SetPlaceHolder(l10n.T("Empty is NULL, or empty text in a column of text"))
+	note := widget.NewLabel(l10n.F("Written into each selected cell, read as its column's type. Nothing reaches the server until the changes are committed."))
 	note.Wrapping = fyne.TextWrapWord
-	d := dialog.NewForm("Set Value", "Set", "Cancel",
-		[]*widget.FormItem{widget.NewFormItem("Value", entry), widget.NewFormItem("", note)},
+	d := dialog.NewForm(l10n.T("Set Value"), l10n.T("Set"), l10n.T("Cancel"),
+		[]*widget.FormItem{widget.NewFormItem(l10n.T("Value"), entry), widget.NewFormItem("", note)},
 		func(ok bool) {
 			if ok {
 				s.fill(e, parsed(entry.Text), setting)

@@ -1,6 +1,10 @@
 package theme
 
-import "image/color"
+import (
+	"image/color"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
+)
 
 // Environment treatment (FR-1.7, UX principle 8).
 //
@@ -39,27 +43,27 @@ type EnvironmentTint struct {
 // carries no dependency on the data layer.
 var environmentTints = map[string]struct{ light, dark EnvironmentTint }{
 	"local": {
-		light: EnvironmentTint{Label: "LOCAL", Accent: rgb(0x6E, 0x6E, 0x73),
+		light: EnvironmentTint{Accent: rgb(0x6E, 0x6E, 0x73),
 			OnAccent: rgb(0xFF, 0xFF, 0xFF), Subtle: rgb(0xEE, 0xEE, 0xF0)},
-		dark: EnvironmentTint{Label: "LOCAL", Accent: rgb(0x8E, 0x8E, 0x93),
+		dark: EnvironmentTint{Accent: rgb(0x8E, 0x8E, 0x93),
 			OnAccent: rgb(0x1E, 0x1E, 0x1E), Subtle: rgb(0x2E, 0x2E, 0x30)},
 	},
 	"dev": {
-		light: EnvironmentTint{Label: "DEV", Accent: rgb(0x1B, 0x7A, 0x3D),
+		light: EnvironmentTint{Accent: rgb(0x1B, 0x7A, 0x3D),
 			OnAccent: rgb(0xFF, 0xFF, 0xFF), Subtle: rgb(0xE4, 0xF6, 0xEA)},
-		dark: EnvironmentTint{Label: "DEV", Accent: rgb(0x32, 0xD7, 0x4B),
+		dark: EnvironmentTint{Accent: rgb(0x32, 0xD7, 0x4B),
 			OnAccent: rgb(0x11, 0x2A, 0x18), Subtle: rgb(0x17, 0x2E, 0x1E)},
 	},
 	"staging": {
-		light: EnvironmentTint{Label: "STAGING", Accent: rgb(0x9A, 0x5B, 0x00),
+		light: EnvironmentTint{Accent: rgb(0x9A, 0x5B, 0x00),
 			OnAccent: rgb(0xFF, 0xFF, 0xFF), Subtle: rgb(0xFF, 0xF1, 0xD9)},
-		dark: EnvironmentTint{Label: "STAGING", Accent: rgb(0xFF, 0x9F, 0x0A),
+		dark: EnvironmentTint{Accent: rgb(0xFF, 0x9F, 0x0A),
 			OnAccent: rgb(0x2A, 0x1C, 0x00), Subtle: rgb(0x33, 0x27, 0x0D)},
 	},
 	"production": {
-		light: EnvironmentTint{Label: "PROD", Accent: rgb(0xC4, 0x1E, 0x18),
+		light: EnvironmentTint{Accent: rgb(0xC4, 0x1E, 0x18),
 			OnAccent: rgb(0xFF, 0xFF, 0xFF), Subtle: rgb(0xFF, 0xE3, 0xE1), Emphatic: true},
-		dark: EnvironmentTint{Label: "PROD", Accent: rgb(0xFF, 0x45, 0x3A),
+		dark: EnvironmentTint{Accent: rgb(0xFF, 0x45, 0x3A),
 			OnAccent: rgb(0x2E, 0x0F, 0x0D), Subtle: rgb(0x3D, 0x1C, 0x1A), Emphatic: true},
 	},
 }
@@ -72,12 +76,29 @@ var environmentTints = map[string]struct{ light, dark EnvironmentTint }{
 func (t *Theme) Environment(name string, dark bool) EnvironmentTint {
 	e, ok := environmentTints[name]
 	if !ok {
-		e = environmentTints["local"]
+		name, e = "local", environmentTints["local"]
 	}
+	tint := e.light
 	if dark {
-		return e.dark
+		tint = e.dark
 	}
-	return e.light
+	tint.Label = environmentLabel(name)
+	return tint
+}
+
+// environmentLabel is the word a connection's badge says. It is said when it
+// is asked for and not where the tints are listed, which is made before any
+// language is set (FR-15.11).
+func environmentLabel(name string) string {
+	switch name {
+	case "dev":
+		return l10n.T("DEV")
+	case "staging":
+		return l10n.T("STAGING")
+	case "production":
+		return l10n.T("PROD")
+	}
+	return l10n.T("LOCAL")
 }
 
 // EnvironmentNames returns the known environments in escalating order of risk,

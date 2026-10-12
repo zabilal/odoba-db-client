@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/source/capability"
 	"github.com/ikigai-db/ikigai-db/internal/ui/spark"
@@ -116,14 +117,14 @@ func (s *Shell) streamControls(t *tab) *streamBar {
 		return t.stream
 	}
 	b := &streamBar{s: s, t: t}
-	b.follow = widget.NewButton("Follow", b.toggleFollow)
-	b.pause = widget.NewButton("Pause", b.togglePause)
+	b.follow = widget.NewButton(l10n.T("Follow"), b.toggleFollow)
+	b.pause = widget.NewButton(l10n.T("Pause"), b.togglePause)
 	b.pause.Disable()
-	b.seek = widget.NewButton("Start at…", b.askSeek)
+	b.seek = widget.NewButton(l10n.T("Start at…"), b.askSeek)
 	// Only the controls this object has: a log that can be read from a position
 	// and not followed is a real thing (a source may refuse to follow this one
 	// object), and a Follow beside it would be a button that could only fail.
-	in := []fyne.CanvasObject{widget.NewLabel("Records")}
+	in := []fyne.CanvasObject{widget.NewLabel(l10n.T("Records"))}
 	if s.canFollowTab(t) {
 		in = append(in, b.follow, b.pause)
 	}
@@ -181,7 +182,7 @@ func (b *streamBar) toggleFollow() {
 func (b *streamBar) startFollowing(seek *source.Seek) {
 	live, ok := b.s.d.WS.Get(b.t.connID)
 	if !ok {
-		b.t.footer.SetText("That connection is not open.")
+		b.t.footer.SetText(l10n.T("That connection is not open."))
 		return
 	}
 	opt := b.t.browse.Options()
@@ -203,9 +204,9 @@ func (b *streamBar) startFollowing(seek *source.Seek) {
 	// SetFetcher drops what was cached, so the grid reads the tail rather than
 	// the pages it had of the log.
 	b.t.model.SetFetcher(tail)
-	b.follow.SetText("Stop")
+	b.follow.SetText(l10n.T("Stop"))
 	b.pause.Enable()
-	b.pause.SetText("Pause")
+	b.pause.SetText(l10n.T("Pause"))
 	b.watch()
 	b.say()
 }
@@ -220,8 +221,8 @@ func (b *streamBar) unfollow() {
 		_ = b.tail.Close()
 		b.tail = nil
 	}
-	b.follow.SetText("Follow")
-	b.pause.SetText("Pause")
+	b.follow.SetText(l10n.T("Follow"))
+	b.pause.SetText(l10n.T("Pause"))
 	b.pause.Disable()
 	if b.t.model != nil && b.t.browse != nil {
 		b.t.model.SetFetcher(b.t.browse)
@@ -245,12 +246,12 @@ func (b *streamBar) togglePause() {
 	}
 	if b.tail.Paused() {
 		b.tail.Resume()
-		b.pause.SetText("Pause")
+		b.pause.SetText(l10n.T("Pause"))
 	} else {
 		// Backpressure rather than loss: a paused tail asks the source for
 		// nothing, so records wait where they are (ADR-0097).
 		b.tail.Pause()
-		b.pause.SetText("Resume")
+		b.pause.SetText(l10n.T("Resume"))
 	}
 	b.say()
 }
@@ -373,7 +374,7 @@ func offered(m source.SeekMode, caps capability.Stream) bool {
 func (b *streamBar) askSeek() {
 	live, ok := b.s.d.WS.Get(b.t.connID)
 	if !ok {
-		b.t.footer.SetText("That connection is not open.")
+		b.t.footer.SetText(l10n.T("That connection is not open."))
 		return
 	}
 	caps := live.Source.Capabilities().Stream
@@ -396,17 +397,17 @@ func (b *streamBar) askSeek() {
 	when.SetPlaceHolder(time.Now().UTC().Format("2006-01-02 15:04:05"))
 
 	items := []*widget.FormItem{
-		widget.NewFormItem("Start at", where),
-		widget.NewFormItem("How many", count),
-		widget.NewFormItem("Offset", offset),
-		widget.NewFormItem("Time (UTC)", when),
+		widget.NewFormItem(l10n.T("Start at"), where),
+		widget.NewFormItem(l10n.T("How many"), count),
+		widget.NewFormItem(l10n.T("Offset"), offset),
+		widget.NewFormItem(l10n.T("Time (UTC)"), when),
 		widget.NewFormItem("", quiet("The last few is that many in every log, "+
 			"each partition having its own end.")),
 	}
 	items[1].HintText = "For the last few: how many records back, in each log."
 	items[3].HintText = "For a time: a log with nothing after it is left out."
 
-	d := dialog.NewForm("Start Reading At", "Read", "Cancel", items, func(ok bool) {
+	d := dialog.NewForm(l10n.T("Start Reading At"), l10n.T("Read"), l10n.T("Cancel"), items, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -433,7 +434,7 @@ func readSeek(mode, count, offset, when string) (*source.Seek, string, error) {
 		}
 	}
 	if !found {
-		return nil, "", formError("Choose where to start.")
+		return nil, "", formError(l10n.T("Choose where to start."))
 	}
 	seek := &source.Seek{Mode: chosen}
 	switch chosen {
@@ -442,14 +443,14 @@ func readSeek(mode, count, offset, when string) (*source.Seek, string, error) {
 	case source.SeekLast:
 		n, err := strconv.ParseInt(strings.TrimSpace(count), 10, 64)
 		if err != nil || n <= 0 {
-			return nil, "", formError("How many records back? A whole number above nothing.")
+			return nil, "", formError(l10n.T("How many records back? A whole number above nothing."))
 		}
 		seek.Count = n
 		return seek, fmt.Sprintf("the last %d of each log", n), nil
 	case source.SeekOffset:
 		n, err := strconv.ParseInt(strings.TrimSpace(offset), 10, 64)
 		if err != nil || n < 0 {
-			return nil, "", formError("Which offset? A whole number, or nothing for the beginning.")
+			return nil, "", formError(l10n.T("Which offset? A whole number, or nothing for the beginning."))
 		}
 		seek.Offset = n
 		return seek, "offset " + strconv.FormatInt(n, 10), nil
@@ -472,7 +473,7 @@ func readWhen(s string) (time.Time, error) {
 			return t.UTC(), nil
 		}
 	}
-	return time.Time{}, formError("That is not a time. Write it as 2026-09-25 14:30:00, in UTC.")
+	return time.Time{}, formError(l10n.T("That is not a time. Write it as 2026-09-25 14:30:00, in UTC."))
 }
 
 // startAt reads the log again from a position.

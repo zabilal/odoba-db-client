@@ -35,7 +35,11 @@ type Settings struct {
 	Accent     string `json:"accent,omitempty"`     // blue unless set: see theme.Accents
 	// TextSize is how large text is drawn: default, large or larger
 	// (NFR-A2). Empty is the default.
-	TextSize    string            `json:"text_size,omitempty"`
+	TextSize string `json:"text_size,omitempty"`
+	// Language is the language the application speaks, by its tag ("de",
+	// "pt-br"), or empty for the system's own (FR-15.11). One there is no
+	// catalogue for is English.
+	Language    string            `json:"language,omitempty"`
 	Editor      EditorSettings    `json:"editor"`
 	Folders     []Folder          `json:"folders,omitempty"`
 	Connections []SavedConnection `json:"connections"`

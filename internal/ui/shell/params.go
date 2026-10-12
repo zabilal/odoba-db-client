@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
@@ -45,7 +46,7 @@ func (s *Shell) askParams(t *tab, script string, base int, names []string) *para
 	for _, name := range names {
 		e := s.newPanelEntry()
 		e.OnSubmitted = func(string) { p.runIt() }
-		null := widget.NewCheck("NULL", nil)
+		null := widget.NewCheck(l10n.T("NULL"), nil)
 		null.OnChanged = func(on bool) {
 			if on {
 				e.Disable()
@@ -60,10 +61,10 @@ func (s *Shell) askParams(t *tab, script string, base int, names []string) *para
 		p.values, p.nulls = append(p.values, e), append(p.nulls, null)
 		form.Append(":"+name, container.NewBorder(nil, nil, nil, null, e))
 	}
-	p.run = widget.NewButton("Run", p.runIt)
+	p.run = widget.NewButton(l10n.T("Run"), p.runIt)
 	p.run.Importance = widget.HighImportance
-	p.cancel = widget.NewButton("Cancel", s.closePanel)
-	note := widget.NewLabel("Values are sent as typed, and the server reads each as its place needs.")
+	p.cancel = widget.NewButton(l10n.T("Cancel"), s.closePanel)
+	note := widget.NewLabel(l10n.T("Values are sent as typed, and the server reads each as its place needs."))
 	note.Wrapping = fyne.TextWrapWord
 	note.Importance = widget.LowImportance
 	body := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), p.cancel, p.run), nil, nil,

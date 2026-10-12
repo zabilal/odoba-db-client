@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -54,23 +55,20 @@ func (s *Shell) resetSelectedGroup() {
 	where := widget.NewSelect([]string{toBeginning, toEnd, toTime, toOffset}, nil)
 	where.Selected = toBeginning
 	at := widget.NewEntry()
-	at.SetPlaceHolder("2026-09-22T10:30:00Z, or 2026-09-22 10:30 in this machine's own time")
+	at.SetPlaceHolder(l10n.T("2026-09-22T10:30:00Z, or 2026-09-22 10:30 in this machine's own time"))
 	offset := widget.NewEntry()
-	offset.SetPlaceHolder("a whole number; past the end of a log means the end of it")
+	offset.SetPlaceHolder(l10n.T("a whole number; past the end of a log means the end of it"))
 
-	note := widget.NewLabel("This changes what every consumer in this group reads next. " +
-		"Nothing is deleted: moved back, the group processes again what it has already done; " +
-		"moved forward, it never sees what it skipped. The group must have nothing reading " +
-		"through it, so stop its consumers first.")
+	note := widget.NewLabel(l10n.F("This changes what every consumer in this group reads next. Nothing is deleted: moved back, the group processes again what it has already done; moved forward, it never sees what it skipped. The group must have nothing reading through it, so stop its consumers first."))
 	note.Wrapping = fyne.TextWrapWord
 
 	body := container.NewVBox(widget.NewForm(
-		widget.NewFormItem("Move to", where),
-		widget.NewFormItem("Time", at),
-		widget.NewFormItem("Offset", offset),
+		widget.NewFormItem(l10n.T("Move to"), where),
+		widget.NewFormItem(l10n.T("Time"), at),
+		widget.NewFormItem(l10n.T("Offset"), offset),
 	), note)
 
-	d := dialog.NewCustomConfirm("Move "+group+"?", "Move", "Cancel", body, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.F("Move %s?", group), l10n.T("Move"), l10n.T("Cancel"), body, func(ok bool) {
 		if !ok {
 			return
 		}

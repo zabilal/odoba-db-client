@@ -11,6 +11,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
@@ -82,12 +83,12 @@ func (s *Shell) newJSON(t *tab, g *grid.TableGrid, holder *fyne.Container) *json
 	j.text.Wrapping = fyne.TextWrapOff
 	j.note = widget.NewLabel("")
 	j.note.Wrapping, j.note.Importance = fyne.TextWrapWord, widget.LowImportance
-	j.prev = widget.NewButtonWithIcon("Previous Documents", fynetheme.MoveUpIcon(), func() { j.page(-1) })
-	j.next = widget.NewButtonWithIcon("Next Documents", fynetheme.MoveDownIcon(), func() { j.page(1) })
-	j.edit = widget.NewButtonWithIcon("Edit Document", fynetheme.DocumentCreateIcon(), j.editDocument)
-	j.save = widget.NewButtonWithIcon("Save Document", fynetheme.ConfirmIcon(), j.saveDocument)
-	j.cancel = widget.NewButtonWithIcon("Cancel", fynetheme.CancelIcon(), j.stopEditing)
-	back := widget.NewButtonWithIcon("Show Grid", fynetheme.CancelIcon(), j.hide)
+	j.prev = widget.NewButtonWithIcon(l10n.T("Previous Documents"), fynetheme.MoveUpIcon(), func() { j.page(-1) })
+	j.next = widget.NewButtonWithIcon(l10n.T("Next Documents"), fynetheme.MoveDownIcon(), func() { j.page(1) })
+	j.edit = widget.NewButtonWithIcon(l10n.T("Edit Document"), fynetheme.DocumentCreateIcon(), j.editDocument)
+	j.save = widget.NewButtonWithIcon(l10n.T("Save Document"), fynetheme.ConfirmIcon(), j.saveDocument)
+	j.cancel = widget.NewButtonWithIcon(l10n.T("Cancel"), fynetheme.CancelIcon(), j.stopEditing)
+	back := widget.NewButtonWithIcon(l10n.T("Show Grid"), fynetheme.CancelIcon(), j.hide)
 	for _, b := range []*widget.Button{j.prev, j.next, j.edit, j.cancel, back} {
 		b.Importance = widget.LowImportance
 	}
@@ -145,7 +146,7 @@ func (j *jsonView) read() {
 	j.note.SetText("")
 	j.seq++
 	seq := j.seq
-	j.where.SetText("Reading…")
+	j.where.SetText(l10n.T("Reading…"))
 	j.text.SetText("")
 	m := j.g.Model()
 	go func() {
@@ -155,7 +156,7 @@ func (j *jsonView) read() {
 				return // another page was asked for, or the tab closed
 			}
 			if err != nil {
-				j.where.SetText("Could not read the documents: " + err.Error())
+				j.where.SetText(l10n.F("Could not read the documents: %s", err.Error()))
 				return
 			}
 			j.set(rows)
@@ -168,11 +169,11 @@ func (j *jsonView) set(rows []model.Row) {
 	j.text.SetText(documentsJSON(cols, rows))
 	switch {
 	case len(rows) == 0:
-		j.where.SetText("No documents")
+		j.where.SetText(l10n.T("No documents"))
 	case len(rows) == 1:
-		j.where.SetText(fmt.Sprintf("Document %d", j.from+1))
+		j.where.SetText(l10n.F("Document %d", j.from+1))
 	default:
-		j.where.SetText(fmt.Sprintf("Documents %d–%d", j.from+1, j.from+int64(len(rows))))
+		j.where.SetText(l10n.F("Documents %d–%d", j.from+1, j.from+int64(len(rows))))
 	}
 	n, final := j.g.Model().Extent()
 	j.prev.Disable()

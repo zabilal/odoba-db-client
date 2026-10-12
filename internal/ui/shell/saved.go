@@ -13,6 +13,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 )
 
@@ -53,23 +54,23 @@ func (s *Shell) promptSave(t *tab, asCopy bool) *savePrompt {
 	p := &savePrompt{name: widget.NewEntry(), folder: widget.NewEntry()}
 	p.name.SetText(q.saved.Name)
 	if asCopy && q.saved.Name != "" {
-		p.name.SetText(q.saved.Name + " copy")
+		p.name.SetText(l10n.F("%s copy", q.saved.Name))
 	}
-	p.name.SetPlaceHolder("Monthly revenue")
+	p.name.SetPlaceHolder(l10n.T("Monthly revenue"))
 	p.name.Validator = func(v string) error {
 		if strings.TrimSpace(v) == "" {
-			return formError("Enter a name.")
+			return formError(l10n.T("Enter a name."))
 		}
 		return nil
 	}
 	p.folder.SetText(q.saved.Folder)
-	p.folder.SetPlaceHolder("None")
+	p.folder.SetPlaceHolder(l10n.T("None"))
 	title := "Save Query"
 	if asCopy {
 		title = "Save Query As"
 	}
-	p.dlg = dialog.NewForm(title, "Save", "Cancel",
-		[]*widget.FormItem{widget.NewFormItem("Name", p.name), widget.NewFormItem("Folder", p.folder)},
+	p.dlg = dialog.NewForm(title, l10n.T("Save"), l10n.T("Cancel"),
+		[]*widget.FormItem{widget.NewFormItem(l10n.T("Name"), p.name), widget.NewFormItem(l10n.T("Folder"), p.folder)},
 		func(ok bool) {
 			if !ok {
 				return
@@ -107,7 +108,7 @@ func (s *Shell) storeQuery(t *tab, sq localdb.SavedQuery) {
 				if sq.Folder != "" {
 					where = "in “" + sq.Folder + "”"
 				}
-				s.showError(formError(fmt.Sprintf(
+				s.showError(formError(l10n.F(
 					"A saved query named “%s” already exists %s. Choose another name.", sq.Name, where)))
 				return
 			case err != nil:
@@ -118,7 +119,7 @@ func (s *Shell) storeQuery(t *tab, sq localdb.SavedQuery) {
 			q.dirty = q.editor.Document().Revision() != rev // edits made while saving are not in it
 			s.retitle(t)
 			s.keep(t) // forgotten, unless edits made while saving need keeping
-			t.footer.SetText(fmt.Sprintf("Saved “%s”", got.Name))
+			t.footer.SetText(l10n.F("Saved “%s”", got.Name))
 		})
 	}()
 }
@@ -185,8 +186,8 @@ func (s *Shell) requestClose(it *container.TabItem) {
 			s.closeTab(it)
 		}
 	}, s.win)
-	d.SetConfirmText("Close")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Close"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }
@@ -218,7 +219,7 @@ func (s *Shell) showSaved() *savedPanel {
 	}
 	p := &savedPanel{s: s, filter: s.newPanelEntry(), status: widget.NewLabel(""), now: time.Now}
 	s.savedView = p
-	p.filter.SetPlaceHolder("Filter by name, folder or text")
+	p.filter.SetPlaceHolder(l10n.T("Filter by name, folder or text"))
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(
 		func() int { return len(p.shown) },
@@ -228,7 +229,7 @@ func (s *Shell) showSaved() *savedPanel {
 			meta := widget.NewLabel("")
 			meta.Importance = widget.LowImportance
 			meta.Truncation = fyne.TextTruncateEllipsis
-			del := widget.NewButtonWithIcon("Delete", fynetheme.DeleteIcon(), nil)
+			del := widget.NewButtonWithIcon(l10n.T("Delete"), fynetheme.DeleteIcon(), nil)
 			del.Importance = widget.LowImportance
 			return container.NewBorder(nil, nil, nil, del, container.NewVBox(name, meta))
 		},
@@ -269,7 +270,7 @@ func (p *savedPanel) load() {
 		all, err := p.s.d.Saved.SavedQueries(ctx)
 		p.s.d.Run(func() {
 			if err != nil {
-				p.status.SetText("Could not read saved queries: " + err.Error())
+				p.status.SetText(l10n.F("Could not read saved queries: %s", err.Error()))
 				return
 			}
 			p.all, p.loaded = p.s.queriesHere(all), true
@@ -298,13 +299,13 @@ func (p *savedPanel) apply() {
 	switch {
 	case !p.loaded:
 	case len(p.all) == 0:
-		p.status.SetText(fmt.Sprintf("No saved queries yet. Save one from a query tab with %s.", c.Shortcut.Label(p.s.d.GOOS)))
+		p.status.SetText(l10n.F("No saved queries yet. Save one from a query tab with %s.", c.Shortcut.Label(p.s.d.GOOS)))
 	case len(p.shown) == 0:
-		p.status.SetText("No saved queries match.")
+		p.status.SetText(l10n.T("No saved queries match."))
 	case len(p.shown) == 1:
-		p.status.SetText("1 saved query")
+		p.status.SetText(l10n.T("1 saved query"))
 	default:
-		p.status.SetText(fmt.Sprintf("%d saved queries", len(p.shown)))
+		p.status.SetText(l10n.F("%d saved queries", len(p.shown)))
 	}
 }
 
@@ -325,7 +326,7 @@ func (p *savedPanel) open(sq localdb.SavedQuery) {
 		return
 	}
 	if _, ok := p.s.d.Conns.Get(sq.ConnectionID); !ok {
-		p.status.SetText("The connection this query was saved with no longer exists.")
+		p.status.SetText(l10n.T("The connection this query was saved with no longer exists."))
 		p.list.UnselectAll()
 		return
 	}
@@ -347,8 +348,8 @@ func (s *Shell) reopenSaved(connID string, sq localdb.SavedQuery) *tab {
 }
 
 func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
-	d := dialog.NewConfirm(fmt.Sprintf("Delete “%s”?", sq.Name),
-		"The saved query is removed. A tab that has it open keeps its text.",
+	d := dialog.NewConfirm(l10n.F("Delete “%s”?", sq.Name),
+		l10n.T("The saved query is removed. A tab that has it open keeps its text."),
 		func(yes bool) {
 			if !yes {
 				return
@@ -360,7 +361,7 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 				p.s.d.Run(func() {
 					if err != nil {
 						// Said on the panel's own line, beside the list it concerns.
-						p.status.SetText("Could not delete “" + sq.Name + "”: " + err.Error())
+						p.status.SetText(l10n.F("Could not delete “%s”: %s", sq.Name, err.Error()))
 						return
 					}
 					if t := p.s.tabForSaved(sq.ID); t != nil {
@@ -372,7 +373,7 @@ func (p *savedPanel) confirmDelete(sq localdb.SavedQuery) {
 				})
 			}()
 		}, p.s.win)
-	d.SetConfirmText("Delete")
+	d.SetConfirmText(l10n.T("Delete"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }

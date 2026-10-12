@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	"github.com/ikigai-db/ikigai-db/internal/store"
@@ -378,7 +379,7 @@ func New(l explorer.Loader, run uithread.Runner, delay time.Duration) *Explorer 
 	e.refresh = uithread.Coalesce(run, delay, func() { e.Tree.Refresh(); e.runSearch() })
 	e.Filter = &filterEntry{}
 	e.Filter.ExtendBaseWidget(e.Filter)
-	e.Filter.SetPlaceHolder("Filter loaded objects")
+	e.Filter.SetPlaceHolder(l10n.T("Filter loaded objects"))
 	e.note = widget.NewLabel("")
 	e.note.Importance = widget.LowImportance
 	e.note.Truncation = fyne.TextTruncateEllipsis

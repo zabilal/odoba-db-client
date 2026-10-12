@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/uithread"
 )
@@ -39,7 +40,7 @@ func (s *Shell) showHistory() *historyPanel {
 		return nil
 	}
 	p := &historyPanel{s: s, search: s.newPanelEntry(), status: widget.NewLabel(""), now: time.Now}
-	p.search.SetPlaceHolder("Search statements")
+	p.search.SetPlaceHolder(l10n.T("Search statements"))
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(
 		func() int { return len(p.entries) },
@@ -97,7 +98,7 @@ func (p *historyPanel) query() {
 				return // typing "or" then "ord" must not end on the list for "or"
 			}
 			if err != nil {
-				p.status.SetText("Could not search history: " + err.Error())
+				p.status.SetText(l10n.F("Could not search history: %s", err.Error()))
 				return
 			}
 			p.entries = entries
@@ -128,7 +129,7 @@ func (p *historyPanel) describe(e localdb.HistoryEntry) string {
 // masked; that is the point of redacting it.
 func (p *historyPanel) open(e localdb.HistoryEntry) {
 	if _, ok := p.s.d.Conns.Get(e.ConnectionID); !ok {
-		p.status.SetText("The connection this ran on no longer exists.")
+		p.status.SetText(l10n.T("The connection this ran on no longer exists."))
 		p.list.UnselectAll()
 		return
 	}

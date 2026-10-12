@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -170,15 +171,15 @@ func (s *Shell) askAboutTransaction(t *tab, then func()) bool {
 	if state == source.TxFailed {
 		what = "It has already failed, so closing this tab rolls it back."
 	}
-	d := dialog.NewConfirm("Close and Roll Back?",
-		"“"+t.query.title+"” has a transaction open. "+what,
+	d := dialog.NewConfirm(l10n.T("Close and Roll Back?"),
+		l10n.F("“%s” has a transaction open. %s", t.query.title, what),
 		func(yes bool) {
 			if yes {
 				then()
 			}
 		}, s.win)
-	d.SetConfirmText("Close")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Close"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 	return false

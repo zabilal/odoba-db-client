@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
 )
@@ -35,11 +36,11 @@ func (s *Shell) saveModelSelected() {
 	}
 	ref := n.Ref
 	s.d.Files.Save(s.win, filedlg.Options{
-		Message:    "Save " + ref.Name() + " as a model",
+		Message:    l10n.F("Save %s as a model", ref.Name()),
 		Name:       modelFileName,
 		Extensions: []string{"json"},
 		Kind:       "saved model",
-		Accept:     "Save",
+		Accept:     l10n.T("Save"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:

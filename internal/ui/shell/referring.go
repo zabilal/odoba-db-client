@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -79,7 +80,7 @@ func (s *Shell) showReferring() {
 	}
 	pick := widget.NewRadioGroup(labels, nil)
 	pick.SetSelected(labels[0])
-	dialog.NewCustomConfirm("Show Referring Rows", "Show Rows", "Cancel", pick, func(ok bool) {
+	dialog.NewCustomConfirm(l10n.T("Show Referring Rows"), l10n.T("Show Rows"), l10n.T("Cancel"), pick, func(ok bool) {
 		if i := slices.Index(labels, pick.Selected); ok && i >= 0 {
 			s.openFiltered(t.connID, rs[i].ref, rs[i].filters)
 		}

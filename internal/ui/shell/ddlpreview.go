@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
 
@@ -26,12 +27,11 @@ import (
 func (p *designPanel) preview() {
 	live, ok := p.s.d.WS.Get(p.t.connID)
 	if !ok {
-		p.t.footer.SetText("This connection is not open.")
+		p.t.footer.SetText(l10n.T("This connection is not open."))
 		return
 	}
 	if !app.CanRenderDDL(live.Source) {
-		p.t.footer.SetText("This connection cannot render structural changes as statements yet, " +
-			"so there is nothing to preview and nothing to run.")
+		p.t.footer.SetText(l10n.F("This connection cannot render structural changes as statements yet, so there is nothing to preview and nothing to run."))
 		return
 	}
 	stmts, err := app.PlanDDL(live.Source, p.design)
@@ -40,7 +40,7 @@ func (p *designPanel) preview() {
 		return
 	}
 	if len(stmts) == 0 {
-		p.t.footer.SetText("No changes yet.")
+		p.t.footer.SetText(l10n.T("No changes yet."))
 		return
 	}
 	p.show(stmts)
@@ -71,11 +71,11 @@ func (t *tab) ddl() ddlTarget {
 // rather than assume it is now what was asked for.
 func (s *Shell) previewDDL(t ddlTarget, stmts []source.Statement, after func()) {
 	body := widget.NewTextGridFromString(scriptOf(stmts))
-	head := widget.NewLabel(fmt.Sprintf("%s will run, in this order. Nothing has run yet.",
+	head := widget.NewLabel(l10n.F("%s will run, in this order. Nothing has run yet.",
 		nounCount(len(stmts), "statement")))
 	head.Wrapping = fyne.TextWrapWord
 
-	d := dialog.NewCustomConfirm("Run These Changes?", "Run", "Cancel",
+	d := dialog.NewCustomConfirm(l10n.T("Run These Changes?"), l10n.T("Run"), l10n.T("Cancel"),
 		container.NewBorder(head, nil, nil, nil, container.NewVScroll(body)),
 		func(ok bool) {
 			if ok {

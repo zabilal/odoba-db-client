@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/chart"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
@@ -106,7 +107,7 @@ func (s *Shell) OpenChart(of *tab) *tab {
 	t := &tab{key: key, connID: of.connID, ref: of.ref, label: label, structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the rows…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Chart: "+label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Chart: %s", label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -227,11 +228,11 @@ func (p *chartPanel) toolbar() fyne.CanvasObject {
 	p.splits.Selected = p.columnName(p.roles.Series, false)
 
 	return container.NewHBox(
-		widget.NewLabel("Chart"), p.kinds,
+		widget.NewLabel(l10n.T("Chart")), p.kinds,
 		widget.NewLabel("of"), p.ys,
 		widget.NewLabel("by"), p.xs,
-		widget.NewLabel("split by"), p.splits,
-		widget.NewButton("Export…", p.export),
+		widget.NewLabel(l10n.T("split by")), p.splits,
+		widget.NewButton(l10n.T("Export…"), p.export),
 	)
 }
 
@@ -308,11 +309,11 @@ func (p *chartPanel) valuesName() string {
 // they have answered.
 func (p *chartPanel) export() {
 	p.s.d.Files.Save(p.s.win, filedlg.Options{
-		Message:    "Export " + p.name,
+		Message:    l10n.F("Export %s", p.name),
 		Name:       chartFileName(p.name),
 		Extensions: []string{"png", "svg"},
 		Kind:       "picture",
-		Accept:     "Export",
+		Accept:     l10n.T("Export"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -330,7 +331,7 @@ func (p *chartPanel) write(path string) {
 		p.s.showError(fmt.Errorf("could not export the chart: %w", err))
 		return
 	}
-	p.t.footer.SetText("Exported to " + filepath.Base(path) + ".")
+	p.t.footer.SetText(l10n.F("Exported to %s.", filepath.Base(path)))
 }
 
 // encode writes the file, in the format the name asks for.
@@ -379,10 +380,9 @@ func chartFileName(label string) string {
 func (p *chartPanel) pick(r chart.Reading) {
 	switch {
 	case p.kind == chart.Histogram:
-		p.t.footer.SetText("That bar counts everything from " + chart.Along(p.w.Chart(), r.X) +
-			" up to the next one, which the filter row cannot say exactly.")
+		p.t.footer.SetText(l10n.F("That bar counts everything from %s up to the next one, which the filter row cannot say exactly.", chart.Along(p.w.Chart(), r.X)))
 	case r.Row < 0 || r.Row >= len(p.rows):
-		p.t.footer.SetText("That stands for more than one row, so there is nothing to narrow to.")
+		p.t.footer.SetText(l10n.T("That stands for more than one row, so there is nothing to narrow to."))
 	case p.roles.X == chart.RowNumber:
 		p.show(r.Row)
 	default:
@@ -403,7 +403,7 @@ func (p *chartPanel) of() *tab {
 func (p *chartPanel) narrow(row int) {
 	of := p.of()
 	if of == nil || of.grid == nil {
-		p.t.footer.SetText("The rows this was drawn from are no longer open.")
+		p.t.footer.SetText(l10n.T("The rows this was drawn from are no longer open."))
 		return
 	}
 	col := p.roles.X
@@ -416,7 +416,7 @@ func (p *chartPanel) narrow(row int) {
 	of.grid.SetFilterText(col, pk.text)
 	of.grid.ApplyFilters()
 	p.s.selectTab(of)
-	p.t.footer.SetText("Narrowed " + chart.ColumnName(p.cols, col) + " to " + pk.text + ".")
+	p.t.footer.SetText(l10n.F("Narrowed %s to %s.", chart.ColumnName(p.cols, col), pk.text))
 }
 
 // show brings the row itself forward, which is what a click means where
@@ -424,7 +424,7 @@ func (p *chartPanel) narrow(row int) {
 func (p *chartPanel) show(row int) {
 	of := p.of()
 	if of == nil || of.grid == nil {
-		p.t.footer.SetText("The rows this was drawn from are no longer open.")
+		p.t.footer.SetText(l10n.T("The rows this was drawn from are no longer open."))
 		return
 	}
 	of.grid.GoTo(grid.CellID{Row: row, Col: 0})

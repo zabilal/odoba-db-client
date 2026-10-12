@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -79,7 +80,7 @@ func (s *Shell) newAggBar(t *tab) *aggBar {
 	a.said = widget.NewLabel("")
 	a.said.Importance = widget.LowImportance
 	a.said.Truncation = fyne.TextTruncateEllipsis
-	a.whole = widget.NewButton("The Whole Column", a.measureWhole)
+	a.whole = widget.NewButton(l10n.T("The Whole Column"), a.measureWhole)
 	a.whole.Importance = widget.LowImportance
 	a.box = container.NewBorder(nil, nil, nil, a.whole, a.said)
 	return a
@@ -112,7 +113,7 @@ func (a *aggBar) follow() {
 	sel := g.Selection()
 	if sel.Empty() {
 		a.col = -1
-		a.said.SetText("Nothing selected.")
+		a.said.SetText(l10n.T("Nothing selected."))
 		a.whole.Disable()
 		return
 	}
@@ -235,7 +236,7 @@ func (a *aggBar) measureWhole() {
 	def := cols[a.col]
 	a.seq++
 	seq := a.seq
-	a.said.SetText("Measuring " + def.Name + "…")
+	a.said.SetText(l10n.F("Measuring %s…", def.Name))
 	go func() {
 		ctx, cancel := context.WithTimeout(a.t.ctx, statsTimeout)
 		defer cancel()
@@ -245,7 +246,7 @@ func (a *aggBar) measureWhole() {
 				return
 			}
 			if err != nil {
-				a.said.SetText("Could not measure " + def.Name + ": " + err.Error())
+				a.said.SetText(l10n.F("Could not measure %s: %s", def.Name, err.Error()))
 				return
 			}
 			a.over = true

@@ -4,6 +4,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // The side panel (UX principle 4, T1.77): Query History and Saved Queries
@@ -32,7 +34,7 @@ type sidePanel struct {
 func (s *Shell) openPanel(kind, title string, body fyne.CanvasObject, focus fyne.Focusable) {
 	heading := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	// Words, not a bare ×: a button with no text has no name to be read out.
-	closeIt := widget.NewButton("Close", s.closePanel)
+	closeIt := widget.NewButton(l10n.T("Close"), s.closePanel)
 	closeIt.Importance = widget.LowImportance
 	top := container.NewVBox(container.NewBorder(nil, nil, nil, closeIt, heading), widget.NewSeparator())
 	box := container.NewBorder(top, nil, nil, nil, body)

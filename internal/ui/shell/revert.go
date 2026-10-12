@@ -5,6 +5,8 @@ import (
 
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // Reverting pending changes (FR-4.6, ADR-0033): a cell, a row, or all of
@@ -75,15 +77,15 @@ func (s *Shell) discardAll() {
 	}
 	e := s.activeEdits()
 	n := e.pending.Len()
-	d := dialog.NewConfirm("Discard All Changes?", discardText(n), func(yes bool) {
+	d := dialog.NewConfirm(l10n.T("Discard All Changes?"), discardText(n), func(yes bool) {
 		if yes {
 			e.pending.RevertAll()
 			e.say("Discarded " + changesText(n))
 			e.showAdded()
 		}
 	}, s.win)
-	d.SetConfirmText("Discard")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Discard"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }

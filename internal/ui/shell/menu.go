@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 )
 
@@ -180,17 +181,17 @@ var menuBar = []struct {
 	title   string
 	entries []menuEntry
 }{
-	{"File", []menuEntry{
+	{l10n.N("File"), []menuEntry{
 		item(cmdConnNew), item(cmdQueryNew), item(cmdOpenSaved), separator,
-		submenu("Workspace", cmdWorkspaceSave, cmdWorkspaces), separator,
+		submenu(l10n.N("Workspace"), cmdWorkspaceSave, cmdWorkspaces), separator,
 		item(cmdQuerySave), item(cmdQuerySaveAs), separator,
 		item(cmdExport), item(cmdImport), separator,
 		item(cmdBackUp), item(cmdRestore), separator,
 		item(cmdTabClose),
 	}},
-	{"Edit", []menuEntry{
+	{l10n.N("Edit"), []menuEntry{
 		item(cmdFind), item(cmdFindReplace), separator, item(cmdFindNext), item(cmdFindPrev), separator,
-		item(cmdCopyCells), submenu("Copy As", cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
+		item(cmdCopyCells), submenu(l10n.N("Copy As"), cmdCopyCSV, cmdCopyJSON, cmdCopyMarkdown, cmdCopyInsert), item(cmdPasteCells), item(cmdSelectRow), item(cmdSelectColumn), item(cmdSelectAllCells), separator,
 		item(cmdEditCell), item(cmdEditValue), item(cmdSetNull), item(cmdSetValue), separator,
 		item(cmdInsertRow), item(cmdDuplicateRows), item(cmdDeleteRows), separator,
 		item(cmdDesign), item(cmdEditSource), item(cmdRename), item(cmdSaveModel), item(cmdCompare),
@@ -198,44 +199,44 @@ var menuBar = []struct {
 		item(cmdReviewChanges), item(cmdRevertCells), item(cmdRevertRows), item(cmdDiscardAll), separator,
 		item(cmdChooseKey),
 	}},
-	{"View", []menuEntry{
+	{l10n.N("View"), []menuEntry{
 		item(cmdPalette), item(cmdContextMenu), separator,
 		item(cmdSidebar), item(cmdFilterObjects), item(cmdSearchStructure), item(cmdRefresh), item(cmdReload), item(cmdFilterValues), item(cmdColumnStats), item(cmdAggregates), item(cmdWhere), item(cmdPipeline), item(cmdCellViewer), item(cmdFormView), item(cmdJSONView), item(cmdRecordView), item(cmdGoToReferenced), item(cmdOpenRowObject), item(cmdShowReferring), item(cmdDetail), item(cmdChart), item(cmdMap), separator,
 		item(cmdSeek), item(cmdFollow), item(cmdPause), separator,
 		item(cmdSaveView), item(cmdViews),
-		submenu("Columns", cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
-		submenu("Appearance", cmdAppearSystem, cmdAppearLight, cmdAppearDark),
-		submenu("Accent Colour", accentIDs()...),
-		submenu("Text Size", textSizeIDs()...),
+		submenu(l10n.N("Columns"), cmdHideColumn, cmdShowColumns, cmdMoveLeft, cmdMoveRight, cmdFreeze, cmdUnfreeze), separator,
+		submenu(l10n.N("Appearance"), cmdAppearSystem, cmdAppearLight, cmdAppearDark),
+		submenu(l10n.N("Accent Colour"), accentIDs()...),
+		submenu(l10n.N("Text Size"), textSizeIDs()...),
 	}},
-	{"Connection", []menuEntry{
+	{l10n.N("Connection"), []menuEntry{
 		item(cmdOpen), item(cmdStructure), item(cmdFavorite),
-		submenu("Script As", cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, cmdScriptCreate, cmdScriptSchema), separator,
+		submenu(l10n.N("Script As"), cmdScriptSelect, cmdScriptInsert, cmdScriptUpdate, cmdScriptCreate, cmdScriptSchema), separator,
 		item(cmdConnEdit), item(cmdConnDup), item(cmdConnDelete), separator,
 		item(cmdCopyRows), separator,
-		submenu("Batch", cmdMark, cmdMarksClear, cmdMarksSelect, cmdMarksCreate, cmdMarksDrop, cmdMarksExport), separator,
+		submenu(l10n.N("Batch"), cmdMark, cmdMarksClear, cmdMarksSelect, cmdMarksCreate, cmdMarksDrop, cmdMarksExport), separator,
 		item(cmdFolderNew), item(cmdFolderEdit), item(cmdFolderDelete), separator,
 		item(cmdReconnect), item(cmdDisconnect), separator,
-		submenu("Vault", cmdVaultLock, cmdVaultClose, cmdVaultRemove),
+		submenu(l10n.N("Vault"), cmdVaultLock, cmdVaultClose, cmdVaultRemove),
 	}},
-	{"Query", []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
+	{l10n.N("Query"), []menuEntry{item(cmdQueryRun), item(cmdQueryRunAll), separator, item(cmdQueryStop), separator,
 		item(cmdExplain), item(cmdExplainMeasure), separator,
 		item(cmdTxBegin), item(cmdTxCommit), item(cmdTxRollback), separator,
 		item(cmdFormatSQL), item(cmdQueryComplete), separator, item(cmdHistory), separator,
 		// The assistant sits with the query editor because that is where its
 		// answers land: a generated statement goes into the editor for review
 		// and is never run (FR-14.6).
-		submenu("Assistant", cmdAssistantAsk, cmdAssistantExplain, cmdAssistantSetUp)}},
-	{"Window", []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
+		submenu(l10n.N("Assistant"), cmdAssistantAsk, cmdAssistantExplain, cmdAssistantSetUp)}},
+	{l10n.N("Window"), []menuEntry{item(cmdTabNext), item(cmdTabPrev), separator,
 		item(cmdMoveTabLeft), item(cmdMoveTabRight), item(cmdPinTab), separator,
 		item(cmdNewWindow), separator, item(cmdSplitRight), item(cmdSplitDown), item(cmdMoveToPane), item(cmdJoinPanes), separator, item(cmdTasks)}},
-	{"Help", []menuEntry{item(cmdShortcuts), separator, item(cmdCheckUpdates)}},
+	{l10n.N("Help"), []menuEntry{item(cmdShortcuts), separator, item(cmdCheckUpdates)}},
 }
 
 func (s *Shell) buildMenu() *fyne.MainMenu {
 	menus := make([]*fyne.Menu, 0, len(menuBar))
 	for _, m := range menuBar {
-		menus = append(menus, fyne.NewMenu(m.title, s.menuItemsFor(m.entries)...))
+		menus = append(menus, fyne.NewMenu(l10n.T(m.title), s.menuItemsFor(m.entries)...))
 	}
 	return fyne.NewMainMenu(menus...)
 }
@@ -249,7 +250,7 @@ func (s *Shell) menuItemsFor(entries []menuEntry) []*fyne.MenuItem {
 			for i, id := range e.cmds {
 				sub[i] = item(id)
 			}
-			it := fyne.NewMenuItem(e.sub, nil)
+			it := fyne.NewMenuItem(l10n.T(e.sub), nil)
 			it.ChildMenu = fyne.NewMenu("", s.menuItemsFor(sub)...)
 			out = append(out, it)
 		case e.cmd == "":

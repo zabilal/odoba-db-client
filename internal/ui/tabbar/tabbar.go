@@ -15,6 +15,8 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 const (
@@ -239,7 +241,7 @@ func (t *Tabs) CreateRenderer() fyne.WidgetRenderer {
 		line: widget.NewSeparator(), content: container.NewStack(), revealed: -1}
 	r.marker.Hide()
 	r.scroll = container.NewHScroll(container.NewStack(r.row, container.NewWithoutLayout(r.marker)))
-	r.all = widget.NewButton("All Tabs", r.showAll)
+	r.all = widget.NewButton(l10n.T("All Tabs"), r.showAll)
 	r.all.Importance = widget.LowImportance
 	t.r = r
 	r.Refresh()

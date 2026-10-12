@@ -2,7 +2,6 @@ package shell
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -11,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -130,17 +130,17 @@ func (p *permissions) show() {
 	p.note = widget.NewLabel("")
 	p.note.Wrapping = fyne.TextWrapWord
 
-	p.revoke = widget.NewButton("Revoke", p.revokeChosen)
+	p.revoke = widget.NewButton(l10n.T("Revoke"), p.revokeChosen)
 	p.revoke.Disable()
 	p.buttons = container.NewHBox()
 	if p.manages() {
 		// Only where this connection can change them: a Grant that could only
 		// fail is worse than no Grant at all.
-		p.buttons.Add(widget.NewButton("Grant…", p.grant))
+		p.buttons.Add(widget.NewButton(l10n.T("Grant…"), p.grant))
 		p.buttons.Add(p.revoke)
 	}
 	body := container.NewBorder(nil, container.NewVBox(p.note, p.buttons), nil, nil, p.list)
-	d := dialog.NewCustom("Permissions on "+p.said, "Close", body, p.s.win)
+	d := dialog.NewCustom(l10n.F("Permissions on %s", p.said), l10n.T("Close"), body, p.s.win)
 	d.Resize(fyne.NewSize(680, 460))
 	d.Show()
 	p.reload()
@@ -177,12 +177,10 @@ func (p *permissions) say(err error) {
 		p.note.SetText(err.Error())
 	case len(p.acls) == 0:
 		p.note.Importance = widget.MediumImportance
-		p.note.SetText("No permission here names anybody. What that means is the brokers' " +
-			"setting rather than something written here: a cluster either refuses everybody " +
-			"it has not been told about, or allows them.")
+		p.note.SetText(l10n.F("No permission here names anybody. What that means is the brokers' setting rather than something written here: a cluster either refuses everybody it has not been told about, or allows them."))
 	default:
 		p.note.Importance = widget.MediumImportance
-		p.note.SetText(fmt.Sprintf("%s. A refusal beats a permission wherever both reach.",
+		p.note.SetText(l10n.F("%s. A refusal beats a permission wherever both reach.",
 			nounCount(len(p.acls), "permission")))
 	}
 	p.note.Refresh()
@@ -191,7 +189,7 @@ func (p *permissions) say(err error) {
 // grant asks what to grant, then shows the sentence it would add.
 func (p *permissions) grant() {
 	principal := widget.NewEntry()
-	principal.SetPlaceHolder("User:alice")
+	principal.SetPlaceHolder(l10n.T("User:alice"))
 	allow := widget.NewSelect([]string{allowSaid, denySaid}, nil)
 	allow.Selected = allowSaid
 	op := widget.NewSelect(choices(model.ACLOperations), nil)
@@ -203,24 +201,24 @@ func (p *permissions) grant() {
 	}
 	name := widget.NewEntry()
 	name.SetText(p.about.Name)
-	name.SetPlaceHolder("every one of them")
-	prefixed := widget.NewCheck("the name written is the beginning of a name", nil)
+	name.SetPlaceHolder(l10n.T("every one of them"))
+	prefixed := widget.NewCheck(l10n.T("the name written is the beginning of a name"), nil)
 	host := widget.NewEntry()
 	host.SetPlaceHolder("anywhere")
 
 	form := widget.NewForm(
-		widget.NewFormItem("Who", principal),
-		widget.NewFormItem("May", allow),
-		widget.NewFormItem("Do", op),
-		widget.NewFormItem("To a", kind),
-		widget.NewFormItem("Called", name),
+		widget.NewFormItem(l10n.T("Who"), principal),
+		widget.NewFormItem(l10n.T("May"), allow),
+		widget.NewFormItem(l10n.T("Do"), op),
+		widget.NewFormItem(l10n.T("To a"), kind),
+		widget.NewFormItem(l10n.T("Called"), name),
 		widget.NewFormItem("", prefixed),
-		widget.NewFormItem("From", host),
+		widget.NewFormItem(l10n.T("From"), host),
 	)
 	form.Items[0].HintText = "as the cluster writes it; a name with no kind is a user"
 	form.Items[4].HintText = "leave it empty for every one of them"
 
-	d := dialog.NewCustomConfirm("Grant a Permission", "Continue", "Cancel", form, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("Grant a Permission"), l10n.T("Continue"), l10n.T("Cancel"), form, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -260,7 +258,7 @@ func (p *permissions) confirm(title, body, verb string, acl model.ACL, change cl
 		p.s.changeClusterThen(p.connID, strings.ToLower(verb)+" “"+acl.String()+"”", change, p.reload)
 	}, p.s.win)
 	d.SetConfirmText(verb)
-	d.SetDismissText("Cancel")
+	d.SetDismissText(l10n.T("Cancel"))
 	if verb == "Revoke" {
 		d.SetConfirmImportance(widget.DangerImportance)
 	}
@@ -287,7 +285,7 @@ func choices[T ~string](of []T) []string {
 func aclFrom(principal, may, op, kind, name string, prefixed bool, host string) (model.ACL, error) {
 	who := strings.TrimSpace(principal)
 	if who == "" {
-		return model.ACL{}, formError("Who is the permission about? A principal, as the cluster writes it.")
+		return model.ACL{}, formError(l10n.T("Who is the permission about? A principal, as the cluster writes it."))
 	}
 	if !strings.Contains(who, ":") {
 		// Kafka writes a principal as its kind and its name. A name on its own
@@ -295,7 +293,7 @@ func aclFrom(principal, may, op, kind, name string, prefixed bool, host string) 
 		who = "User:" + who
 	}
 	if may != allowSaid && may != denySaid {
-		return model.ACL{}, formError("Does this permission allow or refuse?")
+		return model.ACL{}, formError(l10n.T("Does this permission allow or refuse?"))
 	}
 	acl := model.ACL{Principal: who, Host: strings.TrimSpace(host), Deny: may == denySaid}
 	for _, o := range model.ACLOperations {
@@ -304,7 +302,7 @@ func aclFrom(principal, may, op, kind, name string, prefixed bool, host string) 
 		}
 	}
 	if acl.Operation == "" {
-		return model.ACL{}, formError("What may they do? Choose one of the operations.")
+		return model.ACL{}, formError(l10n.T("What may they do? Choose one of the operations."))
 	}
 	for _, k := range model.ACLResourceKinds {
 		if string(k) == kind {
@@ -312,13 +310,12 @@ func aclFrom(principal, may, op, kind, name string, prefixed bool, host string) 
 		}
 	}
 	if acl.Resource.Kind == "" {
-		return model.ACL{}, formError("What is the permission about? Choose one of the kinds.")
+		return model.ACL{}, formError(l10n.T("What is the permission about? Choose one of the kinds."))
 	}
 	acl.Resource.Name = strings.TrimSpace(name)
 	acl.Resource.Prefixed = prefixed
 	if acl.Resource.Prefixed && acl.Resource.Name == "" {
-		return model.ACL{}, formError("A permission about names beginning with something needs " +
-			"the something. Leave the box unticked for every one of them.")
+		return model.ACL{}, formError(l10n.F("A permission about names beginning with something needs the something. Leave the box unticked for every one of them."))
 	}
 	if acl.Resource.Kind == model.ACLClusterItself && acl.Resource.Name != "" {
 		return model.ACL{}, errors.New("there is one cluster, and it is not named: leave Called empty")

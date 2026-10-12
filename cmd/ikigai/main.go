@@ -15,6 +15,7 @@ import (
 	fyneapp "fyne.io/fyne/v2/app"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/logging"
 	"github.com/ikigai-db/ikigai-db/internal/plugin"
 	"github.com/ikigai-db/ikigai-db/internal/single"
@@ -108,6 +109,16 @@ func run() error {
 	settings, notice, err := store.OpenSettings(paths.SettingsFile())
 	if err != nil {
 		return err
+	}
+	// The language, before anything is said in it: what somebody chose, or
+	// what their system says, or English (FR-15.11). A translation that
+	// cannot be used costs its sentence its translation, and is noted.
+	language := settings.Get().Language
+	if language == "" {
+		language = l10n.System()
+	}
+	for _, problem := range l10n.Use(language) {
+		log.Warn("a translation is not used", "err", problem)
 	}
 	// History is an aid, not a requirement: if its database cannot open, the
 	// app runs without it rather than not at all.

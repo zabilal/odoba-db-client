@@ -10,6 +10,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/panics"
 	uitheme "github.com/ikigai-db/ikigai-db/internal/ui/theme"
 )
@@ -40,7 +41,7 @@ func (s *Shell) newErrorBar() *errorBar {
 	b.details.Selectable = true // no wrapping: see the WHERE bar, whose statement spilled when it wrapped
 	b.detailBox = container.NewHScroll(b.details)
 	b.detailBox.Hide()
-	b.more = widget.NewButton("Details", b.toggleDetails)
+	b.more = widget.NewButton(l10n.T("Details"), b.toggleDetails)
 	b.action = widget.NewButton("", func() {
 		act := b.act
 		b.dismiss()
@@ -49,8 +50,8 @@ func (s *Shell) newErrorBar() *errorBar {
 		}
 	})
 	b.action.Importance = widget.HighImportance
-	copyIt := widget.NewButtonWithIcon("Copy", fynetheme.ContentCopyIcon(), b.copyAll)
-	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), b.dismiss)
+	copyIt := widget.NewButtonWithIcon(l10n.T("Copy"), fynetheme.ContentCopyIcon(), b.copyAll)
+	closeIt := widget.NewButtonWithIcon(l10n.T("Close"), fynetheme.CancelIcon(), b.dismiss)
 	b.more.Importance, copyIt.Importance, closeIt.Importance = widget.LowImportance, widget.LowImportance, widget.LowImportance
 	icon := widget.NewIcon(fynetheme.NewErrorThemedResource(fynetheme.ErrorIcon()))
 	row := container.NewBorder(nil, nil, icon, container.NewHBox(b.action, b.more, copyIt, closeIt), b.message)

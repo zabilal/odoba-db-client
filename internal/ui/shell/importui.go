@@ -20,6 +20,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
 	"github.com/ikigai-db/ikigai-db/internal/job"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
@@ -142,8 +143,8 @@ func (s *Shell) showImport() {
 		return
 	}
 	into := s.activeTab()
-	s.d.Files.Open(s.win, filedlg.Options{Message: "Import into “" + into.item.Text + "”", Extensions: importFiles,
-		Kind: "Data", Accept: "Import"}, func(path string, err error) { s.importFrom(into, path, err) })
+	s.d.Files.Open(s.win, filedlg.Options{Message: l10n.F("Import into “%s”", into.item.Text), Extensions: importFiles,
+		Kind: "Data", Accept: l10n.T("Import")}, func(path string, err error) { s.importFrom(into, path, err) })
 }
 
 // importFrom opens a file chosen for a table, finds how to read it off the
@@ -191,7 +192,7 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	t := &tab{key: key, connID: into.connID, ref: into.ref, ctx: ctx, cancel: cancel,
-		body: container.NewStack(), footer: widget.NewLabel("Reading…")}
+		body: container.NewStack(), footer: widget.NewLabel(l10n.T("Reading…"))}
 	t.footer.Importance = widget.LowImportance
 	t.footer.Wrapping = fyne.TextWrapWord
 	p := &importPanel{s: s, t: t, into: into, f: f, size: size, opt: opt, pairs: map[string]int{},
@@ -212,10 +213,10 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.encoding.SetSelectedIndex(slices.Index(importEncodings, opt.Encoding))
 	p.comma = widget.NewSelect(commaNames, nil)
 	p.comma.SetSelectedIndex(max(slices.Index(importCommas, opt.Comma), 0))
-	p.header = widget.NewCheck("First row names the columns", nil)
+	p.header = widget.NewCheck(l10n.T("First row names the columns"), nil)
 	p.header.SetChecked(opt.Header)
 	p.sheet = widget.NewEntry()
-	p.sheet.SetPlaceHolder("the first sheet")
+	p.sheet.SetPlaceHolder(l10n.T("the first sheet"))
 	p.sheet.SetText(opt.Sheet)
 	changed := func() { p.changed() }
 	p.format.OnChanged = func(string) { changed() }
@@ -225,11 +226,11 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.sheet.OnSubmitted = func(string) { changed() }
 	p.enableOptions()
 
-	options := widget.NewForm(widget.NewFormItem("Format", p.format), widget.NewFormItem("Encoding", p.encoding),
-		widget.NewFormItem("Delimiter", p.comma), widget.NewFormItem("", p.header), widget.NewFormItem("Sheet", p.sheet))
-	p.dry = widget.NewButton("Dry Run", p.dryRun)
-	p.save = widget.NewButton("Save as Job…", p.saveJob)
-	p.load = widget.NewButton("Import", p.startImport)
+	options := widget.NewForm(widget.NewFormItem(l10n.T("Format"), p.format), widget.NewFormItem(l10n.T("Encoding"), p.encoding),
+		widget.NewFormItem(l10n.T("Delimiter"), p.comma), widget.NewFormItem("", p.header), widget.NewFormItem(l10n.T("Sheet"), p.sheet))
+	p.dry = widget.NewButton(l10n.T("Dry Run"), p.dryRun)
+	p.save = widget.NewButton(l10n.T("Save as Job…"), p.saveJob)
+	p.load = widget.NewButton(l10n.T("Import"), p.startImport)
 	p.load.Importance = widget.HighImportance
 	modes := []string{modeAdd, modeReplace}
 	if pk := into.table.PrimaryKey; pk != nil && len(pk.Columns) > 0 {
@@ -250,16 +251,16 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	p.summary = widget.NewLabel("")
 	p.summary.Wrapping = fyne.TextWrapWord
 	p.problems = container.NewStack()
-	p.tabs = container.NewAppTabs(container.NewTabItem("First Rows", p.preview),
-		container.NewTabItem("Problems", container.NewBorder(p.summary, nil, nil, nil, p.problems)))
+	p.tabs = container.NewAppTabs(container.NewTabItem(l10n.T("First Rows"), p.preview),
+		container.NewTabItem(l10n.T("Problems"), container.NewBorder(p.summary, nil, nil, nil, p.problems)))
 	p.forget()
 	split := container.NewVSplit(container.NewVScroll(p.mapping), p.tabs)
 	split.Offset = 0.45
-	writing := widget.NewForm(widget.NewFormItem("Rows a transaction", p.batch),
-		widget.NewFormItem("If a row would not go in", p.policy), widget.NewFormItem("The most rows left out", p.most))
+	writing := widget.NewForm(widget.NewFormItem(l10n.T("Rows a transaction"), p.batch),
+		widget.NewFormItem(l10n.T("If a row would not go in"), p.policy), widget.NewFormItem(l10n.T("The most rows left out"), p.most))
 	actions := container.NewHBox(p.mode, layout.NewSpacer(), p.save, p.dry, p.load)
 	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, container.NewVBox(writing, actions), nil, nil, split)}
-	t.item = container.NewTabItem("Import "+filepath.Base(f.Name())+" into "+into.item.Text,
+	t.item = container.NewTabItem(l10n.F("Import %s into %s", filepath.Base(f.Name()), into.item.Text),
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
@@ -319,7 +320,7 @@ func (p *importPanel) changed() {
 func (p *importPanel) read() {
 	p.seq++
 	seq, opt, t := p.seq, p.opt, p.t
-	t.footer.SetText("Reading…")
+	t.footer.SetText(l10n.T("Reading…"))
 	go func() {
 		var cols []model.ColumnDef
 		var rows []model.Row
@@ -343,7 +344,7 @@ func (p *importPanel) read() {
 				return
 			}
 			if err != nil {
-				t.footer.SetText("Could not read the file as " + opt.Format.String() + ": " + err.Error())
+				t.footer.SetText(l10n.F("Could not read the file as %s: %s", opt.Format.String(), err.Error()))
 				p.rows = nil
 				p.preview.Objects = nil
 				p.preview.Refresh()
@@ -425,7 +426,7 @@ func (p *importPanel) pairList() ([]transfer.Pair, []model.ColumnDef) {
 func (p *importPanel) showPreview() {
 	pairs, cols := p.pairList()
 	if len(pairs) == 0 {
-		p.t.footer.SetText("No column of the file fills one of the table's: pick which fills which.")
+		p.t.footer.SetText(l10n.T("No column of the file fills one of the table's: pick which fills which."))
 		p.preview.Objects = nil
 		p.preview.Refresh()
 		return
@@ -690,7 +691,7 @@ func (p *importPanel) startImport() {
 		}
 	}, s.win)
 	d.SetConfirmText(act)
-	d.SetDismissText("Cancel")
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }
@@ -703,7 +704,7 @@ func (p *importPanel) loadOptions() (transfer.LoadOptions, bool) {
 		opt.Keys = p.into.table.PrimaryKey.Columns
 		for _, k := range opt.Keys {
 			if from, ok := p.pairs[k]; !ok || from < 0 {
-				p.t.footer.SetText(k + " is the table's key: pick the file column that fills it, to update rows by it.")
+				p.t.footer.SetText(l10n.F("%s is the table's key: pick the file column that fills it, to update rows by it.", k))
 				return opt, false
 			}
 		}
@@ -738,12 +739,12 @@ func (p *importPanel) saveJob() {
 	flags, err := job.Import{Connection: c.Name, Into: into.ref.Path, From: p.f.Name(), Read: p.opt,
 		Pairs: pairs, Columns: names, Load: opt}.Flags()
 	if err != nil {
-		s.showError(formError("This import cannot be saved as a job: " + err.Error()))
+		s.showError(formError(l10n.F("This import cannot be saved as a job: %s", err.Error())))
 		return
 	}
 	s.d.Files.Save(s.win, filedlg.Options{
-		Message: "Save the import into “" + into.item.Text + "” as a job", Name: "import-" + fileName(into.item.Text) + ".json",
-		Extensions: []string{"json"}, Kind: "job", Accept: "Save",
+		Message: l10n.F("Save the import into “%s” as a job", into.item.Text), Name: "import-" + fileName(into.item.Text) + ".json",
+		Extensions: []string{"json"}, Kind: "job", Accept: l10n.T("Save"),
 	}, func(path string, err error) { p.saveJobTo(path, flags, err) })
 }
 
@@ -757,10 +758,10 @@ func (p *importPanel) saveJobTo(path string, flags map[string]any, err error) {
 		return // cancelled
 	}
 	if err := job.Write(path, "import", flags); err != nil {
-		p.s.showError(formError("The job could not be saved: " + err.Error()))
+		p.s.showError(formError(l10n.F("The job could not be saved: %s", err.Error())))
 		return
 	}
-	p.t.footer.SetText("Saved as a job, and nothing was imported. Run it with: ikigai run " + path)
+	p.t.footer.SetText(l10n.F("Saved as a job, and nothing was imported. Run it with: ikigai run %s", path))
 }
 
 // runImport writes the rows as a task in the task centre, reading the file

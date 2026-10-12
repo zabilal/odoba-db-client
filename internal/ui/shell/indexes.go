@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -27,24 +28,24 @@ func (s *Shell) addIndex(t *tab) {
 	fields := widget.NewEntry()
 	fields.SetPlaceHolder(indexFields)
 	name := widget.NewEntry()
-	name.SetPlaceHolder("optional; the server names it otherwise")
+	name.SetPlaceHolder(l10n.T("optional; the server names it otherwise"))
 	unique := widget.NewCheck("", nil)
 	sparse := widget.NewCheck("", nil)
 	ttl := widget.NewEntry()
-	ttl.SetPlaceHolder("optional; seconds after which a document goes")
+	ttl.SetPlaceHolder(l10n.T("optional; seconds after which a document goes"))
 	form := widget.NewForm(
-		widget.NewFormItem("Fields", fields),
-		widget.NewFormItem("Name", name),
-		widget.NewFormItem("Unique", unique),
-		widget.NewFormItem("Sparse", sparse),
-		widget.NewFormItem("Expires after", ttl),
+		widget.NewFormItem(l10n.T("Fields"), fields),
+		widget.NewFormItem(l10n.T("Name"), name),
+		widget.NewFormItem(l10n.T("Unique"), unique),
+		widget.NewFormItem(l10n.T("Sparse"), sparse),
+		widget.NewFormItem(l10n.T("Expires after"), ttl),
 	)
 	note := widget.NewLabel("")
 	note.Importance, note.Wrapping = widget.DangerImportance, fyne.TextWrapWord
 	note.Hide()
 	body := container.NewVBox(form, note)
 
-	d := dialog.NewCustomConfirm("Add Index", "Continue", "Cancel", body, func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("Add Index"), l10n.T("Continue"), l10n.T("Cancel"), body, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -69,8 +70,8 @@ func (s *Shell) dropIndex(t *tab, names []string) {
 	}
 	choose := widget.NewSelect(names, nil)
 	choose.SetSelectedIndex(0)
-	d := dialog.NewCustomConfirm("Drop Index", "Continue", "Cancel",
-		container.NewVBox(widget.NewLabel("Which index?"), choose), func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("Drop Index"), l10n.T("Continue"), l10n.T("Cancel"),
+		container.NewVBox(widget.NewLabel(l10n.T("Which index?")), choose), func(ok bool) {
 			if !ok {
 				return
 			}
@@ -90,7 +91,7 @@ func (s *Shell) reviewIndex(t *tab, plan func(confirmed bool) (*source.WritePlan
 		s.showError(err)
 		return
 	}
-	d := dialog.NewCustomConfirm("Change the Index?", "Run", "Cancel", reviewBody(p), func(ok bool) {
+	d := dialog.NewCustomConfirm(l10n.T("Change the Index?"), l10n.T("Run"), l10n.T("Cancel"), reviewBody(p), func(ok bool) {
 		if !ok {
 			return
 		}
@@ -118,7 +119,7 @@ func (s *Shell) reviewIndex(t *tab, plan func(confirmed bool) (*source.WritePlan
 // runIndex applies a plan off the UI goroutine, and reads the structure
 // again so the tab shows what is there now.
 func (s *Shell) runIndex(t *tab, plan *source.WritePlan) {
-	t.footer.SetText("Changing the index…")
+	t.footer.SetText(l10n.T("Changing the index…"))
 	go func() {
 		live, err := s.d.WS.Connect(t.ctx, t.connID)
 		var out *source.WriteOutcome

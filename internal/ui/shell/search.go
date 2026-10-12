@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -74,11 +75,11 @@ func (s *Shell) searchStructure() {
 	p := &searchPanel{s: s, find: s.newPanelEntry(), status: widget.NewLabel(""),
 		connID: conn, root: n.Ref, scope: scopeName(n)}
 	s.searchView = p
-	p.find.SetPlaceHolder("Find in columns, bodies and definitions")
+	p.find.SetPlaceHolder(l10n.T("Find in columns, bodies and definitions"))
 	p.status.Importance = widget.LowImportance
 	p.status.Truncation = fyne.TextTruncateEllipsis
-	p.exact = widget.NewCheck("Match case", func(bool) { p.run() })
-	p.whole = widget.NewCheck("Whole word", func(bool) { p.run() })
+	p.exact = widget.NewCheck(l10n.T("Match case"), func(bool) { p.run() })
+	p.whole = widget.NewCheck(l10n.T("Whole word"), func(bool) { p.run() })
 	p.list = widget.NewList(
 		func() int { return len(p.hits) },
 		func() fyne.CanvasObject {

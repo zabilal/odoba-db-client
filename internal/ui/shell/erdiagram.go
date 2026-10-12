@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/canvas"
@@ -87,7 +88,7 @@ func (s *Shell) OpenDiagram(connID string, ref model.ObjectRef) *tab {
 	t := &tab{key: key, connID: connID, ref: ref, label: ref.Name(), structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the schema…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Diagram: "+ref.Name(), container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Diagram: %s", ref.Name()), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -185,10 +186,10 @@ func (p *diagramPanel) refreshFocus(chosen string) {
 	}
 	switch {
 	case chosen != "":
-		p.chosen.SetText("Focus on " + chosen)
+		p.chosen.SetText(l10n.F("Focus on %s", chosen))
 		p.chosen.Enable()
 	default:
-		p.chosen.SetText("Focus on a Table")
+		p.chosen.SetText(l10n.T("Focus on a Table"))
 		p.chosen.Disable()
 	}
 	p.wider.Selected = degreeNames[p.degree]
@@ -235,8 +236,8 @@ func (p *diagramPanel) showEverything() {
 
 // toolbar is the few things a diagram can be told to do.
 func (p *diagramPanel) toolbar() fyne.CanvasObject {
-	p.chosen = widget.NewButton("Focus on a Table", func() { p.focusOn(p.w.Selected()) })
-	p.all = widget.NewButton("Show Everything", p.showEverything)
+	p.chosen = widget.NewButton(l10n.T("Focus on a Table"), func() { p.focusOn(p.w.Selected()) })
+	p.all = widget.NewButton(l10n.T("Show Everything"), p.showEverything)
 	names := make([]string, 0, len(degreeNames))
 	for n := range degreeNames {
 		names = append(names, degreeNames[n])
@@ -251,12 +252,12 @@ func (p *diagramPanel) toolbar() fyne.CanvasObject {
 	p.refreshFocus(p.w.Selected())
 
 	return container.NewHBox(
-		widget.NewButton("Fit", func() { p.w.Fit() }),
+		widget.NewButton(l10n.T("Fit"), func() { p.w.Fit() }),
 		widget.NewButton("−", func() { p.w.Zoom(false) }),
 		widget.NewButton("+", func() { p.w.Zoom(true) }),
 		p.chosen, p.wider, p.all,
-		widget.NewButton("Lay Out Again", p.layOutAgain),
-		widget.NewButton("Export…", p.export),
+		widget.NewButton(l10n.T("Lay Out Again"), p.layOutAgain),
+		widget.NewButton(l10n.T("Export…"), p.export),
 	)
 }
 
@@ -335,11 +336,11 @@ func (p *diagramPanel) layOutAgain() {
 // again in a second dialog would be asking a question they have answered.
 func (p *diagramPanel) export() {
 	p.s.d.Files.Save(p.s.win, filedlg.Options{
-		Message:    "Export " + p.t.label,
+		Message:    l10n.F("Export %s", p.t.label),
 		Name:       diagramFileName(p.t.label),
 		Extensions: []string{"png", "svg"},
 		Kind:       "picture",
-		Accept:     "Export",
+		Accept:     l10n.T("Export"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -361,7 +362,7 @@ func (p *diagramPanel) write(path string) {
 		p.s.showError(fmt.Errorf("could not export the diagram: %w", err))
 		return
 	}
-	p.t.footer.SetText("Exported to " + filepath.Base(path) + ".")
+	p.t.footer.SetText(l10n.F("Exported to %s.", filepath.Base(path)))
 }
 
 // encode writes the file, in the format the name asks for.

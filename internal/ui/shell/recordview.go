@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
@@ -122,9 +123,9 @@ func (s *Shell) newRecord(t *tab, g *grid.TableGrid, holder *fyne.Container) *re
 	r.key.connID, r.value.connID = t.connID, t.connID
 	r.key.topic, r.value.topic = t.ref.Name(), t.ref.Name()
 
-	prev := widget.NewButtonWithIcon("Previous Record", fynetheme.MoveUpIcon(), func() { r.move(-1) })
-	next := widget.NewButtonWithIcon("Next Record", fynetheme.MoveDownIcon(), func() { r.move(1) })
-	back := widget.NewButtonWithIcon("Show Grid", fynetheme.CancelIcon(), r.hide)
+	prev := widget.NewButtonWithIcon(l10n.T("Previous Record"), fynetheme.MoveUpIcon(), func() { r.move(-1) })
+	next := widget.NewButtonWithIcon(l10n.T("Next Record"), fynetheme.MoveDownIcon(), func() { r.move(1) })
+	back := widget.NewButtonWithIcon(l10n.T("Show Grid"), fynetheme.CancelIcon(), r.hide)
 	for _, b := range []*widget.Button{prev, next, back} {
 		b.Importance = widget.LowImportance
 	}
@@ -143,7 +144,7 @@ func newFormPicker(s *Shell, title, field string) *formPicker {
 	p.text.Wrapping, p.text.Selectable = fyne.TextWrapWord, true
 	p.code = widget.NewTextGrid()
 	p.pick = widget.NewSelect(nil, p.choose)
-	copyIt := widget.NewButtonWithIcon("Copy", fynetheme.ContentCopyIcon(), p.copy)
+	copyIt := widget.NewButtonWithIcon(l10n.T("Copy"), fynetheme.ContentCopyIcon(), p.copy)
 	copyIt.Importance = widget.LowImportance
 	head := container.NewBorder(nil, nil, container.NewHBox(bold(title), p.pick), copyIt, p.meta)
 	p.box = container.NewVBox(head, p.text, p.code, widget.NewSeparator())
@@ -253,7 +254,7 @@ func (p *formPicker) copy() {
 		text = strings.Join(view.Lines, "\n")
 	}
 	p.s.app.Clipboard().SetContent(text)
-	p.s.status.SetText("Copied the " + strings.ToLower(p.title) + " as " + p.forms[p.at].Name)
+	p.s.status.SetText(l10n.F("Copied the %s as %s", strings.ToLower(p.title), p.forms[p.at].Name))
 }
 
 func (r *recordView) shown() bool {
@@ -291,8 +292,8 @@ func (r *recordView) follow() {
 	r.seq++
 	c, ok := r.g.Selection().Active()
 	if !ok {
-		r.where.SetText("No record selected")
-		r.when.SetText("Select a record to read it whole.")
+		r.where.SetText(l10n.T("No record selected"))
+		r.when.SetText(l10n.T("Select a record to read it whole."))
 		return
 	}
 	m := r.g.Model()
@@ -300,7 +301,7 @@ func (r *recordView) follow() {
 		r.set(c.Row, row)
 		return
 	}
-	r.where.SetText("Reading…")
+	r.where.SetText(l10n.T("Reading…"))
 	seq := r.seq
 	go func() {
 		rows, err := m.Read(r.t.ctx, int64(c.Row), int64(c.Row)+1)
@@ -309,11 +310,11 @@ func (r *recordView) follow() {
 				return // another record was asked for, or the tab closed
 			}
 			if err != nil {
-				r.where.SetText("Could not read the record: " + err.Error())
+				r.where.SetText(l10n.F("Could not read the record: %s", err.Error()))
 				return
 			}
 			if len(rows) == 0 {
-				r.where.SetText("No record there")
+				r.where.SetText(l10n.T("No record there"))
 				return
 			}
 			r.set(c.Row, rows[0])

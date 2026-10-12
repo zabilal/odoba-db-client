@@ -13,6 +13,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 )
 
@@ -38,7 +39,7 @@ type Palette struct {
 func New(reg *commands.Registry, win fyne.Window) *Palette {
 	p := &Palette{reg: reg, win: win, goos: runtime.GOOS}
 	p.entry = newQueryEntry(p)
-	p.entry.SetPlaceHolder("Type a command")
+	p.entry.SetPlaceHolder(l10n.T("Type a command"))
 	p.entry.OnChanged = p.setQuery
 
 	p.list = widget.NewList(

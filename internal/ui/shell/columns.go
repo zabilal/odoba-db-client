@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
 
@@ -35,22 +36,22 @@ func (s *Shell) showHeaderMenu(t *tab, g *grid.TableGrid, col int, at fyne.Posit
 func (s *Shell) headerMenu(t *tab, g *grid.TableGrid, col int, at fyne.Position) *fyne.Menu {
 	var items []*fyne.MenuItem
 	if t.query == nil && t.browse != nil && t.browse.CanListValues() {
-		items = append(items, fyne.NewMenuItem("Filter by Values…", func() { s.showPicklist(t, col, at) }),
+		items = append(items, fyne.NewMenuItem(l10n.T("Filter by Values…"), func() { s.showPicklist(t, col, at) }),
 			fyne.NewMenuItemSeparator())
 	}
 	shown := g.Shown()
 	i := slices.Index(shown, col)
-	hide := fyne.NewMenuItem("Hide Column", func() { g.HideColumn(col) })
-	left := fyne.NewMenuItem("Move Left", func() { g.MoveColumn(col, -1) })
-	right := fyne.NewMenuItem("Move Right", func() { g.MoveColumn(col, 1) })
+	hide := fyne.NewMenuItem(l10n.T("Hide Column"), func() { g.HideColumn(col) })
+	left := fyne.NewMenuItem(l10n.T("Move Left"), func() { g.MoveColumn(col, -1) })
+	right := fyne.NewMenuItem(l10n.T("Move Right"), func() { g.MoveColumn(col, 1) })
 	hide.Disabled, left.Disabled, right.Disabled = len(shown) <= 1, i <= 0, i < 0 || i >= len(shown)-1
 	items = append(items, hide, left, right, fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Freeze Through This Column", func() { g.FreezeThrough(col) }))
+		fyne.NewMenuItem(l10n.T("Freeze Through This Column"), func() { g.FreezeThrough(col) }))
 	if g.Frozen() > 0 {
-		items = append(items, fyne.NewMenuItem("Unfreeze Columns", g.Unfreeze))
+		items = append(items, fyne.NewMenuItem(l10n.T("Unfreeze Columns"), g.Unfreeze))
 	}
 	if g.Hidden() {
-		items = append(items, fyne.NewMenuItemSeparator(), fyne.NewMenuItem("Show All Columns", g.ShowAllColumns))
+		items = append(items, fyne.NewMenuItemSeparator(), fyne.NewMenuItem(l10n.T("Show All Columns"), g.ShowAllColumns))
 	}
 	return fyne.NewMenu("", items...)
 }

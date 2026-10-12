@@ -14,6 +14,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/app/textdiff"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
@@ -69,7 +70,7 @@ func (s *Shell) OpenStructure(connID string, n model.Node) *tab {
 	t := &tab{key: key, connID: connID, ref: n.Ref, label: n.Label, structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the structure…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Structure: "+n.Label, container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Structure: %s", n.Label), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -181,7 +182,7 @@ func (s *Shell) showStructure(t *tab, connID string, desc any, inferred bool) {
 // nobody should pay that for opening a group (T2.75, FR-13.10).
 func (s *Shell) readGroupProgress(t *tab, connID string, g *model.ConsumerGroup) {
 	ctx, id := t.ctx, g.ID
-	t.footer.SetText("Reading how far the group has got…")
+	t.footer.SetText(l10n.T("Reading how far the group has got…"))
 	go func() {
 		live, err := s.d.WS.Connect(ctx, connID)
 		var offsets []model.GroupOffset
@@ -207,7 +208,7 @@ func (s *Shell) readGroupProgress(t *tab, connID string, g *model.ConsumerGroup)
 // It never runs unasked: inference reads data, and a person chooses when.
 func (s *Shell) sampleShape(t *tab, connID string, coll *model.Collection) {
 	ctx, ref := t.ctx, t.ref
-	t.footer.SetText(fmt.Sprintf("Reading %d documents…", sampleSize))
+	t.footer.SetText(l10n.F("Reading %d documents…", sampleSize))
 	go func() {
 		live, err := s.d.WS.Connect(ctx, connID)
 		var shape *model.DocumentShape
@@ -316,8 +317,8 @@ func structureView(desc any, acts structureActions) fyne.CanvasObject {
 		}
 		add(section("Indexes", documentIndexRows(v.Indexes)))
 		if acts.indexes != nil {
-			addIdx := widget.NewButton("Add Index…", func() { acts.indexes.add() })
-			dropIdx := widget.NewButton("Drop Index…", func() { acts.indexes.drop(indexNames(v)) })
+			addIdx := widget.NewButton(l10n.T("Add Index…"), func() { acts.indexes.add() })
+			dropIdx := widget.NewButton(l10n.T("Drop Index…"), func() { acts.indexes.drop(indexNames(v)) })
 			addIdx.Importance, dropIdx.Importance = widget.LowImportance, widget.LowImportance
 			if len(indexNames(v)) == 0 {
 				dropIdx.Disable()

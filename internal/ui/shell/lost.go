@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/ui/commands"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer/view"
 )
@@ -22,7 +23,7 @@ import (
 const cmdReconnect = "connection.reconnect"
 
 func (s *Shell) lostCommands() []commands.Command {
-	return []commands.Command{{ID: cmdReconnect, Category: "Connection", Title: "Reconnect Now",
+	return []commands.Command{{ID: cmdReconnect, Category: l10n.T("Connection"), Title: l10n.T("Reconnect Now"),
 		Keywords: []string{"retry", "connect", "lost", "offline"},
 		Enabled:  func() bool { _, ok := s.selectedLost(); return ok },
 		Run: func() {
@@ -90,7 +91,7 @@ func newLostBand(s *Shell, t *tab) *lostBand {
 	b := &lostBand{s: s, t: t, msg: widget.NewLabel("")}
 	b.msg.Wrapping = fyne.TextWrapWord
 	b.msg.Importance = widget.WarningImportance
-	b.now = widget.NewButton("Reconnect Now", func() { s.reconnect(t.connID) })
+	b.now = widget.NewButton(l10n.T("Reconnect Now"), func() { s.reconnect(t.connID) })
 	b.ExtendBaseWidget(b)
 	b.update()
 	return b

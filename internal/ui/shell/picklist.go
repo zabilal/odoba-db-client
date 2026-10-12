@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -100,24 +101,24 @@ func (s *Shell) showPicklist(t *tab, col int, at fyne.Position) *picklist {
 	if col < 0 || col >= len(cols) {
 		return nil
 	}
-	p := &picklist{s: s, t: t, col: col, column: cols[col], status: widget.NewLabel("Counting values…")}
+	p := &picklist{s: s, t: t, col: col, column: cols[col], status: widget.NewLabel(l10n.T("Counting values…"))}
 	p.search = &pickEntry{p: p}
 	p.search.ExtendBaseWidget(p.search)
 	p.ctx, p.cancel = context.WithCancel(t.ctx)
-	p.search.SetPlaceHolder("Search values")
+	p.search.SetPlaceHolder(l10n.T("Search values"))
 	p.search.OnChanged = func(string) { p.narrow() }
 	p.status.Importance = widget.LowImportance
 	p.list = widget.NewList(func() int { return len(p.shown) }, p.newRow, p.updateRow)
-	p.apply = widget.NewButton("Filter", p.confirm)
+	p.apply = widget.NewButton(l10n.T("Filter"), p.confirm)
 	p.apply.Importance = widget.HighImportance
 	p.apply.Disable()
-	all := widget.NewButton("Select All", func() { p.setShown(true) })
-	none := widget.NewButton("Deselect All", func() { p.setShown(false) })
+	all := widget.NewButton(l10n.T("Select All"), func() { p.setShown(true) })
+	none := widget.NewButton(l10n.T("Deselect All"), func() { p.setShown(false) })
 	all.Importance, none.Importance = widget.LowImportance, widget.LowImportance
-	title := widget.NewLabelWithStyle(fmt.Sprintf("Filter “%s” by Values", p.column.Name),
+	title := widget.NewLabelWithStyle(l10n.F("Filter “%s” by Values", p.column.Name),
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	top := container.NewVBox(title, p.search, container.NewHBox(all, none))
-	bottom := container.NewBorder(nil, nil, p.status, container.NewHBox(widget.NewButton("Cancel", p.close), p.apply))
+	bottom := container.NewBorder(nil, nil, p.status, container.NewHBox(widget.NewButton(l10n.T("Cancel"), p.close), p.apply))
 	p.pop = widget.NewPopUp(container.NewBorder(top, bottom, nil, nil, p.list), s.win.Canvas())
 	p.pop.Resize(fyne.NewSize(400, 460))
 	p.pop.ShowAtPosition(at)
@@ -167,7 +168,7 @@ func (p *picklist) load() {
 				return
 			}
 			if err != nil {
-				p.status.SetText("Could not list the values: " + err.Error())
+				p.status.SetText(l10n.F("Could not list the values: %s", err.Error()))
 				return
 			}
 			prev, had := p.t.picked[p.col]
@@ -239,11 +240,11 @@ func (p *picklist) refreshStatus() {
 	}
 	switch {
 	case len(p.all) == 0:
-		p.status.SetText("No values.")
+		p.status.SetText(l10n.T("No values."))
 	case p.full:
-		p.status.SetText(fmt.Sprintf("%s of %s values ticked", group(int64(n)), group(int64(len(p.all)))))
+		p.status.SetText(l10n.F("%s of %s values ticked", group(int64(n)), group(int64(len(p.all)))))
 	default:
-		p.status.SetText(fmt.Sprintf("%s of the %s most frequent values ticked", group(int64(n)), group(int64(len(p.all)))))
+		p.status.SetText(l10n.F("%s of the %s most frequent values ticked", group(int64(n)), group(int64(len(p.all)))))
 	}
 	if n == 0 {
 		p.apply.Disable()

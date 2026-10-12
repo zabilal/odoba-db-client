@@ -2,13 +2,13 @@ package shell
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
 )
@@ -102,7 +102,7 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 	if last == grid.End || to > int64(first)+copyLimit {
 		to = int64(first) + copyLimit + 1 // one past the limit, to know it was passed
 	}
-	s.status.SetText("Copying…")
+	s.status.SetText(l10n.T("Copying…"))
 	go func() {
 		rows, err := m.Read(ctx, int64(first), to)
 		s.d.Run(func() {
@@ -110,7 +110,7 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 				return
 			}
 			if err == nil && int64(len(rows)) > copyLimit {
-				s.status.SetText(fmt.Sprintf("Copy takes up to %s rows, and this selection has more. Export it instead.", group(copyLimit)))
+				s.status.SetText(l10n.F("Copy takes up to %s rows, and this selection has more. Export it instead.", group(copyLimit)))
 				return
 			}
 			var text string
@@ -119,11 +119,11 @@ func (s *Shell) copySelection(ctx context.Context, g *grid.TableGrid, as string,
 				text, n, err = render(copyJob{sel, first, cols, shown, picked}, rows)
 			}
 			if err != nil {
-				s.status.SetText("Could not copy: " + err.Error())
+				s.status.SetText(l10n.F("Could not copy: %s", err.Error()))
 				return
 			}
 			s.app.Clipboard().SetContent(text)
-			s.status.SetText("Copied " + describeCopy(n, len(picked)) + as)
+			s.status.SetText(l10n.F("Copied %s%s", describeCopy(n, len(picked)), as))
 		})
 	}()
 }

@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/ui/cellview"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -126,17 +127,17 @@ func (s *Shell) newViewer(ctx context.Context, g *grid.TableGrid, holder *fyne.C
 	v.textBox = container.NewVScroll(v.text)
 	v.code.ShowLineNumbers = true
 	v.codeBox = container.NewScroll(v.code)
-	copyIt := widget.NewButtonWithIcon("Copy Value", fynetheme.ContentCopyIcon(), v.copyValue)
-	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), v.hide)
+	copyIt := widget.NewButtonWithIcon(l10n.T("Copy Value"), fynetheme.ContentCopyIcon(), v.copyValue)
+	closeIt := widget.NewButtonWithIcon(l10n.T("Close"), fynetheme.CancelIcon(), v.hide)
 	copyIt.Importance, closeIt.Importance = widget.LowImportance, widget.LowImportance
-	v.editBtn = widget.NewButtonWithIcon("Edit", fynetheme.DocumentCreateIcon(), v.beginEdit)
+	v.editBtn = widget.NewButtonWithIcon(l10n.T("Edit"), fynetheme.DocumentCreateIcon(), v.beginEdit)
 	v.editBtn.Importance = widget.LowImportance
 	v.editBtn.Disable()
 	v.editor = newValueEntry(v)
 	v.calBox = container.NewVBox()
-	done := widget.NewButton("Done", v.finishEdit)
+	done := widget.NewButton(l10n.T("Done"), v.finishEdit)
 	done.Importance = widget.HighImportance
-	cancel := widget.NewButton("Cancel", v.cancelEdit)
+	cancel := widget.NewButton(l10n.T("Cancel"), v.cancelEdit)
 	v.editBox = container.NewBorder(v.calBox, container.NewHBox(layout.NewSpacer(), cancel, done), nil, nil, v.editor)
 	v.editBox.Hide()
 	head := container.NewBorder(nil, nil, nil, container.NewHBox(v.editBtn, copyIt, closeIt), container.NewVBox(v.title, v.meta))
@@ -173,8 +174,8 @@ func (v *cellViewer) follow() {
 	mc := v.g.ColumnAt(c.Col)
 	if !ok || mc < 0 || mc >= len(cols) {
 		v.has = false
-		v.title.SetText("No cell selected")
-		v.meta.SetText("Select a cell to see its whole value.")
+		v.title.SetText(l10n.T("No cell selected"))
+		v.meta.SetText(l10n.T("Select a cell to see its whole value."))
 		v.render(cellview.View{Kind: cellview.KindText})
 		v.editBtn.Disable()
 		return
@@ -186,7 +187,7 @@ func (v *cellViewer) follow() {
 		return
 	}
 	v.title.SetText(col.Name)
-	v.meta.SetText("Loading…")
+	v.meta.SetText(l10n.T("Loading…"))
 	seq := v.seq
 	go func() {
 		rows, err := m.Read(v.ctx, int64(c.Row), int64(c.Row)+1)
@@ -195,7 +196,7 @@ func (v *cellViewer) follow() {
 				return
 			}
 			if err != nil {
-				v.meta.SetText("Could not read the row: " + err.Error())
+				v.meta.SetText(l10n.F("Could not read the row: %s", err.Error()))
 				return
 			}
 			var row model.Row
@@ -264,8 +265,8 @@ func (v *cellViewer) beginEdit() {
 		v.calBox.Objects = []fyne.CanvasObject{widget.NewCalendar(at, v.pickDate)}
 	}
 	v.calBox.Refresh()
-	v.title.SetText("Editing " + v.col.Name)
-	v.meta.SetText("Done keeps it as a pending change; Cancel leaves it as it was.")
+	v.title.SetText(l10n.F("Editing %s", v.col.Name))
+	v.meta.SetText(l10n.T("Done keeps it as a pending change; Cancel leaves it as it was."))
 	v.textBox.Hide()
 	v.codeBox.Hide()
 	v.editBox.Show()
@@ -314,7 +315,7 @@ func (v *cellViewer) finishEdit() {
 			err = v.g.SetValue(v.r, v.row, v.mc, val)
 		}
 		if err != nil {
-			v.meta.SetText("Not written: " + v.col.Name + ": " + err.Error())
+			v.meta.SetText(l10n.F("Not written: %s: %s", v.col.Name, err.Error()))
 			return
 		}
 		v.g.Table.Refresh()
@@ -399,5 +400,5 @@ func (v *cellViewer) copyValue() {
 		return
 	}
 	v.s.app.Clipboard().SetContent(export.Text(v.value, v.col))
-	v.s.status.SetText("Copied the value of " + v.col.Name)
+	v.s.status.SetText(l10n.F("Copied the value of %s", v.col.Name))
 }

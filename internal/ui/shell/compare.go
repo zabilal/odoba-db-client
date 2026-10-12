@@ -16,6 +16,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/diff"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/filedlg"
@@ -125,10 +126,10 @@ func (s *Shell) compareSelected() {
 // certainly there, because another connection may not be open.
 func (s *Shell) askWhatToCompareAgainst(connID string, ref model.ObjectRef) {
 	s.d.Files.Open(s.win, filedlg.Options{
-		Message:    "Compare " + ref.Name() + " against a saved model",
+		Message:    l10n.F("Compare %s against a saved model", ref.Name()),
 		Extensions: []string{"json"},
 		Kind:       "saved model",
-		Accept:     "Compare",
+		Accept:     l10n.T("Compare"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -155,7 +156,7 @@ func (s *Shell) OpenComparison(connID string, ref model.ObjectRef, dir string) *
 	t := &tab{key: key, connID: connID, ref: ref, label: ref.Name(), structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading both sides…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Compare: "+ref.Name(), container.NewBorder(nil, t.footer, nil, nil, t.body))
+	t.item = container.NewTabItem(l10n.F("Compare: %s", ref.Name()), container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
 	s.sync()
@@ -225,10 +226,10 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	p.tree.OnSelected = func(id widget.TreeNodeID) { p.showDetail(id) }
 
 	// Three verbs, because they are three acts: read it, keep it, run it.
-	p.write = widget.NewButton("Write the Script…", p.writeScript)
-	p.save = widget.NewButton("Save…", p.saveScript)
-	p.apply = widget.NewButton("Apply…", p.applyScript)
-	rules := widget.NewButton("Leaving Out…", p.askWhatToLeaveOut)
+	p.write = widget.NewButton(l10n.T("Write the Script…"), p.writeScript)
+	p.save = widget.NewButton(l10n.T("Save…"), p.saveScript)
+	p.apply = widget.NewButton(l10n.T("Apply…"), p.applyScript)
+	rules := widget.NewButton(l10n.T("Leaving Out…"), p.askWhatToLeaveOut)
 	p.apply.Importance = widget.HighImportance
 	for _, b := range p.buttons() {
 		b.Disable()
@@ -236,7 +237,7 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 
 	t.body.Objects = []fyne.CanvasObject{
 		container.NewBorder(
-			container.NewBorder(nil, nil, container.NewHBox(widget.NewLabel("Show"), rules),
+			container.NewBorder(nil, nil, container.NewHBox(widget.NewLabel(l10n.T("Show")), rules),
 				container.NewHBox(p.write, p.save, p.apply), filter),
 			nil, nil, nil,
 			container.NewHSplit(
@@ -247,7 +248,7 @@ func (s *Shell) showComparison(t *tab, got app.Comparison, dir string) {
 	}
 	t.body.Refresh()
 	p.tree.OpenAllBranches()
-	t.footer.SetText("Nothing has run. A comparison reads both sides and changes neither.")
+	t.footer.SetText(l10n.T("Nothing has run. A comparison reads both sides and changes neither."))
 }
 
 // index walks the comparison once, giving every node an id and recording
@@ -367,14 +368,13 @@ func (p *comparePanel) saySelection() {
 		for _, b := range p.buttons() {
 			b.Disable()
 		}
-		p.t.footer.SetText("Nothing has run. A comparison reads both sides and changes neither.")
+		p.t.footer.SetText(l10n.T("Nothing has run. A comparison reads both sides and changes neither."))
 		return
 	}
 	for _, b := range p.buttons() {
 		b.Enable()
 	}
-	p.t.footer.SetText(nounCount(len(p.chosen), "difference") +
-		" chosen. Nothing has run: the script is written for you to read.")
+	p.t.footer.SetText(l10n.F("%s chosen. Nothing has run: the script is written for you to read.", nounCount(len(p.chosen), "difference")))
 }
 
 func (p *comparePanel) buttons() []*widget.Button { return []*widget.Button{p.write, p.save, p.apply} }
@@ -383,7 +383,7 @@ func (p *comparePanel) buttons() []*widget.Button { return []*widget.Button{p.wr
 func (p *comparePanel) script() ([]source.Statement, bool) {
 	live, open := p.s.d.WS.Get(p.t.connID)
 	if !open {
-		p.t.footer.SetText("This connection is not open.")
+		p.t.footer.SetText(l10n.T("This connection is not open."))
 		return nil, false
 	}
 	stmts, err := app.SyncScript(live.Source, p.live, p.wanted, p.root, p.chosen)
@@ -392,7 +392,7 @@ func (p *comparePanel) script() ([]source.Statement, bool) {
 		return nil, false
 	}
 	if len(stmts) == 0 {
-		p.t.footer.SetText("What was chosen needs no statements.")
+		p.t.footer.SetText(l10n.T("What was chosen needs no statements."))
 		return nil, false
 	}
 	return stmts, true
@@ -407,11 +407,11 @@ func (p *comparePanel) saveScript() {
 	}
 	text := syncHeader(len(p.chosen)) + scriptOf(stmts)
 	p.s.d.Files.Save(p.s.win, filedlg.Options{
-		Message:    "Save the sync script",
+		Message:    l10n.T("Save the sync script"),
 		Name:       scriptFileName(p.t.label),
 		Extensions: []string{"sql"},
 		Kind:       "SQL",
-		Accept:     "Save",
+		Accept:     l10n.T("Save"),
 	}, func(path string, err error) {
 		switch {
 		case err != nil:
@@ -423,7 +423,7 @@ func (p *comparePanel) saveScript() {
 				p.s.showError(fmt.Errorf("could not save the script: %w", err))
 				return
 			}
-			p.t.footer.SetText("Saved to " + filepath.Base(path) + ". Nothing has run.")
+			p.t.footer.SetText(l10n.F("Saved to %s. Nothing has run.", filepath.Base(path)))
 		}
 	})
 }
@@ -631,19 +631,18 @@ func (p *comparePanel) askWhatToLeaveOut() {
 		return diff.Options{Names: splitRules(text)}.Check()
 	}
 
-	space := widget.NewCheck("Whitespace in definitions", nil)
+	space := widget.NewCheck(l10n.T("Whitespace in definitions"), nil)
 	space.SetChecked(p.ignoring.Whitespace)
-	collation := widget.NewCheck("Charsets and collations", nil)
+	collation := widget.NewCheck(l10n.T("Charsets and collations"), nil)
 	collation.SetChecked(p.ignoring.Collation)
-	comments := widget.NewCheck("Comments", nil)
+	comments := widget.NewCheck(l10n.T("Comments"), nil)
 	comments.SetChecked(p.ignoring.Comments)
 
-	keep := widget.NewCheck("Keep these with the saved model", nil)
-	note := widget.NewLabel("What is left out is not compared at all: it will not be counted " +
-		"and cannot be chosen for a script.")
+	keep := widget.NewCheck(l10n.T("Keep these with the saved model"), nil)
+	note := widget.NewLabel(l10n.F("What is left out is not compared at all: it will not be counted and cannot be chosen for a script."))
 	note.Wrapping = fyne.TextWrapWord
 
-	d := dialog.NewForm("Leaving Out", "Compare Again", "Cancel", []*widget.FormItem{
+	d := dialog.NewForm(l10n.T("Leaving Out"), l10n.T("Compare Again"), l10n.T("Cancel"), []*widget.FormItem{
 		{Text: "Schemas", Widget: schemas},
 		{Text: "Names", Widget: names},
 		{Widget: space}, {Widget: collation}, {Widget: comments},

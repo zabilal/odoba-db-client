@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // The app-level lock over the credential vault, in the window (NFR-S7).
@@ -64,7 +65,7 @@ func (s *Shell) lockVault() {
 	}
 	pass.OnChanged = func(string) { _ = again.Validate() }
 	note := quiet(said)
-	d := dialog.NewForm(title, act, "Cancel", []*widget.FormItem{
+	d := dialog.NewForm(title, act, l10n.T("Cancel"), []*widget.FormItem{
 		{Text: "Passphrase", Widget: pass},
 		{Text: "Again", Widget: again},
 		{Widget: note},
@@ -98,7 +99,7 @@ func (s *Shell) setVaultPassphrase(pass string) {
 				return
 			}
 			s.endTask(k, taskDone, "Sealed")
-			s.status.SetText("The vault is locked. It asks for the passphrase at each start.")
+			s.status.SetText(l10n.T("The vault is locked. It asks for the passphrase at each start."))
 			s.sync()
 		})
 	}()
@@ -110,7 +111,7 @@ func (s *Shell) closeVault() {
 		return
 	}
 	s.d.Conns.CloseVault()
-	s.status.SetText("The vault is shut. Saved passwords are held back until the passphrase is typed.")
+	s.status.SetText(l10n.T("The vault is shut. Saved passwords are held back until the passphrase is typed."))
 	s.sync()
 }
 
@@ -120,7 +121,7 @@ func (s *Shell) removeVaultLock() {
 		return
 	}
 	pass := newSecretEntry()
-	d := dialog.NewForm("Remove the Vault Lock", "Remove", "Cancel", []*widget.FormItem{
+	d := dialog.NewForm(l10n.T("Remove the Vault Lock"), l10n.T("Remove"), l10n.T("Cancel"), []*widget.FormItem{
 		{Text: "Passphrase", Widget: pass},
 		{Widget: quiet("Every saved password goes back to being kept by the operating system's keychain alone, " +
 			"which anything running as you can read.")},
@@ -143,13 +144,13 @@ func (s *Shell) takeVaultLockOff(pass string) {
 			switch {
 			case errors.Is(err, app.ErrPassphrase):
 				s.endTask(k, taskFailed, "That is not the passphrase")
-				s.showError(formError("That is not the passphrase."))
+				s.showError(formError(l10n.T("That is not the passphrase.")))
 			case err != nil:
 				s.endTask(k, taskFailed, err.Error())
 				s.showError(fmt.Errorf("the lock could not be taken off: %w", err))
 			default:
 				s.endTask(k, taskDone, "The lock is off")
-				s.status.SetText("The vault's lock is off.")
+				s.status.SetText(l10n.T("The vault's lock is off."))
 			}
 			s.sync()
 		})
@@ -173,11 +174,11 @@ func (s *Shell) askToUnlock(then func()) {
 	said.Wrapping = fyne.TextWrapWord
 	said.Importance = widget.LowImportance
 	var d *dialog.CustomDialog
-	unlock := widget.NewButton("Unlock", nil)
+	unlock := widget.NewButton(l10n.T("Unlock"), nil)
 	unlock.Importance = widget.HighImportance
 	unlock.OnTapped = func() {
 		if err := s.d.Conns.UnlockVault(pass.Text); err != nil {
-			said.SetText("That is not the passphrase.")
+			said.SetText(l10n.T("That is not the passphrase."))
 			pass.SetText("")
 			s.win.Canvas().Focus(pass)
 			return
@@ -187,16 +188,16 @@ func (s *Shell) askToUnlock(then func()) {
 		then()
 	}
 	pass.OnSubmitted = func(string) { unlock.OnTapped() }
-	on := widget.NewButton("Go on Without It", func() {
+	on := widget.NewButton(l10n.T("Go on Without It"), func() {
 		d.Hide()
-		s.status.SetText("The vault is shut: saved passwords are held back until it is unlocked.")
+		s.status.SetText(l10n.T("The vault is shut: saved passwords are held back until it is unlocked."))
 		s.sync()
 		then()
 	})
 	body := container.NewVBox(
 		quiet("The saved passwords are sealed. Type the passphrase to unlock them, or go on and type each password as it is needed."),
 		pass, said)
-	d = dialog.NewCustomWithoutButtons("Unlock the Vault", body, s.win)
+	d = dialog.NewCustomWithoutButtons(l10n.T("Unlock the Vault"), body, s.win)
 	d.SetButtons([]fyne.CanvasObject{on, unlock})
 	d.Resize(fyne.NewSize(520, d.MinSize().Height))
 	d.Show()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/app/filterexpr"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/grid"
@@ -82,9 +83,9 @@ func (s *Shell) newDetail(t *tab) *detailPanel {
 		}
 	})
 	d.pick.SetSelectedIndex(0)
-	d.open = widget.NewButtonWithIcon("Open in Tab", fynetheme.ViewFullScreenIcon(), d.openInTab)
+	d.open = widget.NewButtonWithIcon(l10n.T("Open in Tab"), fynetheme.ViewFullScreenIcon(), d.openInTab)
 	d.open.Importance = widget.LowImportance
-	closeIt := widget.NewButtonWithIcon("Close", fynetheme.CancelIcon(), s.toggleDetail)
+	closeIt := widget.NewButtonWithIcon(l10n.T("Close"), fynetheme.CancelIcon(), s.toggleDetail)
 	closeIt.Importance = widget.LowImportance
 	head := container.NewBorder(nil, nil, d.pick, container.NewHBox(d.open, closeIt), d.status)
 	d.box = container.NewBorder(head, nil, nil, nil, d.place)
@@ -138,7 +139,7 @@ func (d *detailPanel) follow() {
 	d.open.Disable()
 	if !ok {
 		d.shown, d.seq = "", d.seq+1
-		d.status.SetText("Nothing refers to this row: it is not written, or its key is empty")
+		d.status.SetText(l10n.T("Nothing refers to this row: it is not written, or its key is empty"))
 		d.place.Objects = nil
 		d.place.Refresh()
 		return
@@ -151,7 +152,7 @@ func (d *detailPanel) follow() {
 	d.shown = key
 	d.seq++
 	seq, t := d.seq, d.t
-	d.status.SetText("Reading the rows of " + rf.From.Name() + "…")
+	d.status.SetText(l10n.F("Reading the rows of %s…", rf.From.Name()))
 	go func() {
 		var bs *app.BrowseSource
 		live, err := d.s.d.WS.Connect(t.ctx, t.connID)
@@ -163,7 +164,7 @@ func (d *detailPanel) follow() {
 				return
 			}
 			if err != nil {
-				d.status.SetText("Could not read the rows of " + rf.From.Name() + ": " + err.Error())
+				d.status.SetText(l10n.F("Could not read the rows of %s: %s", rf.From.Name(), err.Error()))
 				return
 			}
 			d.show(rf, bs)
@@ -204,7 +205,7 @@ func (d *detailPanel) count() {
 	if !final {
 		text = group(n) + "+ rows"
 	}
-	d.status.SetText(text + " of " + d.ref.Name() + " refer to this row")
+	d.status.SetText(l10n.F("%s of %s refer to this row", text, d.ref.Name()))
 }
 
 // openInTab opens the rows shown in a tab of their own, filtered in its

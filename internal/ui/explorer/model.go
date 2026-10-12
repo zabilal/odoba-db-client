@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ikigai-db/ikigai-db/internal/fuzzy"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // Item is one node.
@@ -181,7 +182,7 @@ func (m *Model) load(ctx context.Context, cancel context.CancelFunc, id string, 
 // Item returns a node, including the synthetic placeholders.
 func (m *Model) Item(id string) (Item, Status, error) {
 	if _, ok := strip(id, loadingSuffix); ok {
-		return Item{ID: id, Label: "Loading…"}, Loading, nil
+		return Item{ID: id, Label: l10n.T("Loading…")}, Loading, nil
 	}
 	if base, ok := strip(id, errorSuffix); ok {
 		m.mu.Lock()

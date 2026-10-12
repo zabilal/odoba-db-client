@@ -11,6 +11,7 @@ import (
 
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -28,13 +29,13 @@ import (
 func (j *jsonView) editDocument() {
 	c, ok := j.g.Selection().Active()
 	if !ok {
-		j.where.SetText("Choose a document in the grid first")
+		j.where.SetText(l10n.T("Choose a document in the grid first"))
 		return
 	}
 	j.seq++
 	seq := j.seq
 	row := int64(c.Row)
-	j.where.SetText("Reading…")
+	j.where.SetText(l10n.T("Reading…"))
 	m := j.g.Model()
 	go func() {
 		rows, err := m.Read(j.t.ctx, row, row+1)
@@ -44,14 +45,14 @@ func (j *jsonView) editDocument() {
 			}
 			switch {
 			case err != nil:
-				j.where.SetText("Could not read the document: " + err.Error())
+				j.where.SetText(l10n.F("Could not read the document: %s", err.Error()))
 			case len(rows) == 0:
-				j.where.SetText("No document here")
+				j.where.SetText(l10n.T("No document here"))
 			default:
 				j.editing, j.row, j.at = true, rows[0], row
 				j.text.SetText(documentJSON(j.g.Model().Columns(), rows[0]))
 				j.note.SetText(alsoHolds(j.g.Model().Columns(), rows[0]))
-				j.where.SetText(fmt.Sprintf("Document %d", row+1))
+				j.where.SetText(l10n.F("Document %d", row+1))
 				j.buttons()
 			}
 		})
@@ -72,7 +73,7 @@ func (j *jsonView) stopEditing() {
 func (j *jsonView) saveDocument() {
 	e := editsFor(j.t, j.g)
 	if e == nil || e.writes == nil {
-		j.note.SetText("This connection cannot write.")
+		j.note.SetText(l10n.T("This connection cannot write."))
 		return
 	}
 	cols := j.g.Model().Columns()
@@ -82,7 +83,7 @@ func (j *jsonView) saveDocument() {
 		return
 	}
 	if len(values) == 0 {
-		j.note.SetText("Nothing was changed.")
+		j.note.SetText(l10n.T("Nothing was changed."))
 		return
 	}
 	// A document store takes a field of any type, so a type unlike the rest
@@ -90,11 +91,11 @@ func (j *jsonView) saveDocument() {
 	// writes it (FR-12.4).
 	if w := typeWarnings(cols, values); w != "" && w != j.warned {
 		j.warned = w
-		j.note.SetText(w + ". Save again to write it.")
+		j.note.SetText(l10n.F("%s. Save again to write it.", w))
 		return
 	}
 	if e.pending == nil {
-		j.note.SetText("These documents have nothing to tell them apart, so they cannot be written.")
+		j.note.SetText(l10n.T("These documents have nothing to tell them apart, so they cannot be written."))
 		return
 	}
 	id := e.pending.Identity()
@@ -102,7 +103,7 @@ func (j *jsonView) saveDocument() {
 	for _, name := range id.Columns {
 		v, ok := fieldOf(cols, j.row, name)
 		if !ok {
-			j.note.SetText("This document has no " + name + ", so it cannot be addressed.")
+			j.note.SetText(l10n.F("This document has no %s, so it cannot be addressed.", name))
 			return
 		}
 		key = append(key, v)
@@ -112,7 +113,7 @@ func (j *jsonView) saveDocument() {
 	}}
 	plan, err := e.writes.Plan(e.ctx, cs)
 	if err != nil {
-		j.note.SetText("Could not plan the change: " + err.Error())
+		j.note.SetText(l10n.F("Could not plan the change: %s", err.Error()))
 		return
 	}
 	j.stopEditing()

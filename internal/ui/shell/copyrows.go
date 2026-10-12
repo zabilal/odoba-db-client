@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 )
@@ -67,7 +68,7 @@ func (s *Shell) copyRowsFrom() *copyForm {
 	f.note.Wrapping = fyne.TextWrapWord
 	f.tables = widget.NewSelect(nil, func(string) { f.chooseTable() })
 	f.tables.PlaceHolder = "Reading the tables…"
-	f.replace = widget.NewCheck("Replace the rows that are there", nil)
+	f.replace = widget.NewCheck(l10n.T("Replace the rows that are there"), nil)
 
 	open := s.d.WS.OpenIDs()
 	names := make([]string, 0, len(open))
@@ -81,9 +82,9 @@ func (s *Shell) copyRowsFrom() *copyForm {
 	}
 	f.conns = widget.NewSelect(names, func(string) { f.chooseConnection() })
 
-	d := dialog.NewForm("Copy the rows of “"+n.Label+"”", "Copy", "Cancel", []*widget.FormItem{
-		widget.NewFormItem("Into", f.conns),
-		widget.NewFormItem("Table", f.tables),
+	d := dialog.NewForm(l10n.F("Copy the rows of “%s”", n.Label), l10n.T("Copy"), l10n.T("Cancel"), []*widget.FormItem{
+		widget.NewFormItem(l10n.T("Into"), f.conns),
+		widget.NewFormItem(l10n.T("Table"), f.tables),
 		widget.NewFormItem("", f.replace),
 		widget.NewFormItem("", f.note),
 	}, func(ok bool) {
@@ -256,7 +257,7 @@ func (f *copyForm) describe() {
 // start asks about production and replacing, then copies.
 func (f *copyForm) start() {
 	if f.from == nil || f.to == nil {
-		f.s.showError(formError("Choose where the rows go first."))
+		f.s.showError(formError(l10n.T("Choose where the rows go first.")))
 		return
 	}
 	opt := app.CopyOptions{Replace: f.replace.Checked}
@@ -288,7 +289,7 @@ func (f *copyForm) start() {
 		}
 	}, f.s.win)
 	d.SetConfirmText(act)
-	d.SetDismissText("Cancel")
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }

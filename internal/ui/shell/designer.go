@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/query"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -123,7 +124,7 @@ func (s *Shell) OpenDesigner(connID string, ref model.ObjectRef) *tab {
 	t := &tab{key: key, connID: connID, ref: ref, label: ref.Name(), structure: true, ctx: ctx, cancel: cancel,
 		body: container.NewStack(quiet("Reading the schema…")), footer: widget.NewLabel("")}
 	t.footer.Importance = widget.LowImportance
-	t.item = container.NewTabItem("Design: "+ref.Name(),
+	t.item = container.NewTabItem(l10n.F("Design: %s", ref.Name()),
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
 	s.open = append(s.open, t)
 	s.addTab(t)
@@ -201,16 +202,16 @@ func keep(from, to *canvas.Graph) {
 
 // toolbar is what a designer can be told to do.
 func (p *designerPanel) toolbar() fyne.CanvasObject {
-	p.suggest = widget.NewButton("Suggest Joins", p.applySuggestions)
-	p.remove = widget.NewButton("Remove", p.removeChosen)
+	p.suggest = widget.NewButton(l10n.T("Suggest Joins"), p.applySuggestions)
+	p.remove = widget.NewButton(l10n.T("Remove"), p.removeChosen)
 	return container.NewHBox(
-		widget.NewButton("Add a Table…", p.addTable),
+		widget.NewButton(l10n.T("Add a Table…"), p.addTable),
 		p.suggest,
 		p.remove,
-		widget.NewButton("Fit", func() { p.w.Fit() }),
+		widget.NewButton(l10n.T("Fit"), func() { p.w.Fit() }),
 		widget.NewButton("−", func() { p.w.Zoom(false) }),
 		widget.NewButton("+", func() { p.w.Zoom(true) }),
-		widget.NewButton("Open as a Query", p.openAsQuery),
+		widget.NewButton(l10n.T("Open as a Query"), p.openAsQuery),
 	)
 }
 
@@ -221,8 +222,8 @@ func (p *designerPanel) side() fyne.CanvasObject {
 	p.joins = widget.NewList(
 		func() int { return len(p.design.Joins) },
 		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewLabel(""), widget.NewButton("Change…", nil),
-				widget.NewButton("Remove", nil))
+			return container.NewHBox(widget.NewLabel(""), widget.NewButton(l10n.T("Change…"), nil),
+				widget.NewButton(l10n.T("Remove"), nil))
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			row := o.(*fyne.Container)
@@ -230,7 +231,7 @@ func (p *designerPanel) side() fyne.CanvasObject {
 			row.Objects[1].(*widget.Button).OnTapped = func() { p.editJoin(i) }
 			row.Objects[2].(*widget.Button).OnTapped = func() { p.removeJoin(i) }
 		})
-	joinHead := widget.NewLabel("Joins")
+	joinHead := widget.NewLabel(l10n.T("Joins"))
 	joinHead.TextStyle = fyne.TextStyle{Bold: true}
 	joins := container.NewBorder(joinHead, nil, nil, nil,
 		container.NewGridWrap(fyne.NewSize(380, 140), p.joins))
@@ -275,7 +276,7 @@ func (p *designerPanel) side() fyne.CanvasObject {
 			}
 		})
 
-	p.distinct = widget.NewCheck("Only rows that differ", func(on bool) {
+	p.distinct = widget.NewCheck(l10n.T("Only rows that differ"), func(on bool) {
 		p.design.Distinct = on
 		p.refresh()
 	})
@@ -283,7 +284,7 @@ func (p *designerPanel) side() fyne.CanvasObject {
 	p.limit = p.limitEntry()
 
 	rows := container.NewVBox(p.distinct,
-		container.NewBorder(nil, nil, widget.NewLabel("How many rows"), nil, p.limit))
+		container.NewBorder(nil, nil, widget.NewLabel(l10n.T("How many rows")), nil, p.limit))
 
 	return container.NewGridWrap(fyne.NewSize(400, 620), container.NewVScroll(
 		container.NewVBox(joins, p.outputs.content, p.wheres.content, p.havings.content,
@@ -303,7 +304,7 @@ func (p *designerPanel) sqlView() fyne.CanvasObject {
 	p.sql = widget.NewMultiLineEntry()
 	p.sql.Wrapping = fyne.TextWrapOff
 	p.sql.TextStyle = fyne.TextStyle{Monospace: true}
-	head := widget.NewLabel("SQL")
+	head := widget.NewLabel(l10n.T("SQL"))
 	head.TextStyle = fyne.TextStyle{Bold: true}
 	p.showSQL()
 	return container.NewGridWrap(fyne.NewSize(400, 180),
@@ -388,10 +389,10 @@ func (p *designerPanel) refresh() {
 	p.showSQL()
 	if p.remove != nil {
 		if p.chosen() >= 0 {
-			p.remove.SetText("Remove " + p.aliasAt(p.chosen()))
+			p.remove.SetText(l10n.F("Remove %s", p.aliasAt(p.chosen())))
 			p.remove.Enable()
 		} else {
-			p.remove.SetText("Remove")
+			p.remove.SetText(l10n.T("Remove"))
 			p.remove.Disable()
 		}
 	}
@@ -434,7 +435,7 @@ func (p *designerPanel) chosen() int {
 func (p *designerPanel) addTable() {
 	refs := query.TableRefs(p.db, true)
 	if len(refs) == 0 {
-		p.s.showError(formError("This database has no tables to build a query over."))
+		p.s.showError(formError(l10n.T("This database has no tables to build a query over.")))
 		return
 	}
 	names := make([]string, len(refs))
@@ -443,8 +444,8 @@ func (p *designerPanel) addTable() {
 	}
 	pick := widget.NewSelect(names, nil)
 	pick.SetSelectedIndex(0)
-	d := dialog.NewForm("Add a Table", "Add", "Cancel",
-		[]*widget.FormItem{widget.NewFormItem("Table", pick)}, func(ok bool) {
+	d := dialog.NewForm(l10n.T("Add a Table"), l10n.T("Add"), l10n.T("Cancel"),
+		[]*widget.FormItem{widget.NewFormItem(l10n.T("Table"), pick)}, func(ok bool) {
 			if !ok {
 				return
 			}
@@ -513,7 +514,7 @@ func (p *designerPanel) editJoin(i int) {
 		right.SetSelected(j.On[0].Right)
 	}
 	items := []*widget.FormItem{
-		widget.NewFormItem("Kind", kind),
+		widget.NewFormItem(l10n.T("Kind"), kind),
 		widget.NewFormItem(p.aliasAt(j.Left), left),
 		widget.NewFormItem(p.aliasAt(j.Right), right),
 	}
@@ -522,7 +523,7 @@ func (p *designerPanel) editJoin(i int) {
 			quiet(fmt.Sprintf("This join matches %s; the first is the one shown.",
 				nounCount(len(j.On), "pair of columns")))))
 	}
-	d := dialog.NewForm("Change a Join", "Change", "Cancel", items, func(ok bool) {
+	d := dialog.NewForm(l10n.T("Change a Join"), l10n.T("Change"), l10n.T("Cancel"), items, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -557,12 +558,12 @@ func (p *designerPanel) editJoin(i int) {
 func (p *designerPanel) openAsQuery() {
 	live, open := p.s.d.WS.Get(p.t.connID)
 	if !open {
-		p.s.showError(formError("That connection is closed."))
+		p.s.showError(formError(l10n.T("That connection is closed.")))
 		return
 	}
 	dl, ok := live.Source.(source.Dialect)
 	if !ok {
-		p.s.showError(formError("This source has no SQL to write."))
+		p.s.showError(formError(l10n.T("This source has no SQL to write.")))
 		return
 	}
 	sql, err := query.Render(p.design, dl)

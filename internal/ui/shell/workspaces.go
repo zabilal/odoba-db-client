@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/store/localdb"
 	"github.com/ikigai-db/ikigai-db/internal/ui/explorer"
 )
@@ -62,7 +63,7 @@ func (s *Shell) saveWorkspace() {
 		return
 	}
 	name := widget.NewEntry()
-	name.SetPlaceHolder("Billing")
+	name.SetPlaceHolder(l10n.T("Billing"))
 	name.SetText(s.workspace.Name)
 	name.Validator = func(text string) error {
 		if strings.TrimSpace(text) == "" {
@@ -88,7 +89,7 @@ func (s *Shell) saveWorkspace() {
 	over := container.NewVScroll(box)
 	over.SetMinSize(fyne.NewSize(0, 160))
 
-	d := dialog.NewForm("Save this workspace", "Save", "Cancel", []*widget.FormItem{
+	d := dialog.NewForm(l10n.T("Save this workspace"), l10n.T("Save"), l10n.T("Cancel"), []*widget.FormItem{
 		{Text: "Name", Widget: name},
 		{Text: "Over", Widget: over},
 		{Widget: quiet("Ticking none is over them all. " +
@@ -198,7 +199,7 @@ func (s *Shell) offerWorkspaces(saved []localdb.Workspace) {
 	redraw = func() {
 		rows.Objects = nil
 		if s.workspace.ID != "" {
-			out := widget.NewButton("Everything", func() {
+			out := widget.NewButton(l10n.T("Everything"), func() {
 				d.Hide()
 				s.switchWorkspace(localdb.Workspace{})
 			})
@@ -233,7 +234,7 @@ func (s *Shell) offerWorkspaces(saved []localdb.Workspace) {
 		rows.Refresh()
 	}
 	redraw()
-	d = dialog.NewCustom("Workspaces", "Close", container.NewVScroll(rows), s.win)
+	d = dialog.NewCustom(l10n.T("Workspaces"), l10n.T("Close"), container.NewVScroll(rows), s.win)
 	d.Resize(fyne.NewSize(460, 380))
 	d.Show()
 }
@@ -290,10 +291,10 @@ func (s *Shell) switchWorkspace(w localdb.Workspace) {
 	s.openWorkspaceTabs(w)
 	s.sessionChanged()
 	if w.Name == "" {
-		s.status.SetText("Out of that workspace: every connection again.")
+		s.status.SetText(l10n.T("Out of that workspace: every connection again."))
 		return
 	}
-	s.status.SetText("In the workspace “" + w.Name + "”.")
+	s.status.SetText(l10n.F("In the workspace “%s”.", w.Name))
 }
 
 // openWorkspaceTabs puts back what a workspace was left at.

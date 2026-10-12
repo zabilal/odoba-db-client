@@ -11,6 +11,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 )
 
 // The task centre (FR-15.6, UX principle 5): long work runs beside the
@@ -165,8 +167,8 @@ func (s *Shell) requestQuit() {
 			s.win.Close()
 		}
 	}, s.win)
-	d.SetConfirmText("Quit")
-	d.SetDismissText("Cancel")
+	d.SetConfirmText(l10n.T("Quit"))
+	d.SetDismissText(l10n.T("Cancel"))
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
 }
@@ -191,10 +193,10 @@ type taskRow struct {
 
 func (s *Shell) showTasks() *tasksPanel {
 	p := &tasksPanel{s: s, list: container.NewVBox(), rows: map[*task]*taskRow{}}
-	p.empty = widget.NewLabel("Nothing is running. An export shows here while it runs, and says how it ended.")
+	p.empty = widget.NewLabel(l10n.T("Nothing is running. An export shows here while it runs, and says how it ended."))
 	p.empty.Wrapping = fyne.TextWrapWord
 	p.empty.Importance = widget.LowImportance
-	p.clear = widget.NewButton("Clear Finished", s.clearTasks)
+	p.clear = widget.NewButton(l10n.T("Clear Finished"), s.clearTasks)
 	s.taskView = p
 	s.openPanel(panelTasks, "Tasks", container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), p.clear), nil, nil,
 		container.NewVScroll(container.NewVBox(p.empty, p.list))), nil)
@@ -234,7 +236,7 @@ func (p *tasksPanel) newRow(k *task) *taskRow {
 		status: widget.NewLabel(""),
 		bar:    widget.NewProgressBar(),
 		spin:   widget.NewProgressBarInfinite(),
-		stop:   widget.NewButton("Cancel", func() { p.s.stopTask(k) }),
+		stop:   widget.NewButton(l10n.T("Cancel"), func() { p.s.stopTask(k) }),
 	}
 	r.title.Truncation = fyne.TextTruncateEllipsis
 	r.status.Wrapping = fyne.TextWrapWord

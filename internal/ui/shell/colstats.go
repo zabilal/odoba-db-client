@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/ui/chart"
@@ -73,7 +74,7 @@ func (s *Shell) showColumnStats(t *tab, col int, at fyne.Position) *statsPanel {
 		return nil
 	}
 	p := &statsPanel{s: s, t: t, col: col, def: cols[col]}
-	p.status = widget.NewLabel("Measuring " + p.def.Name + "…")
+	p.status = widget.NewLabel(l10n.F("Measuring %s…", p.def.Name))
 	p.status.Importance = widget.LowImportance
 	p.body = container.NewVBox(p.status)
 
@@ -105,7 +106,7 @@ func (p *statsPanel) measure() {
 				return
 			}
 			if err != nil {
-				p.status.SetText("Could not measure " + def.Name + ": " + err.Error())
+				p.status.SetText(l10n.F("Could not measure %s: %s", def.Name, err.Error()))
 				return
 			}
 			p.show(st, rows)
@@ -126,7 +127,7 @@ func (p *statsPanel) show(st *source.ColumnStats, rows []model.Row) {
 		holder.Resize(fyne.NewSize(spreadWidth, spreadHeight))
 		p.body.Add(container.NewGridWrap(fyne.NewSize(spreadWidth, spreadHeight), holder))
 	}
-	took := widget.NewLabel("The server took " + st.Duration.Round(time.Millisecond).String() + ".")
+	took := widget.NewLabel(l10n.F("The server took %s.", st.Duration.Round(time.Millisecond).String()))
 	took.Importance = widget.LowImportance
 	p.body.Add(took)
 	p.body.Refresh()
