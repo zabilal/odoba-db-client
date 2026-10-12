@@ -24,6 +24,13 @@ one. It is built over `trinodb/trino-go-client`, a `database/sql` driver.
    of adding a driver. v1.1.0 declares 1.25.5 and has everything used here. The
    Go version is the owner's to raise, on purpose, and then this can follow.
 
+   *It was raised the same day, by the owner: the module is on Go 1.27.2 and
+   the client on v1.3.0, with the live suite and every mutation's test passing
+   unchanged. Raising it took one thing with it. golangci-lint 2.6.2 cannot
+   read Go 1.27's standard library — every package comes back as one failed
+   import — so CI builds 2.14.0, which found nine things the older one had not
+   been asked about, five of them in the tests of the two drivers above.*
+
 2. **A catalog is shown as a database, and a table is named in full.** The tree
    is catalog, schema, class, object, column. Each catalog has an
    `information_schema` of its own, so everything below the root is read from

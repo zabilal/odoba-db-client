@@ -39,13 +39,13 @@ func (s *trinoSource) Root(ctx context.Context) ([]model.Node, error) {
 			return nil, statementError(err, ctx)
 		}
 		node := model.Node{Ref: model.NewRef(model.KindDatabase, name), Label: name, HasChildren: true}
-		switch {
-		case name == "system":
+		switch name {
+		case "system":
 			// Trino's own: its nodes, its queries, its catalogs. Shown,
 			// because that is where somebody looks when something is slow,
 			// and marked so it sorts out of the way.
 			node.Attrs = map[string]string{"system": "true"}
-		case name == s.catalog:
+		case s.catalog:
 			node.Attrs = map[string]string{"current": "true"}
 		}
 		out = append(out, node)

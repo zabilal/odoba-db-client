@@ -1,6 +1,6 @@
 module github.com/ikigai-db/ikigai-db
 
-go 1.26.6
+go 1.27.2
 
 require (
 	fyne.io/fyne/v2 v2.8.1
@@ -24,7 +24,7 @@ require (
 	github.com/nakagami/firebirdsql v0.9.21
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/sijms/go-ora/v2 v2.9.0
-	github.com/trinodb/trino-go-client v1.1.0
+	github.com/trinodb/trino-go-client v1.3.0
 	github.com/tursodatabase/libsql-client-go v0.0.0-20260528064733-9d5d30a29a60
 	github.com/twmb/franz-go v1.22.0
 	github.com/twmb/franz-go/pkg/kadm v1.19.0

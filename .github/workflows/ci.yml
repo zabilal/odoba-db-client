@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
 
 jobs:
   # NFR-D3: Fyne requires CGO, so cross-compiling from one host is not a
@@ -79,7 +79,7 @@ jobs:
       # binaries are built with an older Go than this module targets, and a
       # linter cannot load a configuration for a language version it cannot
       # parse: "the Go language version (go1.24) used to build golangci-lint is
-      # lower than the targeted Go version (1.26.6)". Building it with the Go
+      # lower than the targeted Go version (1.26.6 then; 1.27 now)". Building it with the Go
       # this job already has takes our language version out of somebody else's
       # release schedule.
       #
@@ -87,7 +87,7 @@ jobs:
       # cannot turn this red on a morning nobody changed anything: moving it is
       # a commit, with whatever the new checks find dealt with in that commit.
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
       # --build-tags overrides the configuration's, dropping duckdb: that driver
       # is behind a tag because it needs a cgo library, and a runner that has not
       # got one would fail the whole job on an import rather than on anything

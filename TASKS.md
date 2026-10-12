@@ -92,13 +92,15 @@ NEXT TASK: T5.16, sources that are streams: Redpanda speaks Kafka's
            promised, so every page is ordered by every column that
            has one; a count is a read of the whole table, so the
            badge is the connector's estimate or nothing. Its client
-           is pinned a release back, because the current one wants
-           Go 1.27 and raising that is the owner's to do on purpose.
+           was pinned a release back because the current one wants
+           Go 1.27; the owner raised Go to 1.27.2 the same day, the
+           client followed to v1.3.0, and the linter CI builds went
+           from 2.6.2 to 2.14.0 because the older one cannot read
+           1.27's standard library.
            The search driver's draft was wrong in four places and
            each was found by something other than reading it.
-           PR #10 carries commits that have not been pushed:
-           ADR-0172's fix for the two red jobs, and these two
-           drivers. Whether Windows is green is not known until it is.
+           PR #10 has all of it, pushed 2026-10-12. Whether the
+           Windows job is green is for its run to say.
            What CI found on the two platforms nobody had ever run is
            in ADR-0169: two real defects, a layout guarantee that was
            only a hope, two Unix assumptions in tests, and Go's

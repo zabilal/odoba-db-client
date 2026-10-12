@@ -855,8 +855,10 @@ func TestAPageOfDocuments(t *testing.T) {
 	if _, err := st.Next(ctx); !errors.Is(err, io.EOF) {
 		t.Errorf("after the last: %v", err)
 	}
-	if st.Close() != nil || st.Close() != nil {
-		t.Error("closing twice is not nothing")
+	for range 2 {
+		if err := st.Close(); err != nil {
+			t.Errorf("closing, and closing again: %v", err)
+		}
 	}
 }
 
@@ -864,16 +866,16 @@ func TestAPageOfDocuments(t *testing.T) {
 // is what it was.
 func TestOnlyDeepPagingIsReworded(t *testing.T) {
 	other := said(400, []byte(`{"error":{"type":"parsing_exception","reason":"bad query"}}`))
-	if got := deepPaging(other, 0, 10); got != other {
+	if got := deepPaging(other, 0, 10); got.Error() != other.Error() {
 		t.Errorf("another refusal became %v", got)
 	}
 	plain := errors.New("Result window is too large")
-	if got := deepPaging(plain, 0, 10); got != plain {
+	if got := deepPaging(plain, 0, 10); got.Error() != plain.Error() {
 		t.Errorf("an error that is not the engine's became %v", got)
 	}
 	deep := said(400, []byte(`{"error":{"type":"search_phase_execution_exception","reason":"all shards failed","caused_by":{"type":"illegal_argument_exception","reason":"Result window is too large, from + size must be less than or equal to: [10000] but was [10010]"}}}`))
 	got := deepPaging(deep, 10000, 10)
-	if got == deep || !errors.Is(got, deep) || !strings.Contains(got.Error(), "documents 10001 to 10010") {
+	if got.Error() == deep.Error() || !errors.Is(got, deep) || !strings.Contains(got.Error(), "documents 10001 to 10010") {
 		t.Errorf("past the window: %v", got)
 	}
 }

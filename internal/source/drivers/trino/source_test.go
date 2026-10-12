@@ -208,10 +208,10 @@ func TestAFailedStatementSaysWhatTheServerSaid(t *testing.T) {
 			t.Errorf("%s was reported as %v", name, got)
 		}
 	}
-	if got := statementError(said(tr.ErrTrino{ErrorName: "USER_CANCELED", Message: "Query was canceled"}), live); got != context.Canceled {
+	if got := statementError(said(tr.ErrTrino{ErrorName: "USER_CANCELED", Message: "Query was canceled"}), live); !errors.Is(got, context.Canceled) || errors.As(got, &se) {
 		t.Errorf("a statement the server says was cancelled: %v", got)
 	}
-	if got := statementError(context.Canceled, nil); got != context.Canceled {
+	if got := statementError(context.Canceled, nil); !errors.Is(got, context.Canceled) || errors.As(got, &se) {
 		t.Errorf("with no context to ask: %v", got)
 	}
 

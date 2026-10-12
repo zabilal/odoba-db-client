@@ -105,7 +105,7 @@ anything that can read your credentials is.
 
 ## Building it
 
-Go 1.26 or later, and a C toolchain, which the graphics layer needs:
+Go 1.27 or later, and a C toolchain, which the graphics layer needs:
 
     go build ./cmd/ikigai        # the application
     go build ./cmd/ikigai-cli    # the command line; no C toolchain, no display
