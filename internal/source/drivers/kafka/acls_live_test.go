@@ -124,6 +124,25 @@ func waitGone(t *testing.T, a source.ACLInspector, of model.ACLFilter, want stri
 // everybody who can reach it may do everything.
 func TestLiveAClusterWithNoAuthorizerKeepsNoPermissions(t *testing.T) {
 	src := producing(t, source.Guard{})
+	if redpanda() {
+		// Redpanda has no such state: it keeps permissions whether or not it
+		// enforces them, so it answers a list — an empty one here — and what
+		// that leaves unsaid is said where the cluster is described
+		// (TestLiveSaysWhatTheClusterIs). That it keeps them is held here.
+		acl := model.ACL{Principal: "User:ikigai_acl_kept", Host: "*", Operation: model.ACLRead,
+			Resource: model.ACLResource{Kind: model.ACLTopic, Name: "ikigai_it_acl"}}
+		a, w := reads(t, src), changes(t, src)
+		t.Cleanup(func() { _ = w.RevokeACL(context.Background(), acl, false) })
+		if err := w.GrantACL(context.Background(), acl, false); err != nil {
+			t.Fatalf("granting on a cluster that enforces nothing: %v", err)
+		}
+		waitHas(t, a, model.ACLFilter{Principal: acl.Principal}, acl.String())
+		if err := w.RevokeACL(context.Background(), acl, false); err != nil {
+			t.Fatalf("revoking it: %v", err)
+		}
+		waitGone(t, a, model.ACLFilter{Principal: acl.Principal}, acl.String())
+		return
+	}
 	_, err := reads(t, src).ACLs(context.Background(), model.ACLFilter{})
 	if err == nil {
 		t.Fatal("a cluster with no authorizer answered a list of permissions")

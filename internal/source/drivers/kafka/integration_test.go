@@ -62,19 +62,34 @@ func TestLiveConnects(t *testing.T) {
 	}
 }
 
+// redpanda reports whether the suite was pointed at Redpanda rather than at
+// Kafka (IKIGAI_KAFKA_IS=redpanda, with IKIGAI_KAFKA_PORT its port). It is the
+// same suite either way: the same driver is what the requirement promises, and
+// the only way to hold that is to ask it everything twice. The few places the
+// two differ ask this.
+func redpanda() bool { return os.Getenv("IKIGAI_KAFKA_IS") == "redpanda" }
+
 func TestLiveSaysWhatTheClusterIs(t *testing.T) {
 	src := live(t, liveConfig())
 	info, err := src.Info(context.Background())
 	if err != nil {
 		t.Fatalf("info: %v", err)
 	}
-	if info.Product != "Kafka" {
-		t.Errorf("the cluster says it is %q", info.Product)
-	}
-	// A version nobody was told: it is read back from which API versions the
-	// broker speaks, so it is a guess, and it still has to look like one.
-	if !strings.Contains(info.Version, "v") {
-		t.Errorf("the version reads %q", info.Version)
+	if redpanda() {
+		// Redpanda says what it is, and is given no Kafka version: the guess
+		// for it is a Kafka of 2017, which it is not.
+		if info.Product != "Redpanda" || info.Version != "" || !strings.Contains(info.Attrs["permissions"], "does not say which") {
+			t.Errorf("the cluster says it is %q, version %q, and of its permissions %q", info.Product, info.Version, info.Attrs["permissions"])
+		}
+	} else {
+		if info.Product != "Kafka" || info.Attrs["permissions"] != "" {
+			t.Errorf("the cluster says it is %q, and of its permissions %q", info.Product, info.Attrs["permissions"])
+		}
+		// A version nobody was told: it is read back from which API versions the
+		// broker speaks, so it is a guess, and it still has to look like one.
+		if !strings.Contains(info.Version, "v") {
+			t.Errorf("the version reads %q", info.Version)
+		}
 	}
 	if info.Latency <= 0 {
 		t.Errorf("a round trip of %v", info.Latency)

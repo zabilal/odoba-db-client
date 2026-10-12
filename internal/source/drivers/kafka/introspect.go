@@ -381,7 +381,22 @@ func (s *kafkaSource) GroupOffsets(ctx context.Context, groupID string) (_ []mod
 	if err := l.Error(); err != nil {
 		return nil, err
 	}
+	if missing(l) {
+		return nil, fmt.Errorf("kafka: this cluster has no consumer group %q", groupID)
+	}
 	return progressOf(l.Lag), nil
+}
+
+// missing reports whether a group that was described without complaint is not
+// there at all.
+//
+// Kafka says so with an error. Redpanda describes a group nobody has heard of
+// as a dead one, with no members and no error, which is the protocol's older
+// answer; and a group that is dead and has committed nothing is a group that
+// does not exist, whoever says it. Answered with no progress it would read as
+// a group that is up to date.
+func missing(l kadm.DescribedGroupLag) bool {
+	return l.State == "Dead" && len(l.Members) == 0 && len(l.Lag) == 0
 }
 
 // progressOf is a group's lag as the model holds it, in topic and partition

@@ -195,6 +195,25 @@ jobs:
             sleep 3
           done
 
+      # Redpanda, which speaks Kafka's protocol and is asked everything the
+      # Kafka driver is asked (T5.16). By hand because it is started with
+      # arguments, which a service container cannot be given, and on the port
+      # it advertises, because a client that bootstraps is then sent there.
+      - name: Start Redpanda
+        run: |
+          docker run -d --name redpanda -p 59192:59192 --memory 1200m \
+            redpandadata/redpanda:v26.2.4 redpanda start \
+            --mode dev-container --smp 1 --memory 700M --reserve-memory 0M --overprovisioned \
+            --kafka-addr PLAINTEXT://0.0.0.0:59192 \
+            --advertise-kafka-addr PLAINTEXT://127.0.0.1:59192
+          for i in $(seq 1 30); do
+            if docker exec redpanda rpk cluster info -X brokers=127.0.0.1:59192 >/dev/null 2>&1; then
+              echo "redpanda is up"
+              break
+            fi
+            sleep 2
+          done
+
       - name: Install Linux graphics dependencies
         run: |
           sudo apt-get update
@@ -231,3 +250,13 @@ jobs:
           IKIGAI_REQUIRE_TRINO: "1"
           IKIGAI_TRINO_PORT: "8085"
         run: go test -tags=conformance -timeout 20m ./internal/source/... ./internal/e2e/
+
+      # The Kafka driver's whole suite again, against Redpanda. The same driver
+      # is what is promised of it, and the few places the two differ are the
+      # ones the suite asks which it is talking to.
+      - name: Run the Kafka suite against Redpanda
+        env:
+          IKIGAI_REQUIRE_KAFKA: "1"
+          IKIGAI_KAFKA_PORT: "59192"
+          IKIGAI_KAFKA_IS: redpanda
+        run: go test -tags=conformance -timeout 10m ./internal/source/drivers/kafka

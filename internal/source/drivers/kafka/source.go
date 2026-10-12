@@ -62,8 +62,10 @@ type Driver struct{}
 
 func (Driver) Describe() source.Descriptor {
 	return source.Descriptor{
-		ID: driverID, Name: "Kafka", Paradigm: model.ParadigmStream, DefaultPort: defaultPort,
-		URLSchemes: []string{"kafka"},
+		// Redpanda in the name, because it is what somebody with a Redpanda
+		// cluster looks for in the list, and this is the driver for it.
+		ID: driverID, Name: "Kafka / Redpanda", Paradigm: model.ParadigmStream, DefaultPort: defaultPort,
+		URLSchemes: []string{"kafka", "redpanda"},
 		Fields: []source.Field{
 			{Key: "host", Label: "Bootstrap server", Kind: source.FieldText, Required: true, Default: "localhost",
 				Help: "Any broker of the cluster. The rest are found from it."},
@@ -421,6 +423,14 @@ func (s *kafkaSource) Info(ctx context.Context) (_ source.ServerInfo, err error)
 	}
 	info := source.ServerInfo{Product: "Kafka", Latency: time.Since(start),
 		Attrs: map[string]string{"brokers": strconv.Itoa(len(md.Brokers))}}
+	if isRedpanda(md.Cluster) {
+		info.Product = "Redpanda"
+		// What a Kafka broker says with an error — that it keeps no
+		// permissions — Redpanda cannot say: it keeps them whether or not it
+		// is enforcing them, and nothing it answers over this protocol says
+		// which. So it is said here, where somebody reads what the cluster is.
+		info.Attrs["permissions"] = "kept whether or not they are enforced; the cluster does not say which"
+	}
 	if md.Cluster != "" {
 		info.Attrs["cluster id"] = md.Cluster
 	}
@@ -429,8 +439,22 @@ func (s *kafkaSource) Info(ctx context.Context) (_ source.ServerInfo, err error)
 		// is a controller of its own; either way it is the one to name.
 		info.Attrs["controller"] = strconv.FormatInt(int64(md.Controller), 10)
 	}
-	info.Version = s.version(ctx)
+	if info.Product == "Kafka" {
+		// Only of Kafka. The version is read back from which API versions a
+		// broker speaks, against the table of which Kafka release spoke
+		// which; another product speaking the protocol is in no row of that
+		// table, and Redpanda comes out as "between v0.11.0 and v1.0". No
+		// version is better than that one.
+		info.Version = s.version(ctx)
+	}
 	return info, nil
+}
+
+// isRedpanda reports whether a cluster is Redpanda, by the one thing it says
+// about itself over Kafka's protocol: its cluster id begins with its name.
+// Everything else it answers as a Kafka broker would, which is the point of it.
+func isRedpanda(clusterID string) bool {
+	return strings.HasPrefix(clusterID, "redpanda.")
 }
 
 // version is the cluster's, as closely as a client can know it. A broker does

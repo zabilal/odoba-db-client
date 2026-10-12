@@ -5,7 +5,7 @@ about what it is doing. One binary, no runtime to install, no browser inside it.
 
 It reads and writes PostgreSQL, MySQL, MariaDB, SQLite, libSQL and Turso,
 SQL Server, Oracle, Firebird, CockroachDB, ClickHouse, DuckDB, MongoDB,
-DynamoDB, Redis and Valkey, Cassandra and ScyllaDB, and Apache Kafka, reads
+DynamoDB, Redis and Valkey, Cassandra and ScyllaDB, Apache Kafka and Redpanda, reads
 Elasticsearch and OpenSearch, and queries whatever is behind Trino — through one
 window, with the same grid, the same editor and the same keyboard.
 
