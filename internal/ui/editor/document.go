@@ -55,6 +55,11 @@ type change struct {
 	caretBefore, anchorBefore Pos
 	caretAfter, anchorAfter   Pos
 	kind                      editKind
+	// group ties together the changes one keystroke made at several carets,
+	// which undo as one step; before and after are every caret on either
+	// side of it. Zero for a change made at one caret. See carets.go.
+	group         int
+	before, after []Range
 }
 
 // Document is the editor's model: the text, the caret and selection, and the
@@ -68,6 +73,10 @@ type Document struct {
 	hl  *Highlighter
 
 	caret, anchor Pos // the selection runs between them; empty when equal
+	// extra are the other carets, where there is more than one (FR-5.15):
+	// each with a selection of its own, none touching another or the first.
+	extra  []Range
+	groups int // numbers the steps made at several carets
 	// goal is the visual column vertical moves aim for, so moving down
 	// through a short line and on does not drift left. -1 when unset.
 	goal int
@@ -146,8 +155,15 @@ func (d *Document) SelectedText() string {
 }
 
 // SetCaret places the caret. With extend the selection grows or shrinks to
-// it; without, any selection is dropped.
+// it; without, any selection is dropped. Either way it is one caret again:
+// placing the caret is what a click does, and a click among several carets
+// leaves the one clicked.
 func (d *Document) SetCaret(p Pos, extend bool) {
+	d.extra = nil
+	d.setCaret(p, extend)
+}
+
+func (d *Document) setCaret(p Pos, extend bool) {
 	d.caret = d.clamp(p)
 	if !extend {
 		d.anchor = d.caret
@@ -158,6 +174,7 @@ func (d *Document) SetCaret(p Pos, extend bool) {
 
 // SelectAll selects the whole document.
 func (d *Document) SelectAll() {
+	d.extra = nil
 	d.anchor = Pos{}
 	d.caret = d.end()
 	d.goal = -1
@@ -167,6 +184,7 @@ func (d *Document) SelectAll() {
 // SelectWord selects what a double-click at p selects: the word there, a run
 // of spaces, or a single punctuation character.
 func (d *Document) SelectWord(p Pos) {
+	d.extra = nil
 	d.anchor, d.caret = d.WordAt(p)
 	d.goal = -1
 	d.sealed = true
@@ -209,23 +227,27 @@ func (d *Document) WordAt(p Pos) (from, to Pos) {
 // an arrow key first collapses a selection to the side it points at, as every
 // macOS text field does.
 func (d *Document) Move(m Motion, extend bool) {
+	d.eachMove(func() { d.move(m, extend) })
+}
+
+func (d *Document) move(m Motion, extend bool) {
 	if from, to, ok := d.Selection(); ok && !extend {
 		switch m {
 		case Left:
-			d.SetCaret(from, false)
+			d.setCaret(from, false)
 			return
 		case Right:
-			d.SetCaret(to, false)
+			d.setCaret(to, false)
 			return
 		}
 	}
 	p := d.caret
 	switch m {
 	case Up:
-		d.MoveLines(-1, extend)
+		d.moveLines(-1, extend)
 		return
 	case Down:
-		d.MoveLines(1, extend)
+		d.moveLines(1, extend)
 		return
 	case Left:
 		p = d.prevRune(p)
@@ -248,12 +270,16 @@ func (d *Document) Move(m Motion, extend bool) {
 	case DocEnd:
 		p = d.end()
 	}
-	d.SetCaret(p, extend)
+	d.setCaret(p, extend)
 }
 
 // MoveLines moves the caret n lines, up when negative, keeping its visual
 // column across short lines. Page Up and Page Down are a page of this.
 func (d *Document) MoveLines(n int, extend bool) {
+	d.eachMove(func() { d.moveLines(n, extend) })
+}
+
+func (d *Document) moveLines(n int, extend bool) {
 	if d.goal < 0 {
 		d.goal = d.Column(d.caret)
 	}
@@ -267,7 +293,7 @@ func (d *Document) MoveLines(n int, extend bool) {
 	default:
 		p = d.PosAtColumn(line, goal)
 	}
-	d.SetCaret(p, extend)
+	d.setCaret(p, extend)
 	d.goal = goal
 }
 
@@ -311,6 +337,10 @@ func (d *Document) advance(col int, r rune) int {
 
 // Insert types or pastes text, replacing the selection.
 func (d *Document) Insert(text string) {
+	d.eachEdit(func(int) { d.insert(text) })
+}
+
+func (d *Document) insert(text string) {
 	text = normalise(text)
 	from, to, sel := d.Selection()
 	kind := editOther
@@ -329,6 +359,10 @@ func (d *Document) Insert(text string) {
 // Newline breaks the line at the caret, carrying the current line's
 // indentation onto the new one.
 func (d *Document) Newline() {
+	d.eachEdit(func(int) { d.newline() })
+}
+
+func (d *Document) newline() {
 	from, to, _ := d.Selection()
 	indent := indentOf(d.buf.Line(from.Line))
 	if from.Col < len(indent) {
@@ -343,6 +377,10 @@ func (d *Document) Newline() {
 // leading spaces it deletes back to the previous indent stop, so undoing a
 // Tab by hand takes one keypress rather than four.
 func (d *Document) Backspace() {
+	d.eachEdit(func(int) { d.backspace() })
+}
+
+func (d *Document) backspace() {
 	if from, to, ok := d.Selection(); ok {
 		d.sealed = true
 		d.replace(from, to, "", editOther)
@@ -366,6 +404,10 @@ func (d *Document) Backspace() {
 
 // Delete deletes the selection, or the character after the caret.
 func (d *Document) Delete() {
+	d.eachEdit(func(int) { d.delete() })
+}
+
+func (d *Document) delete() {
 	if from, to, ok := d.Selection(); ok {
 		d.sealed = true
 		d.replace(from, to, "", editOther)
@@ -379,7 +421,7 @@ func (d *Document) Delete() {
 
 // Cut removes the selection and returns it.
 func (d *Document) Cut() string {
-	text := d.SelectedText()
+	text := d.SelectedTexts()
 	if text != "" {
 		d.Delete()
 	}
@@ -388,6 +430,7 @@ func (d *Document) Cut() string {
 
 // SetText replaces the whole document as one undoable step.
 func (d *Document) SetText(text string) {
+	d.extra = nil
 	d.sealed = true
 	d.replace(Pos{}, d.end(), normalise(text), editOther)
 	d.sealed = true
@@ -396,14 +439,16 @@ func (d *Document) SetText(text string) {
 // Tab indents. Within a line it inserts spaces to the next indent stop; with
 // a selection across lines it indents every line the selection touches.
 func (d *Document) Tab() {
-	if from, to, ok := d.Selection(); ok && from.Line != to.Line {
+	if from, to, ok := d.Selection(); ok && from.Line != to.Line && len(d.extra) == 0 {
 		d.IndentLines()
 		return
 	}
-	from, _, _ := d.Selection()
-	if w := len(d.Indent); w > 0 {
-		d.Insert(strings.Repeat(" ", w-d.Column(from)%w))
-	}
+	d.eachEdit(func(int) {
+		from, _, _ := d.Selection()
+		if w := len(d.Indent); w > 0 {
+			d.insert(strings.Repeat(" ", w-d.Column(from)%w))
+		}
+	})
 }
 
 // IndentLines indents every line the selection touches, or the caret's line,
@@ -540,6 +585,7 @@ func (d *Document) Outdent() {
 // reindent rewrites each line the selection touches, as one undoable step,
 // shifting the caret and selection with their lines' text.
 func (d *Document) reindent(fn func(line string) (string, int)) {
+	d.extra = nil // lines are indented for one selection; see carets.go
 	from, to, _ := d.Selection()
 	first, last := from.Line, to.Line
 	if last > first && to.Col == 0 {
@@ -579,8 +625,19 @@ func (d *Document) Undo() bool {
 	c := d.undo[len(d.undo)-1]
 	d.undo = d.undo[:len(d.undo)-1]
 	d.apply(c.at, c.inserted, c.removed)
-	d.caret, d.anchor = c.caretBefore, c.anchorBefore
+	d.caret, d.anchor, d.extra = c.caretBefore, c.anchorBefore, nil
 	d.redo = append(d.redo, c)
+	// What one keystroke did at several carets is taken back together,
+	// the last of them first, and every caret put back where it was.
+	for c.group != 0 && len(d.undo) > 0 && d.undo[len(d.undo)-1].group == c.group {
+		c = d.undo[len(d.undo)-1]
+		d.undo = d.undo[:len(d.undo)-1]
+		d.apply(c.at, c.inserted, c.removed)
+		d.redo = append(d.redo, c)
+	}
+	if c.group != 0 {
+		d.restore(c.before)
+	}
 	d.goal = -1
 	d.sealed = true
 	return true
@@ -594,8 +651,17 @@ func (d *Document) Redo() bool {
 	c := d.redo[len(d.redo)-1]
 	d.redo = d.redo[:len(d.redo)-1]
 	d.apply(c.at, c.removed, c.inserted)
-	d.caret, d.anchor = c.caretAfter, c.anchorAfter
+	d.caret, d.anchor, d.extra = c.caretAfter, c.anchorAfter, nil
 	d.undo = append(d.undo, c)
+	for c.group != 0 && len(d.redo) > 0 && d.redo[len(d.redo)-1].group == c.group {
+		c = d.redo[len(d.redo)-1]
+		d.redo = d.redo[:len(d.redo)-1]
+		d.apply(c.at, c.removed, c.inserted)
+		d.undo = append(d.undo, c)
+	}
+	if c.group != 0 {
+		d.restore(c.after)
+	}
 	d.goal = -1
 	d.sealed = true
 	return true

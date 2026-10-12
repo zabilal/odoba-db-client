@@ -204,6 +204,9 @@ type surface struct {
 	e       *Editor
 	focused bool
 	shift   bool // Shift held: Fyne sends Shift+arrow as a plain key
+	// block is where a drag that selects a block began, while one is under
+	// way: a drag begun with the block modifier held (FR-5.15).
+	block *editor.Pos
 }
 
 func newSurface(e *Editor) *surface {
@@ -269,6 +272,11 @@ func (s *surface) TypedKey(k *fyne.KeyEvent) {
 		return // the completion popup took it: Up, Down, Return, Tab, Escape
 	}
 	switch k.Name {
+	case fyne.KeyEscape:
+		if d.Multiple() { // back to one caret, where there are several
+			d.Collapse()
+			s.changed()
+		}
 	case fyne.KeyLeft:
 		s.move(editor.Left)
 	case fyne.KeyRight:
@@ -312,18 +320,18 @@ func (s *surface) TypedShortcut(sc fyne.Shortcut) {
 	s.e.comp.dismiss() // ⌘↵ runs the query; it does not accept a candidate
 	switch sc := sc.(type) {
 	case *fyne.ShortcutCopy:
-		if t := d.SelectedText(); t != "" && sc.Clipboard != nil {
+		if t := d.SelectedTexts(); t != "" && sc.Clipboard != nil {
 			sc.Clipboard.SetContent(t)
 		}
 	case *fyne.ShortcutCut:
-		if t := d.SelectedText(); t != "" && sc.Clipboard != nil {
+		if t := d.SelectedTexts(); t != "" && sc.Clipboard != nil {
 			sc.Clipboard.SetContent(t)
 			s.edit(func() { d.Cut() })
 		}
 	case *fyne.ShortcutPaste:
 		if sc.Clipboard != nil {
 			if t := sc.Clipboard.Content(); t != "" {
-				s.edit(func() { d.Insert(t) })
+				s.edit(func() { d.Paste(t) })
 			}
 		}
 	case *fyne.ShortcutSelectAll:
@@ -339,6 +347,16 @@ func (s *surface) TypedShortcut(sc fyne.Shortcut) {
 		}
 	}
 }
+
+// caretModifier is the modifiers that, with ↑ or ↓, put another caret on the
+// line above or below: ⌥⌘ on macOS, Ctrl+Alt elsewhere (FR-5.15).
+func caretModifier() fyne.KeyModifier {
+	return fyne.KeyModifierShortcutDefault | fyne.KeyModifierAlt
+}
+
+// blockModifier is the modifier that, held for a click, adds a caret, and
+// held for a drag, selects a block: ⌥, and Alt elsewhere.
+const blockModifier = fyne.KeyModifierAlt
 
 // wordModifier is the modifier that moves by word: ⌥ on macOS, Ctrl
 // elsewhere.
@@ -375,6 +393,10 @@ func (s *surface) chord(sc *desktop.CustomShortcut) func() {
 		}
 	}
 	switch k := sc.KeyName; {
+	case mod == caretModifier() && !extend && k == fyne.KeyUp:
+		return func() { d.AddCaretLine(-1); s.changed() }
+	case mod == caretModifier() && !extend && k == fyne.KeyDown:
+		return func() { d.AddCaretLine(1); s.changed() }
 	case mod == wordModifier() && k == fyne.KeyLeft:
 		return mv(editor.WordLeft)
 	case mod == wordModifier() && k == fyne.KeyRight:
@@ -413,6 +435,8 @@ func Reserved() []fyne.Shortcut {
 		&desktop.CustomShortcut{KeyName: "]", Modifier: cmd},
 		&desktop.CustomShortcut{KeyName: "[", Modifier: cmd},
 		&desktop.CustomShortcut{KeyName: fyne.KeyBackspace, Modifier: wordModifier()},
+		&desktop.CustomShortcut{KeyName: fyne.KeyUp, Modifier: caretModifier()},
+		&desktop.CustomShortcut{KeyName: fyne.KeyDown, Modifier: caretModifier()},
 	}
 	moves := func(m fyne.KeyModifier, keys ...fyne.KeyName) {
 		for _, k := range keys {
@@ -437,7 +461,17 @@ func (s *surface) MouseDown(ev *desktop.MouseEvent) {
 		return
 	}
 	s.focus()
-	s.e.doc.SetCaret(s.posAt(ev.Position), ev.Modifier&fyne.KeyModifierShift != 0)
+	p := s.posAt(ev.Position)
+	s.block = nil
+	if ev.Modifier&blockModifier != 0 && ev.Modifier&fyne.KeyModifierShift == 0 {
+		// Another caret here; and if this turns out to be a drag, a block
+		// from here.
+		s.block = &p
+		s.e.doc.AddCaret(p)
+		s.changed()
+		return
+	}
+	s.e.doc.SetCaret(p, ev.Modifier&fyne.KeyModifierShift != 0)
 	s.changed()
 }
 
@@ -452,6 +486,11 @@ func (s *surface) DoubleTapped(ev *fyne.PointEvent) {
 }
 
 func (s *surface) Dragged(ev *fyne.DragEvent) {
+	if s.block != nil {
+		s.e.doc.SelectBlock(*s.block, s.posAt(ev.Position))
+		s.changed()
+		return
+	}
 	s.e.doc.SetCaret(s.posAt(ev.Position), true)
 	s.changed()
 }
@@ -553,6 +592,7 @@ type surfaceRenderer struct {
 	brackets [2]*canvas.Rectangle
 	found    []*canvas.Rectangle
 	sel      []*canvas.Rectangle
+	carets   []*canvas.Rectangle // the carets after the first (FR-5.15)
 	texts    []*canvas.Text
 	objects  []fyne.CanvasObject
 
@@ -600,7 +640,7 @@ func (r *surfaceRenderer) draw() {
 	objs := r.objects[:0]
 
 	caret := doc.Caret()
-	from, to, sel := doc.Selection()
+	_, _, sel := doc.Selection()
 	if !sel && caret.Line >= first && caret.Line <= last {
 		r.current.FillColor = pal.AlternateRow
 		r.current.Move(fyne.NewPos(0, at(0, caret.Line).Y))
@@ -608,8 +648,12 @@ func (r *surfaceRenderer) draw() {
 		objs = append(objs, r.current)
 	}
 
-	if sel {
-		n := 0
+	picked := 0
+	for _, each := range doc.Carets() {
+		from, to := each.From(), each.To()
+		if each.Empty() {
+			continue
+		}
 		for l := max(first, from.Line); l <= min(last, to.Line); l++ {
 			c0, c1 := 0, doc.Column(editor.Pos{Line: l, Col: len(buf.Line(l))})+1 // +1: the newline is selected too
 			if l == from.Line {
@@ -618,11 +662,11 @@ func (r *surfaceRenderer) draw() {
 			if l == to.Line {
 				c1 = doc.Column(to)
 			}
-			if n == len(r.sel) {
+			if picked == len(r.sel) {
 				r.sel = append(r.sel, canvas.NewRectangle(color.Transparent))
 			}
-			rect := r.sel[n]
-			n++
+			rect := r.sel[picked]
+			picked++
 			// RangeSelection whether or not focused: the syntax colours are
 			// contrast-checked on it and on nothing grey (ADR-0006).
 			rect.FillColor = pal.RangeSelection
@@ -717,6 +761,24 @@ func (r *surfaceRenderer) draw() {
 		r.caret.Move(at(doc.Column(caret), caret.Line))
 		r.caret.Resize(fyne.NewSize(2, m.lh))
 		objs = append(objs, r.caret)
+	}
+	// The other carets, where there are any, drawn as the first is.
+	if r.s.focused && doc.Multiple() {
+		k := 0
+		for _, each := range doc.Carets() {
+			if each.Caret == caret || each.Caret.Line < first || each.Caret.Line > last {
+				continue
+			}
+			if k == len(r.carets) {
+				r.carets = append(r.carets, canvas.NewRectangle(color.Transparent))
+			}
+			rect := r.carets[k]
+			k++
+			rect.FillColor = pal.Label
+			rect.Move(at(doc.Column(each.Caret), each.Caret.Line))
+			rect.Resize(fyne.NewSize(2, m.lh))
+			objs = append(objs, rect)
+		}
 	}
 	r.objects = objs
 }

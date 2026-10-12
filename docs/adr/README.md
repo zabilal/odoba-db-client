@@ -190,3 +190,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0183](0183-read-again-before-writing.md) | Read again before writing | Accepted |
 | [0184](0184-a-column-shaded-by-size.md) | A column shaded by size | Accepted |
 | [0185](0185-a-line-that-names-a-connection.md) | A line that names a connection | Accepted |
+| [0186](0186-more-than-one-caret.md) | More than one caret | Accepted |
