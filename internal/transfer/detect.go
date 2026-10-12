@@ -61,6 +61,11 @@ func Detect(r io.ReaderAt, size int64, name string) (Options, error) {
 	if bytes.HasPrefix(head, []byte("PK\x03\x04")) || strings.EqualFold(filepath.Ext(name), ".xlsx") {
 		return detectSheet(r, size)
 	}
+	// By its name alone: a DBF file begins with a byte that says which dBase
+	// wrote it, and there is no byte a text file could not begin with.
+	if strings.EqualFold(filepath.Ext(name), ".dbf") {
+		return Options{Format: DBF}, nil
+	}
 	enc := detectEncoding(head)
 	b, err := io.ReadAll(textOf(bytes.NewReader(head), enc))
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {

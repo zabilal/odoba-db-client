@@ -41,7 +41,7 @@ const previewRows = 20
 var importFiles = []string{"csv", "tsv", "txt", "json", "ndjson", "jsonl", "xlsx"}
 
 var (
-	importFormats   = []transfer.Format{transfer.CSV, transfer.TSV, transfer.JSON, transfer.NDJSON, transfer.YAML, transfer.XLSX}
+	importFormats   = []transfer.Format{transfer.CSV, transfer.TSV, transfer.JSON, transfer.NDJSON, transfer.YAML, transfer.XLSX, transfer.DBF}
 	importEncodings = []transfer.Encoding{transfer.UTF8, transfer.UTF16LE, transfer.UTF16BE, transfer.Windows1252}
 	importCommas    = []rune{',', '\t', ';', '|'}
 	commaNames      = []string{"Comma", "Tab", "Semicolon", "Pipe"}

@@ -24,6 +24,7 @@ const (
 	NDJSON        // an object a line
 	XLSX          // an Excel workbook
 	YAML          // a list of mappings, or a stream of them
+	DBF           // a dBase table
 )
 
 func (f Format) String() string {
@@ -40,6 +41,8 @@ func (f Format) String() string {
 		return "Excel"
 	case YAML:
 		return "YAML"
+	case DBF:
+		return "DBF"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -72,6 +75,8 @@ func Open(r io.ReaderAt, size int64, opt Options) (model.RowStream, error) {
 		return openSheet(r, size, opt)
 	case YAML:
 		return openYAML(textOf(io.NewSectionReader(r, 0, size), opt.Encoding))
+	case DBF:
+		return openDBF(r, size, opt)
 	}
 	return nil, fmt.Errorf("transfer: cannot read %v", opt.Format)
 }

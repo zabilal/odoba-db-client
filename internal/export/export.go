@@ -48,11 +48,12 @@ const (
 	HTML
 	XML
 	YAML
+	DBF
 )
 
 // Formats lists every format, in the order a menu offers them.
 func Formats() []Format {
-	return []Format{CSV, TSV, XLSX, JSON, NDJSON, YAML, XML, HTML, Markdown, SQLInsert}
+	return []Format{CSV, TSV, XLSX, JSON, NDJSON, YAML, XML, HTML, Markdown, DBF, SQLInsert}
 }
 
 func (f Format) String() string {
@@ -77,6 +78,8 @@ func (f Format) String() string {
 		return "XML"
 	case YAML:
 		return "YAML"
+	case DBF:
+		return "DBF"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -102,6 +105,8 @@ func (f Format) Extension() string {
 		return "xml"
 	case YAML:
 		return "yaml"
+	case DBF:
+		return "dbf"
 	}
 	return "csv"
 }
@@ -144,6 +149,12 @@ func Copy(ctx context.Context, dst io.Writer, src model.RowStream, opt Options, 
 	if err != nil {
 		return Progress{}, err
 	}
+	finished := false
+	defer func() {
+		if !finished {
+			abandon(w)
+		}
+	}()
 	var p Progress
 	start := time.Now()
 	last := start
@@ -170,6 +181,7 @@ func Copy(ctx context.Context, dst io.Writer, src model.RowStream, opt Options, 
 			}
 		}
 	}
+	finished = true // whatever end says: it lets go of what it holds either way
 	if err := w.end(); err != nil {
 		return p, err
 	}
@@ -193,13 +205,22 @@ func Write(dst io.Writer, cols []model.ColumnDef, rows []model.Row, opt Options)
 	}
 	for _, r := range rows {
 		if err := w.row(r); err != nil {
-			return err
+			return err // a writer that fails lets go of what it holds itself
 		}
 	}
 	if err := w.end(); err != nil {
 		return err
 	}
 	return bw.Flush()
+}
+
+// abandon tells a writer it will not be finished, where it holds something
+// that has to be let go of: a writer that keeps a file of its own while it
+// works must not leave it behind because the rows stopped coming.
+func abandon(w rowWriter) {
+	if a, ok := w.(interface{ abandon() }); ok {
+		a.abandon()
+	}
 }
 
 type rowWriter interface {
@@ -225,6 +246,8 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newXML(w, cols), nil
 	case YAML:
 		return newYAML(w, cols), nil
+	case DBF:
+		return newDBF(w, cols)
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }

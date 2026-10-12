@@ -216,6 +216,7 @@ var readFormats = map[string]transfer.Format{
 	"ndjson": transfer.NDJSON,
 	"xlsx":   transfer.XLSX,
 	"yaml":   transfer.YAML,
+	"dbf":    transfer.DBF,
 }
 
 // dryProblems is how many rows a dry run names. Enough to see the shape of
