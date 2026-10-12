@@ -23,6 +23,7 @@ const (
 	JSON          // an array of objects
 	NDJSON        // an object a line
 	XLSX          // an Excel workbook
+	YAML          // a list of mappings, or a stream of them
 )
 
 func (f Format) String() string {
@@ -37,6 +38,8 @@ func (f Format) String() string {
 		return "NDJSON"
 	case XLSX:
 		return "Excel"
+	case YAML:
+		return "YAML"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -67,6 +70,8 @@ func Open(r io.ReaderAt, size int64, opt Options) (model.RowStream, error) {
 		return openRecords(textOf(io.NewSectionReader(r, 0, size), opt.Encoding), opt.Format == JSON)
 	case XLSX:
 		return openSheet(r, size, opt)
+	case YAML:
+		return openYAML(textOf(io.NewSectionReader(r, 0, size), opt.Encoding))
 	}
 	return nil, fmt.Errorf("transfer: cannot read %v", opt.Format)
 }

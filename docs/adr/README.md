@@ -182,3 +182,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0175](0175-the-same-driver-asked-twice.md) | The same driver, asked twice | Accepted |
 | [0176](0176-a-stream-is-a-log.md) | A stream is a log | Accepted |
 | [0177](0177-a-message-with-no-number.md) | A message with no number | Accepted |
+| [0178](0178-yaml-a-record-at-a-time.md) | YAML, a record at a time | Accepted |

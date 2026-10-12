@@ -32,6 +32,7 @@ var formatNames = map[string]export.Format{
 	"sql":    export.SQLInsert,
 	"html":   export.HTML,
 	"xml":    export.XML,
+	"yaml":   export.YAML,
 }
 
 // formatList is every name, for a flag's help and for a refusal.

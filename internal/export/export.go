@@ -1,5 +1,5 @@
-// Package export writes rows out as CSV, TSV, JSON, NDJSON, Markdown, HTML,
-// XML, SQL INSERT statements or an Excel workbook (FR-10.1). It
+// Package export writes rows out as CSV, TSV, JSON, NDJSON, YAML, Markdown,
+// HTML, XML, SQL INSERT statements or an Excel workbook (FR-10.1, FR-10.10). It
 // streams, so memory stays flat however many rows there are (FR-10.3,
 // NFR-P11).
 //
@@ -47,11 +47,12 @@ const (
 	SQLInsert
 	HTML
 	XML
+	YAML
 )
 
 // Formats lists every format, in the order a menu offers them.
 func Formats() []Format {
-	return []Format{CSV, TSV, XLSX, JSON, NDJSON, XML, HTML, Markdown, SQLInsert}
+	return []Format{CSV, TSV, XLSX, JSON, NDJSON, YAML, XML, HTML, Markdown, SQLInsert}
 }
 
 func (f Format) String() string {
@@ -74,6 +75,8 @@ func (f Format) String() string {
 		return "HTML"
 	case XML:
 		return "XML"
+	case YAML:
+		return "YAML"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -97,6 +100,8 @@ func (f Format) Extension() string {
 		return "html"
 	case XML:
 		return "xml"
+	case YAML:
+		return "yaml"
 	}
 	return "csv"
 }
@@ -218,6 +223,8 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newHTML(w, cols, opt), nil
 	case XML:
 		return newXML(w, cols), nil
+	case YAML:
+		return newYAML(w, cols), nil
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }

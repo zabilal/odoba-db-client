@@ -72,6 +72,12 @@ func Detect(r io.ReaderAt, size int64, name string) (Options, error) {
 			text = text[:i+1]
 		}
 	}
+	// By its name, or by beginning the way only YAML begins. Not by its
+	// first record's dash: a CSV file may begin with one.
+	if ext := strings.ToLower(filepath.Ext(name)); ext == ".yaml" || ext == ".yml" ||
+		strings.HasPrefix(text, "---\n") || strings.HasPrefix(text, "---\r\n") || strings.HasPrefix(text, "%YAML") {
+		return Options{Format: YAML, Encoding: enc}, nil
+	}
 	switch t := strings.TrimLeft(text, " \t\r\n"); {
 	case strings.HasPrefix(t, "["):
 		return Options{Format: JSON, Encoding: enc}, nil
