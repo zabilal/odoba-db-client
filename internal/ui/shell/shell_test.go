@@ -90,7 +90,7 @@ func (pgFake) Open(_ context.Context, cfg source.ConnectionConfig) (source.Sourc
 		wide: cfg.Host == "wide", slowList: cfg.Host == "slowlist",
 		labels: cfg.Host == "labels", noAnalyse: cfg.Host == "noanalyse",
 		noTx: cfg.Host == "notx", txPoisons: cfg.Host == "txpoisons",
-		noStats: cfg.Host == "nostats", guard: cfg.Guard}, nil
+		noStats: cfg.Host == "nostats", guard: cfg.Guard, host: cfg.Host}, nil
 }
 
 func (otherFake) Describe() source.Descriptor {
@@ -109,6 +109,7 @@ func (otherFake) Open(context.Context, source.ConnectionConfig) (source.Source, 
 
 // fakeSource serves one database holding one table of fakeRows rows.
 type fakeSource struct {
+	host      string // which server it is, for a test of more than one
 	uncounted bool
 	unkeyed   bool // its rows cannot be told apart
 	fkeys     bool // its items refer to parts by name

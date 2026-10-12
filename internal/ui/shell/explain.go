@@ -81,10 +81,28 @@ func (s *Shell) explainTarget() (*tab, string, bool) {
 	}
 	doc := q.editor.Document()
 	script := doc.Text()
-	if from, _, sel := doc.Selection(); sel {
-		_ = from
+	at, base := doc.Offset(doc.Caret()), 0
+	from, _, sel := doc.Selection()
+	if sel {
+		at = doc.Offset(from)
+	}
+	if sections := app.Sections(script); app.Across(sections) {
+		// A script that names connections: the plan is asked of the tab's
+		// own, so only a statement that is for the tab's own has one here
+		// (FR-5.17). Another connection's would be planned by the wrong
+		// server, against tables it may not have.
+		in, ok := app.SectionAt(sections, at)
+		if !ok {
+			return nil, "", false
+		}
+		if parts, err := s.partsOf(t, []app.Section{in}); err != nil || parts[0].connID != t.connID {
+			return nil, "", false
+		}
+		script, base = in.Text, in.Offset
+	}
+	if sel {
 		script = doc.SelectedText()
-	} else if stmt, _, ok := q.session.StatementAt(script, doc.Offset(doc.Caret())); ok {
+	} else if stmt, _, ok := q.session.StatementAt(script, max(at-base, 0)); ok {
 		script = stmt
 	}
 	return t, strings.TrimSpace(script), true

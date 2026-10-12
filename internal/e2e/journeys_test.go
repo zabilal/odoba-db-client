@@ -61,6 +61,7 @@ type journey struct {
 // harness is the application over one engine, as a person would have it.
 type harness struct {
 	ws    *app.Workspace
+	conns *app.Connections
 	s     *shell.Shell
 	q     *uithread.Queue
 	w     fyne.Window
@@ -121,7 +122,7 @@ func start(t *testing.T, j journey) *harness {
 	w := s.Window()
 	t.Cleanup(w.Close) // quit as a person does, before the workspace cleanup above
 	w.Resize(fyne.NewSize(1280, 800))
-	return &harness{ws: ws, s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
+	return &harness{ws: ws, conns: conns, s: s, q: q, w: w, tabs: findTabs(w.Content()), db: db, conn: c, files: files}
 }
 
 // walkTo expands the sidebar down to the last of path and selects it, as

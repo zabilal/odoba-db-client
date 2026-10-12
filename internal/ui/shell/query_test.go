@@ -84,7 +84,7 @@ func (fakeSource) SplitScript(script string) []source.ScriptStatement {
 }
 
 func (f fakeSource) Session(context.Context) (source.Session, error) {
-	fs := &fakeSession{guard: f.guard, txFails: f.txPoisons}
+	fs := &fakeSession{guard: f.guard, txFails: f.txPoisons, host: f.host}
 	fakeSessions.Lock()
 	fakeSessions.list = append(fakeSessions.list, fs)
 	fakeSessions.Unlock()
@@ -92,6 +92,7 @@ func (f fakeSource) Session(context.Context) (source.Session, error) {
 }
 
 type fakeSession struct {
+	host   string // the server it is a session on
 	guard  source.Guard
 	closed atomic.Bool
 	named  atomic.Pointer[map[string]any] // the values the last script was run with
@@ -215,6 +216,9 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts sourc
 		defer close(out)
 		for i, st := range stmts {
 			executed.Add(1)
+			ranOn.Lock()
+			ranOn.log = append(ranOn.log, fs.host+": "+strings.TrimSpace(st.Text))
+			ranOn.Unlock()
 			r := source.ScriptResult{Index: i, Offset: st.Offset, Statement: st.Text}
 			f := strings.Fields(strings.TrimSuffix(st.Text, ";"))
 			if at := strings.Index(st.Text, "oops"); at >= 0 {
@@ -254,6 +258,25 @@ func (fs *fakeSession) QueryMulti(ctx context.Context, script string, opts sourc
 		}
 	}()
 	return out, nil
+}
+
+// ranOn records each statement run, with the server it ran on.
+var ranOn struct {
+	sync.Mutex
+	log []string
+}
+
+// ranSince is what has run since a test began watching.
+func ranSince(from int) string {
+	ranOn.Lock()
+	defer ranOn.Unlock()
+	return strings.Join(ranOn.log[from:], " | ")
+}
+
+func ranSoFar() int {
+	ranOn.Lock()
+	defer ranOn.Unlock()
+	return len(ranOn.log)
 }
 
 type slowStream struct {

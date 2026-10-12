@@ -32,6 +32,9 @@ type paramsPanel struct {
 	t      *tab
 	script string
 	base   int
+	// across is the parts of a script that names connections, where that
+	// is what the values are for; the script is then theirs (across.go).
+	across []part
 	names  []string
 	values []*panelEntry
 	nulls  []*widget.Check
@@ -98,6 +101,10 @@ func (p *paramsPanel) runIt() {
 	}
 	named := p.named()
 	p.s.closePanel()
+	if p.across != nil {
+		p.s.executeAcross(p.t, p.across, 0, 0, source.ScriptOptions{Named: named})
+		return
+	}
 	p.s.execute(p.t, p.script, p.base, source.ScriptOptions{Named: named})
 }
 

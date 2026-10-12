@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/store"
+	"github.com/ikigai-db/ikigai-db/internal/ui/editor/view"
 
 	_ "github.com/ikigai-db/ikigai-db/internal/source/drivers/postgres"
 )
@@ -108,3 +110,36 @@ func TestJ5PostgreSQL(t *testing.T) { runJ5(t, postgresJourney(t)) }
 func TestJ7PostgreSQL(t *testing.T) { runJ7(t, postgresJourney(t)) }
 func TestJ4PostgreSQL(t *testing.T) { runJ4(t, postgresJourney(t)) }
 func TestJ6PostgreSQL(t *testing.T) { runJ6(t, postgresJourney(t)) }
+
+// One script, two engines (FR-5.17): a function only SQLite has, then, after
+// a line naming the other connection, one only PostgreSQL has. Each answers
+// only if it was asked of the right server.
+func TestAScriptAcrossSQLiteAndPostgreSQL(t *testing.T) {
+	lite, pg := sqliteJourney(t), postgresJourney(t)
+	h := start(t, lite)
+	other := pg.conn
+	other.Name = "The Postgres"
+	if _, err := h.conns.Create(other, pg.secrets); err != nil {
+		t.Fatal(err)
+	}
+	h.s.OpenQuery(h.conn.ID)
+	ed := find[*view.Editor](h.tabs.Selected().Content)[0]
+	ed.Document().SetText("SELECT count(*) AS n, sqlite_version() AS v FROM " + lite.table + ";\n" +
+		"@\"The Postgres\"\n" +
+		"SELECT count(*) AS n, current_setting('server_version') AS v FROM " + pg.table + ";\n")
+	runWhenReady(t, h.q, h.s, "query.runAll")
+	var said string
+	waitFor(t, h.q, "both servers to answer", func() bool {
+		h.w.Canvas().Capture()
+		said = strings.Join(labelsIn(h.tabs.Selected().Content), "\n")
+		return strings.Contains(said, "Ran 2 statements") || strings.Contains(said, "failed") || strings.Contains(said, "Could not")
+	})
+	for _, want := range []string{"On " + h.conn.Name + ":", "On The Postgres:", "Ran 2 statements"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("the tab does not say %q:\n%s", want, said)
+		}
+	}
+	if strings.Contains(said, "failed") {
+		t.Errorf("a statement was asked of the wrong server:\n%s", said)
+	}
+}

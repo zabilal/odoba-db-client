@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -27,8 +28,14 @@ import (
 // queryTab is what a query tab has beyond any tab (T1.61–T1.64): an editor
 // above its results.
 type queryTab struct {
-	editor   *view.Editor
-	session  *app.QuerySession // nil until connected
+	editor  *view.Editor
+	session *app.QuerySession // nil until connected
+	// others are the sessions made for the parts of a script that are for
+	// other connections, by connection, kept while the tab is open
+	// (across.go). foreign marks the results that came from one.
+	others   map[string]*app.QuerySession
+	othersMu sync.Mutex
+	foreign  map[*app.ResultSet]bool
 	results  *container.AppTabs
 	messages *widget.Label
 	sets     []*app.ResultSet
@@ -282,6 +289,10 @@ func (s *Shell) runIn(t *tab, all bool) {
 	q := t.query
 	doc := q.editor.Document()
 	script, base := doc.Text(), 0
+	if sections := app.Sections(script); app.Across(sections) {
+		s.runAcross(t, all, sections)
+		return
+	}
 	if !all {
 		if from, _, sel := doc.Selection(); sel {
 			script, base = doc.SelectedText(), doc.Offset(from)
@@ -401,10 +412,22 @@ func (s *Shell) runRefused(t *tab, script string, base int, opts source.ScriptOp
 // showResult shows one statement's outcome. base is where the script that
 // ran starts in the editor's text, for pointing at an error (FR-5.10).
 func (s *Shell) showResult(t *tab, r app.StatementResult, base int) {
+	s.showResultOn(t, r, base, part{connID: t.connID})
+}
+
+// showResultOn is showResult for a statement run on the connection a part of
+// the script is for, which may not be the tab's own.
+func (s *Shell) showResultOn(t *tab, r app.StatementResult, base int, on part) {
 	q, n := t.query, r.Index+1
+	if r.Rows != nil && on.connID != t.connID {
+		if q.foreign == nil {
+			q.foreign = map[*app.ResultSet]bool{}
+		}
+		q.foreign[r.Rows] = true
+	}
 	switch {
 	case r.Err != nil:
-		s.crashed(t.connID, r.Err)
+		s.crashed(on.connID, r.Err)
 		msg := fmt.Sprintf("Statement %d failed: %v", n, r.Err)
 		doc := q.editor.Document()
 		if off, ok := r.ErrorOffset(); ok && doc.Revision() == q.runRev {
@@ -453,6 +476,9 @@ func (s *Shell) addResult(t *tab, n int, rs *app.ResultSet, stmt string) {
 	}
 	var foot fyne.CanvasObject = r.count
 	switch {
+	case q.foreign[rs]:
+		// Another connection's rows: shown, and not edited, since the
+		// tab's editing writes through the tab's own connection.
 	case s.editsResult(t, rs, stmt):
 		s.editResult(t, r, g, m, update)
 		foot = container.NewBorder(nil, nil, nil, r.ed.review, r.count)
@@ -491,7 +517,7 @@ func (s *Shell) clearResults(q *queryTab) {
 	}
 	q.results.SelectIndex(0)
 	q.messages.SetText("")
-	q.sets, q.grids, q.res = nil, nil, nil
+	q.sets, q.grids, q.res, q.foreign = nil, nil, nil, nil
 }
 
 func (s *Shell) note(q *queryTab, text string) {

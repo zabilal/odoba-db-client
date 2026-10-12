@@ -1190,6 +1190,7 @@ func (s *Shell) removeTab(it *container.TabItem, keep bool) {
 				if q.session != nil {
 					go func() { _ = q.session.Close() }() // may wait on the network; never on the UI goroutine
 				}
+				go q.closeOthers()
 			}
 			s.open = append(s.open[:i], s.open[i+1:]...)
 			break
@@ -1500,6 +1501,11 @@ func (s *Shell) closeSessions(match func(*tab) bool) {
 	for _, t := range s.open {
 		if q := t.query; q != nil && q.session != nil && match(t) {
 			_ = q.session.Close()
+		}
+		if q := t.query; q != nil {
+			// Whichever connection is closing, a session a script made on
+			// it from another tab goes too; it is made again when asked for.
+			q.closeOthers()
 		}
 	}
 }
