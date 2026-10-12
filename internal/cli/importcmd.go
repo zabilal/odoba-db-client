@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
@@ -33,7 +35,7 @@ func importCommand() command {
 				t       target
 				into    = fs.String("into", "", "the table to write, as a dotted name (main.items)")
 				from    = fs.String("from", "", "the file to read")
-				format  = fs.String("format", "", "csv, tsv, json, ndjson or xlsx; read from the file when absent")
+				format  = fs.String("format", "", readList()+"; read from the file when absent")
 				sheet   = fs.String("sheet", "", "the sheet of a workbook; the first when absent")
 				header  = fs.Bool("header", true, "the file's first row holds the column names")
 				replace = fs.Bool("replace", false, "empty the table first, in the same transaction")
@@ -113,7 +115,7 @@ func importFile(ctx context.Context, e *env, t *target, a importArgs) int {
 	if s := strings.TrimSpace(a.format); s != "" {
 		fmtID, ok := readFormats[strings.ToLower(s)]
 		if !ok {
-			return e.usagef("%q is not a format this reads: csv, tsv, json, ndjson, xlsx", s)
+			return e.usagef("%q is not a format this reads: %s", s, readList())
 		}
 		read.Format = fmtID
 		// The delimiter goes with the format: a file detected as comma-separated
@@ -210,14 +212,18 @@ func unpaired(from []model.ColumnDef, pairs []transfer.Pair) []string {
 // readFormats are the words a command line uses for the formats a file is read
 // as. The same words as --format on the way out, minus the ones only written.
 var readFormats = map[string]transfer.Format{
-	"csv":    transfer.CSV,
-	"tsv":    transfer.TSV,
-	"json":   transfer.JSON,
-	"ndjson": transfer.NDJSON,
-	"xlsx":   transfer.XLSX,
-	"yaml":   transfer.YAML,
-	"dbf":    transfer.DBF,
+	"csv":     transfer.CSV,
+	"tsv":     transfer.TSV,
+	"json":    transfer.JSON,
+	"ndjson":  transfer.NDJSON,
+	"xlsx":    transfer.XLSX,
+	"yaml":    transfer.YAML,
+	"dbf":     transfer.DBF,
+	"parquet": transfer.Parquet,
 }
+
+// readList is every one of those words, in the order of the alphabet.
+func readList() string { return strings.Join(slices.Sorted(maps.Keys(readFormats)), ", ") }
 
 // dryProblems is how many rows a dry run names. Enough to see the shape of
 // what is wrong, few enough that a file where every row is wrong does not

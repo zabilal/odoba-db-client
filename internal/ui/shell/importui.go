@@ -41,7 +41,7 @@ const previewRows = 20
 var importFiles = []string{"csv", "tsv", "txt", "json", "ndjson", "jsonl", "xlsx"}
 
 var (
-	importFormats   = []transfer.Format{transfer.CSV, transfer.TSV, transfer.JSON, transfer.NDJSON, transfer.YAML, transfer.XLSX, transfer.DBF}
+	importFormats   = []transfer.Format{transfer.CSV, transfer.TSV, transfer.JSON, transfer.NDJSON, transfer.YAML, transfer.XLSX, transfer.DBF, transfer.Parquet}
 	importEncodings = []transfer.Encoding{transfer.UTF8, transfer.UTF16LE, transfer.UTF16BE, transfer.Windows1252}
 	importCommas    = []rune{',', '\t', ';', '|'}
 	commaNames      = []string{"Comma", "Tab", "Semicolon", "Pipe"}
@@ -274,11 +274,11 @@ func optionNames[T fmt.Stringer](vals []T) []string {
 }
 
 // enableOptions offers the options a format has: a delimiter and an
-// encoding for text, a sheet and a header for a workbook, and a header for
-// delimited text.
+// encoding for text, a sheet and a header for a workbook, a header for
+// delimited text, and for Parquet, which says all of it itself, none.
 func (p *importPanel) enableOptions() {
 	f := p.opt.Format
-	text, delimited := f != transfer.XLSX, f == transfer.CSV || f == transfer.TSV
+	text, delimited := f != transfer.XLSX && f != transfer.Parquet, f == transfer.CSV || f == transfer.TSV
 	setWidgetEnabled(p.encoding, text)
 	setWidgetEnabled(p.comma, delimited)
 	setWidgetEnabled(p.header, delimited || f == transfer.XLSX)

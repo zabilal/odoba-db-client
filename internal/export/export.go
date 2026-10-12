@@ -1,7 +1,7 @@
 // Package export writes rows out as CSV, TSV, JSON, NDJSON, YAML, Markdown,
-// HTML, XML, SQL INSERT statements or an Excel workbook (FR-10.1, FR-10.10). It
-// streams, so memory stays flat however many rows there are (FR-10.3,
-// NFR-P11).
+// HTML, XML, SQL INSERT statements, an Excel workbook, a DBF table or a Parquet
+// file (FR-10.1, FR-10.10). It streams, so memory stays flat however many rows
+// there are (FR-10.3, NFR-P11).
 //
 // Values are written so that nothing is lost on the way out:
 //
@@ -49,11 +49,12 @@ const (
 	XML
 	YAML
 	DBF
+	Parquet
 )
 
 // Formats lists every format, in the order a menu offers them.
 func Formats() []Format {
-	return []Format{CSV, TSV, XLSX, JSON, NDJSON, YAML, XML, HTML, Markdown, DBF, SQLInsert}
+	return []Format{CSV, TSV, XLSX, JSON, NDJSON, YAML, XML, HTML, Markdown, DBF, Parquet, SQLInsert}
 }
 
 func (f Format) String() string {
@@ -80,6 +81,8 @@ func (f Format) String() string {
 		return "YAML"
 	case DBF:
 		return "DBF"
+	case Parquet:
+		return "Parquet"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -107,6 +110,8 @@ func (f Format) Extension() string {
 		return "yaml"
 	case DBF:
 		return "dbf"
+	case Parquet:
+		return "parquet"
 	}
 	return "csv"
 }
@@ -248,6 +253,8 @@ func newWriter(w *bufio.Writer, cols []model.ColumnDef, opt Options) (rowWriter,
 		return newYAML(w, cols), nil
 	case DBF:
 		return newDBF(w, cols)
+	case Parquet:
+		return newParquet(w, cols)
 	}
 	return nil, fmt.Errorf("export: unknown format %v", opt.Format)
 }

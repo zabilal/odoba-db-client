@@ -61,6 +61,10 @@ func Detect(r io.ReaderAt, size int64, name string) (Options, error) {
 	if bytes.HasPrefix(head, []byte("PK\x03\x04")) || strings.EqualFold(filepath.Ext(name), ".xlsx") {
 		return detectSheet(r, size)
 	}
+	// A Parquet file begins and ends with the same four letters.
+	if bytes.HasPrefix(head, []byte("PAR1")) || strings.EqualFold(filepath.Ext(name), ".parquet") {
+		return Options{Format: Parquet}, nil
+	}
 	// By its name alone: a DBF file begins with a byte that says which dBase
 	// wrote it, and there is no byte a text file could not begin with.
 	if strings.EqualFold(filepath.Ext(name), ".dbf") {

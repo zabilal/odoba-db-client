@@ -18,13 +18,14 @@ import (
 type Format int
 
 const (
-	CSV    Format = iota
-	TSV           // quoted as CSV is
-	JSON          // an array of objects
-	NDJSON        // an object a line
-	XLSX          // an Excel workbook
-	YAML          // a list of mappings, or a stream of them
-	DBF           // a dBase table
+	CSV     Format = iota
+	TSV            // quoted as CSV is
+	JSON           // an array of objects
+	NDJSON         // an object a line
+	XLSX           // an Excel workbook
+	YAML           // a list of mappings, or a stream of them
+	DBF            // a dBase table
+	Parquet        // columns, with their types
 )
 
 func (f Format) String() string {
@@ -43,6 +44,8 @@ func (f Format) String() string {
 		return "YAML"
 	case DBF:
 		return "DBF"
+	case Parquet:
+		return "Parquet"
 	}
 	return fmt.Sprintf("Format(%d)", int(f))
 }
@@ -77,6 +80,8 @@ func Open(r io.ReaderAt, size int64, opt Options) (model.RowStream, error) {
 		return openYAML(textOf(io.NewSectionReader(r, 0, size), opt.Encoding))
 	case DBF:
 		return openDBF(r, size, opt)
+	case Parquet:
+		return openParquet(r, size)
 	}
 	return nil, fmt.Errorf("transfer: cannot read %v", opt.Format)
 }

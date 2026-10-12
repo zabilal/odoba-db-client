@@ -85,12 +85,12 @@ func TestXMLNamesEachFieldAndKeepsEachValue(t *testing.T) {
 }
 
 func TestTheNewFormatsAreNamed(t *testing.T) {
-	for f, want := range map[Format][2]string{SQLInsert: {"SQL INSERT", "sql"}, HTML: {"HTML", "html"}, XML: {"XML", "xml"}, YAML: {"YAML", "yaml"}, DBF: {"DBF", "dbf"}} {
+	for f, want := range map[Format][2]string{SQLInsert: {"SQL INSERT", "sql"}, HTML: {"HTML", "html"}, XML: {"XML", "xml"}, YAML: {"YAML", "yaml"}, DBF: {"DBF", "dbf"}, Parquet: {"Parquet", "parquet"}} {
 		if f.String() != want[0] || f.Extension() != want[1] {
 			t.Errorf("%v: %s %s", f, f.String(), f.Extension())
 		}
 	}
-	if got := fmt.Sprint(Formats()); got != "[CSV TSV Excel JSON NDJSON YAML XML HTML Markdown DBF SQL INSERT]" {
+	if got := fmt.Sprint(Formats()); got != "[CSV TSV Excel JSON NDJSON YAML XML HTML Markdown DBF Parquet SQL INSERT]" {
 		t.Errorf("offered in the order %s", got)
 	}
 }

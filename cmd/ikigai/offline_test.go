@@ -64,14 +64,63 @@ func TestTheseLayersCannotReachTheNetwork(t *testing.T) {
 		t.Fatalf("none of %v was found in internal/cloud, which reaches the network: "+
 			"the rule below would pass whatever the answer", forbidden)
 	}
+	if len(importers(t, modulePath+"cloud", "net/http")) == 0 {
+		t.Fatal("nothing in internal/cloud was found to import net/http, which its files do: " +
+			"the rule below would name nobody whoever it was")
+	}
 	for _, pkg := range netFree {
 		deps := listDeps(t, modulePath+pkg)
 		for _, bad := range forbidden {
-			if slices.Contains(deps, bad) {
-				t.Errorf("%s reaches %s", pkg, bad)
+			if !slices.Contains(deps, bad) {
+				continue
+			}
+			// It is there. Whoever brought it is named, and has to be one
+			// of the few known to carry it without using it.
+			by := importers(t, modulePath+pkg, bad)
+			if len(by) == 0 {
+				t.Errorf("%s reaches %s, through the standard library alone", pkg, bad)
+			}
+			for _, who := range by {
+				if carried[who] != bad {
+					t.Errorf("%s reaches %s, through %s", pkg, bad, who)
+				}
 			}
 		}
 	}
+}
+
+// carried are the packages of other people's that import a way of reaching
+// the network and do not reach it, each with the one thing it imports. A
+// package here was read before it was written here.
+//
+// The Brotli codec is one file-format library's compression (Parquet,
+// ADR-0180; ClickHouse's driver links it too). Its http.go offers a server a
+// writer that compresses a response it is already writing: it takes an
+// http.ResponseWriter and an *http.Request, sets a header and returns a
+// writer. Nothing in it dials, listens or holds a client, and nothing here
+// calls it. The import graph cannot tell that from a package that does, so it
+// is said here, for this package and this import and no other.
+var carried = map[string]string{
+	"github.com/andybalholm/brotli": "net/http",
+}
+
+// importers are the packages outside the standard library, among everything a
+// package of ours is built from, that import bad themselves.
+func importers(t *testing.T, pkg, bad string) []string {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-deps", "-f",
+		`{{if not .Standard}}{{.ImportPath}} {{join .Imports ","}}{{end}}`, pkg).Output()
+	if err != nil {
+		t.Fatalf("go list -deps %s: %v", pkg, err)
+	}
+	var who []string
+	for _, line := range strings.Split(string(out), "\n") {
+		path, imports, _ := strings.Cut(line, " ")
+		if slices.Contains(strings.Split(imports, ","), bad) {
+			who = append(who, path)
+		}
+	}
+	return who
 }
 
 func reachesAny(deps, any []string) bool {

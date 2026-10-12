@@ -127,12 +127,12 @@ func TestInsertStatementsNeedATable(t *testing.T) {
 // anything is opened: the status is the one that means "the arguments".
 func TestAFormatThisCannotWriteIsRefused(t *testing.T) {
 	path := db(t)
-	status, _, errOut := run(t, append([]string{"query", "--format", "parquet"},
+	status, _, errOut := run(t, append([]string{"query", "--format", "avro"},
 		append(on(path), "--sql", "SELECT 1")...)...)
 	if status != Usage {
 		t.Errorf("status %d", status)
 	}
-	if !strings.Contains(errOut, "parquet") || !strings.Contains(errOut, "csv") {
+	if !strings.Contains(errOut, "avro") || !strings.Contains(errOut, "csv") {
 		t.Errorf("it said %q, which does not say what is wrong or what is taken", errOut)
 	}
 	status, _, errOut = run(t, append([]string{"query", "--format", "xlsx"},
@@ -599,9 +599,33 @@ func TestTheFormatFlagOverridesWhatWasDetected(t *testing.T) {
 	}
 	// And a format nobody reads is refused rather than detected around.
 	status, _, errOut = run(t, append([]string{"import", "--into", "main.items", "--from", file,
-		"--format", "parquet"}, on(path)...)...)
-	if status != Usage || !strings.Contains(errOut, "parquet") {
+		"--format", "avro"}, on(path)...)...)
+	if status != Usage || !strings.Contains(errOut, `"avro" is not a format this reads: csv, dbf, json, ndjson, parquet, tsv, xlsx, yaml`) {
 		t.Errorf("status %d; it said %s", status, errOut)
+	}
+}
+
+// A table goes out as Parquet and comes back in from it, by the same words on
+// the way out and the way in, and the file says itself what it is.
+func TestParquetGoesOutAndComesBackIn(t *testing.T) {
+	path := db(t, `CREATE TABLE copies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)`)
+	file := filepath.Join(t.TempDir(), "items.parquet")
+	status, _, errOut := run(t, append([]string{"export", "--table", "main.items", "--format", "parquet", "--out", file},
+		on(path)...)...)
+	if status != OK {
+		t.Fatalf("out: status %d; it said %s", status, errOut)
+	}
+	if head, err := os.ReadFile(file); err != nil || !bytes.HasPrefix(head, []byte("PAR1")) {
+		t.Fatalf("what was written is not a Parquet file: %v", err)
+	}
+	status, _, errOut = run(t, append([]string{"import", "--into", "main.copies", "--from", file}, on(path)...)...)
+	if status != OK {
+		t.Fatalf("in: status %d; it said %s", status, errOut)
+	}
+	status, out, errOut := run(t, append([]string{"query", "--sql", "SELECT id, name, price FROM copies ORDER BY id", "--header=false"},
+		on(path)...)...)
+	if status != OK || out != "1,one,1.5\n2,two,2.5\n3,three,3\n" {
+		t.Errorf("status %d; the copies are %q; it said %s", status, out, errOut)
 	}
 }
 

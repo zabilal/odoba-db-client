@@ -23,17 +23,18 @@ import (
 // formatNames are the words a command line uses for each format. Short and
 // lower-case, as a flag value is; the window's own names are for reading.
 var formatNames = map[string]export.Format{
-	"csv":    export.CSV,
-	"tsv":    export.TSV,
-	"json":   export.JSON,
-	"ndjson": export.NDJSON,
-	"md":     export.Markdown,
-	"xlsx":   export.XLSX,
-	"sql":    export.SQLInsert,
-	"html":   export.HTML,
-	"xml":    export.XML,
-	"yaml":   export.YAML,
-	"dbf":    export.DBF,
+	"csv":     export.CSV,
+	"tsv":     export.TSV,
+	"json":    export.JSON,
+	"ndjson":  export.NDJSON,
+	"md":      export.Markdown,
+	"xlsx":    export.XLSX,
+	"sql":     export.SQLInsert,
+	"html":    export.HTML,
+	"xml":     export.XML,
+	"yaml":    export.YAML,
+	"dbf":     export.DBF,
+	"parquet": export.Parquet,
 }
 
 // formatList is every name, for a flag's help and for a refusal.

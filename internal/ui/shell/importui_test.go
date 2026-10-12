@@ -152,6 +152,18 @@ func TestAnImportsMappingAndOptionsAreChanged(t *testing.T) {
 	if !p.comma.Disabled() || p.sheet.Disabled() {
 		t.Error("a workbook has a sheet, not a delimiter")
 	}
+	// A Parquet file says its own columns, types and text: there is nothing
+	// about how to read it for a person to set.
+	p.format.SetSelected("Parquet")
+	pump(t, fx.q, func() bool { return strings.HasPrefix(it.footer.Text, "Could not read the file as Parquet") })
+	if !p.encoding.Disabled() || !p.comma.Disabled() || !p.header.Disabled() || !p.sheet.Disabled() {
+		t.Error("Parquet has no options")
+	}
+	p.format.SetSelected("DBF")
+	pump(t, fx.q, func() bool { return strings.HasPrefix(it.footer.Text, "Could not read the file as DBF") })
+	if p.encoding.Disabled() {
+		t.Error("a DBF table's text is in an encoding, which may need saying")
+	}
 }
 
 func TestClosingAnImportClosesItsFile(t *testing.T) {
