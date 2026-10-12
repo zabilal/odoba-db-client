@@ -48,10 +48,18 @@ func TestOnlyTheFirstWindowKeepsTheSession(t *testing.T) {
 	pump(t, fx.q, func() bool { return tb.browse != nil })
 	fx.q.Run(fx.s.saveSession)
 
-	before, ok, err := fx.hist.Session(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("the first window kept no session: %v", err)
-	}
+	// Asked for on the UI's queue and written off it, so it is waited for:
+	// read at once, it is there only if the machine was quick.
+	var before localdb.Session
+	pump(t, fx.q, func() bool {
+		var ok bool
+		var err error
+		before, ok, err = fx.hist.Session(context.Background())
+		if err != nil {
+			t.Fatalf("the first window's session could not be read: %v", err)
+		}
+		return ok
+	})
 
 	second := fx.s.NewWindow()
 	t.Cleanup(second.shutdown)

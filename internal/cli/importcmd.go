@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ikigai-db/ikigai-db/internal/app"
+	"github.com/ikigai-db/ikigai-db/internal/job"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
@@ -44,7 +45,12 @@ func importCommand() command {
 				most    = fs.Int("max-errors", 0, "with --on-error collect, how many rows may be left out")
 				batch   = fs.Int("batch", 0, "rows a transaction; the source's own when 0")
 				dry     = fs.Bool("dry-run", false, "read the file and say what would happen, writing nothing")
+				enc     = fs.String("encoding", "", encodingList()+"; read from the file when absent")
+				comma   = fs.String("delimiter", "", "what parts a line of text: comma, tab, semicolon, pipe, or one character; read from the file when absent")
+				pairs   listFlag
 			)
+			fs.Var(&pairs, "map", "a file column and the table column it fills, as \"file column=table column\"; "+
+				"said once for each, and then no column is paired by its name")
 			t.flags(fs)
 			fs.Usage = func() {
 				_, _ = fmt.Fprint(fs.Output(), `ikigai import — read a file into a table
@@ -55,8 +61,9 @@ func importCommand() command {
 
 The file's columns are paired with the table's by name, telling no difference
 between cases, spaces, underscores and hyphens. A file column with no match is
-left out and is named here. Replacing a table's rows, and writing to a
-production connection, both need --confirm.
+left out and is named here. With --map the pairs are the ones said and no
+others. Replacing a table's rows, and writing to a production connection, both
+need --confirm.
 
 Flags:
 `)
@@ -79,6 +86,7 @@ Flags:
 				return importFile(ctx, e, &t, importArgs{
 					into: *into, from: *from, format: *format, sheet: *sheet,
 					header: *header, dry: *dry, opt: opt,
+					encoding: *enc, delimiter: *comma, pairs: pairs,
 				})
 			}
 		},
@@ -90,6 +98,8 @@ type importArgs struct {
 	into, from, format, sheet string
 	header, dry               bool
 	opt                       transfer.LoadOptions
+	encoding, delimiter       string
+	pairs                     []string // "file column=table column", where they were said
 }
 
 func importFile(ctx context.Context, e *env, t *target, a importArgs) int {
@@ -124,6 +134,20 @@ func importFile(ctx context.Context, e *env, t *target, a importArgs) int {
 		// the format's own (transfer.Options).
 		read.Comma = 0
 	}
+	if s := strings.TrimSpace(a.encoding); s != "" {
+		enc, ok := encodings[strings.ToLower(s)]
+		if !ok {
+			return e.usagef("%q is not an encoding this reads: %s", s, encodingList())
+		}
+		read.Encoding = enc
+	}
+	if a.delimiter != "" {
+		comma, err := delimiterOf(a.delimiter)
+		if err != nil {
+			return e.usagef("%v", err)
+		}
+		read.Comma = comma
+	}
 	read.Header = a.header
 	if s := strings.TrimSpace(a.sheet); s != "" {
 		read.Sheet = s
@@ -147,6 +171,12 @@ func importFile(ctx context.Context, e *env, t *target, a importArgs) int {
 	defer rs.Close()
 
 	pairs := transfer.Suggest(rs.Columns(), b.Columns())
+	if len(a.pairs) > 0 {
+		// Said, so not guessed at: the pairs are these and no others.
+		if pairs, err = pairsSaid(a.pairs, rs.Columns(), b.Columns()); err != nil {
+			return e.usagef("%v", err)
+		}
+	}
 	if len(pairs) == 0 {
 		return e.failf("none of the file's columns matches a column of %s", refName(ref))
 	}
@@ -209,17 +239,75 @@ func unpaired(from []model.ColumnDef, pairs []transfer.Pair) []string {
 	return out
 }
 
-// readFormats are the words a command line uses for the formats a file is read
-// as. The same words as --format on the way out, minus the ones only written.
-var readFormats = map[string]transfer.Format{
-	"csv":     transfer.CSV,
-	"tsv":     transfer.TSV,
-	"json":    transfer.JSON,
-	"ndjson":  transfer.NDJSON,
-	"xlsx":    transfer.XLSX,
-	"yaml":    transfer.YAML,
-	"dbf":     transfer.DBF,
-	"parquet": transfer.Parquet,
+// readFormats, encodings and delimiters are the words a command line uses for
+// the formats a file is read as, how its text is written and what parts its
+// lines: the same words a job is written in, and kept with it.
+var readFormats, encodings, delimiters = job.ReadFormats, job.Encodings, job.Delimiters
+
+func encodingList() string { return strings.Join(slices.Sorted(maps.Keys(encodings)), ", ") }
+
+// delimiterOf is the character a --delimiter names: by its name, or itself.
+func delimiterOf(s string) (rune, error) {
+	if r, ok := delimiters[strings.ToLower(strings.TrimSpace(s))]; ok {
+		return r, nil
+	}
+	if r := []rune(s); len(r) == 1 && r[0] != '\n' && r[0] != '\r' && r[0] != '"' {
+		return r[0], nil
+	}
+	return 0, fmt.Errorf("%q is not a delimiter: say comma, tab, semicolon or pipe, or the one character it is", s)
+}
+
+// listFlag is a flag that may be said more than once, each time adding one.
+type listFlag []string
+
+func (l *listFlag) String() string     { return strings.Join(*l, ", ") }
+func (l *listFlag) Set(s string) error { *l = append(*l, s); return nil }
+func (l *listFlag) Get() any           { return []string(*l) }
+
+// pairsSaid is the pairs a command line gave, each "file column=table
+// column", checked against the columns there are: a name that is neither's is
+// a mistake to hear about before a row is read, and a table column filled
+// twice is one of two mistakes nobody can choose between.
+func pairsSaid(said []string, from []model.ColumnDef, to []model.ColumnDef) ([]transfer.Pair, error) {
+	at := map[string]int{} // a file's columns are named apart as they are read
+	for i, c := range from {
+		at[c.Name] = i
+	}
+	known := map[string]bool{}
+	for _, c := range to {
+		known[c.Name] = true
+	}
+	var pairs []transfer.Pair
+	filled := map[string]bool{}
+	for _, s := range said {
+		// The last "=": a file's column may have one in its name, and a
+		// table's cannot be said with one any other way either.
+		cut := strings.LastIndex(s, "=")
+		if cut < 0 {
+			return nil, fmt.Errorf("--map %q: a pair is \"file column=table column\"", s)
+		}
+		file, table := strings.TrimSpace(s[:cut]), strings.TrimSpace(s[cut+1:])
+		i, ok := at[file]
+		switch {
+		case !ok:
+			return nil, fmt.Errorf("--map %q: the file has no column called %q; it has %s", s, file, columnNames(from))
+		case !known[table]:
+			return nil, fmt.Errorf("--map %q: the table has no column called %q; it has %s", s, table, columnNames(to))
+		case filled[table]:
+			return nil, fmt.Errorf("--map %q: %s is filled twice", s, table)
+		}
+		filled[table] = true
+		pairs = append(pairs, transfer.Pair{From: i, To: table})
+	}
+	return pairs, nil
+}
+
+func columnNames(cols []model.ColumnDef) string {
+	names := make([]string, len(cols))
+	for i, c := range cols {
+		names[i] = c.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // readList is every one of those words, in the order of the alphabet.

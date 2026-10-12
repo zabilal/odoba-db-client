@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ikigai-db/ikigai-db/internal/export"
+	"github.com/ikigai-db/ikigai-db/internal/job"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
 	"github.com/ikigai-db/ikigai-db/internal/transfer"
@@ -112,6 +113,7 @@ type importPanel struct {
 	// and how many rows the file has, as the last dry run counted them, or
 	// -1.
 	load      *widget.Button
+	save      *widget.Button // keeps the import as a job, and imports nothing
 	mode      *widget.RadioGroup
 	importing *task
 	known     int64
@@ -226,6 +228,7 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	options := widget.NewForm(widget.NewFormItem("Format", p.format), widget.NewFormItem("Encoding", p.encoding),
 		widget.NewFormItem("Delimiter", p.comma), widget.NewFormItem("", p.header), widget.NewFormItem("Sheet", p.sheet))
 	p.dry = widget.NewButton("Dry Run", p.dryRun)
+	p.save = widget.NewButton("Save as Job…", p.saveJob)
 	p.load = widget.NewButton("Import", p.startImport)
 	p.load.Importance = widget.HighImportance
 	modes := []string{modeAdd, modeReplace}
@@ -254,7 +257,7 @@ func (s *Shell) openImport(into *tab, f *os.File, size int64, opt transfer.Optio
 	split.Offset = 0.45
 	writing := widget.NewForm(widget.NewFormItem("Rows a transaction", p.batch),
 		widget.NewFormItem("If a row would not go in", p.policy), widget.NewFormItem("The most rows left out", p.most))
-	actions := container.NewHBox(p.mode, layout.NewSpacer(), p.dry, p.load)
+	actions := container.NewHBox(p.mode, layout.NewSpacer(), p.save, p.dry, p.load)
 	t.body.Objects = []fyne.CanvasObject{container.NewBorder(options, container.NewVBox(writing, actions), nil, nil, split)}
 	t.item = container.NewTabItem("Import "+filepath.Base(f.Name())+" into "+into.item.Text,
 		container.NewBorder(nil, t.footer, nil, nil, t.body))
@@ -509,6 +512,7 @@ func (p *importPanel) buttons() {
 	idle := p.running == nil && p.importing == nil
 	setWidgetEnabled(p.dry, idle)
 	setWidgetEnabled(p.load, idle)
+	setWidgetEnabled(p.save, idle)
 	setWidgetEnabled(p.mode, idle)
 	setWidgetEnabled(p.batch, idle)
 	setWidgetEnabled(p.policy, idle)
@@ -654,18 +658,8 @@ func (p *importPanel) startImport() {
 		return
 	}
 	s, into := p.s, p.into
-	opt := transfer.LoadOptions{Replace: p.mode.Selected == modeReplace}
-	if p.mode.Selected == modeUpsert {
-		opt.Keys = into.table.PrimaryKey.Columns
-		for _, k := range opt.Keys {
-			if from, ok := p.pairs[k]; !ok || from < 0 {
-				p.t.footer.SetText(k + " is the table's key: pick the file column that fills it, to update rows by it.")
-				return
-			}
-		}
-	}
-	if err := p.writing(&opt); err != nil {
-		p.t.footer.SetText(err.Error())
+	opt, ok := p.loadOptions()
+	if !ok {
 		return
 	}
 	replace := opt.Replace
@@ -699,6 +693,74 @@ func (p *importPanel) startImport() {
 	d.SetDismissText("Cancel")
 	d.SetConfirmImportance(widget.DangerImportance)
 	d.Show()
+}
+
+// loadOptions is how the rows are to be written, as the panel says: or not
+// ok, with why in the footer, where what it says cannot be done.
+func (p *importPanel) loadOptions() (transfer.LoadOptions, bool) {
+	opt := transfer.LoadOptions{Replace: p.mode.Selected == modeReplace}
+	if p.mode.Selected == modeUpsert {
+		opt.Keys = p.into.table.PrimaryKey.Columns
+		for _, k := range opt.Keys {
+			if from, ok := p.pairs[k]; !ok || from < 0 {
+				p.t.footer.SetText(k + " is the table's key: pick the file column that fills it, to update rows by it.")
+				return opt, false
+			}
+		}
+	}
+	if err := p.writing(&opt); err != nil {
+		p.t.footer.SetText(err.Error())
+		return opt, false
+	}
+	return opt, true
+}
+
+// saveJob keeps the import as it stands as a job: a file the command line
+// runs again (FR-10.11, ADR-0181). Everything the panel was told — how the
+// file is read, which of its columns fills which of the table's, how the rows
+// are written — is written down, so the job does what is on show here and
+// detects nothing afresh. Nothing is imported by saving.
+func (p *importPanel) saveJob() {
+	pairs, _ := p.pairList()
+	if len(pairs) == 0 || p.refused(pairs) {
+		return
+	}
+	opt, ok := p.loadOptions()
+	if !ok {
+		return
+	}
+	s, into := p.s, p.into
+	c, _ := s.d.Conns.Get(into.connID)
+	names := make([]string, len(p.from))
+	for i, col := range p.from {
+		names[i] = col.Name
+	}
+	flags, err := job.Import{Connection: c.Name, Into: into.ref.Path, From: p.f.Name(), Read: p.opt,
+		Pairs: pairs, Columns: names, Load: opt}.Flags()
+	if err != nil {
+		s.showError(formError("This import cannot be saved as a job: " + err.Error()))
+		return
+	}
+	s.d.Files.Save(s.win, filedlg.Options{
+		Message: "Save the import into “" + into.item.Text + "” as a job", Name: "import-" + fileName(into.item.Text) + ".json",
+		Extensions: []string{"json"}, Kind: "job", Accept: "Save",
+	}, func(path string, err error) { p.saveJobTo(path, flags, err) })
+}
+
+// saveJobTo writes the job where the save dialog said.
+func (p *importPanel) saveJobTo(path string, flags map[string]any, err error) {
+	switch {
+	case err != nil:
+		p.s.showError(err)
+		return
+	case path == "":
+		return // cancelled
+	}
+	if err := job.Write(path, "import", flags); err != nil {
+		p.s.showError(formError("The job could not be saved: " + err.Error()))
+		return
+	}
+	p.t.footer.SetText("Saved as a job, and nothing was imported. Run it with: ikigai run " + path)
 }
 
 // runImport writes the rows as a task in the task centre, reading the file

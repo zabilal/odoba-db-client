@@ -2,7 +2,7 @@
 
 **Status:** Accepted · **Date:** 2026-10-12
 **Tasks:** T5.18 · **Requirements:** FR-10.11, FR-16.1
-**Packages:** `internal/cli`
+**Packages:** `internal/job`, `internal/cli`, `internal/ui/shell`
 
 ## Context
 
@@ -54,18 +54,46 @@ flags. The question is what a saved one is.
    know and a command that is not an export or an import are each refused by
    name before anything is opened, with the status that means "the arguments".
 
+8. **What the import window can be told, the command can be told.** A job
+   saved from the window has to do what the window did, and the window is told
+   three things no flag said: how a text file's characters are written, what
+   parts its lines, and which of its columns fills which of the table's. So
+   `import` gained `--encoding`, `--delimiter` (by name — comma, tab,
+   semicolon, pipe — or as the one character it is) and `--map "file
+   column=table column"`, said once for each pair. With `--map` the pairs are
+   the ones said and no others: a name that is neither the file's nor the
+   table's, and a table column filled twice, are refused before a row is read.
+   A flag said more than once is a list in a job.
+
+9. **The import window saves what is on show.** *Save as Job…* beside *Dry
+   Run* and *Import* writes the import as it stands — the connection by its
+   name, the table, the file, the format with its encoding, delimiter, header
+   and sheet, every pairing, the mode, the rows a transaction and what a row
+   that would not go in does. Everything is said and nothing is left to be
+   detected again, so that a file that has changed since is read the way this
+   one was. Saving imports nothing, and says so, with the command that runs
+   it.
+
+10. **The words are in one place.** The file, what is never in it, and the
+    words for formats, encodings and delimiters are `internal/job`'s, which
+    the command line and the window both use. The window does not spell a
+    flag: it describes an import and is handed the flags, and a test holds
+    each of them against the command's own.
+
 ## What is not done
 
-- **Saving a job from the window.** The window's export is of what a tab
-  shows — a filter built in its own panel, a sort, a selection, a topic's
-  decoded records — and its import pairs columns by hand and can be told an
-  encoding and a delimiter. None of those is a flag, so a job saved there
-  would not do what the window did. It needs those to be things the command
-  line can be told first. T5.18 stays open for it.
+- **Saving an export from the window.** The window's export is of what a tab
+  shows: filters built in its own panel, each a column, a comparison and a
+  value; a sort; a choice of columns; a selection; a topic's decoded records;
+  or one result of a script of several. `export` can be told a table, a
+  condition as text and a limit. Until it can be told the rest, a job saved
+  there would not write what the window wrote. T5.18 stays open for it.
+- A table whose name has a dot in it, and a table column with an equals sign
+  in its name, cannot be said in a job, and saving says so.
 - A list of jobs kept by the application. A job is a file wherever somebody
   put it.
 
 ## Consequences
 
-- No dependency, and no change to the two commands: their flags are read, not
+- No dependency. The export command is unchanged: its flags are read, not
   restated.

@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ikigai-db/ikigai-db/internal/job"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 )
 
@@ -149,9 +150,9 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 	fs := flag.NewFlagSet("ikigai "+cmd.name, flag.ContinueOnError)
 	fs.SetOutput(err)
 	run := cmd.setup(fs)
-	var job *string
-	if jobCommands[cmd.name] {
-		job = fs.String(saveJobFlag, "", "write this command to a file as a job, to run with \"ikigai run\", instead of running it")
+	var saveTo *string
+	if job.Commands[cmd.name] {
+		saveTo = fs.String(job.SaveFlag, "", "write this command to a file as a job, to run with \"ikigai run\", instead of running it")
 	}
 	if perr := fs.Parse(args[1:]); perr != nil {
 		if errors.Is(perr, flag.ErrHelp) {
@@ -159,8 +160,8 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 		}
 		return Usage
 	}
-	if job != nil && strings.TrimSpace(*job) != "" {
-		return saveJob(e, cmd.name, fs, *job)
+	if saveTo != nil && strings.TrimSpace(*saveTo) != "" {
+		return saveJob(e, cmd.name, fs, *saveTo)
 	}
 	return run(ctx, e, fs)
 }

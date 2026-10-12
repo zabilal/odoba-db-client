@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -240,8 +241,8 @@ func TestADryRunReadsEveryRowAndListsWhatWouldNotGoIn(t *testing.T) {
 		t.Errorf("the first rows are shown until a dry run: %q", p.summary.Text)
 	}
 	test.Tap(p.dry)
-	if !p.dry.Disabled() {
-		t.Error("one dry run at a time")
+	if !p.dry.Disabled() || !p.save.Disabled() {
+		t.Error("one dry run at a time, and no job saved of an import in the middle of one")
 	}
 	if p.startImport(); !p.load.Disabled() || len(fx.s.runningTasks(nil)) != 1 {
 		t.Error("no import while a dry run runs")
@@ -689,4 +690,110 @@ func TestAMostThatIsNoNumberIsSaidWhereItIsTyped(t *testing.T) {
 	if k := lastTaskEnds(t, fx); k.state != taskDone || loadsSoFar()[len(loadsSoFar())-1].opt.BatchSize != 20 {
 		t.Errorf("%v %q", k.state, k.status)
 	}
+}
+
+// An import is kept as a job: a file the command line runs again, saying
+// everything the panel was told, and importing nothing by being saved
+// (FR-10.11, ADR-0181).
+func TestAnImportIsSavedAsAJob(t *testing.T) {
+	fx, _ := itemsDescribed(t)
+	it, p := importing(t, fx, "name;id\nfirst;1\nsecond;2\n")
+	p.comma.SetSelected("Semicolon")
+	pump(t, fx.q, func() bool { return len(p.from) == 2 })
+	p.mode.SetSelected(modeUpsert)
+	p.batch.SetText("250")
+	p.policy.SetSelected(policyCollect)
+	p.most.SetText("7")
+	before := len(fx.s.tasks)
+	if !onShow(it.body, p.save) {
+		t.Fatal("Save as Job is offered beside Dry Run and Import")
+	}
+	test.Tap(p.save)
+	if n := len(fx.files.saves); n == 0 || !slices.Equal(fx.files.saves[n-1].Extensions, []string{"json"}) ||
+		fx.files.saves[n-1].Name != "import-items.json" {
+		t.Fatalf("Save as Job asks where to keep a JSON file: %+v", fx.files.saves)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "job.json")
+	fx.files.answer(path, nil)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from, _ := filepath.Rel(dir, p.f.Name())
+	for _, want := range []string{
+		`"ikigai_job": 1`, `"connection": "db1"`, `"command": "import"`, `"into": "main.items"`, `"from": "` + filepath.ToSlash(from) + `"`,
+		`"format": "csv"`, `"delimiter": "semicolon"`, `"encoding": "utf-8"`, `"header": true`,
+		"\"map\": [\n      \"id=id\",\n      \"name=name\"\n    ]", `"keys": "id"`, `"batch": 250`, `"on-error": "collect"`, `"max-errors": 7`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("the job does not say %s", want)
+		}
+	}
+	for _, never := range []string{"confirm", "url", "replace", "sheet", "password"} {
+		if strings.Contains(string(raw), `"`+never+`"`) {
+			t.Errorf("the job says %s", never)
+		}
+	}
+	if len(fx.s.tasks) != before || !strings.Contains(it.footer.Text, "nothing was imported") || !strings.Contains(it.footer.Text, "ikigai run "+path) {
+		t.Errorf("saving imports nothing, and says how to run it: %d tasks, %q", len(fx.s.tasks), it.footer.Text)
+	}
+	// Cancelled, nothing is written; and a dialog that failed says so.
+	it.footer.SetText("")
+	test.Tap(p.save)
+	fx.files.answer("", nil)
+	if it.footer.Text != "" || fx.s.errors.shown() {
+		t.Errorf("a save that was cancelled said %q, or an error", it.footer.Text)
+	}
+	test.Tap(p.save)
+	fx.files.answer("", errors.New("no dialog"))
+	if !fx.s.errors.shown() || !strings.Contains(fx.s.errors.message.Text, "no dialog") {
+		t.Error("a dialog that failed is said")
+	}
+	// Somewhere that cannot be written is said, and is not a job.
+	test.Tap(p.save)
+	fx.files.answer(filepath.Join(dir, "none", "job.json"), nil)
+	if !strings.Contains(fx.s.errors.message.Text, "The job could not be saved") {
+		t.Errorf("it said %q", fx.s.errors.message.Text)
+	}
+	// Replacing is said; a number that is not one is refused where it is typed.
+	p.mode.SetSelected(modeReplace)
+	p.policy.SetSelected(policyStop)
+	test.Tap(p.save)
+	fx.files.answer(path, nil)
+	if raw, _ := os.ReadFile(path); !strings.Contains(string(raw), `"replace": true`) || strings.Contains(string(raw), "keys") || strings.Contains(string(raw), "on-error") {
+		t.Errorf("the job: %s", raw)
+	}
+	asked := len(fx.files.saves)
+	p.batch.SetText("many")
+	test.Tap(p.save)
+	if len(fx.files.saves) != asked {
+		t.Error("a job with a batch that is not a number was offered a file")
+	}
+	// An import of nothing is no job.
+	p.batch.SetText("100")
+	pickFor(p, "id").SetSelected(notImported)
+	pickFor(p, "name").SetSelected(notImported)
+	test.Tap(p.save)
+	if len(fx.files.saves) != asked {
+		t.Error("a job that fills no column was offered a file")
+	}
+}
+
+// onShow reports whether something is among what a container draws, however
+// deep.
+func onShow(in fyne.CanvasObject, o fyne.CanvasObject) bool {
+	if in == o {
+		return true
+	}
+	c, ok := in.(*fyne.Container)
+	if !ok {
+		return false
+	}
+	for _, child := range c.Objects {
+		if onShow(child, o) {
+			return true
+		}
+	}
+	return false
 }
