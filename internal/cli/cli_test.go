@@ -432,7 +432,7 @@ func TestItSaysWhatItIsAndWhatItDoes(t *testing.T) {
 	// Every verb is in the help, written out here rather than asked of the
 	// code: a list that came from commands() would agree with it whatever it
 	// held, including a verb that had gone missing from both.
-	for _, name := range []string{"query", "export", "import", "save", "diff", "deploy"} {
+	for _, name := range []string{"query", "export", "import", "save", "diff", "deploy", "run"} {
 		if !strings.Contains(errOut, name) {
 			t.Errorf("the help does not mention %q:\n%s", name, errOut)
 		}
@@ -440,8 +440,8 @@ func TestItSaysWhatItIsAndWhatItDoes(t *testing.T) {
 			t.Errorf("%q is in the help above and is not a command", name)
 		}
 	}
-	if n := len(commands()); n != 6 {
-		t.Errorf("there are %d commands, and six are named here", n)
+	if n := len(commands()); n != 7 {
+		t.Errorf("there are %d commands, and seven are named here", n)
 	}
 	for _, want := range []string{"IKIGAI_PASSWORD", "Exit status"} {
 		if !strings.Contains(errOut, want) {

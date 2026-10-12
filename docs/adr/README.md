@@ -185,3 +185,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0178](0178-yaml-a-record-at-a-time.md) | YAML, a record at a time | Accepted |
 | [0179](0179-dbf-decided-before-the-first-record.md) | DBF, decided before the first record | Accepted |
 | [0180](0180-parquet-a-column-is-one-type.md) | Parquet, where a column is one type | Accepted |
+| [0181](0181-a-job-is-a-commands-flags.md) | A job is a command's flags | Accepted |

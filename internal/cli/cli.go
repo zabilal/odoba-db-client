@@ -60,6 +60,9 @@ type command struct {
 	// the work: the flag values are closed over by what it returns, so they are
 	// read after parsing rather than before.
 	setup func(fs *flag.FlagSet) func(ctx context.Context, e *env, fs *flag.FlagSet) int
+	// raw, where a command has it, is given the arguments as they came: for
+	// the one command whose flags are another command's.
+	raw func(ctx context.Context, e *env, args []string) int
 }
 
 // env is where output goes, and nothing else. A command writes what a pipeline
@@ -140,14 +143,24 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 		usage(e)
 		return Usage
 	}
+	if cmd.raw != nil {
+		return cmd.raw(ctx, e, args[1:])
+	}
 	fs := flag.NewFlagSet("ikigai "+cmd.name, flag.ContinueOnError)
 	fs.SetOutput(err)
 	run := cmd.setup(fs)
+	var job *string
+	if jobCommands[cmd.name] {
+		job = fs.String(saveJobFlag, "", "write this command to a file as a job, to run with \"ikigai run\", instead of running it")
+	}
 	if perr := fs.Parse(args[1:]); perr != nil {
 		if errors.Is(perr, flag.ErrHelp) {
 			return OK
 		}
 		return Usage
+	}
+	if job != nil && strings.TrimSpace(*job) != "" {
+		return saveJob(e, cmd.name, fs, *job)
 	}
 	return run(ctx, e, fs)
 }
@@ -156,7 +169,7 @@ func Run(ctx context.Context, args []string, out, err io.Writer) int {
 func commands() map[string]command {
 	out := map[string]command{}
 	for _, c := range []command{queryCommand(), exportCommand(), importCommand(),
-		deployCommand(), diffCommand(), saveCommand()} {
+		deployCommand(), diffCommand(), saveCommand(), runCommand()} {
 		out[c.name] = c
 	}
 	return out
