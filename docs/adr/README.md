@@ -187,3 +187,4 @@ A superseded ADR is kept and marked, not deleted — the reasoning is the point.
 | [0180](0180-parquet-a-column-is-one-type.md) | Parquet, where a column is one type | Accepted |
 | [0181](0181-a-job-is-a-commands-flags.md) | A job is a command's flags | Accepted |
 | [0182](0182-english-is-the-key.md) | English is the key | Accepted |
+| [0183](0183-read-again-before-writing.md) | Read again before writing | Accepted |

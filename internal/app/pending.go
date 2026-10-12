@@ -285,6 +285,10 @@ func (p *Pending) IsRow(row model.Row, key []any) bool {
 	return k == keyString(key)
 }
 
+// Rereads reports whether any change is to a row that was read — an update
+// or a deletion — and so to a row that may have changed since (FR-4.12).
+func (p *Pending) Rereads() bool { return len(p.order) > 0 }
+
 // Identity is how these rows are told apart, as their stream said (FR-4.7).
 func (p *Pending) Identity() model.RowIdentity { return p.id }
 

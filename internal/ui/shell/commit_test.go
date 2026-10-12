@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +146,7 @@ func TestProductionAsksBeforeCommitting(t *testing.T) {
 		t.Errorf("the review says a production plan asks again: %q", text)
 	}
 	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil }) // once the row is read again
 	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "marked Production") || len(writtenPlans()) != before {
 		t.Fatalf("Commit asks before writing to production: %q", text)
 	}
@@ -153,6 +156,7 @@ func TestProductionAsksBeforeCommitting(t *testing.T) {
 	}
 	reviewed(t, fx)
 	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
 	typeOnTop(t, fx, "prod")
 	tapOnTop(t, fx, "Commit")
 	pump(t, fx.q, func() bool { return len(writtenPlans()) == before+1 })
@@ -186,5 +190,110 @@ func TestAReadOnlyConnectionEditsNothing(t *testing.T) {
 	pump(t, fx.q, func() bool { return tb.browse != nil })
 	if tb.ed.pending != nil || tb.grid.OnEdit != nil || fx.s.canInsert() {
 		t.Error("a read-only connection edits nothing")
+	}
+}
+
+// A row somebody else changed since it was read is said before anything is
+// written, with what committing would do to it (FR-4.12).
+func TestCommitSaysWhenARowChangedUnderneath(t *testing.T) {
+	fx, tb := loadedItems(t)
+	before := len(writtenPlans())
+	editOne(t, tb) // row 1's name
+	row2, _ := tb.model.Row(tb.ctx, 2)
+	tb.ed.pending.Delete(row2)
+	row3, _ := tb.model.Row(tb.ctx, 3)
+	tb.ed.pending.Delete(row3)
+	fx.s.run(cmdInsertRow) // a new row is nobody's to have changed
+	since(t, func(u *changedSince) {
+		u.names = map[int64]string{1: "theirs", 2: "also theirs"}
+		u.gone = map[int64]bool{3: true}
+	})
+	reviewed(t, fx)
+	underneath.Lock()
+	underneath.asked = nil // what the grid itself looked up by key, before now
+	underneath.Unlock()
+	tapOnTop(t, fx, "Commit")
+	if !tb.ed.committing || !strings.Contains(tb.footer.Text, "Checking that the rows are as they were read") {
+		t.Errorf("while the rows are read again, that is said: %q", tb.footer.Text)
+	}
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	text := labelText(fx.s.win.Canvas().Overlays().Top())
+	for _, want := range []string{
+		"Somebody else has changed these rows since they were read here. Nothing has been written yet.",
+		"id = 1: name was 'item 1' when read and is 'theirs' now. Committing writes over that.",
+		"id = 2: name was 'item 2' when read and is 'also theirs' now. The row is deleted as it is now.",
+		"id = 3 is no longer there. It has been deleted already.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning does not say %q:\n%s", want, text)
+		}
+	}
+	if len(writtenPlans()) != before || tb.ed.committing {
+		t.Fatal("nothing is written until somebody says so")
+	}
+	underneath.Lock()
+	asked := fmt.Sprint(underneath.asked)
+	underneath.Unlock()
+	if asked != "[1 2 3]" {
+		t.Errorf("each row changed or deleted is read again by its key, once, and a new row is not: %s", asked)
+	}
+	tapOnTop(t, fx, "Cancel")
+	if len(writtenPlans()) != before || tb.ed.pending.Len() != 4 || !strings.Contains(tb.footer.Text, "Not committed. Refresh to read the rows as they are now.") {
+		t.Fatalf("Cancel writes nothing and keeps the changes: %q", tb.footer.Text)
+	}
+	// And said to all the same, they are written.
+	reviewed(t, fx)
+	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	tapOnTop(t, fx, "Commit Anyway")
+	pump(t, fx.q, func() bool {
+		return len(writtenPlans()) == before+1 && strings.Contains(tb.footer.Text, "Committed 4 changes")
+	})
+}
+
+func TestCommitSaysWhatItCouldNotCheck(t *testing.T) {
+	fx, tb := loadedItems(t)
+	before := len(writtenPlans())
+	editOne(t, tb)
+	// A column that changed beside the edit is said, and said to be left.
+	row2, _ := tb.model.Row(tb.ctx, 2)
+	if err := tb.grid.OnEdit(row2, 0, int64(22)); err != nil {
+		t.Fatal(err)
+	}
+	since(t, func(u *changedSince) { u.names = map[int64]string{2: "theirs"}; u.gone = map[int64]bool{1: true} })
+	reviewed(t, fx)
+	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	text := labelText(fx.s.win.Canvas().Overlays().Top())
+	for _, want := range []string{
+		"id = 1 is no longer there. The change to it will write nothing.",
+		"id = 2: name was 'item 2' when read and is 'theirs' now. It is not one of your changes, and is left as it is.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning does not say %q:\n%s", want, text)
+		}
+	}
+	tapOnTop(t, fx, "Cancel")
+
+	// A read that fails is not a row that is unchanged: it is asked about.
+	since(t, func(u *changedSince) { u.names, u.gone, u.fail = nil, nil, errors.New("fakesql: gone away") })
+	reviewed(t, fx)
+	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return fx.s.win.Canvas().Overlays().Top() != nil })
+	if text := labelText(fx.s.win.Canvas().Overlays().Top()); !strings.Contains(text, "The rows could not be read again, so whether they changed is not known: fakesql: gone away.") {
+		t.Errorf("a check that failed: %s", text)
+	}
+	tapOnTop(t, fx, "Cancel")
+	if len(writtenPlans()) != before {
+		t.Fatal("nothing was written")
+	}
+	// A key that finds two rows is no key, and nothing is claimed of it;
+	// rows as they were are written without a word.
+	since(t, func(u *changedSince) { u.fail, u.twice = nil, map[int64]bool{1: true, 2: true} })
+	reviewed(t, fx)
+	tapOnTop(t, fx, "Commit")
+	pump(t, fx.q, func() bool { return len(writtenPlans()) == before+1 })
+	if fx.s.win.Canvas().Overlays().Top() != nil {
+		t.Error("rows nothing can be said about were warned of")
 	}
 }

@@ -514,6 +514,47 @@ func runJ2(t *testing.T, j journey) {
 		return ok && r != nil && fmt.Sprint(r[1]) == fixed
 	})
 
+	// That commit read the row again by its key before writing, on this
+	// engine's own types, and found it as it was: nothing was asked.
+	//
+	// Now somebody else changes the row between its being read here and
+	// its being written, where the journey can reach behind the
+	// application to be somebody else (FR-4.12).
+	if j.ddl != nil {
+		row, _ = g.Model().Row(ctx, 0)
+		const mine, theirs = "person 7, mine", "person 7, theirs"
+		if err := g.OnEdit(row, 1, mine); err != nil {
+			t.Fatalf("editing the cell again: %v", err)
+		}
+		j.ddl(t, "UPDATE "+j.table+" SET name = '"+theirs+"' WHERE id = 7")
+		if err := h.s.Commands().Run("data.reviewChanges"); err != nil {
+			t.Fatalf("Review Changes: %v", err)
+		}
+		test.Tap(button(t, h.w.Canvas().Overlays().Top(), "Commit"))
+		var warned string
+		waitFor(t, h.q, "the warning that the row changed", func() bool {
+			h.w.Canvas().Capture()
+			top := h.w.Canvas().Overlays().Top()
+			if top == nil {
+				return false
+			}
+			warned = strings.Join(labelsIn(top), "\n")
+			return strings.Contains(warned, "since they were read")
+		})
+		want := "id = 7: name was '" + fixed + "' when read and is '" + theirs + "' now. Committing writes over that."
+		if !strings.Contains(warned, want) {
+			t.Errorf("the warning does not say %q:\n%s", want, warned)
+		}
+		// Nothing has been written: the server still holds theirs. Told to
+		// all the same, it is written over.
+		test.Tap(button(t, h.w.Canvas().Overlays().Top(), "Commit Anyway"))
+		waitFor(t, h.q, "the change to be written over theirs", func() bool {
+			h.w.Canvas().Capture()
+			r, ok := g.Model().Row(ctx, 0)
+			return ok && r != nil && fmt.Sprint(r[1]) == mine
+		})
+	}
+
 	// And it is the row it was, not a new one: clearing the filter finds the
 	// table the same size as before.
 	g.SetFilterText(1, "")

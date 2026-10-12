@@ -478,6 +478,17 @@ func (f fakeSource) Browse(_ context.Context, ref model.ObjectRef, opt source.Br
 		end = opt.Offset + opt.Limit
 	}
 	var rows model.RowStream = &sliceStream{next: opt.Offset, end: end, keyed: !f.unkeyed}
+	// A row asked for by its key is that row, as it is now: which is what
+	// somebody else may have made it since it was first read.
+	for _, flt := range opt.Filters {
+		if id, ok := flt.Values, flt.Column == "id" && flt.Op == source.OpEqual && len(flt.Values) == 1; ok {
+			one, err := underneath.row(id[0])
+			if err != nil {
+				return nil, err
+			}
+			rows = &rowsStream{sliceStream: sliceStream{keyed: !f.unkeyed}, rows: one}
+		}
+	}
 	switch ref.Name() {
 	case "memos":
 		rows = &memoStream{next: opt.Offset, end: end}
@@ -555,6 +566,69 @@ func (s *sliceStream) Next(context.Context) (model.Row, error) {
 	return model.Row{i, fmt.Sprintf("item %d", i)}, nil
 }
 func (*sliceStream) Close() error { return nil }
+
+// underneath is what somebody else has done to the items since they were
+// read: the name a row has now, a row that is gone, a key that is two rows',
+// or a read that fails. Empty, every row is as it was.
+var underneath changedSince
+
+type changedSince struct {
+	sync.Mutex
+	names map[int64]string
+	gone  map[int64]bool
+	twice map[int64]bool
+	fail  error
+	asked []any
+}
+
+// since sets what has changed, until the test ends.
+func since(t *testing.T, set func(u *changedSince)) {
+	t.Helper()
+	underneath.Lock()
+	set(&underneath)
+	underneath.Unlock()
+	t.Cleanup(func() {
+		underneath.Lock()
+		underneath.names, underneath.gone, underneath.twice, underneath.fail, underneath.asked = nil, nil, nil, nil, nil
+		underneath.Unlock()
+	})
+}
+
+func (u *changedSince) row(key any) ([]model.Row, error) {
+	u.Lock()
+	defer u.Unlock()
+	u.asked = append(u.asked, key)
+	id, ok := key.(int64)
+	switch {
+	case u.fail != nil:
+		return nil, u.fail
+	case !ok || id < 0 || id >= fakeRows || u.gone[id]:
+		return nil, nil
+	}
+	row := model.Row{id, fmt.Sprintf("item %d", id)}
+	if name, ok := u.names[id]; ok {
+		row[1] = name
+	}
+	if u.twice[id] {
+		return []model.Row{row, row}, nil
+	}
+	return []model.Row{row}, nil
+}
+
+// rowsStream is rows in hand, as the items' stream gives them.
+type rowsStream struct {
+	sliceStream
+	rows []model.Row
+}
+
+func (s *rowsStream) Next(context.Context) (model.Row, error) {
+	if len(s.rows) == 0 {
+		return nil, io.EOF
+	}
+	row := s.rows[0]
+	s.rows = s.rows[1:]
+	return row, nil
+}
 
 // memoStream is the memos table's rows: an id it shares with the items
 // table, and a memo it does not. Its id is text where the items table's is

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ikigai-db/ikigai-db/internal/app"
 	"github.com/ikigai-db/ikigai-db/internal/l10n"
 	"github.com/ikigai-db/ikigai-db/internal/model"
 	"github.com/ikigai-db/ikigai-db/internal/source"
@@ -109,12 +111,122 @@ func valueText(v any) string {
 	return fmt.Sprint(v)
 }
 
-// commit writes a plan. On a production connection it asks first; the plan
-// is made again with the consent, since nothing has run yet (FR-4.9).
-// commit writes a plan, asking first where the connection is marked
+// commit writes a plan, once the rows it changes have been read again and
+// found as they were, or a person has said to write all the same.
+func (s *Shell) commit(e *edits, plan *source.WritePlan, cs source.Changeset) {
+	reader, ok := e.writes.(rowRereader)
+	if !ok || !reader.CanFilter() || !e.pending.Rereads() {
+		s.write(e, plan, cs)
+		return
+	}
+	// Each row the changes touch is read again by its key first, and held
+	// against what was read: somebody may have changed it since (FR-4.12).
+	e.committing = true
+	e.say(l10n.T("Checking that the rows are as they were read…"))
+	e.show()
+	go func() {
+		drifted, unchecked, err := e.pending.Drift(e.ctx, reader.ReadByKey)
+		s.d.Run(func() {
+			if e.ctx.Err() != nil {
+				return
+			}
+			e.committing = false
+			if err == nil && len(drifted) == 0 {
+				s.write(e, plan, cs)
+				return
+			}
+			e.say("")
+			e.show()
+			d := dialog.NewCustomConfirm(l10n.T("Rows Changed Since They Were Read"), l10n.T("Commit Anyway"), l10n.T("Cancel"),
+				driftBody(e.pending.Identity().Columns, drifted, unchecked, err), func(ok bool) {
+					if ok {
+						s.write(e, plan, cs)
+						return
+					}
+					e.say(l10n.T("Not committed. Refresh to read the rows as they are now."))
+					e.show()
+				}, s.win)
+			d.SetConfirmImportance(widget.DangerImportance)
+			d.Resize(fyne.NewSize(640, 360))
+			d.Show()
+		})
+	}()
+}
+
+// rowRereader is a writer that can read a row again by its key: a table's
+// browse. A query's result is written through its session, which cannot, and
+// is committed unchecked.
+type rowRereader interface {
+	CanFilter() bool
+	ReadByKey(ctx context.Context, key []source.Filter) ([]model.Row, error)
+}
+
+// driftListed is how many rows a warning lists; the rest are counted.
+const driftListed = 20
+
+// driftBody says which rows are not as they were read, and what committing
+// would do to each.
+func driftBody(keys []string, drifted []app.Drifted, unchecked int, err error) fyne.CanvasObject {
+	var lines []string
+	if err != nil {
+		lines = append(lines, l10n.F("The rows could not be read again, so whether they changed is not known: %s.", err.Error()))
+	}
+	for i, d := range drifted {
+		if i == driftListed {
+			lines = append(lines, l10n.F("And %d more.", len(drifted)-driftListed))
+			break
+		}
+		row := keyText(keys, d.Key)
+		switch {
+		case d.Gone && d.Kind == source.ChangeDelete:
+			lines = append(lines, l10n.F("%s is no longer there. It has been deleted already.", row))
+		case d.Gone:
+			lines = append(lines, l10n.F("%s is no longer there. The change to it will write nothing.", row))
+		}
+		for _, c := range d.Columns {
+			was, now := valueText(c.Was), valueText(c.Now)
+			switch {
+			case d.Kind == source.ChangeDelete:
+				lines = append(lines, l10n.F("%s: %s was %s when read and is %s now. The row is deleted as it is now.", row, c.Name, was, now))
+			case c.Edited:
+				lines = append(lines, l10n.F("%s: %s was %s when read and is %s now. Committing writes over that.", row, c.Name, was, now))
+			default:
+				lines = append(lines, l10n.F("%s: %s was %s when read and is %s now. It is not one of your changes, and is left as it is.", row, c.Name, was, now))
+			}
+		}
+	}
+	if unchecked > 0 {
+		lines = append(lines, l10n.F("%d more rows were not read again: only the first %d changed are.", unchecked, app.DriftLimit))
+	}
+	items := make([]fyne.CanvasObject, 0, len(lines)+1)
+	intro := widget.NewLabel(l10n.T("Somebody else has changed these rows since they were read here. Nothing has been written yet."))
+	intro.Wrapping = fyne.TextWrapWord
+	items = append(items, intro)
+	for _, line := range lines {
+		l := widget.NewLabel(line)
+		l.Wrapping = fyne.TextWrapWord
+		items = append(items, l)
+	}
+	return container.NewVScroll(container.NewVBox(items...))
+}
+
+// keyText is a row as its key says which it is: "id = 5".
+func keyText(names []string, key []any) string {
+	parts := make([]string, len(key))
+	for i, v := range key {
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		}
+		parts[i] = name + " = " + valueText(v)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// write writes a plan, asking first where the connection is marked
 // Production: consent is not a flag a plan can be given after the fact, so
 // the changeset is planned again with it (FR-4.9).
-func (s *Shell) commit(e *edits, plan *source.WritePlan, cs source.Changeset) {
+func (s *Shell) write(e *edits, plan *source.WritePlan, cs source.Changeset) {
 	if !plan.Guarded {
 		s.apply(e, plan)
 		return
